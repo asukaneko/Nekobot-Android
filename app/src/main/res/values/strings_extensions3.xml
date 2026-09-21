@@ -127,4 +127,42 @@
     <string name="plugins_builtin_jm_desc">下载、搜索与浏览 JM 漫画排行。</string>
     <string name="plugins_builtin_light_novel_name">轻小说</string>
     <string name="plugins_builtin_light_novel_desc">搜索、下载与管理 Wenku8 轻小说。</string>
+
+    <!-- ==================== 插件页面与授权 ==================== -->
+    <string name="extensions_group_plugin_pages">插件页面</string>
+    <string name="plugin_page_title">插件页面</string>
+    <string name="plugin_page_not_found">页面不存在或插件已停用。</string>
+    <string name="plugin_page_reload">重载</string>
+    <string name="plugins_pages_count">页面：%1$d</string>
+    <string name="plugins_hooks_label">事件钩子：%1$s</string>
+    <string name="plugin_hook_message_before_send">发送前改写消息</string>
+    <string name="plugin_hook_app_lifecycle">应用生命周期</string>
+    <string name="plugins_permissions_unconfirmed">权限未确认</string>
+    <string name="plugins_permissions_granted">已授权 %1$d/%2$d 项权限</string>
+    <string name="plugins_grant_manage">权限</string>
+    <string name="plugins_grant_title">插件权限授权</string>
+    <string name="plugins_grant_message">仅勾选需要的权限；未授权的能力调用会被拒绝。</string>
+    <string name="plugins_grant_permissions_title">该插件申请以下权限：</string>
+    <string name="plugin_perm_group_basic">基础</string>
+    <string name="plugin_perm_group_read">读取</string>
+    <string name="plugin_perm_group_network">网络</string>
+    <string name="plugin_perm_group_write">写入</string>
+    <string name="plugin_perm_group_ai">AI</string>
+    <string name="plugin_perm_storage">键值存储</string>
+    <string name="plugin_perm_notify">显示通知</string>
+    <string name="plugin_perm_chat_progress">进度卡片</string>
+    <string name="plugin_perm_chat_read">读取会话与消息</string>
+    <string name="plugin_perm_characters_read">读取角色卡</string>
+    <string name="plugin_perm_worldbooks_read">读取世界书</string>
+    <string name="plugin_perm_memory_read">读取 Agent 记忆</string>
+    <string name="plugin_perm_network">访问网络</string>
+    <string name="plugin_perm_chat_write">发送消息</string>
+    <string name="plugin_perm_memory_write">写入 Agent 记忆</string>
+    <string name="plugin_perm_characters_write">创建/修改角色卡</string>
+    <string name="plugin_perm_ai_call">调用 AI</string>
+    <string name="plugins_compat_label">兼容级别：%1$s</string>
+    <string name="plugins_compat_native">原生</string>
+    <string name="plugins_compat_ported_full">移植完整</string>
+    <string name="plugins_compat_ported_partial">移植部分可用</string>
+    <string name="plugins_compat_unsupported">不支持</string>
 </resources>

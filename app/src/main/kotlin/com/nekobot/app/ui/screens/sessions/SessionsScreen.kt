@@ -623,6 +623,9 @@ fun SessionsScreen(
                     },
                     onCustomize = { showDashboardLayout = true },
                     onOpenChat = handleOpenChat,
+                    onOpenPluginPage = { pluginId, pageId ->
+                        onNavigate(Routes.pluginPage(pluginId, pageId))
+                    },
                     onQuickAction = { action ->
                         when (action) {
                             DashboardQuickAction.NEW_SESSION -> createConfigMode = "character"

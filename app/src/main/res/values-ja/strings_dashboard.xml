@@ -70,6 +70,8 @@
     <string name="stats_webdav_not_configured">未設定</string>
     <string name="stats_local_log_preview_title">ローカルログ</string>
     <string name="stats_achievements_title">実績</string>
+    <string name="stats_plugin_pages_title">プラグインページ</string>
+    <string name="stats_plugin_pages_empty">プラグインページがありません。プラグインでページを宣言してください</string>
     <string name="stats_random_generate_ideas">AI で着想生成</string>
     <string name="stats_achievement_progress">%1$s / %2$s</string>
     <string name="achievement_token_1000">Token 入門</string>

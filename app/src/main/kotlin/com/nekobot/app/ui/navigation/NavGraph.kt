@@ -113,6 +113,7 @@ import com.nekobot.app.ui.screens.extensions.ImageGenerationPlaygroundScreen
 import com.nekobot.app.ui.screens.extensions.LoginTokensScreen
 import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
 import com.nekobot.app.ui.screens.extensions.AchievementsScreen
+import com.nekobot.app.ui.screens.extensions.PluginPageScreen
 import com.nekobot.app.ui.screens.extensions.PluginsScreen
 import com.nekobot.app.ui.components.AchievementUnlockHost
 import com.nekobot.app.update.UpdateChecker
@@ -220,6 +221,24 @@ fun NekobotNavGraph() {
         ServiceContainer.setPendingSessionId(null) // 消费掉
         if (isQuickSetupCompleted && isLoggedIn) {
             navController.navigate(Routes.chat(sid))
+        }
+    }
+
+    // 插件命令（open_page）触发的页面打开请求
+    val pendingPluginPage by ServiceContainer.pendingPluginPage.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingPluginPage) {
+        val request = pendingPluginPage ?: return@LaunchedEffect
+        ServiceContainer.consumePendingPluginPage()
+        if (isQuickSetupCompleted && isLoggedIn) {
+            navController.navigate(
+                Routes.pluginPage(
+                    pluginId = request.pluginId,
+                    pageId = request.pageId,
+                    sessionId = request.sessionId,
+                    args = request.args,
+                    progressParentId = request.progressParentMessageId
+                )
+            )
         }
     }
 
@@ -748,7 +767,55 @@ fun NekobotNavGraph() {
                 ApiKeysScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.PLUGINS) {
-                PluginsScreen(onBack = { navController.popBackStack() })
+                PluginsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) }
+                )
+            }
+            composable(
+                route = Routes.PLUGIN_PAGE,
+                arguments = listOf(
+                    navArgument("pluginId") { type = NavType.StringType },
+                    navArgument("pageId") { type = NavType.StringType },
+                    navArgument("sessionId") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                    navArgument("args") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                    navArgument("progressParent") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { entry ->
+                val pluginId = java.net.URLDecoder.decode(
+                    entry.arguments?.getString("pluginId").orEmpty(),
+                    "UTF-8"
+                )
+                val pageId = java.net.URLDecoder.decode(
+                    entry.arguments?.getString("pageId").orEmpty(),
+                    "UTF-8"
+                )
+                val sessionId = entry.arguments?.getString("sessionId")
+                    .orEmpty()
+                    .takeIf { it.isNotBlank() }
+                val launchArgs = entry.arguments?.getString("args")
+                    .orEmpty()
+                    .takeIf { it.isNotBlank() }
+                val progressParentId = entry.arguments?.getString("progressParent")
+                    .orEmpty()
+                    .takeIf { it.isNotBlank() }
+                PluginPageScreen(
+                    pluginId = pluginId,
+                    pageId = pageId,
+                    sessionId = sessionId,
+                    launchArgs = launchArgs,
+                    progressParentId = progressParentId,
+                    onBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.DB_PROFILE) {
                 DbProfileScreen(onBack = { navController.popBackStack() })

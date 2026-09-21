@@ -3,7 +3,9 @@ package com.nekobot.app.data.local.ai
 import com.google.gson.Gson
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.plugin.InstalledPlugin
+import com.nekobot.app.data.local.plugin.PluginCompatLevel
 import com.nekobot.app.data.local.plugin.PluginManager
+import com.nekobot.app.data.local.plugin.PluginPortInspector
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import kotlinx.coroutines.CancellationException
@@ -46,9 +48,11 @@ internal class LocalPluginTool(
                 "enable", "disable" -> setPluginEnabled(pluginManager, action == "enable", args)
                 "uninstall" -> uninstallPlugin(pluginManager, args)
                 "execute" -> executePluginCommand(pluginManager, args)
+                "inspect" -> inspectPortSource(args)
+                "check" -> checkPlugin(pluginManager, args)
                 else -> failure(
                     "未知 action：$action（支持 list、view、help、create、install_url、" +
-                        "update、enable、disable、uninstall、execute）"
+                        "update、enable、disable、uninstall、execute、inspect、check）"
                 )
             }
         } catch (e: CancellationException) {
@@ -140,11 +144,13 @@ internal class LocalPluginTool(
         val extraFiles = parseExtraFiles(args.string("extra_files_json"))
         val replaced = pluginManager.installed.value.firstOrNull { it.id == extractManifestId(manifestJson) }
         val plugin = pluginManager.installFromSource(manifestJson, entrySource, extraFiles)
+        applyCompat(plugin.id, args)
         return success(
             "message" to "插件已创建并安装：${plugin.name}（${plugin.id}）" +
                 if (replaced != null) "，已覆盖更新同名旧插件" else "",
-            "plugin" to pluginSummary(plugin),
-            "note" to "插件默认启用，用户可在输入框使用其斜杠命令；建议立即用 execute 测试"
+            "plugin" to pluginSummary(pluginManager.installed.value.firstOrNull { it.id == plugin.id } ?: plugin),
+            "note" to "插件默认启用，用户可在输入框使用其斜杠命令；建议立即用 execute 测试" +
+                "；危险权限（网络/写入/AI）需要用户在插件页授权"
         )
     }
 
@@ -188,9 +194,10 @@ internal class LocalPluginTool(
             return failure("update 至少提供 manifest_json、main_js 或 extra_files_json 之一")
         }
         val plugin = pluginManager.updatePlugin(pluginId, manifestJson, entrySource, extraFiles)
+        applyCompat(plugin.id, args)
         return success(
             "message" to "插件已更新：${plugin.name}（${plugin.id}）",
-            "plugin" to pluginSummary(plugin),
+            "plugin" to pluginSummary(pluginManager.installed.value.firstOrNull { it.id == plugin.id } ?: plugin),
             "note" to "建议用 execute 重新测试命令"
         )
     }
@@ -255,6 +262,16 @@ internal class LocalPluginTool(
                 "插件 $pluginId 没有命令 /${command.removePrefix("/")}；" +
                     "可先 view 查看清单中注册的命令"
             )
+        if (binding.openPage.isNotBlank()) {
+            return success(
+                "plugin_id" to pluginId,
+                "command" to binding.trigger,
+                "open_page" to binding.openPage,
+                "output" to "该命令用于打开插件页面，不执行 JS，无法在沙盒中测试；" +
+                    "请让用户在 App 内输入 ${binding.trigger} 验证页面入口",
+                "note" to "页面入口也出现在「更多 → 扩展功能 → 插件页面」"
+            )
+        }
         if (plugin.isBuiltIn) {
             return failure("内置插件命令复用原生处理器，不支持在此测试；请让用户直接输入 ${binding.trigger}")
         }
@@ -275,6 +292,97 @@ internal class LocalPluginTool(
         )
     }
 
+    // ---- 跨生态移植辅助 ----
+
+    /**
+     * 确定性解压 + 生态识别 + 文件清单：把「解压 + 阅读目录」从模型手工操作
+     * 变成一步，省 token 且不会踩路径坑。解压目录：工作区 plugin-port/<名称>/。
+     */
+    private fun inspectPortSource(args: Map<String, Any>): Map<String, Any> {
+        val raw = args.string("path").trim()
+        if (raw.isBlank()) return failure("inspect 需要 path（会话工作区内的 .zip 文件或目录）")
+        val appContext = runCatching { ServiceContainer.appContext }.getOrNull()
+            ?: return failure("应用上下文不可用")
+        val workspace = com.nekobot.app.data.local.LocalWorkspaceStorage
+            .resolve(appContext.filesDir, sessionId)
+            ?: return failure("会话工作区不可用")
+        val source = resolveWorkspacePath(workspace, raw)
+            ?: return failure("路径无效或不在会话工作区内：$raw")
+        if (!source.exists()) return failure("路径不存在：$raw")
+        val name = source.nameWithoutExtension.ifBlank { source.name }
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .take(48)
+            .ifBlank { "plugin" }
+        val outputDir = java.io.File(workspace, "plugin-port/$name")
+        val inspection = runCatching { PluginPortInspector.inspect(source, outputDir) }
+            .getOrElse { return failure("解压或分析失败：${it.message ?: "未知错误"}") }
+        return success(
+            "ecosystem" to inspection.ecosystem.wire,
+            "ecosystem_label" to inspection.ecosystem.label,
+            "manifest_file" to inspection.manifestFile.orEmpty(),
+            "manifest_json" to inspection.manifestJson.orEmpty()
+                .take(AgentToolLimits.toolOutputChars() / 2),
+            "extracted_dir" to workspaceRelative(workspace, outputDir),
+            "file_count" to inspection.files.size,
+            "total_bytes" to inspection.totalBytes,
+            "files" to inspection.files.take(200).map { mapOf("path" to it.path, "size" to it.size) },
+            "warnings" to inspection.warnings,
+            "suggested_permissions" to inspection.suggestedPermissions,
+            "next_steps" to "用 workspace_read / grep 阅读源码，按 plugin-development.md 第 10 章改写，" +
+                "再用 plugin_use create 安装（页面文件放 extra_files_json）"
+        )
+    }
+
+    /** 移植后静态自检：清单、页面入口、API 名称与大小限额；不执行插件代码。 */
+    private fun checkPlugin(pluginManager: PluginManager, args: Map<String, Any>): Map<String, Any> {
+        val pluginId = args.string("plugin_id").trim()
+        if (pluginId.isBlank()) return failure("check 需要 plugin_id")
+        val plugin = pluginManager.installed.value.firstOrNull { it.id == pluginId }
+            ?: return failure("插件不存在：$pluginId（可先 list）")
+        if (plugin.isBuiltIn) return failure("内置插件没有可自检的 JS 源码")
+        val directory = pluginManager.pluginDirectoryPath(pluginId)
+            ?: return failure("插件目录不存在：$pluginId")
+        val detail = pluginManager.readPluginDetail(pluginId)
+            ?: return failure("无法读取插件清单：$pluginId")
+        val result = PluginPortInspector.check(directory, detail.manifestJson)
+        return success(
+            "plugin_id" to pluginId,
+            "ready" to result.ok,
+            "manifest_errors" to result.manifestErrors,
+            "page_errors" to result.pageErrors,
+            "unsupported_apis" to result.unsupportedApis,
+            "warnings" to result.warnings,
+            "hint" to if (result.ok) {
+                "静态自检通过；建议用 execute 测试命令，并告知用户页面入口与权限清单"
+            } else {
+                "按上面的问题修复后重新 check；不要向用户声称完全兼容"
+            }
+        )
+    }
+
+    /** 记录移植兼容级别（native / ported-full / ported-partial / unsupported）。 */
+    private fun applyCompat(pluginId: String, args: Map<String, Any>) {
+        val compat = args.string("compat").trim()
+        val note = args.string("compat_note").trim()
+        if (compat.isBlank() && note.isBlank()) return
+        val store = runCatching { ServiceContainer.pluginMetaStore }.getOrNull() ?: return
+        store.setMeta(pluginId, PluginCompatLevel.fromWire(compat), note)
+    }
+
+    private fun resolveWorkspacePath(workspace: java.io.File, raw: String): java.io.File? {
+        var relative = raw.trim().replace('\\', '/')
+        if (relative.startsWith("/workspace/")) relative = relative.removePrefix("/workspace/")
+        if (relative.startsWith("/") || relative.isBlank()) return null
+        if (!com.nekobot.app.data.local.plugin.PluginManifestValidator.isSafeRelativePath(relative)) return null
+        val root = workspace.canonicalFile
+        val target = java.io.File(root, relative).canonicalFile
+        return target.takeIf { it.path.startsWith(root.path + java.io.File.separator) }
+    }
+
+    private fun workspaceRelative(workspace: java.io.File, file: java.io.File): String =
+        "/workspace/" + runCatching { file.relativeTo(workspace).path.replace('\\', '/') }
+            .getOrDefault(file.name)
+
     // ---- 辅助 ----
 
     private fun pluginSummary(plugin: InstalledPlugin): Map<String, Any> = mapOf(
@@ -286,12 +394,22 @@ internal class LocalPluginTool(
         "enabled" to plugin.enabled,
         "builtin" to plugin.isBuiltIn,
         "permissions" to plugin.permissions,
+        "compat" to plugin.compat.wire,
+        "compat_note" to plugin.compatNote,
+        "pages" to plugin.pages.map { page ->
+            mapOf(
+                "page_id" to page.id,
+                "title" to page.title,
+                "entry" to page.entry
+            )
+        },
         "commands" to plugin.commands.map { command ->
             mapOf(
                 "command" to "/${command.name}",
                 "aliases" to command.aliases,
                 "usage" to command.usage,
-                "description" to command.description
+                "description" to command.description,
+                "open_page" to command.openPage
             )
         },
         "installed_at" to (plugin.installedAt.takeIf { it > 0 }?.let(::formatTimestamp) ?: "")
@@ -347,24 +465,27 @@ internal class LocalPluginTool(
             plugin_use 工具推荐流程（AI 附录）
             1. 通读本文档，理解清单规范、权限与运行时限制
             2. list 查看已安装插件，避免 id 与命令名冲突（内置 builtin.jm、builtin.light-novel 不可占用）
-            3. create 编写完整 manifest_json + main_js 并安装（多文件用 extra_files_json，遵守第 7 节大小限制）
-            4. execute 逐条测试命令（用 args 模拟用户输入）
-            5. 出错时 view 读取实际落盘源码，update 修复后复测
-            6. enable/disable/uninstall 管理生命周期；install_url 安装第三方 ZIP 与 uninstall 均需用户确认
-            7. 交付时告知用户可用的斜杠命令与用法
+            3. 移植别家插件：inspect（path 指向会话工作区内的 .zip 或目录）→ 确定性解压 + 生态识别 + 文件清单
+            4. create 编写完整 manifest_json + main_js 并安装（多文件用 extra_files_json，遵守第 7 节大小限制；页面文件也放 extra_files_json）
+            5. check 静态自检（清单 / 页面入口 / API 名称 / 大小），修复到 ready=true
+            6. execute 逐条测试命令（用 args 模拟用户输入）
+            7. 出错时 view 读取实际落盘源码，update 修复后复测
+            8. create/update 可带 compat（native/ported-full/ported-partial/unsupported）与 compat_note 记录移植差异
+            9. enable/disable/uninstall 管理生命周期；install_url 安装第三方 ZIP 与 uninstall 均需用户确认
+            10. 交付时告知用户：插件 id、可用命令、页面入口、权限申请清单、与原插件的行为差异
 
-            注意：插件命令只在本地模式执行；运行时只会加载 entry 指定的一个 JS 文件，静态数据应直接写进入口脚本；不要调用 NekoAndroid 等运行时内部对象，它们不是稳定的插件 API。
+            注意：插件命令只在本地模式执行；命令运行时只加载 entry 指定的一个 JS 文件，页面运行时可加载插件目录内的相对资源；不要调用 NekoAndroid 等运行时内部对象，它们不是稳定的插件 API。危险权限（network/chat.write/memory.write/ai.call）需要用户在插件页手动授权，未授权调用会被拒绝。
         """.trimIndent()
 
         /** 插件开发指南回退版本；仅在 assets 文档读取失败时使用。 */
         val PLUGIN_DEV_GUIDE: String = """
-            Nekobot 插件开发指南（api_version 1）
+            Nekobot 插件开发指南（api_version 1-2）
 
             一、插件包结构
-            插件由 plugin.json（清单）和入口 JS 文件（默认 main.js）组成，可选附加文件。安装后插件以斜杠命令形式扩展本地会话功能（如 /note）。插件运行在无网络、无文件访问的沙盒 WebView 中，只能通过清单声明的权限调用受控 API。
+            插件由 plugin.json（清单）和入口 JS 文件（默认 main.js）组成，可选附加文件与页面（pages[]）。安装后插件以斜杠命令形式扩展本地会话功能（如 /note），声明了 pages 的插件还会在「扩展功能 → 插件页面」出现独立页面入口。插件运行在无网络、无文件访问的沙盒 WebView 中，只能通过清单声明且用户已授权的权限调用受控 API。
 
             plugin.json 必填字段：
-            - api_version: 固定为 1
+            - api_version: 1 或 2（当前支持 1-2）
             - id: 插件唯一标识，2-64 位、字母开头，可含数字、点、下划线、连字符；不能与已安装插件或内置插件（builtin.jm、builtin.light-novel）冲突
             - name: 插件名（≤80 字符）
             - version: 版本号（≤32 字符）
@@ -375,7 +496,9 @@ internal class LocalPluginTool(
             可选字段：
             - author、description
             - entry: 入口文件，默认 "main.js"，必须是安全的 .js 相对路径
-            - permissions: 权限数组，可用值：storage（键值存储）、chat.read（读取会话与消息）、notify（Toast 通知）、network（HTTPS GET）、chat.progress（进度卡片）。调用未声明权限的 API 会失败。
+            - permissions: 权限数组。基础/读取：storage、notify、chat.progress、chat.read、characters.read、worldbooks.read、memory.read；危险权限（network、chat.write、memory.write、characters.write、ai.call）需用户在插件页手动授权，AI 创建时不会自动授予。ai.call 开放 aiComplete（走聊天故障转移队列，每插件每分钟 10 次、每小时 20 万 token 上限）；chat.write 开放 appendMessage/sendMessage/createSession/switchSession；characters.write 开放 createCharacter/updateCharacter（无删除）。
+            - hooks: 事件钩子数组（≤4，可省略）：message.beforeSend（发送前改写用户消息）、app.lifecycle（app.start/chat.open/chat.close）。声明后用 NekoPlugin.on(name, handler) 注册；声明 hooks 时 commands 可以为空。
+            - pages: 页面数组（≤8 个），每项 {"id": "小写id", "title": "标题", "title_i18n": {...}, "entry": "pages/x.html", "styles": [...], "scripts": [...], "order": 100}；entry 必须是以 .html 结尾的安全相对路径且文件真实存在。页面用 host.* API（host.storage.*、host.chat.*（含 chat.messages.append/send、chat.sessions.create/switch）、host.characters.*（含 create/update）、host.worldbooks.*、host.memory.read/write/append/edit、host.ui.render、host.http.get、host.ui.toast、host.system.info），与 ctx.api 共用权限与存储。
 
             二、入口 JS 运行时
             - 用 NekoPlugin.registerCommand(name, handler) 或 NekoPlugin.register({commands: {name: handler}}) 注册命令
@@ -391,7 +514,14 @@ internal class LocalPluginTool(
               await ctx.api.storage.set(key, value) // 写存储（storage）
               await ctx.api.storage.remove(key)     // 删除键（storage）
               await ctx.api.storage.list()          // 返回 {key: value}（storage）
-            - 限制：单次执行超时 20 秒；回复上限 20000 字符；没有 fetch/XHR/DOM 存储；storage key ≤128 字符且不能含换行
+              await ctx.api.aiComplete({messages: [{role: "user", content: "你好"}], maxTokens: 512})  // 返回 {content, model, usage}（ai.call）
+              await ctx.api.appendMessage({role: "user", content: "文本"})  // 往当前会话追加消息，返回 {id, sessionId, role, createdAt}（chat.write）
+              await ctx.api.memoryRead()            // 读 Agent 长期记忆，返回 {content, charCount}（memory.read）
+              await ctx.api.memoryAppend("要记住的事")  // 追加记忆（memory.write）；也有 memoryWrite(content) 覆盖、memoryEdit(oldText, newText) 替换
+              await ctx.api.sendMessage({content: "文本"})   // 发消息并触发后台回复（chat.write）
+              await ctx.api.createCharacter({name: "角色名", personality: "..."})  // 创建角色卡（characters.write，无删除）
+              await ctx.api.render("{{#each this}}{{name}}{{/each}}", list)        // 模板渲染（免权限）
+            - 限制：单次执行超时 20 秒（声明 ai.call 时 120 秒）；回复上限 20000 字符；没有 fetch/XHR/DOM 存储；storage key ≤128 字符且不能含换行；appendMessage 单条 ≤8000 字符且只能追加不能删改；Agent 记忆整体 ≤32000 字符
 
             三、最小示例
             plugin.json：

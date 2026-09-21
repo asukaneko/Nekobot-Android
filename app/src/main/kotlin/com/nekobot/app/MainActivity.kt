@@ -163,6 +163,18 @@ class MainActivity : FragmentActivity() {
 
     private fun handleExternalIntent(intent: Intent?) {
         intent ?: return
+        // 插件页面网格小组件：直接打开对应插件页面。
+        val widgetPluginId = intent.getStringExtra(com.nekobot.app.widget.PluginPagesWidgetProvider.EXTRA_PLUGIN_ID)
+        val widgetPageId = intent.getStringExtra(com.nekobot.app.widget.PluginPagesWidgetProvider.EXTRA_PAGE_ID)
+        if (!widgetPluginId.isNullOrBlank() && !widgetPageId.isNullOrBlank()) {
+            ServiceContainer.requestPluginPage(
+                pluginId = widgetPluginId,
+                pageId = widgetPageId,
+                sessionId = null,
+                args = ""
+            )
+            return
+        }
         val sessionId = intent.getStringExtra("session_id")
             ?: IncomingShareParser.parseDeepLinkSessionId(intent.dataString)
         if (!sessionId.isNullOrBlank()) {

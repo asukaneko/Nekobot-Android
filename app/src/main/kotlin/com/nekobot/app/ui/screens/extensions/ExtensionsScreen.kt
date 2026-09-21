@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Web
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,21 +41,31 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.plugin.InstalledPlugin
+import com.nekobot.app.data.local.plugin.PluginPageManifest
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.ui.theme.accentSecondary
 import com.nekobot.app.ui.theme.accentSuccess
 import com.nekobot.app.ui.theme.accentTertiary
 import com.nekobot.app.ui.theme.accentWarning
+import java.io.File
 
 /**
  * 扩展功能聚合页：14 个高级配置模块入口，按「自动化 / AI 扩展 / 消息 / 实验室 / 成长与安全」分组。
@@ -78,6 +89,16 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         }
     } else {
         allGroups
+    }
+    // 插件页面入口：来自已启用插件声明的 pages[]；停用/卸载后自动消失。
+    val plugins by ServiceContainer.pluginManager.installed.collectAsStateWithLifecycle()
+    val languageCode = LocalConfiguration.current.locales[0]?.language.orEmpty()
+    val pageEntries = if (isLocalMode) {
+        plugins.filter { it.enabled }.flatMap { plugin ->
+            plugin.pages.map { page -> plugin to page }
+        }
+    } else {
+        emptyList()
     }
 
     Scaffold(
@@ -105,6 +126,19 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (pageEntries.isNotEmpty()) {
+                ExtensionGroupCard(groupTitle = stringResource(R.string.extensions_group_plugin_pages)) {
+                    pageEntries.forEachIndexed { index, (plugin, page) ->
+                        if (index > 0) Spacer(Modifier.height(4.dp))
+                        PluginPageRow(
+                            plugin = plugin,
+                            page = page,
+                            languageCode = languageCode,
+                            onClick = { onNavigate(Routes.pluginPage(plugin.id, page.id)) }
+                        )
+                    }
+                }
+            }
             groups.forEach { group ->
                 ExtensionGroupCard(groupTitle = group.title) {
                     group.items.forEachIndexed { index, item ->
@@ -113,6 +147,66 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** 插件页面入口行：插件图标（可选）+ 页面标题 + 插件名。 */
+@Composable
+private fun PluginPageRow(
+    plugin: InstalledPlugin,
+    page: PluginPageManifest,
+    languageCode: String,
+    onClick: () -> Unit
+) {
+    val tint = MaterialTheme.colorScheme.primary
+    val iconFile: File? = remember(plugin.id, page.icon) {
+        page.icon.takeIf { it.isNotBlank() }
+            ?.let { ServiceContainer.pluginManager.resolvePluginAsset(plugin.id, it) }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(tint.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (iconFile != null) {
+                AsyncImage(
+                    model = iconFile,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                )
+            } else {
+                Icon(Icons.Filled.Web, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                page.localizedTitle(languageCode),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Text(
+                plugin.name,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
         }
     }
 }

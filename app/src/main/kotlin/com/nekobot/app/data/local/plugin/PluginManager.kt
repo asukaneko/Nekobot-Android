@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local.plugin
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import android.os.Handler
@@ -8,17 +9,12 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
-import android.widget.Toast
 import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonElement
-import com.google.gson.JsonNull
-import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalCommandProgressReporter
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.LocalSlashCommands
-import com.nekobot.app.data.model.ThinkingStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +52,11 @@ class PluginInstallException(message: String) : IllegalArgumentException(message
  * 插件不是 APK，也不会被当作 Kotlin/Java 类加载；ZIP 中的 JS 入口在无文件访问的
  * WebView 中运行，所有 Android 能力都必须通过清单权限和下方 Bridge 显式调用。
  */
-class PluginManager(context: Context) {
+class PluginManager(
+    context: Context,
+    private val grants: PluginGrants? = null,
+    private val metaStore: PluginMetaStore? = null
+) {
     private val appContext = context.applicationContext
     private val gson = Gson()
     private val pluginRoot = File(appContext.filesDir, "plugins").apply { mkdirs() }
@@ -70,6 +70,37 @@ class PluginManager(context: Context) {
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS)
         .build()
+
+    /**
+     * 命令运行时与插件页面共用的宿主 API 分派器。
+     *
+     * 页面宿主直接复用该实例，保证权限校验、网络总开关与存储隔离只有一份实现。
+     */
+    internal val apiDispatcher: PluginApiDispatcher = PluginApiDispatcher(
+        appContext = appContext,
+        storage = storage,
+        grants = grants,
+        repositoryProvider = { runCatching { com.nekobot.app.ServiceContainer.localRepository }.getOrNull() },
+        memoryProvider = {
+            runCatching { com.nekobot.app.ServiceContainer.globalAgentMemory.read().content }
+                .getOrDefault("")
+        },
+        memoryWriter = { content, append, oldText ->
+            val store = com.nekobot.app.ServiceContainer.globalAgentMemory
+            when {
+                oldText != null -> store.replaceText(oldText, content).charCount
+                append -> store.append(content).charCount
+                else -> store.replace(content).charCount
+            }
+        },
+        networkAllowed = {
+            runCatching { com.nekobot.app.ServiceContainer.prefs.agentNetworkAccessEnabled }
+                .getOrDefault(false)
+        },
+        appVersion = runCatching {
+            appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+    )
 
     private val _installed = MutableStateFlow<List<InstalledPlugin>>(emptyList())
     val installed: StateFlow<List<InstalledPlugin>> = _installed.asStateFlow()
@@ -97,15 +128,40 @@ class PluginManager(context: Context) {
         return commandBindings().firstOrNull { it.trigger == normalized }
     }
 
-    suspend fun install(uri: Uri, acceptedThirdPartyAgreement: Boolean): InstalledPlugin =
-        installMutex.withLock {
-            withContext(Dispatchers.IO) {
-                if (!acceptedThirdPartyAgreement) {
-                    throw PluginInstallException("安装第三方插件前必须同意免责协议")
-                }
-                installBlocking(uri)
+    /**
+     * 从 ZIP 安装插件。
+     *
+     * @param grantedPermissions 用户在安装对话框勾选的授权集合；null 表示调用方未收集
+     *   授权（按非危险权限默认授予）。
+     */
+    suspend fun install(
+        uri: Uri,
+        acceptedThirdPartyAgreement: Boolean,
+        grantedPermissions: Set<String>? = null
+    ): InstalledPlugin = installMutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (!acceptedThirdPartyAgreement) {
+                throw PluginInstallException("安装第三方插件前必须同意免责协议")
             }
+            installBlocking(uri, grantedPermissions)
         }
+    }
+
+    /**
+     * 读取 ZIP 内 plugin.json（不落盘安装），供安装授权对话框展示权限清单。
+     * 读取失败或清单无效时返回 null。
+     */
+    suspend fun peekManifest(uri: Uri): PluginManifest? = withContext(Dispatchers.IO) {
+        runCatching {
+            val tempZip = File.createTempFile("nekobot-plugin-peek-", ".zip", appContext.cacheDir)
+            try {
+                copyUriToFile(uri, tempZip)
+                readManifestFromZip(tempZip)
+            } finally {
+                tempZip.delete()
+            }
+        }.getOrNull()
+    }
 
     /**
      * 以源码方式直接创建并安装插件（供 Agent 的 plugin_use 工具使用）。
@@ -195,6 +251,8 @@ class PluginManager(context: Context) {
                 val directory = pluginDirectory(pluginId) ?: return@withContext
                 if (directory.exists()) directory.deleteRecursively()
                 removePluginStorage(pluginId)
+                grants?.clear(pluginId)
+                metaStore?.clear(pluginId)
                 reload()
             }
         }
@@ -207,6 +265,9 @@ class PluginManager(context: Context) {
         repository: LocalRepository,
         progressReporter: LocalCommandProgressReporter? = null
     ): String {
+        if (binding.openPage.isNotBlank()) {
+            return "该命令用于打开插件页面（${binding.openPage}），请在 App 内直接输入 ${binding.trigger}。"
+        }
         val plugin = installed.value.firstOrNull { it.id == binding.pluginId && it.enabled }
             ?: return "插件未安装或已停用：${binding.pluginId}"
         val directory = pluginDirectory(plugin.id)
@@ -221,12 +282,18 @@ class PluginManager(context: Context) {
         }
         if (source.length > MAX_SCRIPT_CHARS) return "插件入口文件过大"
 
+        // 声明 ai.call 的插件可能等待模型生成，单次调用上限放宽到 120 秒。
+        val runtimeTimeoutMs = if ("ai.call" in plugin.permissions) {
+            RUNTIME_TIMEOUT_WITH_AI_MS
+        } else {
+            RUNTIME_TIMEOUT_MS
+        }
         return try {
-            withTimeout(RUNTIME_TIMEOUT_MS) {
+            withTimeout(runtimeTimeoutMs) {
                 executeInWebView(plugin, binding, sessionId, args, source, repository, progressReporter)
             }
         } catch (_: TimeoutCancellationException) {
-            "插件执行超时（${RUNTIME_TIMEOUT_MS / 1000} 秒）"
+            "插件执行超时（${runtimeTimeoutMs / 1000} 秒）"
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -234,14 +301,32 @@ class PluginManager(context: Context) {
         }
     }
 
-    private fun installBlocking(uri: Uri): InstalledPlugin {
+    private fun installBlocking(uri: Uri, grantedPermissions: Set<String>?): InstalledPlugin {
         val tempZip = File.createTempFile("nekobot-plugin-", ".zip", appContext.cacheDir)
         try {
             copyUriToFile(uri, tempZip)
-            return installZipBlocking(tempZip)
+            return installZipBlocking(tempZip, grantedPermissions)
         } finally {
             tempZip.delete()
         }
+    }
+
+    /** 从 ZIP 读取根目录 plugin.json；不安装、不校验命令冲突。 */
+    private fun readManifestFromZip(zip: File): PluginManifest? {
+        ZipInputStream(zip.inputStream().buffered()).use { zipStream ->
+            var entry = zipStream.nextEntry
+            while (entry != null) {
+                val name = entry.name.replace('\\', '/')
+                if (!entry.isDirectory && name == MANIFEST_ENTRY) {
+                    val output = ByteArrayOutputStream()
+                    copyLimited(zipStream, output, MAX_MANIFEST_BYTES, 0L)
+                    return parseManifestText(output.toString(Charsets.UTF_8.name()))
+                }
+                zipStream.closeEntry()
+                entry = zipStream.nextEntry
+            }
+        }
+        return null
     }
 
     /**
@@ -250,7 +335,7 @@ class PluginManager(context: Context) {
      * 安装成功时 staging 目录会被整体重命名为插件目录，finally 的清理不会影响
      * 已安装内容；任何失败都会清理 staging，保持插件根目录干净。
      */
-    private fun installZipBlocking(zip: File): InstalledPlugin {
+    private fun installZipBlocking(zip: File, grantedPermissions: Set<String>?): InstalledPlugin {
         val staging = File(pluginRoot, ".staging-${UUID.randomUUID()}")
         try {
             staging.mkdirs()
@@ -258,7 +343,7 @@ class PluginManager(context: Context) {
             if (!File(staging, MANIFEST_ENTRY).isFile) {
                 throw PluginInstallException("ZIP 根目录缺少 plugin.json")
             }
-            return installStaging(staging)
+            return installStaging(staging, grantedPermissions)
         } finally {
             if (staging.exists()) staging.deleteRecursively()
         }
@@ -301,7 +386,7 @@ class PluginManager(context: Context) {
     }
 
     /** 校验 staging 中的清单并落位为正式插件目录；调用方负责清理 staging。 */
-    private fun installStaging(staging: File): InstalledPlugin {
+    private fun installStaging(staging: File, grantedPermissions: Set<String>?): InstalledPlugin {
         val manifest = parseManifest(File(staging, MANIFEST_ENTRY))
         if (BuiltInPlugins.isBuiltIn(manifest.id)) {
             throw PluginInstallException("插件 ID 已被内置插件保留：${manifest.id}")
@@ -314,6 +399,13 @@ class PluginManager(context: Context) {
         if (!entryFile.path.startsWith(staging.canonicalPath + File.separator) || !entryFile.isFile) {
             throw PluginInstallException("插件入口文件不存在：${manifest.entry}")
         }
+        // 页面入口必须在安装时真实存在，避免运行时才发现 404。
+        manifest.pages.forEach { page ->
+            val pageFile = File(staging, page.entry).canonicalFile
+            if (!pageFile.path.startsWith(staging.canonicalPath + File.separator) || !pageFile.isFile) {
+                throw PluginInstallException("插件页面入口文件不存在：${page.entry}")
+            }
+        }
         val installedAt = old?.installedAt ?: System.currentTimeMillis()
         writeState(
             staging,
@@ -322,6 +414,13 @@ class PluginManager(context: Context) {
         val target = File(pluginRoot, manifest.id)
         if (target.exists()) target.deleteRecursively()
         if (!staging.renameTo(target)) throw PluginInstallException("无法保存插件文件")
+        if (grants != null) {
+            if (grantedPermissions != null) {
+                grants.setGranted(manifest.id, grantedPermissions.intersect(manifest.permissions.toSet()))
+            } else if (!grants.hasRecord(manifest.id)) {
+                grants.initializeDefaults(manifest.id, manifest.permissions)
+            }
+        }
         reload()
         return _installed.value.firstOrNull { it.id == manifest.id }
             ?: throw PluginInstallException("插件安装后加载失败")
@@ -368,7 +467,8 @@ class PluginManager(context: Context) {
             entry.parentFile?.mkdirs()
             entry.writeText(entrySource, Charsets.UTF_8)
             extraFiles.forEach { (path, content) -> writePluginFile(staging, path, content, manifest.entry) }
-            return installStaging(staging)
+            // Agent 创建的插件不能替用户点授权：只授予非危险权限，危险权限等待用户确认。
+            return installStaging(staging, null)
         } finally {
             if (staging.exists()) staging.deleteRecursively()
         }
@@ -390,7 +490,8 @@ class PluginManager(context: Context) {
                     }
                 }
             }
-            return installZipBlocking(tempZip)
+            // Agent 安装的第三方 ZIP 与 create 同路径：只默认授予非危险权限。
+            return installZipBlocking(tempZip, null)
         } finally {
             tempZip.delete()
         }
@@ -443,6 +544,15 @@ class PluginManager(context: Context) {
             }
         }
         extraFiles.forEach { (path, content) -> writePluginFile(directory, path, content, manifest.entry) }
+        manifest.pages.forEach { page ->
+            val pageFile = File(directory, page.entry).canonicalFile
+            if (!pageFile.path.startsWith(directory.canonicalPath + File.separator) || !pageFile.isFile) {
+                throw PluginInstallException("插件页面入口文件不存在：${page.entry}")
+            }
+        }
+        if (grants != null && !grants.hasRecord(pluginId)) {
+            grants.initializeDefaults(pluginId, manifest.permissions)
+        }
         reload()
         return _installed.value.firstOrNull { it.id == pluginId }
             ?: throw PluginInstallException("插件修改后加载失败，请用 view 检查插件内容")
@@ -560,18 +670,239 @@ class PluginManager(context: Context) {
         }.apply()
     }
 
-    private fun PluginManifest.toInstalledPlugin(state: PluginState) = InstalledPlugin(
-        id = id,
-        name = name,
-        version = version,
-        author = author,
-        description = description,
-        entry = entry,
-        permissions = permissions.distinct(),
-        commands = commands,
-        enabled = state.enabled,
-        installedAt = state.installedAt
-    )
+    private fun PluginManifest.toInstalledPlugin(state: PluginState): InstalledPlugin {
+        val meta = metaStore?.meta(id)
+        return InstalledPlugin(
+            id = id,
+            name = name,
+            version = version,
+            author = author,
+            description = description,
+            entry = entry,
+            permissions = permissions.distinct(),
+            commands = commands,
+            enabled = state.enabled,
+            installedAt = state.installedAt,
+            pages = pages,
+            hooks = hooks.distinct(),
+            compat = meta?.compat ?: PluginCompatLevel.NATIVE,
+            compatNote = meta?.note.orEmpty()
+        )
+    }
+
+    /** 声明了指定钩子的已启用插件（含目录可用性检查）。 */
+    private fun hookPlugins(hook: String): List<InstalledPlugin> = _installed.value.filter { plugin ->
+        plugin.enabled &&
+            hook in plugin.hooks &&
+            pluginDirectory(plugin.id)?.isDirectory == true
+    }
+
+    /**
+     * `message.beforeSend`：按插件顺序串联改写用户消息。
+     *
+     * 任一插件失败或超时都保持当前文本（发送永远不被插件阻塞），单插件超时 [HOOK_TIMEOUT_MS]。
+     */
+    suspend fun runMessageBeforeSendHooks(sessionId: String, content: String): String {
+        val plugins = hookPlugins(HOOK_MESSAGE_BEFORE_SEND)
+        if (plugins.isEmpty()) return content
+        var current = content
+        plugins.forEach { plugin ->
+            val resultJson = try {
+                withTimeout(HOOK_TIMEOUT_MS) {
+                    val payloadJson = gson.toJson(
+                        mapOf("sessionId" to sessionId, "content" to current, "role" to "user")
+                    )
+                    runHookInWebView(plugin, HOOK_MESSAGE_BEFORE_SEND, payloadJson, sessionId)
+                }
+            } catch (_: TimeoutCancellationException) {
+                return@forEach
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                return@forEach
+            }
+            val next = runCatching {
+                JsonParser.parseString(resultJson)
+                    .takeIf { it.isJsonObject }
+                    ?.asJsonObject
+                    ?.get("content")
+                    ?.takeIf { it.isJsonPrimitive }
+                    ?.asString
+            }.getOrNull()
+            if (!next.isNullOrBlank()) current = next.take(MAX_HOOK_CONTENT_CHARS)
+        }
+        return current
+    }
+
+    /** `app.lifecycle`：通知声明了该钩子的插件（`event` 见 [LIFECYCLE_EVENTS]），结果丢弃。 */
+    suspend fun runLifecycleHook(event: String, sessionId: String? = null) {
+        if (event !in LIFECYCLE_EVENTS) return
+        val payloadJson = gson.toJson(
+            mapOf("event" to event, "sessionId" to sessionId)
+        )
+        hookPlugins(HOOK_APP_LIFECYCLE).forEach { plugin ->
+            try {
+                withTimeout(HOOK_TIMEOUT_MS) {
+                    runHookInWebView(plugin, HOOK_APP_LIFECYCLE, payloadJson, sessionId.orEmpty())
+                }
+            } catch (_: TimeoutCancellationException) {
+                return@forEach
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                return@forEach
+            }
+        }
+    }
+
+    /** 读取插件入口源码；目录/文件缺失或过大时返回 null。 */
+    private fun readEntrySource(plugin: InstalledPlugin): String? {
+        val directory = pluginDirectory(plugin.id)?.takeIf { it.isDirectory } ?: return null
+        val entry = File(directory, plugin.entry).canonicalFile
+        val root = directory.canonicalFile
+        if (!entry.path.startsWith(root.path + File.separator) || !entry.isFile) return null
+        val source = runCatching { entry.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        return source.takeIf { it.length <= MAX_SCRIPT_CHARS }
+    }
+
+    /** 在无界面运行时里执行入口脚本并触发钩子，返回钩子返回值的 JSON 文本。 */
+    private suspend fun runHookInWebView(
+        plugin: InstalledPlugin,
+        hook: String,
+        payloadJson: String,
+        sessionId: String
+    ): String = suspendCancellableCoroutine { continuation ->
+        val source = readEntrySource(plugin) ?: run {
+            continuation.resume("null")
+            return@suspendCancellableCoroutine
+        }
+        val finished = AtomicBoolean(false)
+        val webViewRef = AtomicReference<WebView?>(null)
+        val token = UUID.randomUUID().toString()
+        val contextJson = gson.toJson(
+            mapOf(
+                "pluginId" to plugin.id,
+                "pluginName" to plugin.name,
+                "hook" to hook,
+                "sessionId" to sessionId,
+                "payload" to runCatching { JsonParser.parseString(payloadJson) }.getOrNull()
+            )
+        )
+        val payloadLiteral = gson.toJson(payloadJson)
+        val hookLiteral = gson.toJson(hook)
+
+        fun finish(success: Boolean, value: String) {
+            if (!finished.compareAndSet(false, true)) return
+            mainHandler.post {
+                webViewRef.getAndSet(null)?.let { view ->
+                    view.stopLoading()
+                    view.removeJavascriptInterface(BRIDGE_NAME)
+                    view.destroy()
+                }
+            }
+            if (continuation.isActive) continuation.resume(if (success) value else "null")
+        }
+
+        mainHandler.post {
+            if (finished.get()) return@post
+            try {
+                val webView = createRuntimeWebView()
+                webViewRef.set(webView)
+                webView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
+
+                    @Suppress("DEPRECATION")
+                    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = true
+
+                    override fun onPageFinished(view: WebView, url: String) {
+                        if (finished.get()) return
+                        // 先执行入口脚本（注册钩子），再触发本次钩子调用
+                        view.evaluateJavascript(buildExecutionScript(source, contextJson, "", token), null)
+                        view.evaluateJavascript(
+                            "window.__nekoInvokeHook($hookLiteral,$payloadLiteral);",
+                            null
+                        )
+                    }
+                }
+                webView.addJavascriptInterface(
+                    RuntimeBridge(
+                        plugin = plugin,
+                        sessionId = sessionId,
+                        repository = ServiceContainer.localRepository,
+                        progressReporter = null,
+                        token = token,
+                        webView = webView,
+                        finish = ::finish
+                    ),
+                    BRIDGE_NAME
+                )
+                webView.loadDataWithBaseURL(
+                    "https://plugin.invalid/",
+                    "<html><head><meta charset=\"utf-8\"></head><body></body></html>",
+                    "text/html",
+                    "UTF-8",
+                    null
+                )
+            } catch (error: Exception) {
+                finish(false, error.message ?: "无法启动插件运行时")
+            }
+        }
+
+        continuation.invokeOnCancellation {
+            if (finished.compareAndSet(false, true)) {
+                mainHandler.post {
+                    webViewRef.getAndSet(null)?.let { view ->
+                        view.stopLoading()
+                        view.removeJavascriptInterface(BRIDGE_NAME)
+                        view.destroy()
+                    }
+                }
+            }
+        }
+    }
+
+    /** 命令运行时与钩子运行时共用的沙盒配置。 */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createRuntimeWebView(): WebView {
+        val webView = WebView(appContext)
+        webView.settings.javaScriptEnabled = true
+        // 第三方脚本不能使用 fetch、XHR、图片或导航绕过 Bridge 的 network 权限。
+        webView.settings.blockNetworkLoads = true
+        webView.settings.blockNetworkImage = true
+        webView.settings.allowFileAccess = false
+        webView.settings.allowContentAccess = false
+        webView.settings.domStorageEnabled = false
+        webView.settings.javaScriptCanOpenWindowsAutomatically = false
+        webView.settings.setSupportMultipleWindows(false)
+        webView.settings.allowFileAccessFromFileURLs = false
+        webView.settings.allowUniversalAccessFromFileURLs = false
+        return webView
+    }
+
+    /** 解析插件页面为宿主可用的描述；插件停用、页面不存在或文件缺失时返回 null。 */
+    fun resolvePage(pluginId: String, pageId: String): ResolvedPluginPage? {
+        val plugin = _installed.value.firstOrNull { it.id == pluginId } ?: return null
+        val page = plugin.pages.firstOrNull { it.id == pageId } ?: return null
+        val directory = pluginDirectory(pluginId)?.takeIf { it.isDirectory } ?: return null
+        val entry = File(directory, page.entry).canonicalFile
+        val root = directory.canonicalFile
+        if (!entry.path.startsWith(root.path + File.separator) || !entry.isFile) return null
+        return ResolvedPluginPage(plugin = plugin, page = page, directory = directory)
+    }
+
+    /** 插件目录（只读场景，如移植自检）；不存在时返回 null。 */
+    fun pluginDirectoryPath(pluginId: String): File? =
+        pluginDirectory(pluginId)?.takeIf { it.isDirectory }
+
+    /** 插件目录内的相对资源（如页面图标）；路径越界或文件缺失时返回 null。 */
+    fun resolvePluginAsset(pluginId: String, relativePath: String): File? {
+        if (relativePath.isBlank() || !PluginManifestValidator.isSafeRelativePath(relativePath)) return null
+        val directory = pluginDirectory(pluginId)?.takeIf { it.isDirectory } ?: return null
+        val target = File(directory, relativePath).canonicalFile
+        val root = directory.canonicalFile
+        if (!target.path.startsWith(root.path + File.separator) || !target.isFile) return null
+        return target
+    }
 
     private suspend fun executeInWebView(
         plugin: InstalledPlugin,
@@ -616,19 +947,8 @@ class PluginManager(context: Context) {
         mainHandler.post {
             if (finished.get()) return@post
             try {
-                val webView = WebView(appContext)
+                val webView = createRuntimeWebView()
                 webViewRef.set(webView)
-                webView.settings.javaScriptEnabled = true
-                // 第三方脚本不能使用 fetch、XHR、图片或导航绕过 Bridge 的 network 权限。
-                webView.settings.blockNetworkLoads = true
-                webView.settings.blockNetworkImage = true
-                webView.settings.allowFileAccess = false
-                webView.settings.allowContentAccess = false
-                webView.settings.domStorageEnabled = false
-                webView.settings.javaScriptCanOpenWindowsAutomatically = false
-                webView.settings.setSupportMultipleWindows(false)
-                webView.settings.allowFileAccessFromFileURLs = false
-                webView.settings.allowUniversalAccessFromFileURLs = false
                 webView.webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
 
@@ -725,6 +1045,20 @@ class PluginManager(context: Context) {
                 getMessages: function(limit) { return __api("get_messages", { limit: limit }); },
                 notify: function(message) { return __api("notify", { message: message }); },
                 httpGet: function(url) { return __api("http_get", { url: url }); },
+                aiComplete: function(options) { return __api("ai_complete", options || {}); },
+                appendMessage: function(options) { return __api("append_message", options || {}); },
+                sendMessage: function(options) { return __api("chat_send", options || {}); },
+                createSession: function(options) { return __api("create_session", options || {}); },
+                switchSession: function(id) { return __api("switch_session", { id: id }); },
+                render: function(template, data) { return __api("ui_render", { template: template, data: data }); },
+                createCharacter: function(options) { return __api("create_character", options || {}); },
+                updateCharacter: function(options) { return __api("update_character", options || {}); },
+                memoryRead: function() { return __api("memory_read", {}); },
+                memoryWrite: function(content) { return __api("memory_write", { content: content }); },
+                memoryAppend: function(content) { return __api("memory_append", { content: content }); },
+                memoryEdit: function(oldText, newText) {
+                  return __api("memory_edit", { oldText: oldText, newText: newText });
+                },
                 progress: function(options) { return __api("progress", options || {}); },
                 storage: {
                   get: function(key) { return __api("storage_get", { key: key }); },
@@ -733,12 +1067,17 @@ class PluginManager(context: Context) {
                   list: function() { return __api("storage_list", {}); }
                 }
               };
+              var __hooks = Object.create(null);
               var NekoPlugin = {
                 apiVersion: 1,
                 api: api,
                 registerCommand: function(name, handler) {
                   if (typeof handler !== "function") throw new Error("命令处理器必须是函数");
                   __handlers[__commandName(name)] = handler;
+                },
+                on: function(name, handler) {
+                  if (typeof handler !== "function") throw new Error("钩子处理器必须是函数");
+                  __hooks[String(name || "").trim()] = handler;
                 },
                 register: function(definition) {
                   if (!definition || !definition.commands) return;
@@ -749,6 +1088,21 @@ class PluginManager(context: Context) {
               };
               window.NekoPlugin = NekoPlugin;
               var __ctx = Object.assign($contextJson, { api: api });
+              // 钩子运行时：宿主在脚本求值后调用，返回值以 JSON 文本回传
+              window.__nekoInvokeHook = function(name, payloadJson) {
+                var payload = null;
+                try { payload = JSON.parse(payloadJson || "null"); } catch (_) { payload = null; }
+                Promise.resolve().then(function() {
+                  var handler = __hooks[String(name || "").trim()];
+                  if (typeof handler !== "function") return null;
+                  return handler(Object.assign({ hook: name, payload: payload }, __ctx));
+                }).then(function(result) {
+                  var value = result == null ? "null" : JSON.stringify(result);
+                  NekoAndroid.hookResult($tokenLiteral, String(value == null ? "null" : value));
+                }).catch(function(error) {
+                  NekoAndroid.fail($tokenLiteral, String(error && error.message || error));
+                });
+              };
               var __source = $sourceLiteral;
               try {
                 (0, eval)(__source);
@@ -756,16 +1110,18 @@ class PluginManager(context: Context) {
                 NekoAndroid.fail($tokenLiteral, String(error && error.message || error));
                 return;
               }
-              Promise.resolve().then(function() {
-                var handler = __handlers[__commandName($handlerLiteral)];
-                if (typeof handler !== "function") throw new Error("插件没有注册命令 /" + $handlerLiteral);
-                return handler(__ctx);
-              }).then(function(result) {
-                var value = result == null ? "" : (typeof result === "string" ? result : JSON.stringify(result));
-                NekoAndroid.complete($tokenLiteral, String(value || ""));
-              }).catch(function(error) {
-                NekoAndroid.fail($tokenLiteral, String(error && error.message || error));
-              });
+              if ($handlerLiteral) {
+                Promise.resolve().then(function() {
+                  var handler = __handlers[__commandName($handlerLiteral)];
+                  if (typeof handler !== "function") throw new Error("插件没有注册命令 /" + $handlerLiteral);
+                  return handler(__ctx);
+                }).then(function(result) {
+                  var value = result == null ? "" : (typeof result === "string" ? result : JSON.stringify(result));
+                  NekoAndroid.complete($tokenLiteral, String(value || ""));
+                }).catch(function(error) {
+                  NekoAndroid.fail($tokenLiteral, String(error && error.message || error));
+                });
+              }
             })();
         """.trimIndent()
     }
@@ -789,26 +1145,38 @@ class PluginManager(context: Context) {
             if (callbackToken == token) finish(false, message.orEmpty())
         }
 
+        /** 钩子返回值（JSON 文本）；未注册处理器时为空。 */
+        @JavascriptInterface
+        fun hookResult(callbackToken: String?, value: String?) {
+            if (callbackToken == token) finish(true, value?.takeIf { it.isNotBlank() } ?: "null")
+        }
+
         @JavascriptInterface
         fun api(requestId: String?, name: String?, payloadJson: String?) {
             if (requestId.isNullOrBlank() || name.isNullOrBlank()) return
             runtimeScope.launch {
                 try {
-                    val value = handleApi(
-                        plugin = plugin,
-                        sessionId = sessionId,
-                        repository = repository,
-                        progressReporter = progressReporter,
-                        name = name,
-                        payloadJson = payloadJson.orEmpty()
+                    val value = apiDispatcher.dispatch(
+                        PluginApiDispatcher.CallContext(
+                            plugin = plugin,
+                            sessionId = sessionId,
+                            progressReporter = progressReporter,
+                            isPage = false,
+                            repositoryOverride = repository
+                        ),
+                        name,
+                        payloadJson.orEmpty()
                     )
                     sendApiResult(requestId, true, gson.toJson(value))
                 } catch (error: Exception) {
-                    sendApiResult(
-                        requestId,
-                        false,
-                        gson.toJson(mapOf("error" to (error.message ?: "API 调用失败")))
-                    )
+                    val envelope = when (error) {
+                        is PluginApiException -> mapOf(
+                            "error" to (error.message ?: "API 调用失败"),
+                            "code" to error.code
+                        )
+                        else -> mapOf("error" to (error.message ?: "API 调用失败"))
+                    }
+                    sendApiResult(requestId, false, gson.toJson(envelope))
                 }
             }
         }
@@ -824,102 +1192,6 @@ class PluginManager(context: Context) {
                 runCatching { webView.evaluateJavascript(script, null) }
             }
         }
-    }
-
-    private suspend fun handleApi(
-        plugin: InstalledPlugin,
-        sessionId: String,
-        repository: LocalRepository,
-        progressReporter: LocalCommandProgressReporter?,
-        name: String,
-        payloadJson: String
-    ): Any? {
-        val payload = runCatching { JsonParser.parseString(payloadJson).takeIf { it.isJsonObject }?.asJsonObject }
-            .getOrNull() ?: JsonObject()
-        return when (name) {
-            "get_session" -> {
-                requirePermission(plugin, "chat.read")
-                repository.getSession(sessionId) ?: throw IllegalStateException("会话不存在")
-            }
-            "get_messages" -> {
-                requirePermission(plugin, "chat.read")
-                val limit = payload.int("limit", 30).coerceIn(1, 100)
-                repository.listMessages(sessionId).takeLast(limit)
-            }
-            "storage_get" -> {
-                requirePermission(plugin, "storage")
-                val key = storageKey(plugin.id, payload.string("key"))
-                storage.getString(key, null)?.let { raw -> runCatching { JsonParser.parseString(raw) }.getOrNull() }
-                    ?: JsonNull.INSTANCE
-            }
-            "storage_set" -> {
-                requirePermission(plugin, "storage")
-                val key = storageKey(plugin.id, payload.string("key"))
-                val value = payload.get("value") ?: JsonNull.INSTANCE
-                storage.edit().putString(key, value.toString()).apply()
-                true
-            }
-            "storage_remove" -> {
-                requirePermission(plugin, "storage")
-                storage.edit().remove(storageKey(plugin.id, payload.string("key"))).apply()
-                true
-            }
-            "storage_list" -> {
-                requirePermission(plugin, "storage")
-                val prefix = "${plugin.id}:"
-                JsonObject().apply {
-                    storage.all
-                        .filterKeys { it.startsWith(prefix) }
-                        .forEach { (key, raw) ->
-                            if (raw is String) add(key.removePrefix(prefix), runCatching { JsonParser.parseString(raw) }.getOrDefault(JsonNull.INSTANCE))
-                        }
-                }
-            }
-            "notify" -> {
-                requirePermission(plugin, "notify")
-                val message = payload.string("message").take(500)
-                mainHandler.post { Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() }
-                true
-            }
-            "progress" -> {
-                requirePermission(plugin, "chat.progress")
-                // 没有关联的用户消息时（如 plugin_use 的 execute 测试）静默忽略：
-                // 这是宿主环境的差异，不该让插件命令本身失败。
-                val reporter = progressReporter ?: return false
-                val content = payload.string("content").take(MAX_PROGRESS_CONTENT_CHARS)
-                val steps = parseProgressSteps(payload.getAsJsonArray("steps"))
-                val progress = payload.get("progress")
-                    ?.takeIf { it.isJsonPrimitive }
-                    ?.let { runCatching { it.asInt }.getOrNull() }
-                    ?.coerceIn(0, 100)
-                    ?: 0
-                reporter.update(
-                    content = content,
-                    progress = progress,
-                    steps = steps,
-                    isComplete = payload.boolean("complete", false),
-                    // 插件自行决定上报节奏，宿主不再按百分比二次合并掉它的中间态。
-                    force = payload.boolean("force", false)
-                )
-                true
-            }
-            "http_get" -> {
-                requirePermission(plugin, "network")
-                requireNetworkAccessAllowed()
-                val url = payload.string("url").trim()
-                requirePublicHttpsUrl(url, "插件网络请求")
-                val request = Request.Builder().url(url).get().build()
-                httpClient.newCall(request).execute().use { response ->
-                    val body = response.body?.byteStream()?.use { input -> readLimitedText(input, MAX_HTTP_BYTES) }.orEmpty()
-                    mapOf("status" to response.code, "body" to body)
-                }
-            }
-            else -> throw IllegalArgumentException("未知插件 API：$name")
-        }
-    }
-
-    private fun requirePermission(plugin: InstalledPlugin, permission: String) {
-        if (permission !in plugin.permissions) throw SecurityException("插件未声明权限：$permission")
     }
 
     /**
@@ -975,47 +1247,6 @@ class PluginManager(context: Context) {
         return bytes.size == 16 && (bytes[0].toInt() and 0xFE) == 0xFC
     }
 
-    private fun storageKey(pluginId: String, raw: String): String {
-        val key = raw.trim()
-        require(key.isNotEmpty() && key.length <= 128 && '\n' !in key && '\r' !in key) { "storage key 无效" }
-        return "$pluginId:$key"
-    }
-
-    private fun JsonObject.string(name: String): String =
-        get(name)?.takeIf { it.isJsonPrimitive }?.asString ?: ""
-
-    private fun JsonObject.int(name: String, default: Int): Int =
-        get(name)?.takeIf { it.isJsonPrimitive }?.asInt ?: default
-
-    private fun JsonObject.boolean(name: String, default: Boolean): Boolean =
-        get(name)?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asBoolean }.getOrNull() }
-            ?: default
-
-    /**
-     * 把插件上报的 steps 数组转成进度卡片步骤。
-     *
-     * 字段全部可选、越界值一律丢弃：插件是不可信代码，不能让它构造出
-     * 巨大步骤列表或任意 type/status 撑爆 UI。步骤数上限见 [MAX_PROGRESS_STEPS]。
-     */
-    private fun parseProgressSteps(raw: JsonArray?): List<ThinkingStep> {
-        if (raw == null) return emptyList()
-        return raw.mapNotNull { element ->
-            val step = element as? JsonObject ?: return@mapNotNull null
-            ThinkingStep(
-                type = step.string("type").take(32).ifBlank { "tool" },
-                name = step.string("name").take(MAX_PROGRESS_NAME_CHARS),
-                status = step.string("status").take(16).ifBlank { "running" },
-                detail = step.string("detail").take(MAX_PROGRESS_DETAIL_CHARS)
-            )
-        }.take(MAX_PROGRESS_STEPS)
-    }
-
-    private fun readLimitedText(input: InputStream, limit: Long): String {
-        val output = ByteArrayOutputStream()
-        copyLimited(input, output, limit, 0L)
-        return output.toString(Charsets.UTF_8.name())
-    }
-
     private data class PluginState(
         val enabled: Boolean = true,
         val installedAt: Long = System.currentTimeMillis()
@@ -1031,14 +1262,21 @@ class PluginManager(context: Context) {
         const val MAX_MANIFEST_BYTES = 128L * 1024
         const val MAX_SCRIPT_BYTES = 512L * 1024
         const val MAX_RESOURCE_BYTES = 4L * 1024 * 1024
-        const val MAX_HTTP_BYTES = 512L * 1024
         const val MAX_REPLY_CHARS = 20_000
         const val MAX_SCRIPT_CHARS = MAX_SCRIPT_BYTES / 2
         const val RUNTIME_TIMEOUT_MS = 20_000L
-        /** 插件进度卡片：步骤数、头部文本与单步文本上限，避免不可信脚本撑爆聊天 UI。 */
-        const val MAX_PROGRESS_STEPS = 32
-        const val MAX_PROGRESS_CONTENT_CHARS = 200
-        const val MAX_PROGRESS_NAME_CHARS = 60
-        const val MAX_PROGRESS_DETAIL_CHARS = 200
+        /** 声明 ai.call 的插件命令需要等待模型生成，放宽总超时。 */
+        const val RUNTIME_TIMEOUT_WITH_AI_MS = 120_000L
+
+        /** 钩子在消息发送路径上执行，超时后保持原文，避免拖慢发送。 */
+        const val HOOK_TIMEOUT_MS = 8_000L
+        const val HOOK_MESSAGE_BEFORE_SEND = "message.beforeSend"
+        const val HOOK_APP_LIFECYCLE = "app.lifecycle"
+
+        /** 钩子可改写的内容上限。 */
+        const val MAX_HOOK_CONTENT_CHARS = 20_000
+
+        /** app.lifecycle 支持的事件。 */
+        val LIFECYCLE_EVENTS: Set<String> = setOf("app.start", "chat.open", "chat.close")
     }
 }

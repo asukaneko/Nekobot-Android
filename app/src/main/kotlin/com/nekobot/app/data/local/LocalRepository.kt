@@ -672,6 +672,40 @@ class LocalRepository(
         LocalChatFailoverExecutor { messages -> executeChatOnceViaQueue(messages) }
     }
 
+    /**
+     * 插件 AI 调用：走「聊天功能模型」的完整故障转移队列做单次非流式生成。
+     *
+     * 与自动记忆、剧情选项等辅助任务共用 [executeChatOnceViaQueue]：同样遵守队列顺序、
+     * 模型冷却、token 限额与超时策略；插件不能自选模型，队列本身就是白名单。
+     */
+    suspend fun pluginAiComplete(
+        messages: List<Map<String, Any>>,
+        maxTokens: Int,
+        temperature: Double?,
+        pluginId: String,
+        sessionId: String? = null
+    ): PluginAiCompletion {
+        val extra = buildMap<String, Any?> {
+            put("max_tokens", maxTokens)
+            temperature?.let { put("temperature", it) }
+        }
+        val execution = executeChatOnceViaQueue(
+            messages = messages,
+            extra = extra,
+            requestTag = sessionId?.takeIf { it.isNotBlank() } ?: "plugin:$pluginId"
+        )
+        val usage = execution.value.usage
+        val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: usage["prompt"] ?: 0
+        val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: usage["completion"] ?: 0
+        recordFailoverTokenUsage(execution, source = "plugin:$pluginId", purpose = "plugin")
+        return PluginAiCompletion(
+            content = execution.value.content,
+            modelName = execution.value.usedModelName ?: execution.model.name,
+            inputTokens = input,
+            outputTokens = output
+        )
+    }
+
     /** 记录通过故障转移实际成功模型产生的 token 用量。 */
     private fun recordFailoverTokenUsage(
         execution: FailoverExecution<LocalAiResult>,
@@ -2493,7 +2527,13 @@ class LocalRepository(
         path.size
     }
 
-    suspend fun addMessage(sessionId: String, role: String, content: String, sender: String? = null) =
+    suspend fun addMessage(
+        sessionId: String,
+        role: String,
+        content: String,
+        sender: String? = null,
+        source: String? = null
+    ) =
         withContext(Dispatchers.IO) {
             val now = nowIso()
             val msg = LocalMessageEntity(
@@ -2502,6 +2542,7 @@ class LocalRepository(
                 role = role,
                 content = content,
                 sender = sender,
+                source = source,
                 timestamp = now,
                 createdAt = now
             )
@@ -2528,6 +2569,62 @@ class LocalRepository(
             }
             msg.toMessage()
         }
+
+    /**
+     * 插件写入会话消息（chat.write）。
+     *
+     * 与正常消息同一条落库路径：更新会话预览、消息数与更新时间；来源标记 `plugin:<id>`，
+     * 便于后续识别消息由插件写入。角色只接受 user / assistant。
+     */
+    suspend fun pluginAppendChatMessage(
+        sessionId: String,
+        role: String,
+        content: String,
+        pluginId: String
+    ): Message = withContext(Dispatchers.IO) {
+        val session = sessionDao.getById(sessionId)
+            ?: throw IllegalArgumentException("会话不存在：$sessionId")
+        addMessage(
+            sessionId = session.id,
+            role = role,
+            content = content,
+            sender = if (role.equals("assistant", ignoreCase = true)) "assistant" else null,
+            source = "plugin:$pluginId"
+        )
+    }
+
+    /**
+     * 插件发送消息（chat.send）：写入用户消息并在后台跑完整回复流程。
+     *
+     * 插件 API 有超时限制，因此不等待生成完成：返回 `{messageId, sessionId, replyPending}`，
+     * 回复（含 Agent 工具过程）异步落库，用户回到会话即可看到。
+     */
+    suspend fun pluginSendChatMessage(
+        sessionId: String,
+        content: String,
+        pluginId: String
+    ): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val session = sessionDao.getById(sessionId)
+            ?: throw IllegalArgumentException("会话不存在：$sessionId")
+        val model = getRoutedModel(session.id, content)
+            ?: throw IllegalStateException("没有可用的聊天模型，请先在 AI 配置中添加模型")
+        val userMessage = addMessage(session.id, "user", content, source = "plugin:$pluginId")
+        val stream = chatWithPipeline(
+            sessionId = session.id,
+            userMessage = content,
+            activeModel = model,
+            persistUserMessage = false,
+            existingParentMessageId = userMessage.id
+        )
+        ServiceContainer.applicationScope.launch(Dispatchers.IO) {
+            runCatching { stream.collect { /* 事件无需回传插件：结果已落库 */ } }
+        }
+        mapOf(
+            "messageId" to userMessage.id,
+            "sessionId" to session.id,
+            "replyPending" to true
+        )
+    }
 
     /** 保存 assistant 消息并记录 token 用量与模型名。 */
     suspend fun addAssistantMessage(
@@ -2905,13 +3002,18 @@ class LocalRepository(
                 "`${command.name}` 仅支持在 Agent 会话中使用。"
             LocalCommandAction.PLUGIN ->
                 command.pluginCommand?.let { binding ->
-                    ServiceContainer.pluginManager.execute(
-                        binding = binding,
-                        sessionId = session.id,
-                        args = command.args,
-                        repository = this@LocalRepository,
-                        progressReporter = progressReporter
-                    )
+                    if (binding.openPage.isNotBlank()) {
+                        // 声明了 open_page 的命令直接打开插件页面，不进入 JS 运行时。
+                        openPluginPageFromCommand(binding, session.id, command.args, parentMessageId)
+                    } else {
+                        ServiceContainer.pluginManager.execute(
+                            binding = binding,
+                            sessionId = session.id,
+                            args = command.args,
+                            repository = this@LocalRepository,
+                            progressReporter = progressReporter
+                        )
+                    }
                 } ?: "插件命令绑定已失效，请重新打开会话后重试。"
             LocalCommandAction.UNKNOWN -> LocalSlashCommands.unknownMessage(command.name, appContext)
         }
@@ -2920,6 +3022,34 @@ class LocalRepository(
             content = content,
             model = LOCAL_COMMAND_MODEL
         )
+    }
+
+    /**
+     * 打开插件页面的命令：不执行插件 JS，请求 UI 导航到页面并返回一条简短回复。
+     *
+     * 会话上下文与命令参数会一并传给页面（页面可通过 `__NEKO_LAUNCH__` 读取），
+     * 因此从聊天命令打开的页面可以使用 `host.chat.current()` 与 `host.progress.update`。
+     */
+    private fun openPluginPageFromCommand(
+        binding: com.nekobot.app.data.local.plugin.PluginCommandBinding,
+        sessionId: String,
+        args: String,
+        progressParentMessageId: String
+    ): String {
+        val plugin = ServiceContainer.pluginManager.installed.value
+            .firstOrNull { it.id == binding.pluginId && it.enabled }
+        val page = plugin?.pages?.firstOrNull { it.id == binding.openPage }
+        if (plugin == null || page == null) {
+            return "插件页面不可用：${binding.pluginId}/${binding.openPage}（插件可能已停用或页面已移除）"
+        }
+        ServiceContainer.requestPluginPage(
+            pluginId = plugin.id,
+            pageId = page.id,
+            sessionId = sessionId,
+            args = args,
+            progressParentMessageId = progressParentMessageId
+        )
+        return "已打开插件页面「${page.title}」。"
     }
 
     private suspend fun localStatusText(
@@ -6027,9 +6157,18 @@ class LocalRepository(
         // 标记当前会话，供二级 LLM 调用（AutoState/记忆）token 记账归属
         currentSessionId = sessionId
 
+        // 0. 发送前钩子：声明 message.beforeSend 的插件可改写本条用户消息（失败/超时保持原文）
+        val outgoingMessage = if (persistUserMessage) {
+            runCatching {
+                ServiceContainer.pluginManager.runMessageBeforeSendHooks(sessionId, userMessage)
+            }.getOrDefault(userMessage)
+        } else {
+            userMessage
+        }
+
         // 1. 保存用户消息
         val savedUserMessage = if (persistUserMessage) {
-            addMessage(sessionId, "user", userMessage)
+            addMessage(sessionId, "user", outgoingMessage)
         } else {
             null
         }
@@ -6056,7 +6195,8 @@ class LocalRepository(
         }
 
         // /goal、/spec 命令可能以合成用户指令接管本轮消息（命令原文不进入模型上下文）。
-        var effectiveUserMessage = userMessage
+        // 钩子改写后的文本才进入模型上下文；命令解析仍用用户原文。
+        var effectiveUserMessage = outgoingMessage
 
         if (persistUserMessage) LocalSlashCommands.parse(userMessage)?.let { command ->
             val commandParentId = parentMessageId ?: java.util.UUID.randomUUID().toString()
@@ -11775,6 +11915,14 @@ ${AiOutputLanguage.directive()}
 const val VISION_FAILURE_MARKER: String = "[视觉识别失败] "
 
 /** 本地 TTS 合成结果：缓存 URI + MIME + 实际使用的模型信息。 */
+/** 插件 AI 调用的结果（走聊天故障转移队列的单次生成）。 */
+data class PluginAiCompletion(
+    val content: String,
+    val modelName: String,
+    val inputTokens: Int,
+    val outputTokens: Int
+)
+
 data class LocalAudioResult(
     val cacheUri: String,
     val mimeType: String,

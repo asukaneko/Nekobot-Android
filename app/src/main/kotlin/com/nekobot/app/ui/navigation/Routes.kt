@@ -115,6 +115,33 @@ object Routes {
     const val API_KEYS = "api_keys"
     const val PLUGINS = "plugins"
 
+    /** 插件页面宿主；sessionId / args 为空表示非会话命令触发。 */
+    const val PLUGIN_PAGE =
+        "plugin_page/{pluginId}/{pageId}?sessionId={sessionId}&args={args}&progressParent={progressParent}"
+    fun pluginPage(
+        pluginId: String,
+        pageId: String,
+        sessionId: String? = null,
+        args: String? = null,
+        progressParentId: String? = null
+    ): String {
+        val encodedPlugin = java.net.URLEncoder.encode(pluginId, "UTF-8")
+        val encodedPage = java.net.URLEncoder.encode(pageId, "UTF-8")
+        val params = buildList {
+            if (!sessionId.isNullOrBlank()) {
+                add("sessionId=${java.net.URLEncoder.encode(sessionId, "UTF-8")}")
+            }
+            if (!args.isNullOrBlank()) {
+                add("args=${java.net.URLEncoder.encode(args, "UTF-8")}")
+            }
+            if (!progressParentId.isNullOrBlank()) {
+                add("progressParent=${java.net.URLEncoder.encode(progressParentId, "UTF-8")}")
+            }
+        }
+        val base = "plugin_page/$encodedPlugin/$encodedPage"
+        return if (params.isEmpty()) base else "$base?" + params.joinToString("&")
+    }
+
     // wenku8 内置浏览器登录页（自动提取 Cookie + UA）
     const val WENKU_LOGIN = "wenku_login"
 

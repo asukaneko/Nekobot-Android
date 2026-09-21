@@ -10,6 +10,8 @@
     <string name="widget_today_tokens">오늘의 Token: %1$d</string>
     <string name="widget_today_tokens_zero">오늘의 Token: 0</string>
     <string name="widget_quick_send">빠른 전송</string>
+    <string name="widget_plugin_pages_description">플러그인 페이지 바로가기 그리드</string>
+    <string name="widget_plugin_pages_empty">플러그인 페이지 없음</string>
     <string name="chat_agent_run_interrupted">Agent 작업이 중단되었습니다</string>
     <string name="chat_agent_run_paused">Agent 작업이 일시 중지되었습니다</string>
     <string name="chat_agent_run_failed">Agent 작업 실행에 실패했습니다</string>

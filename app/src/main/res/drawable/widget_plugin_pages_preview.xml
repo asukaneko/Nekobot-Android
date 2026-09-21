@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小组件选择器预览图：模拟「插件页面」网格布局（部分 ROM 只读取 previewImage）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="110dp"
+    android:viewportWidth="250"
+    android:viewportHeight="110">
+
+    <path
+        android:fillColor="#F2FFFFFF"
+        android:pathData="M0,0h250v110h-250z" />
+    <path
+        android:fillColor="#FF222222"
+        android:pathData="M14,14h56v9h-56z" />
+
+    <path
+        android:fillColor="#1FF0789B"
+        android:pathData="M14,36h68v26h-68z" />
+    <path
+        android:fillColor="#1FF0789B"
+        android:pathData="M91,36h68v26h-68z" />
+    <path
+        android:fillColor="#1FF0789B"
+        android:pathData="M168,36h68v26h-68z" />
+    <path
+        android:fillColor="#1FF0789B"
+        android:pathData="M14,70h68v26h-68z" />
+    <path
+        android:fillColor="#1FF0789B"
+        android:pathData="M91,70h68v26h-68z" />
+    <path
+        android:fillColor="#1FF0789B"
+        android:pathData="M168,70h68v26h-68z" />
+</vector>

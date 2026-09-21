@@ -70,6 +70,8 @@
     <string name="stats_webdav_not_configured">未配置</string>
     <string name="stats_local_log_preview_title">本地日志</string>
     <string name="stats_achievements_title">成就</string>
+    <string name="stats_plugin_pages_title">插件页面</string>
+    <string name="stats_plugin_pages_empty">暂无插件页面，可在插件页为插件声明页面</string>
     <string name="stats_random_generate_ideas">AI 生成灵感</string>
     <string name="stats_achievement_progress">%1$s / %2$s</string>
     <string name="achievement_token_1000">Token 入门</string>

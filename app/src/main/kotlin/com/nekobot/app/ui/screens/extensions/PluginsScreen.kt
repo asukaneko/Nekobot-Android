@@ -4,6 +4,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,14 +14,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Web
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -29,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -39,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +57,9 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.plugin.BuiltInPlugins
 import com.nekobot.app.data.local.plugin.InstalledPlugin
+import com.nekobot.app.data.local.plugin.PluginCompatLevel
+import com.nekobot.app.data.local.plugin.PluginManifest
+import com.nekobot.app.data.local.plugin.PluginManifestValidator
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
@@ -57,14 +67,26 @@ import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.navigation.Routes
 
 class PluginsViewModel : BaseViewModel() {
     val plugins = ServiceContainer.pluginManager.installed
+    val grantsRevision = ServiceContainer.pluginGrants.revision
 
-    fun install(uri: Uri) = launchResult(
+    fun peekManifest(uri: Uri, onResult: (PluginManifest?) -> Unit) = launchWith {
+        Resource.Success(ServiceContainer.pluginManager.peekManifest(uri).also(onResult))
+    }
+
+    fun install(uri: Uri, grantedPermissions: Set<String>?) = launchResult(
         block = {
             runCatching {
-                Resource.Success(ServiceContainer.pluginManager.install(uri, acceptedThirdPartyAgreement = true))
+                Resource.Success(
+                    ServiceContainer.pluginManager.install(
+                        uri,
+                        acceptedThirdPartyAgreement = true,
+                        grantedPermissions = grantedPermissions
+                    )
+                )
             }.getOrElse { Resource.Error(it.message ?: string(R.string.common_unknown_error)) }
         },
         onSuccess = { plugin -> showToast(string(R.string.plugins_installed, plugin.name)) }
@@ -83,29 +105,46 @@ class PluginsViewModel : BaseViewModel() {
             Resource.Success(Unit)
         }.getOrElse { Resource.Error(it.message ?: string(R.string.common_unknown_error)) }
     }
+
+    fun saveGrants(pluginId: String, permissions: Set<String>) {
+        ServiceContainer.pluginGrants.setGranted(pluginId, permissions)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PluginsScreen(onBack: () -> Unit) {
+fun PluginsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val vm: PluginsViewModel = viewModel()
     val plugins by vm.plugins.collectAsStateWithLifecycle()
+    val grantsRevision by vm.grantsRevision.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val languageCode = LocalConfiguration.current.locales[0]?.language.orEmpty()
 
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var agreementChecked by remember { mutableStateOf(false) }
     var showAgreement by remember { mutableStateOf(false) }
+    var installPreview by remember { mutableStateOf<PluginManifest?>(null) }
+    var installChecked by remember { mutableStateOf<Set<String>>(emptySet()) }
     var deleteTarget by remember { mutableStateOf<InstalledPlugin?>(null) }
+    var grantTarget by remember { mutableStateOf<InstalledPlugin?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             selectedUri = uri
             agreementChecked = false
+            installPreview = null
+            installChecked = emptySet()
             showAgreement = true
+            vm.peekManifest(uri) { manifest ->
+                installPreview = manifest
+                installChecked = manifest
+                    ?.let { PluginManifestValidator.defaultGrantedPermissions(it.permissions) }
+                    .orEmpty()
+            }
         }
     }
 
@@ -175,8 +214,14 @@ fun PluginsScreen(onBack: () -> Unit) {
                     items(plugins, key = { it.id }) { plugin ->
                         PluginCard(
                             plugin = plugin,
+                            languageCode = languageCode,
+                            grantsRevision = grantsRevision,
                             onToggle = { vm.setEnabled(plugin, it) },
-                            onDelete = if (plugin.isBuiltIn) null else { { deleteTarget = plugin } }
+                            onDelete = if (plugin.isBuiltIn) null else { { deleteTarget = plugin } },
+                            onManagePermissions = { grantTarget = plugin },
+                            onOpenPage = { pageId ->
+                                onNavigate(Routes.pluginPage(plugin.id, pageId))
+                            }
                         )
                     }
                 }
@@ -190,6 +235,7 @@ fun PluginsScreen(onBack: () -> Unit) {
             onDismiss = {
                 showAgreement = false
                 selectedUri = null
+                installPreview = null
             },
             title = stringResource(R.string.plugins_install_title),
             message = stringResource(R.string.plugins_install_file, selectedUri?.lastPathSegment ?: "ZIP"),
@@ -197,15 +243,19 @@ fun PluginsScreen(onBack: () -> Unit) {
             confirmEnabled = agreementChecked,
             onConfirm = {
                 val uri = selectedUri ?: return@NekoDialog
+                val preview = installPreview
+                val granted = if (preview != null) installChecked else null
                 showAgreement = false
                 selectedUri = null
+                installPreview = null
                 vm.clearError()
-                vm.install(uri)
+                vm.install(uri, granted)
             },
             cancelText = stringResource(R.string.common_cancel),
             onCancel = {
                 showAgreement = false
                 selectedUri = null
+                installPreview = null
             },
             contentScrollable = true
         ) {
@@ -226,6 +276,14 @@ fun PluginsScreen(onBack: () -> Unit) {
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
+            installPreview?.let { manifest ->
+                Spacer(Modifier.height(8.dp))
+                PermissionChecklist(
+                    declared = manifest.permissions,
+                    checked = installChecked,
+                    onCheckedChange = { installChecked = it }
+                )
+            }
         }
     }
 
@@ -242,6 +300,34 @@ fun PluginsScreen(onBack: () -> Unit) {
             cancelText = stringResource(R.string.common_cancel),
             onCancel = { deleteTarget = null }
         )
+    }
+
+    grantTarget?.let { plugin ->
+        val current = ServiceContainer.pluginGrants.granted(plugin.id)
+        var checked by remember(plugin.id, current) {
+            mutableStateOf(
+                current ?: PluginManifestValidator.defaultGrantedPermissions(plugin.permissions)
+            )
+        }
+        NekoDialog(
+            onDismiss = { grantTarget = null },
+            title = stringResource(R.string.plugins_grant_title),
+            message = stringResource(R.string.plugins_grant_message),
+            confirmText = stringResource(R.string.common_save),
+            onConfirm = {
+                vm.saveGrants(plugin.id, checked)
+                grantTarget = null
+            },
+            cancelText = stringResource(R.string.common_cancel),
+            onCancel = { grantTarget = null },
+            contentScrollable = true
+        ) {
+            PermissionChecklist(
+                declared = plugin.permissions,
+                checked = checked,
+                onCheckedChange = { checked = it }
+            )
+        }
     }
 }
 
@@ -271,11 +357,104 @@ private fun PluginInfoCard(appMode: AppMode) {
     }
 }
 
+/** 权限清单：按「基础 / 读取 / 网络 / 写入 / AI」分组，危险项单独标注。 */
+@Composable
+private fun PermissionChecklist(
+    declared: List<String>,
+    checked: Set<String>,
+    onCheckedChange: (Set<String>) -> Unit
+) {
+    val supported = declared.filter { it in PluginManifestValidator.supportedPermissions }.distinct()
+    if (supported.isEmpty()) return
+    Spacer(Modifier.height(12.dp))
+    Text(
+        text = stringResource(R.string.plugins_grant_permissions_title),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    Spacer(Modifier.height(4.dp))
+    PluginManifestValidator.permissionGroups.forEach { (group, permissions) ->
+        val groupPermissions = supported.filter { it in permissions }
+        if (groupPermissions.isEmpty()) return@forEach
+        val danger = groupPermissions.any { it in PluginManifestValidator.dangerousPermissions }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(permissionGroupRes(group)),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold
+        )
+        groupPermissions.forEach { permission ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = permission in checked,
+                    onCheckedChange = { isChecked ->
+                        onCheckedChange(
+                            if (isChecked) checked + permission else checked - permission
+                        )
+                    }
+                )
+                Text(
+                    text = stringResource(permissionNameRes(permission)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (permission in PluginManifestValidator.dangerousPermissions) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun permissionGroupRes(group: String): Int = when (group) {
+    "basic" -> R.string.plugin_perm_group_basic
+    "read" -> R.string.plugin_perm_group_read
+    "network" -> R.string.plugin_perm_group_network
+    "write" -> R.string.plugin_perm_group_write
+    else -> R.string.plugin_perm_group_ai
+}
+
+private fun permissionNameRes(permission: String): Int = when (permission) {
+    "storage" -> R.string.plugin_perm_storage
+    "notify" -> R.string.plugin_perm_notify
+    "chat.progress" -> R.string.plugin_perm_chat_progress
+    "chat.read" -> R.string.plugin_perm_chat_read
+    "characters.read" -> R.string.plugin_perm_characters_read
+    "worldbooks.read" -> R.string.plugin_perm_worldbooks_read
+    "memory.read" -> R.string.plugin_perm_memory_read
+    "network" -> R.string.plugin_perm_network
+    "chat.write" -> R.string.plugin_perm_chat_write
+    "memory.write" -> R.string.plugin_perm_memory_write
+    "characters.write" -> R.string.plugin_perm_characters_write
+    else -> R.string.plugin_perm_ai_call
+}
+
+@Composable
+private fun hookDisplayName(hook: String): String = when (hook) {
+    "message.beforeSend" -> stringResource(R.string.plugin_hook_message_before_send)
+    "app.lifecycle" -> stringResource(R.string.plugin_hook_app_lifecycle)
+    else -> hook
+}
+
+private fun compatLevelRes(level: PluginCompatLevel): Int = when (level) {
+    PluginCompatLevel.NATIVE -> R.string.plugins_compat_native
+    PluginCompatLevel.PORTED_FULL -> R.string.plugins_compat_ported_full
+    PluginCompatLevel.PORTED_PARTIAL -> R.string.plugins_compat_ported_partial
+    PluginCompatLevel.UNSUPPORTED -> R.string.plugins_compat_unsupported
+}
+
 @Composable
 private fun PluginCard(
     plugin: InstalledPlugin,
+    languageCode: String,
+    grantsRevision: Long,
     onToggle: (Boolean) -> Unit,
-    onDelete: (() -> Unit)?
+    onDelete: (() -> Unit)?,
+    onManagePermissions: () -> Unit,
+    onOpenPage: (String) -> Unit
 ) {
     val displayName = when (plugin.id) {
         BuiltInPlugins.JM_ID -> stringResource(R.string.plugins_builtin_jm_name)
@@ -286,6 +465,9 @@ private fun PluginCard(
         BuiltInPlugins.JM_ID -> stringResource(R.string.plugins_builtin_jm_desc)
         BuiltInPlugins.LIGHT_NOVEL_ID -> stringResource(R.string.plugins_builtin_light_novel_desc)
         else -> plugin.description
+    }
+    val granted = remember(plugin.id, grantsRevision) {
+        ServiceContainer.pluginGrants.granted(plugin.id)
     }
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.Top) {
@@ -317,11 +499,31 @@ private fun PluginCard(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                if (plugin.compat != PluginCompatLevel.NATIVE) {
+                    Text(
+                        text = stringResource(
+                            R.string.plugins_compat_label,
+                            stringResource(compatLevelRes(plugin.compat))
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
                 if (displayDescription.isNotBlank()) {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = displayDescription,
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (plugin.compatNote.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = plugin.compatNote,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
@@ -342,13 +544,78 @@ private fun PluginCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (plugin.permissions.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
+                if (plugin.hooks.isNotEmpty()) {
+                    val hookLabels = plugin.hooks.map { hookDisplayName(it) }
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        text = stringResource(R.string.plugins_permissions, plugin.permissions.joinToString("、")),
+                        text = stringResource(
+                            R.string.plugins_hooks_label,
+                            hookLabels.joinToString("、")
+                        ),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.tertiary
                     )
+                }
+                if (plugin.pages.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.plugins_pages_count, plugin.pages.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    plugin.pages.forEach { page ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onOpenPage(page.id) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.Web,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = page.localizedTitle(languageCode),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+                if (plugin.permissions.isNotEmpty() && !plugin.isBuiltIn) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (granted == null) {
+                                stringResource(R.string.plugins_permissions_unconfirmed)
+                            } else {
+                                stringResource(
+                                    R.string.plugins_permissions_granted,
+                                    granted.count { it in plugin.permissions },
+                                    plugin.permissions.size
+                                )
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (granted == null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                        TextButton(onClick = onManagePermissions) {
+                            Text(
+                                text = stringResource(R.string.plugins_grant_manage),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
                 }
             }
             Column(horizontalAlignment = Alignment.End) {

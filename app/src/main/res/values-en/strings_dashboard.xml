@@ -70,6 +70,8 @@
     <string name="stats_webdav_not_configured">Not configured</string>
     <string name="stats_local_log_preview_title">Local logs</string>
     <string name="stats_achievements_title">Achievements</string>
+    <string name="stats_plugin_pages_title">Plugin pages</string>
+    <string name="stats_plugin_pages_empty">No plugin pages yet; declare pages in a plugin</string>
     <string name="stats_random_generate_ideas">AI generate ideas</string>
     <string name="stats_achievement_progress">%1$s / %2$s</string>
     <string name="achievement_token_1000">Token Starter</string>

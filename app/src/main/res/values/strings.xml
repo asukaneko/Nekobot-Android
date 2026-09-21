@@ -87,6 +87,8 @@
     <string name="widget_today_tokens">今日 Token：%1$d</string>
     <string name="widget_today_tokens_zero">今日 Token：0</string>
     <string name="widget_quick_send">快捷发送</string>
+    <string name="widget_plugin_pages_description">网格显示插件页面入口</string>
+    <string name="widget_plugin_pages_empty">暂无插件页面</string>
     <string name="more_settings">设置</string>
     <string name="more_settings_desc">服务器、系统配置、日志、账号</string>
     <string name="more_logout">退出登录</string>

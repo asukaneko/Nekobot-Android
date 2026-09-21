@@ -10,6 +10,8 @@
     <string name="widget_today_tokens">今日の Token：%1$d</string>
     <string name="widget_today_tokens_zero">今日の Token：0</string>
     <string name="widget_quick_send">クイック送信</string>
+    <string name="widget_plugin_pages_description">プラグインページ入口のグリッド</string>
+    <string name="widget_plugin_pages_empty">プラグインページがありません</string>
     <string name="chat_agent_run_interrupted">Agent タスクが中断されました</string>
     <string name="chat_agent_run_paused">Agent タスクは一時停止中です</string>
     <string name="chat_agent_run_failed">Agent タスクの実行に失敗しました</string>

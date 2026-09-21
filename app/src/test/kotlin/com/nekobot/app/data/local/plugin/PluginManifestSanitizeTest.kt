@@ -39,6 +39,55 @@ class PluginManifestSanitizeTest {
         assertEquals(emptyList<String>(), manifest.permissions)
         assertEquals(1, manifest.commands.size)
         assertEquals(emptyList<String>(), manifest.commands[0].aliases)
+        assertEquals(emptyList<String>(), manifest.hooks)
+    }
+
+    @Test
+    fun hooksAreParsedAndValidated() {
+        val raw = """
+            {
+              "api_version": 2,
+              "id": "demo.hooks",
+              "name": "钩子插件",
+              "version": "1.0.0",
+              "entry": "main.js",
+              "commands": [],
+              "hooks": ["message.beforeSend", "app.lifecycle"]
+            }
+        """.trimIndent()
+        val manifest = gson.fromJson(
+            PluginManifestValidator.sanitizeManifestJson(raw),
+            PluginManifest::class.java
+        )
+        assertEquals(listOf("message.beforeSend", "app.lifecycle"), manifest.hooks)
+        assertEquals(emptyList<String>(), PluginManifestValidator.validate(manifest))
+
+        val unknown = gson.fromJson(
+            PluginManifestValidator.sanitizeManifestJson(
+                raw.replace("\"message.beforeSend\"", "\"message.afterSend\"")
+            ),
+            PluginManifest::class.java
+        )
+        assertTrue(PluginManifestValidator.validate(unknown).any { it.contains("未知事件钩子") })
+    }
+
+    @Test
+    fun pluginWithoutCommandsNeedsHooks() {
+        val raw = """
+            {
+              "api_version": 2,
+              "id": "demo.empty",
+              "name": "空插件",
+              "version": "1.0.0",
+              "entry": "main.js",
+              "commands": []
+            }
+        """.trimIndent()
+        val manifest = gson.fromJson(
+            PluginManifestValidator.sanitizeManifestJson(raw),
+            PluginManifest::class.java
+        )
+        assertTrue(PluginManifestValidator.validate(manifest).any { it.contains("命令或声明一个事件钩子") })
     }
 
     @Test
@@ -64,7 +113,7 @@ class PluginManifestSanitizeTest {
             PluginManifest::class.java
         )
 
-        assertEquals(1, manifest.apiVersion)
+        assertEquals(PluginManifestValidator.CURRENT_API_VERSION, manifest.apiVersion)
         assertEquals("main.js", manifest.entry)
         assertEquals("", manifest.author)
         assertEquals("", manifest.description)

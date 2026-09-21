@@ -10,6 +10,8 @@
     <string name="widget_today_tokens">Tokens today: %1$d</string>
     <string name="widget_today_tokens_zero">Tokens today: 0</string>
     <string name="widget_quick_send">Quick send</string>
+    <string name="widget_plugin_pages_description">Grid of plugin page shortcuts</string>
+    <string name="widget_plugin_pages_empty">No plugin pages</string>
     <string name="chat_agent_run_interrupted">Agent task interrupted</string>
     <string name="chat_agent_run_paused">Agent task paused</string>
     <string name="chat_agent_run_failed">Agent task failed</string>

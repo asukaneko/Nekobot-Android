@@ -127,4 +127,42 @@
     <string name="plugins_builtin_jm_desc">Download, search, and browse JM Comics rankings.</string>
     <string name="plugins_builtin_light_novel_name">Light Novels</string>
     <string name="plugins_builtin_light_novel_desc">Search, download, and manage Wenku8 light novels.</string>
+
+    <!-- ==================== Plugin pages and grants ==================== -->
+    <string name="extensions_group_plugin_pages">Plugin pages</string>
+    <string name="plugin_page_title">Plugin page</string>
+    <string name="plugin_page_not_found">Page not found or the plugin is disabled.</string>
+    <string name="plugin_page_reload">Reload</string>
+    <string name="plugins_pages_count">Pages: %1$d</string>
+    <string name="plugins_hooks_label">Hooks: %1$s</string>
+    <string name="plugin_hook_message_before_send">Rewrite outgoing messages</string>
+    <string name="plugin_hook_app_lifecycle">App lifecycle</string>
+    <string name="plugins_permissions_unconfirmed">Permissions not confirmed</string>
+    <string name="plugins_permissions_granted">%1$d/%2$d permissions granted</string>
+    <string name="plugins_grant_manage">Permissions</string>
+    <string name="plugins_grant_title">Plugin permissions</string>
+    <string name="plugins_grant_message">Grant only what is needed; unauthorized calls are rejected.</string>
+    <string name="plugins_grant_permissions_title">This plugin requests:</string>
+    <string name="plugin_perm_group_basic">Basic</string>
+    <string name="plugin_perm_group_read">Read</string>
+    <string name="plugin_perm_group_network">Network</string>
+    <string name="plugin_perm_group_write">Write</string>
+    <string name="plugin_perm_group_ai">AI</string>
+    <string name="plugin_perm_storage">Key-value storage</string>
+    <string name="plugin_perm_notify">Show notifications</string>
+    <string name="plugin_perm_chat_progress">Progress card</string>
+    <string name="plugin_perm_chat_read">Read chats and messages</string>
+    <string name="plugin_perm_characters_read">Read character cards</string>
+    <string name="plugin_perm_worldbooks_read">Read world books</string>
+    <string name="plugin_perm_memory_read">Read agent memory</string>
+    <string name="plugin_perm_network">Access the network</string>
+    <string name="plugin_perm_chat_write">Send messages</string>
+    <string name="plugin_perm_memory_write">Write agent memory</string>
+    <string name="plugin_perm_characters_write">Create/edit characters</string>
+    <string name="plugin_perm_ai_call">Call AI</string>
+    <string name="plugins_compat_label">Compatibility: %1$s</string>
+    <string name="plugins_compat_native">Native</string>
+    <string name="plugins_compat_ported_full">Fully ported</string>
+    <string name="plugins_compat_ported_partial">Partially ported</string>
+    <string name="plugins_compat_unsupported">Unsupported</string>
 </resources>

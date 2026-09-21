@@ -654,8 +654,24 @@ fun ChatScreen(
                     viewModel.setChatVisible(true)
                     viewModel.refreshSession()
                     viewModel.activateRealtimeSession()
+                    // 事件钩子：app.lifecycle（chat.open）
+                    com.nekobot.app.ServiceContainer.applicationScope.launch {
+                        runCatching {
+                            com.nekobot.app.ServiceContainer.pluginManager
+                                .runLifecycleHook("chat.open", sessionId)
+                        }
+                    }
                 }
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> viewModel.setChatVisible(false)
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    viewModel.setChatVisible(false)
+                    // 事件钩子：app.lifecycle（chat.close）
+                    com.nekobot.app.ServiceContainer.applicationScope.launch {
+                        runCatching {
+                            com.nekobot.app.ServiceContainer.pluginManager
+                                .runLifecycleHook("chat.close", sessionId)
+                        }
+                    }
+                }
                 else -> {}
             }
         }

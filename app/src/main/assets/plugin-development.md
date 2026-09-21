@@ -1,9 +1,9 @@
 # NekoBot Android 插件开发指南
 
 NekoBot Android 支持在**本地模式**安装 ZIP 格式的 JavaScript 插件。插件通过 `plugin.json`
-声明命令和权限，由受限 WebView 运行时执行。
+声明命令、权限和可选页面，由受限 WebView 运行时执行。
 
-> 插件命令只在本地模式运行。服务器模式下可以查看、安装、启停或卸载插件，但不会执行其命令。
+> 插件命令与插件页面只在本地模式运行。服务器模式下可以查看、安装、启停或卸载插件，但不会执行其命令。
 
 ## 1. 快速开始
 
@@ -19,7 +19,7 @@ hello-plugin/
 
 ```json
 {
-  "api_version": 1,
+  "api_version": 2,
   "id": "hello-plugin",
   "name": "Hello Plugin",
   "version": "1.0.0",
@@ -58,27 +58,31 @@ NekoPlugin.registerCommand("hello", async (ctx) => {
 Compress-Archive -Path plugin.json, main.js -DestinationPath hello-plugin.zip
 ```
 
-在应用的「更多 -> 扩展功能 -> 插件」页面点击右上角加号，选择 ZIP 文件，阅读并确认第三方插件提示后安装。进入本地模式的会话，输入 `/hello Neko` 即可测试。
+在应用的「更多 -> 扩展功能 -> 插件」页面点击右上角加号，选择 ZIP 文件，阅读并确认第三方插件提示与权限清单后安装。进入本地模式的会话，输入 `/hello Neko` 即可测试。
 
 ## 2. 包结构
 
-ZIP 根目录必须包含 `plugin.json`，入口脚本由 `entry` 指定。可以包含其他资源文件：
+ZIP 根目录必须包含 `plugin.json`，入口脚本由 `entry` 指定。可以包含其他资源文件（页面、样式、脚本、图片等）：
 
 ```text
 weather-plugin.zip
 ├── plugin.json
 ├── main.js
-└── data/
-    └── cities.json
+├── data/
+│   └── cities.json
+└── pages/
+    ├── weather.html
+    ├── weather.css
+    └── weather.js
 ```
 
-当前运行时只加载 `entry` 指定的 JavaScript 文件；其他文件不会自动加载。插件不能读取本地文件系统，因此需要的静态数据应直接写入入口脚本，或在构建时合并进入口脚本。
+命令运行时只加载 `entry` 指定的 JavaScript 文件；插件页面运行时（第 9 章）会加载页面 HTML 及其相对引用的资源。插件不能读取本地文件系统或工作区，静态数据应写入插件包内或在构建时合并。
 
 ## 3. plugin.json
 
 ```json
 {
-  "api_version": 1,
+  "api_version": 2,
   "id": "example.plugin",
   "name": "示例插件",
   "version": "1.0.0",
@@ -93,21 +97,25 @@ weather-plugin.zip
       "usage": "/example <参数>",
       "description": "命令说明"
     }
-  ]
+  ],
+  "pages": [],
+  "hooks": []
 }
 ```
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `api_version` | 是 | 当前仅支持 `1`。 |
+| `api_version` | 是 | 当前支持 `1` 与 `2`。旧版 App 会拒绝高于自身版本的插件。 |
 | `id` | 是 | 2-64 位；必须以 ASCII 字母开头，后续只允许字母、数字、`.`、`_`、`-`。安装后不能与内置插件 ID 冲突。 |
 | `name` | 是 | 插件显示名称，最多 80 个字符。 |
 | `version` | 是 | 插件版本，最多 32 个字符。 |
 | `author` | 否 | 开发者名称。 |
 | `description` | 否 | 插件说明。 |
 | `entry` | 是 | ZIP 内的相对 `.js` 路径，默认 `main.js`。不能使用绝对路径、`..` 或 Windows 驱动器路径。 |
-| `permissions` | 否 | 需要使用的权限列表，见下一节。未声明的能力会被拒绝。 |
-| `commands` | 是 | 至少一条，最多 64 条命令。 |
+| `permissions` | 否 | 需要使用的权限列表，见下一节。未声明或未授权的能力会被拒绝。 |
+| `commands` | 否 | 最多 64 条命令；与 `hooks` 至少要有其一。 |
+| `pages` | 否 | 插件页面声明，最多 8 个，见第 9 章。 |
+| `hooks` | 否 | 事件钩子声明，最多 4 个：`message.beforeSend`、`app.lifecycle`，见第 5 章「事件钩子」。 |
 
 ### 命令字段
 
@@ -117,6 +125,7 @@ weather-plugin.zip
 | `aliases` | 否 | 最多 8 个别名；可带或不带 `/`，会被规范为小写的 `/命令`。 |
 | `usage` | 否 | 帮助中显示的用法，最多 160 个字符。 |
 | `description` | 否 | 帮助和插件页显示的说明，最多 500 个字符。 |
+| `open_page` | 否 | 页面 id。设置后该命令**直接打开对应插件页面**（不执行 JS 处理器）；页面必须在 `pages[]` 中已声明。 |
 
 主命令、别名、现有内置命令和所有已安装插件的命令都不能重名。停用插件的命令也会保留名称，避免重新启用后发生冲突。
 
@@ -135,6 +144,28 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | `notify` | `ctx.api.notify(message)` | 显示短 Toast，消息最多 500 个字符，返回 `true`。 |
 | `chat.progress` | `ctx.api.progress(options)` | 更新当前命令的进度卡片，见下文「进度卡片」。 |
 | `network` | `ctx.api.httpGet(url)` | 仅允许 `https://` 的 GET 请求，返回 `{ status, body }`；响应正文最多 512 KiB。 |
+| `ai.call` | `ctx.api.aiComplete(options)` | 走聊天故障转移队列的单次生成，返回 `{ content, model, usage }`；见下文「AI 调用」。 |
+| `chat.write` | `ctx.api.appendMessage(options)` | 往会话追加一条消息（默认当前会话），返回 `{ id, sessionId, role, createdAt }`。 |
+| `chat.write` | `ctx.api.sendMessage(options)` | 发送用户消息并触发一次完整回复（后台生成），返回 `{ messageId, sessionId, replyPending }`。 |
+| `chat.write` | `ctx.api.createSession(options)` / `switchSession(id)` | 新建会话 / 切换到指定会话。 |
+| `characters.write` | `ctx.api.createCharacter(options)` / `updateCharacter(options)` | 创建 / 修改角色卡，返回 `{ id, name, updatedAt }`；**没有删除 API**。 |
+| `memory.write` | `ctx.api.memoryWrite/append/edit(...)` | 覆盖/追加/替换 Agent 长期记忆，返回 `{ charCount }`。 |
+| `memory.read` | `ctx.api.memoryRead()` | 读取 Agent 长期记忆，返回 `{ content, charCount }`。 |
+| 免 | `ctx.api.render(template, data)` | 内置模板渲染（Handlebars 子集），返回 HTML 字符串。 |
+
+### 权限分级与用户授权
+
+| 分组 | 权限 | 默认 |
+| --- | --- | --- |
+| 基础 | `storage`、`notify`、`chat.progress` | 安装时默认勾选 |
+| 读取 | `chat.read`、`characters.read`、`worldbooks.read`、`memory.read` | 安装时默认勾选 |
+| 网络 | `network` | **需用户手动授权** |
+| 写入 | `chat.write`、`memory.write`、`characters.write` | **需用户手动授权** |
+| AI | `ai.call` | **需用户手动授权** |
+
+调用宿主 API 必须同时满足「清单已声明」与「用户已授权」。危险权限（网络/写入/AI）在 AI 创建或安装插件时**不会自动授予**，用户需要在插件卡片的「权限」入口勾选；未授权时调用会失败并返回 `permission_denied`（错误对象含 `code` 字段）。
+
+写入类 API 会直接改动用户数据（会话消息、Agent 记忆），因此授权前请确认插件来源可信。
 
 存储按插件 ID 隔离。键不能为空、最多 128 个字符，且不能包含换行。卸载插件会删除它自己的存储数据。
 
@@ -151,6 +182,121 @@ NekoPlugin.registerCommand("status", async () => {
   return response.body;
 });
 ```
+
+### AI 调用（`ai.call`）
+
+插件可以在**用户授权后**调用聊天模型，请求走「聊天功能模型」的故障转移队列（与自动记忆、剧情选项等后台任务同一条队列）：队列顺序、模型冷却、token 限额与超时策略都由 App 统一执行，插件不能自选模型，队列本身就是模型白名单。
+
+```js
+NekoPlugin.registerCommand("polish", async (ctx) => {
+  if (!ctx.argsText) return "用法：/polish <文本>";
+  const result = await ctx.api.aiComplete({
+    messages: [
+      { role: "system", content: "你是文字润色助手，只输出润色后的文本。" },
+      { role: "user", content: ctx.argsText }
+    ],
+    maxTokens: 512
+  });
+  return result.content;
+});
+```
+
+`options` 字段：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `messages` | 是 | 对话数组，最多 16 条；每项 `{role, content}`，`role` 只能是 `system`/`user`/`assistant`。单条 ≤ 8000 字符，总长度 ≤ 24000 字符。 |
+| `maxTokens` | 否 | 最大生成 token 数，默认 512，上限 2048。 |
+| `temperature` | 否 | `0`-`2`，省略时用模型默认值。 |
+
+返回 `{ content, model, usage: { input, output } }`。
+
+限额与失败原因（错误对象含 `code`）：
+
+| 情况 | `code` | 说明 |
+| --- | --- | --- |
+| 未授权 `ai.call` | `permission_denied` | 用户在插件「权限」入口勾选后即可用 |
+| 设置里关闭了「Agent 网络访问」 | `network_disabled` | 与 `httpGet` 共用同一总开关 |
+| 超过频率上限 | `ai_rate_limited` | 每个插件每分钟最多 10 次 |
+| 超过用量上限 | `ai_budget_exceeded` | 每个插件每小时最多 20 万 token（输入+输出） |
+| 队列全部失败/未配置模型 | `ai_failed` | 请用户检查故障转移队列 |
+
+命令运行时调用 AI 时，单次命令总超时放宽到 120 秒（普通命令仍为 20 秒）；页面侧 `host.ai.complete` 单次调用超时 120 秒。
+
+### 会话写入（`chat.write`）
+
+`ctx.api.appendMessage({ sessionId?, role?, content })`（页面侧 `host.chat.messages.append(...)`）往会话追加一条消息：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `sessionId` | 否 | 默认当前会话；命令运行时为发起会话，页面为打开页面时的会话 |
+| `role` | 否 | `user`（默认）或 `assistant`，其它值报 `invalid_argument` |
+| `content` | 是 | 消息正文，最多 8000 字符 |
+
+返回 `{ id, sessionId, role, createdAt }`。写入与正常消息同一条路径：会话预览、消息数与更新时间都会同步刷新，消息来源标记为 `plugin:<插件 id>`。
+
+只提供「追加」，没有删除或修改消息的 API。需要「发消息并让模型回复」时，用 `appendMessage` 写入用户消息，再 `aiComplete` 生成回复，最后 `appendMessage({ role: "assistant" })` 写回——生成完全由插件显式控制，App 不会隐式触发对话。
+
+失败原因：`permission_denied`（未授权 `chat.write`）、`not_found`（会话不存在）、`chat_write_failed`（落库失败）。
+
+### 记忆写入（`memory.write`）
+
+`ctx.api.memoryRead()` / `memoryWrite(content)` / `memoryAppend(content)` / `memoryEdit(oldText, newText)`（页面侧 `host.memory.read/write/append/edit`）读写「全局 Agent 记忆」——与设置里的 Agent 记忆是同一份内容。
+
+| 调用 | 说明 |
+| --- | --- |
+| `memoryWrite(content)` | 整体覆盖记忆 |
+| `memoryAppend(content)` | 追加到记忆末尾（自动空行分隔） |
+| `memoryEdit(oldText, newText)` | 替换记忆中的一段文本；`oldText` 必须唯一命中 |
+
+全部返回 `{ charCount }`（写入后的总字符数）；读取返回 `{ content, charCount }`（`content` 最多 32000 字符）。整体上限 32000 字符，超出报 `invalid_argument`；`memoryEdit` 未命中或命中多处同样报 `invalid_argument`。
+
+维护记忆的推荐写法是先读、再局部替换，避免整篇重写覆盖掉用户的其它内容：
+
+```js
+NekoPlugin.registerCommand("remember", async (ctx) => {
+  const line = ctx.argsText.trim();
+  if (!line) return "用法：/remember <要记住的事>";
+  await ctx.api.memoryAppend(line);
+  return "已写入 Agent 记忆。";
+});
+```
+
+### 会话发送与会话管理（`chat.write`）
+
+- `ctx.api.sendMessage({sessionId?, content})`（页面侧 `host.chat.send`）：写入用户消息并**触发一次完整回复生成**（含 Agent 工具流程）。生成在后台进行，插件 API 不等它结束，返回 `{messageId, sessionId, replyPending: true}`；回复会异步出现在会话里。没有可用模型时返回 `chat_send_failed`。
+- `ctx.api.createSession({name?, sessionMode?, characterId?, characterIds?, systemPrompt?, firstMessage?, scenario?, senderName?, tags?})`（页面侧 `host.chat.sessions.create`）：新建会话，`sessionMode` 支持 `character`（默认）/`agent`/`group`，群聊用 `characterIds`。返回 `{id, name, sessionMode, characterId}`。
+- `ctx.api.switchSession(id)`（页面侧 `host.chat.sessions.switch`）：请求 App 跳转到该会话（页面/命令不会立即消失，返回后才会切换）。返回 `{id, name, switched: true}`。
+
+### 角色卡写入（`characters.write`）
+
+`ctx.api.createCharacter(options)` 与 `ctx.api.updateCharacter(options)`（页面侧 `host.characters.create/update`）创建或修改角色卡：
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | `update` 必填；`create` 省略（由 App 生成） |
+| `name` | 角色名，最多 128 字符；`create` 必填 |
+| `description`、`personality`、`scenario`、`firstMessage`、`exampleDialogues`、`systemPrompt`、`greeting`、`basicInfo`、`responseFormat`、`avatar`、`portrait` | 文本字段，每个最多 32000 字符 |
+| `tags`、`rules` | 字符串数组（`tags` ≤32 项、`rules` ≤32 条） |
+| `alternateGreetings` | 备用开场白数组，≤16 条 |
+| `state` | 初始六维状态对象 |
+
+`update` 是补丁语义：只覆盖传入的字段，其余保持原值。返回 `{id, name, updatedAt}`；**没有删除角色卡的 API**，需要删除时请用户在角色页操作。
+
+### 模板渲染（免权限）
+
+`ctx.api.render(template, data)`（页面侧 `host.ui.render`）用内置模板引擎渲染 HTML 字符串，适合把移植过来的模板片段变成实际界面：
+
+```js
+const characters = await host.characters.list();
+const html = await host.ui.render(
+  "{{#each this}}<li>{{name}}{{#if (contains tags \"vip\")}} ★{{/if}}</li>{{else}}<li>暂无角色</li>{{/each}}",
+  characters
+);
+document.getElementById("character-list").innerHTML = html;
+```
+
+支持 `{{path}}`（HTML 转义）、`{{{path}}}` / `{{&path}}`（原样）、`{{#if}}`/`{{#unless}}`/`{{#each}}`/`{{#with}}`（含 `{{else}}`）、`{{! 注释 }}`、`../` 上级上下文，以及 `eq`/`ne`/`gt`/`gte`/`lt`/`lte`/`and`/`or`/`not`/`contains`/`length` 子表达式。不支持自定义 helper、partials 与 `{{~` 空白控制；模板 ≤64000 字符，渲染结果 ≤256000 字符。渲染是纯字符串处理，不执行模板里的任何代码。
 
 ### 进度卡片（`chat.progress`）
 
@@ -201,7 +347,7 @@ NekoPlugin.registerCommand("download", async (ctx) => {
 
 注意事项：
 
-- 进度卡片只在本地模式的聊天会话中可用。在 `plugin_use` 工具的测试环境中，因为没有关联的用户消息，`progress()` 会被静默忽略（返回 `false`），命令本身仍会正常执行完成。
+- 进度卡片只在本地模式的聊天会话中可用。在 `plugin_use` 工具的测试环境中，因为没有关联的用户消息，`progress()` 会被静默忽略（返回 `false`），命令本身仍会正常执行完成。插件页面只有由聊天命令（`open_page`）打开时才有可更新的卡片，从扩展页入口打开的页面返回 `false`。
 - 每次调用都会**整体替换**卡片内容，步骤列表不会自动累加。需要保留前面的步骤时，请在每次上报中重新传入完整列表。
 - 卡片不会随命令结束自动收尾，请在最后一次上报中传 `complete: true`；否则卡片会停留在未完成状态。
 
@@ -228,6 +374,8 @@ NekoPlugin.register({
 
 命令名会忽略开头的 `/` 并转成小写。别名最终仍会调用对应主命令的处理器。
 
+声明了 `open_page` 的命令不会进入 JS 运行时：用户在输入框输入该命令（或其别名）时，宿主直接打开对应页面，并在聊天里留一条「已打开插件页面」的回复。这类命令不需要在 `main.js` 里注册处理器。
+
 处理器接收的 `ctx`：
 
 | 字段 | 说明 |
@@ -246,14 +394,45 @@ NekoPlugin.register({
 
 单次执行最长 20 秒，最终回复最多 20,000 个字符。不要在模块顶层启动长期循环，也不要依赖上一次执行留下的 JavaScript 内存状态；需要持久化的数据应使用 `storage`。
 
+### 事件钩子
+
+在 `plugin.json` 的 `hooks` 里声明后，用 `NekoPlugin.on(name, handler)` 注册处理器：
+
+```json
+{ "hooks": ["message.beforeSend"] }
+```
+
+```js
+NekoPlugin.on("message.beforeSend", async (ctx) => {
+  const text = ctx.payload.content;
+  if (!text.startsWith("喵")) return null;          // 返回 null 表示不改写
+  return { content: "喵～" + text };
+});
+```
+
+| 钩子 | 触发时机 | 处理器返回 |
+| --- | --- | --- |
+| `message.beforeSend` | 用户发送消息、且消息尚未落库/进入模型之前 | 返回 `{content}` 改写本条消息；返回 `null`/`undefined` 或抛错则保持原文 |
+| `app.lifecycle` | `app.start`（App 启动）、`chat.open`（进入会话）、`chat.close`（离开会话） | 返回值忽略 |
+
+`ctx` 在钩子里额外带 `hook`（钩子名）与 `payload`（`message.beforeSend` 为 `{sessionId, content, role}`；`app.lifecycle` 为 `{event, sessionId}`），其余字段与命令 `ctx` 相同，同样可以用 `ctx.api.*`（受权限约束）。
+
+执行方式与命令运行时相同（无界面 WebView + 同一套权限桥），区别是：
+
+- 单插件单次钩子超时 8 秒；`message.beforeSend` 失败/超时一律保持原文，**永远不会因为插件而发不出消息**。
+- 多个插件声明同一钩子时按安装顺序串联，后一个插件看到的是前一个改写后的文本。
+- 钩子在 App 进程内执行，不保证 `app.start` 一定先于其它钩子；`app.lifecycle` 的返回值不会被使用，适合做初始化、清理或统计。
+- 页面运行时不提供 `NekoPlugin`（页面只有 `host.*`）；钩子必须写在入口脚本 `main.js` 里。
+
 ## 6. 安全边界
 
 第三方插件代码被视为不可信代码。运行时具有以下边界：
 
 - 禁止文件访问、内容提供器访问、DOM Storage、多窗口和页面导航。
 - 禁止 WebView 自行联网；网络只能通过声明了 `network` 权限的受控 HTTPS GET API。
-- 没有 `chat.write`、任意命令执行、相机、麦克风或 Android Intent 等 API。
-- 不能访问其他插件的存储数据。
+- 写入类 API（`chat.write`、`memory.write`、`characters.write`）只能追加消息、读写 Agent 记忆、创建/修改角色卡，**没有删除能力**，也没有任意命令执行、相机、麦克风或 Android Intent 等 API。
+- 事件钩子（`hooks`）由清单声明后即可运行，不需要额外权限；`message.beforeSend` 只能改写用户正在发送的那条消息，插件卡片会展示已声明钩子，供用户确认。
+- 不能访问其他插件的存储数据，也不能读取会话工作区文件。
 - 用户安装 ZIP 前必须明确接受第三方插件风险提示。
 
 开发时只申请实际需要的权限，并在 `description` 中解释读取会话或联网的原因。不要直接调用 `NekoAndroid` 等运行时内部对象；它们不是稳定的插件 API。
@@ -271,6 +450,8 @@ NekoPlugin.register({
 | 单个 JavaScript 文件 | 512 KiB |
 | 入口脚本文本 | 262,144 个字符 |
 | 单个其他资源 | 4 MiB |
+| 页面数量 | 每个插件最多 8 个 |
+| 页面 styles / scripts | 各最多 8 项 |
 
 如果安装失败，应用会显示具体的清单、命令冲突、路径或大小错误。命令运行错误会直接作为本地会话中的命令结果显示。
 
@@ -278,4 +459,279 @@ NekoPlugin.register({
 
 `builtin.jm`（JM 漫画）和 `builtin.light-novel`（轻小说）是应用随附的内置插件。它们可以停用，但不能卸载、覆盖或作为第三方 ZIP 的 `id` 使用。
 
-第三方插件 API 当前为 v1。升级应用后，请重新验证插件的清单、权限和命令是否仍符合本指南；未兼容的 `api_version` 会在安装时被拒绝。
+第三方插件 API 当前为 v2（App 同时接受 v1 清单）。新增能力优先通过 `host.system.info().capabilities` 做能力协商，而不是抬高版本号。升级应用后，请重新验证插件的清单、权限、命令与页面是否仍符合本指南；不受支持的 `api_version` 会在安装时被拒绝。
+
+## 9. 插件页面
+
+插件可以声明独立页面：安装启用后出现在「更多 -> 扩展功能 -> 插件页面」区块，桌面小组件「插件页面」也会以网格显示这些入口；点击进入一个由插件自行设计的界面。页面是插件包内的 HTML + CSS + JS，运行在受限 WebView 中，只能通过 `host.*` 桥访问宿主能力。
+
+### 9.1 `pages[]` 字段
+
+| 字段 | 必填 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | 是 | 1-32 位小写字母开头，可含数字、`_`、`-`；插件内唯一 | 页面标识 |
+| `title` | 是 | ≤ 40 字符 | 入口显示名 |
+| `title_i18n` | 否 | 键为 `zh`/`en`/`ja`/`ko` | 命中系统语言时覆盖 `title` |
+| `icon` | 否 | 安全相对路径 | 入口图标（图片文件）；缺省用内置图标 |
+| `order` | 否 | 默认 100 | 同插件内排序 |
+| `entry` | 是 | 安全相对路径，必须以 `.html` 结尾 | 页面入口，安装时必须真实存在 |
+| `styles` / `scripts` | 否 | 各 ≤ 8 项、安全相对路径 | 仅用于清单自描述；页面内相对引用同样可用 |
+
+### 9.2 页面加载与资源
+
+页面运行在虚拟源 `https://appassets.androidplatform.net/plugin/<插件id>/<entry>`，`entry` 同目录的 CSS/JS/图片等相对引用会自动解析到插件目录内的对应文件。
+
+- 页面内 `fetch`、XHR、WebSocket、图片外链与页面跳转全部被禁止；网络只能走 `host.http.get`。
+- 不使用 `localStorage`：页面存储必须走 `host.storage.*`，这样卸载插件时数据能一次清干净。
+- 页面主题：宿主会在 HTML 的 `<head>` 起始处注入 CSS 变量与桥接脚本，可用变量（浅色/深色自动跟随 App）：
+  `--neko-bg`、`--neko-surface`、`--neko-surface-variant`、`--neko-on-surface`、`--neko-on-surface-variant`、`--neko-primary`、`--neko-on-primary`、`--neko-secondary`、`--neko-outline`、`--neko-error`、`--neko-radius`、`--neko-font`。
+  同时注入 `window.__NEKO_THEME__ = { mode: "dark"|"light", locale, appVersion, apiVersion }`。
+
+### 9.3 `host.*` API
+
+全部返回 `Promise`；单次调用超时 10 秒、并发上限 4、响应上限 256 KiB；失败时 Promise 拒绝，错误对象带 `message` 与 `code`。
+
+| API | 权限 | 说明 |
+| --- | --- | --- |
+| `host.system.info()` | 免 | `{appVersion, apiVersion, capabilities[], theme, locale}`；能力协商入口 |
+| `host.log(level, msg)` | 免 | 仅写 logcat，≤ 500 字符 |
+| `host.ui.close()` | 免 | 请求宿主关闭当前页面 |
+| `host.storage.get/set/remove/list` | `storage` | 与命令侧 `ctx.api.storage` 共用同一存储 |
+| `host.ui.toast(msg)` | `notify` | 短提示 |
+| `host.chat.current()` | `chat.read` | 从会话上下文打开时返回当前会话（字段裁剪），否则 `null` |
+| `host.chat.sessions.list()` | `chat.read` | 会话摘要列表（≤ 100 条） |
+| `host.chat.sessions.get(id)` | `chat.read` | 单个会话摘要 |
+| `host.chat.messages.list(sessionId, limit)` | `chat.read` | 最近消息；`limit` 默认 50、最大 200；`sessionId` 省略时用当前会话 |
+| `host.characters.list()` / `get(id)` | `characters.read` | 角色卡只读数据（不含提示词运行态） |
+| `host.worldbooks.list()` / `get(id)` | `worldbooks.read` | 世界书与条目只读数据 |
+| `host.ui.render(template, data)` | 免 | 模板渲染，返回 HTML 字符串（语法见第 4 章） |
+| `host.chat.messages.append(options)` | `chat.write` | 追加消息，`options = {sessionId?, role?, content}`；返回 `{id, sessionId, role, createdAt}` |
+| `host.chat.send(options)` | `chat.write` | 发送消息并触发后台回复生成，返回 `{messageId, sessionId, replyPending}` |
+| `host.chat.sessions.create(options)` / `switch(id)` | `chat.write` | 新建会话 / 请求跳转到会话 |
+| `host.characters.create(options)` / `update(options)` | `characters.write` | 创建 / 修改角色卡（无删除） |
+| `host.memory.read()` | `memory.read` | `{content, charCount}`；Agent 长期记忆 |
+| `host.memory.write(content)` / `append(content)` / `edit(oldText, newText)` | `memory.write` | 覆盖 / 追加 / 替换记忆，返回 `{charCount}` |
+| `host.ai.complete(options)` | `ai.call` | 走聊天故障转移队列的单次生成，返回 `{content, model, usage}`；超时 120 秒，限额见第 4 章 |
+| `host.http.get(url)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`（≤ 512 KiB） |
+| `host.progress.update(options)` | `chat.progress` | 由聊天命令（`open_page`）打开时更新该命令消息上的进度卡片；其他入口返回 `false` |
+
+### 9.4 页面生命周期
+
+- 同时只允许打开 1 个插件页面；打开新页面会先销毁旧的。
+- 页面没有总超时；单次 API 调用 10 秒超时。
+- 返回键优先页面内后退，其次关闭页面；关闭时 WebView 会被销毁。
+- 页面进程崩溃时展示错误卡片，可点「重载」恢复，不会影响 App 其他部分。
+- 插件被停用或卸载后入口消失，页面无法再打开。
+
+### 9.5 从聊天命令打开页面
+
+除了「扩展功能 → 插件页面」入口，命令也可以直接打开页面：给命令加 `"open_page": "<页面id>"`。
+
+```json
+{
+  "name": "note",
+  "usage": "/note [关键词]",
+  "description": "打开随手记页面",
+  "open_page": "notes"
+}
+```
+
+用户在会话输入 `/note`（或别名）后：
+
+- 宿主直接打开该页面，不执行 JS 处理器，命令也不会被当作普通消息发给 AI；
+- 页面从会话上下文打开，因此 `host.chat.current()`、`host.progress.update()` 可用；
+- 页面入口同时会出现在桌面小组件「插件页面」的网格里（不带参数）；
+- 命令后面的参数会传给页面，页面通过 `window.__NEKO_LAUNCH__` 读取：
+
+| 字段 | 说明 |
+| --- | --- |
+| `sessionId` | 触发命令的会话 id；非命令入口打开时为 `null` |
+| `argsText` | 命令后的原始参数文本（如 `/note 搜索 猫` 的 `搜索 猫`） |
+| `args` | 按空白切分后的参数数组 |
+
+```js
+// 页面脚本：根据命令参数决定初始视图
+const launch = window.__NEKO_LAUNCH__ || { args: [], argsText: "" };
+if (launch.args[0] === "搜索") {
+  document.getElementById("input").value = launch.args.slice(1).join(" ");
+}
+```
+
+`open_page` 引用的页面必须已在 `pages[]` 中声明，否则安装时会被拒绝。
+
+### 9.6 完整示例
+
+`plugin.json`：
+
+```json
+{
+  "api_version": 2,
+  "id": "demo.notes",
+  "name": "随手记",
+  "version": "1.0.0",
+  "author": "Agent",
+  "description": "带独立管理页面的随手记插件",
+  "entry": "main.js",
+  "permissions": ["storage", "notify"],
+  "commands": [
+    { "name": "note", "usage": "/note <内容>", "description": "保存一条笔记" },
+    { "name": "notes", "usage": "/notes", "description": "打开随手记页面", "open_page": "notes" }
+  ],
+  "pages": [
+    {
+      "id": "notes",
+      "title": "随手记",
+      "title_i18n": { "zh": "随手记", "en": "Notes", "ja": "メモ", "ko": "메모" },
+      "order": 10,
+      "entry": "pages/notes.html",
+      "styles": ["pages/notes.css"],
+      "scripts": ["pages/notes.js"]
+    }
+  ]
+}
+```
+
+`pages/notes.html`：
+
+```html
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>随手记</title>
+  <link rel="stylesheet" href="notes.css">
+</head>
+<body>
+  <h1>随手记</h1>
+  <form id="form">
+    <input id="input" placeholder="写点什么…" autocomplete="off">
+    <button type="submit">保存</button>
+  </form>
+  <ul id="list"></ul>
+  <script src="notes.js"></script>
+</body>
+</html>
+```
+
+`pages/notes.js`：
+
+```js
+const listEl = document.getElementById("list");
+
+async function refresh() {
+  const all = await host.storage.list();
+  const keys = Object.keys(all).filter((k) => k.startsWith("note:")).sort();
+  listEl.innerHTML = "";
+  keys.forEach((key) => {
+    const li = document.createElement("li");
+    li.textContent = all[key];
+    listEl.appendChild(li);
+  });
+}
+
+document.getElementById("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+  if (!text) return;
+  await host.storage.set("note:" + Date.now(), text);
+  input.value = "";
+  await host.ui.toast("已保存");
+  refresh();
+});
+
+refresh();
+```
+
+`main.js` 与页面共用同一份存储：
+
+```js
+NekoPlugin.registerCommand("note", async (ctx) => {
+  if (!ctx.argsText) return "用法：/note <内容>";
+  await ctx.api.storage.set("note:" + Date.now(), ctx.argsText);
+  return "已保存。可在插件页面查看全部笔记。";
+});
+```
+
+## 10. 从其他生态移植
+
+用户可以把别家插件包发进会话，由 AI 改写为 Nekobot 插件后直接安装。本章是改写规范。
+
+### 10.1 推荐流程
+
+```text
+用户发插件包 → 附件落到会话工作区
+  → plugin_use action=inspect, path=/workspace/xxx.zip
+      （安全解压到 /workspace/plugin-port/<名称>/，返回生态、清单、文件清单、权限建议）
+  → 用 workspace_read / grep 阅读源码
+  → 按本章映射表改写，plugin_use action=create 安装
+      （页面文件放 extra_files_json；compat / compat_note 记录移植级别与差异）
+  → plugin_use action=check 静态自检（清单 / 页面入口 / API 名称 / 大小）
+  → plugin_use action=execute 测试命令
+  → 交付并告知用户差异
+```
+
+`check` 的 `ready=true` 只代表静态检查通过，不代表行为与原插件一致；不要向用户声称「完全兼容」。
+
+### 10.2 生态识别规则
+
+| 命中条件 | 判定 | 移植策略 |
+| --- | --- | --- |
+| 清单含 `toolpkg_id` 或 `schema_version` | Operit ToolPkg | 仅 WebView UI 型可移植；Compose DSL 改为 HTML；`Tools.*` 改为 `host.*` 或删除该功能 |
+| 清单含 `display_name`（或 `js` + `i18n`） | SillyTavern 扩展 | 命令/事件/存储/生成钩子 → `commands[]` + `ctx.api`；模板面板 → 独立页面 |
+| 清单含 `api_version` + `id` + `commands` | Nekobot 原生 | 直接 `create` 或 `install_url` |
+| 含 `package.json` 且出现 `cordis` / `deepseek-harness` / `dsh` | DeepSeek Harness | **终止移植**，引导用户走 MCP 接入 |
+| 其他 | 未知 | 询问用户用途，必要时按功能重写为原生插件 |
+
+### 10.3 SillyTavern → Nekobot 映射
+
+| ST | Nekobot | 级别 |
+| --- | --- | --- |
+| `manifest.json` | `plugin.json`（`display_name`→`name`，`version`/`author` 直搬） | 直译 |
+| `SlashCommandParser.addCommandObject` | `commands[]` + `NekoPlugin.registerCommand` | 直译 |
+| `extensionSettings` + `saveSettingsDebounced()` | `ctx.api.storage.get/set` 或 `host.storage.*` | 直译 |
+| `toastr.success/error` | `ctx.api.notify` / `host.ui.toast` | 直译 |
+| `renderExtensionTemplateAsync` | 页面内直接写 HTML（`pages[]`） | 改写 |
+| `$('#extensions_settings2').append(html)` | 页面自身的 DOM（`document.body`） | 改写 |
+| `context.chat` / `context.characters` | `host.chat.messages.list` / `host.chat.sessions.*` / `host.characters.*` | 改写 |
+| `context.worldInfo` | `host.worldbooks.list/get` | 改写 |
+| `generateRaw` / `generateQuietPrompt` | `host.ai.complete` / `ctx.api.aiComplete`（需 `ai.call` 授权） | 改写 + 授权 |
+| `context.chat.push(...)` / 直接改 `chat` 数组 | `host.chat.messages.append` / `ctx.api.appendMessage`（需 `chat.write` 授权）；需要模型回复时用 `host.chat.send` | 改写 + 授权 |
+| `context.characters` 的增改 | `host.characters.create/update`（需 `characters.write` 授权） | 改写 + 授权 |
+| `context.setExtensionPrompt` / 写世界书条目 | `host.memory.append` / `ctx.api.memoryAppend`（需 `memory.write` 授权） | 改写 + 授权 |
+| `eventSource.on(event_types.MESSAGE_RECEIVED, …)` | 部分可移植：`hooks: ["message.beforeSend"]`（发送前改写）+ `app.lifecycle`；收到消息后的事件仍无对应 | **部分降级**，须告知用户 |
+| `SillyTavern.libs.*` | 无 → 自带实现或改用浏览器原生 API | **降级** |
+| 直接操作 ST 主界面 DOM | 无 | **不支持**，明确劝退 |
+
+### 10.4 Operit ToolPkg → Nekobot 映射
+
+| ToolPkg | Nekobot | 级别 |
+| --- | --- | --- |
+| `manifest.json`（`toolpkg_id`/`main`/`subpackages`） | `plugin.json` + `pages[]` | 转换 |
+| `registerToolboxUiModule{runtime:"webview"}` | `pages[].entry`（HTML 可直接复用） | 直译 |
+| `registerToolboxUiModule{runtime:"compose_dsl"}` | `pages[].entry`（HTML 重写） | 重写 |
+| `registerMessageProcessingPlugin` | 暂无对应 → 改为命令/页面 | **降级** |
+| `registerXmlRenderPlugin` / `registerInputMenuTogglePlugin` | 暂无对应 | **不支持** |
+| `registerAppLifecycleHook` | 暂无对应 | **降级** |
+| `Tools.Files.*` | 插件目录内相对资源（只读）；需要跨会话留存时用 `ctx.api.storage.*` / `ctx.api.memoryAppend` | 改写 |
+| `Tools.System.*` / `toolCall(...)` / Ubuntu 终端 | 无对应 | **不支持** |
+
+### 10.5 兼容级别与交付检查清单
+
+兼容级别（写入 `compat`，展示在插件卡片）：
+
+| 级别 | 含义 |
+| --- | --- |
+| `native` | Nekobot 原生插件 |
+| `ported-full` | 移植后功能完整 |
+| `ported-partial` | 移植后部分功能不可用（必须在 `compat_note` 列出） |
+| `unsupported` | 无法移植（DSH / 深度 DOM 类） |
+
+交付前必须逐项确认：
+
+1. 已通读本指南，并按第 9 章实现页面（若有）。
+2. `plugin_use create` 成功；`plugin_use check` 的 `ready=true`。
+3. 至少用 `plugin_use execute` 测通一条命令；有页面时确认页面文件已写入且无 `http(s)://` 外链引用。
+4. 报告内容：插件 id、可用命令、页面入口位置、**权限申请清单**、**与原插件的行为差异 / 未实现项**。
+5. 不得声称「完全兼容」，只描述实际实现的功能。

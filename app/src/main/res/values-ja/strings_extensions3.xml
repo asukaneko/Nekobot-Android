@@ -127,4 +127,42 @@
     <string name="plugins_builtin_jm_desc">JM 漫画のダウンロード、検索、ランキング閲覧。</string>
     <string name="plugins_builtin_light_novel_name">ライトノベル</string>
     <string name="plugins_builtin_light_novel_desc">Wenku8 ライトノベルの検索、ダウンロード、管理。</string>
+
+    <!-- ==================== プラグインページと権限 ==================== -->
+    <string name="extensions_group_plugin_pages">プラグインページ</string>
+    <string name="plugin_page_title">プラグインページ</string>
+    <string name="plugin_page_not_found">ページが存在しないか、プラグインが無効です。</string>
+    <string name="plugin_page_reload">再読み込み</string>
+    <string name="plugins_pages_count">ページ: %1$d</string>
+    <string name="plugins_hooks_label">フック: %1$s</string>
+    <string name="plugin_hook_message_before_send">送信前のメッセージ書き換え</string>
+    <string name="plugin_hook_app_lifecycle">アプリのライフサイクル</string>
+    <string name="plugins_permissions_unconfirmed">権限が未確認</string>
+    <string name="plugins_permissions_granted">権限 %1$d/%2$d を許可済み</string>
+    <string name="plugins_grant_manage">権限</string>
+    <string name="plugins_grant_title">プラグインの権限</string>
+    <string name="plugins_grant_message">必要な権限だけを許可してください。未許可の呼び出しは拒否されます。</string>
+    <string name="plugins_grant_permissions_title">このプラグインが要求する権限:</string>
+    <string name="plugin_perm_group_basic">基本</string>
+    <string name="plugin_perm_group_read">読み取り</string>
+    <string name="plugin_perm_group_network">ネットワーク</string>
+    <string name="plugin_perm_group_write">書き込み</string>
+    <string name="plugin_perm_group_ai">AI</string>
+    <string name="plugin_perm_storage">キー値ストレージ</string>
+    <string name="plugin_perm_notify">通知の表示</string>
+    <string name="plugin_perm_chat_progress">進捗カード</string>
+    <string name="plugin_perm_chat_read">チャットとメッセージの読み取り</string>
+    <string name="plugin_perm_characters_read">キャラクターカードの読み取り</string>
+    <string name="plugin_perm_worldbooks_read">ワールドブックの読み取り</string>
+    <string name="plugin_perm_memory_read">エージェントメモリの読み取り</string>
+    <string name="plugin_perm_network">ネットワークアクセス</string>
+    <string name="plugin_perm_chat_write">メッセージの送信</string>
+    <string name="plugin_perm_memory_write">エージェントメモリへの書き込み</string>
+    <string name="plugin_perm_characters_write">キャラクターの作成・編集</string>
+    <string name="plugin_perm_ai_call">AI の呼び出し</string>
+    <string name="plugins_compat_label">互換性: %1$s</string>
+    <string name="plugins_compat_native">ネイティブ</string>
+    <string name="plugins_compat_ported_full">移植完了</string>
+    <string name="plugins_compat_ported_partial">一部のみ移植</string>
+    <string name="plugins_compat_unsupported">非対応</string>
 </resources>

@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.TrendingFlat
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.Web
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -75,6 +76,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -94,12 +96,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
@@ -124,6 +128,7 @@ internal fun SessionStatsDashboard(
     onCharacterRankingModeChange: (CharacterRankingMode) -> Unit,
     onCustomize: () -> Unit,
     onOpenChat: (String) -> Unit = {},
+    onOpenPluginPage: (String, String) -> Unit = { _, _ -> },
     onQuickAction: (DashboardQuickAction) -> Unit = {},
     onCharacterSelected: (DashboardTodayCharacter) -> Unit = {},
     randomCharacterIdeas: List<RandomCharacterIdea> = emptyList(),
@@ -185,6 +190,7 @@ internal fun SessionStatsDashboard(
                     "webdav_status" -> DashboardWebDavStatusCard(data.webDavStatus)
                     "local_log_preview" -> DashboardLocalLogPreviewCard(data.localLogPreview)
                     "achievements" -> DashboardAchievementsCard(data.achievements)
+                    "plugin_pages" -> DashboardPluginPages(onOpenPluginPage = onOpenPluginPage)
                 }
             }
             if (visibleWidgets.isEmpty()) {
@@ -1085,6 +1091,109 @@ internal fun DashboardLayoutDialog(
     )
 }
 
+/**
+ * 插件页面网格：展示已启用插件声明的 `pages[]` 入口。
+ *
+ * 没有插件页面时不渲染，避免在负一屏留下空卡片。
+ */
+@Composable
+private fun DashboardPluginPages(onOpenPluginPage: (String, String) -> Unit) {
+    val plugins by ServiceContainer.pluginManager.installed.collectAsStateWithLifecycle()
+    val languageCode = LocalConfiguration.current.locales[0]?.language.orEmpty()
+    val entries = remember(plugins) {
+        plugins.filter { it.enabled }.flatMap { plugin ->
+            plugin.pages.map { page -> DashboardPluginPageEntry(plugin.id, plugin.name, page) }
+        }
+    }
+    if (entries.isEmpty()) return
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_plugin_pages_title), Icons.Filled.Web)
+        Spacer(Modifier.height(12.dp))
+        entries.chunked(3).forEachIndexed { rowIndex, row ->
+            if (rowIndex > 0) Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                row.forEach { entry ->
+                    key(entry.pluginId, entry.page.id) {
+                        DashboardPluginPageCell(
+                            entry = entry,
+                            languageCode = languageCode,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onOpenPluginPage(entry.pluginId, entry.page.id) }
+                        )
+                    }
+                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+private data class DashboardPluginPageEntry(
+    val pluginId: String,
+    val pluginName: String,
+    val page: com.nekobot.app.data.local.plugin.PluginPageManifest
+)
+
+@Composable
+private fun DashboardPluginPageCell(
+    entry: DashboardPluginPageEntry,
+    languageCode: String,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    val iconFile = remember(entry.pluginId, entry.page.icon) {
+        entry.page.icon.takeIf { it.isNotBlank() }?.let { icon ->
+            runCatching { ServiceContainer.pluginManager.resolvePluginAsset(entry.pluginId, icon) }
+                .getOrNull()
+        }
+    }
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (iconFile != null) {
+            AsyncImage(
+                model = iconFile,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(RoundedCornerShape(7.dp))
+            )
+        } else {
+            Icon(
+                Icons.Filled.Web,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            entry.page.localizedTitle(languageCode),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            entry.pluginName,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 @Composable
 private fun dashboardWidgetDescriptors(): Map<String, Pair<String, ImageVector>> = linkedMapOf(
     "banner" to (stringResource(R.string.stats_widget_banner) to Icons.Filled.Bolt),
@@ -1102,7 +1211,8 @@ private fun dashboardWidgetDescriptors(): Map<String, Pair<String, ImageVector>>
     "character_discovery" to (stringResource(R.string.stats_character_discovery_title) to Icons.Filled.Face),
     "webdav_status" to (stringResource(R.string.stats_webdav_status_title) to Icons.Filled.CloudSync),
     "local_log_preview" to (stringResource(R.string.stats_local_log_preview_title) to Icons.Filled.BugReport),
-    "achievements" to (stringResource(R.string.stats_achievements_title) to Icons.Filled.EmojiEvents)
+    "achievements" to (stringResource(R.string.stats_achievements_title) to Icons.Filled.EmojiEvents),
+    "plugin_pages" to (stringResource(R.string.stats_plugin_pages_title) to Icons.Filled.Web)
 )
 
 internal fun formatCompactNumber(value: Long): String = when {

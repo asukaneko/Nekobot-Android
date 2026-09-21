@@ -14,7 +14,9 @@ import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.plugin.PluginGrants
 import com.nekobot.app.data.local.plugin.PluginManager
+import com.nekobot.app.data.local.plugin.PluginMetaStore
 import com.nekobot.app.data.remote.NetworkClient
 import com.nekobot.app.data.remote.SocketManager
 import com.nekobot.app.data.repository.NekobotRepository
@@ -58,6 +60,12 @@ object ServiceContainer {
     /** 本地 ZIP 插件管理器；插件命令会在本地斜杠命令解析阶段动态注册。 */
     lateinit var pluginManager: PluginManager
         private set
+    /** 插件权限授权集合（清单声明 ∧ 用户授权）。 */
+    lateinit var pluginGrants: PluginGrants
+        private set
+    /** 插件兼容级别记录（移植来源与差异说明）。 */
+    lateinit var pluginMetaStore: PluginMetaStore
+        private set
     internal lateinit var realtimeCredentialStore: RealtimeCredentialStore
         private set
     /** 跨会话共享、按当前本地数据库 Profile 隔离的 Agent 长期记忆。 */
@@ -91,6 +99,42 @@ object ServiceContainer {
     /** 通知点击待跳转的会话 ID（NavGraph 观察并消费） */
     private val _pendingSessionId = MutableStateFlow<String?>(null)
     val pendingSessionId: StateFlow<String?> = _pendingSessionId.asStateFlow()
+
+    /** 插件命令触发的待打开插件页面（NavGraph 观察并消费）。 */
+    private val _pendingPluginPage = MutableStateFlow<PendingPluginPage?>(null)
+    val pendingPluginPage: StateFlow<PendingPluginPage?> = _pendingPluginPage.asStateFlow()
+
+    /** 插件命令请求打开页面；由聊天命令执行链路调用，UI 层负责导航。 */
+    fun requestPluginPage(
+        pluginId: String,
+        pageId: String,
+        sessionId: String?,
+        args: String,
+        progressParentMessageId: String? = null
+    ) {
+        if (pluginId.isBlank() || pageId.isBlank()) return
+        _pendingPluginPage.value = PendingPluginPage(
+            pluginId = pluginId,
+            pageId = pageId,
+            sessionId = sessionId,
+            args = args,
+            progressParentMessageId = progressParentMessageId
+        )
+    }
+
+    fun consumePendingPluginPage() {
+        _pendingPluginPage.value = null
+    }
+
+    /** 插件命令触发的页面打开请求。 */
+    data class PendingPluginPage(
+        val pluginId: String,
+        val pageId: String,
+        val sessionId: String?,
+        val args: String,
+        /** 触发命令的用户消息 id；页面可用它更新该消息上的进度卡片。 */
+        val progressParentMessageId: String? = null
+    )
 
     /** Android 系统分享进入应用后等待选择目标会话的内容。 */
     private val _pendingShare = MutableStateFlow<IncomingShare?>(null)
@@ -138,7 +182,9 @@ object ServiceContainer {
         migrateLegacyPlotStoryProfile(app, prefs.activeDbName, db)
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
-        pluginManager = PluginManager(app)
+        pluginGrants = PluginGrants(app)
+        pluginMetaStore = PluginMetaStore(app)
+        pluginManager = PluginManager(app, pluginGrants, pluginMetaStore)
         unified.migrateLocalSecurePreferences()
         socket = SocketManager(prefs)
         ModelPricingCatalog.loadCached(app)
@@ -167,6 +213,12 @@ object ServiceContainer {
         applicationScope.launch {
             NekobotShortcutManager.refresh(app)
             NekobotWidgetProvider.refreshAll(app)
+        }
+        // 插件页面网格小组件跟随插件启停/安装/卸载刷新（StateFlow 立即发射当前值）。
+        applicationScope.launch {
+            pluginManager.installed.collect {
+                runCatching { com.nekobot.app.widget.PluginPagesWidgetProvider.refreshAll(app) }
+            }
         }
     }
 
@@ -362,6 +414,10 @@ class NekobotApp : Application(), coil.ImageLoaderFactory {
         super.onCreate()
         PDFBoxResourceLoader.init(this)
         ServiceContainer.init(this)
+        // 事件钩子：app.lifecycle（app.start），异步执行，不阻塞启动
+        ServiceContainer.applicationScope.launch {
+            runCatching { ServiceContainer.pluginManager.runLifecycleHook("app.start") }
+        }
     }
 
     override fun newImageLoader(): coil.ImageLoader {

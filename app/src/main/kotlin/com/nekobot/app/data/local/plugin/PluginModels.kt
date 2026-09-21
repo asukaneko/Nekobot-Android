@@ -13,15 +13,51 @@ data class PluginManifest(
     val description: String = "",
     val entry: String = "main.js",
     val permissions: List<String> = emptyList(),
-    val commands: List<PluginCommandManifest> = emptyList()
+    val commands: List<PluginCommandManifest> = emptyList(),
+    val pages: List<PluginPageManifest> = emptyList(),
+    /** 事件钩子：`message.beforeSend` / `app.lifecycle`，由无界面运行时执行入口脚本注册。 */
+    val hooks: List<String> = emptyList()
 )
+
+/** 插件声明的独立页面；页面 HTML 与资源位于插件目录内。 */
+data class PluginPageManifest(
+    val id: String = "",
+    val title: String = "",
+    @SerializedName("title_i18n") val titleI18n: Map<String, String> = emptyMap(),
+    val icon: String = "",
+    val order: Int = 100,
+    val entry: String = "",
+    val styles: List<String> = emptyList(),
+    val scripts: List<String> = emptyList()
+) {
+    /** 命中系统语言时返回本地化标题，否则回退 title。 */
+    fun localizedTitle(languageCode: String?): String {
+        val key = languageCode?.trim()?.lowercase()?.substringBefore('-').orEmpty()
+        return titleI18n[key]?.takeIf { it.isNotBlank() } ?: title
+    }
+}
+
+/** 插件来源与移植完整度；由 App 侧记录，不写入插件包。 */
+enum class PluginCompatLevel(val wire: String) {
+    NATIVE("native"),
+    PORTED_FULL("ported-full"),
+    PORTED_PARTIAL("ported-partial"),
+    UNSUPPORTED("unsupported");
+
+    companion object {
+        fun fromWire(raw: String?): PluginCompatLevel =
+            entries.firstOrNull { it.wire.equals(raw?.trim(), ignoreCase = true) } ?: NATIVE
+    }
+}
 
 /** 插件向 Nekobot 注册的一条斜杠命令。name 不带 /，aliases 可带 /。 */
 data class PluginCommandManifest(
     val name: String = "",
     val aliases: List<String> = emptyList(),
     val usage: String = "",
-    val description: String = ""
+    val description: String = "",
+    /** 非空时该命令不执行 JS，而是直接打开插件内对应 id 的页面。 */
+    @SerializedName("open_page") val openPage: String = ""
 )
 
 /** 提供给界面展示的已安装插件信息。 */
@@ -36,7 +72,14 @@ data class InstalledPlugin(
     val commands: List<PluginCommandManifest>,
     val enabled: Boolean,
     val installedAt: Long,
-    val isBuiltIn: Boolean = false
+    val isBuiltIn: Boolean = false,
+    val pages: List<PluginPageManifest> = emptyList(),
+    /** 声明的事件钩子；插件卡片会展示，便于用户确认行为。 */
+    val hooks: List<String> = emptyList(),
+    /** 移植完整度标记；仅 App 侧记录，见 [PluginCompatLevel]。 */
+    val compat: PluginCompatLevel = PluginCompatLevel.NATIVE,
+    /** 移植差异说明（可与用户确认的未实现项）。 */
+    val compatNote: String = ""
 )
 
 /** 供 Agent 插件工具读取的插件详情：清单原文与入口源码。 */
@@ -54,6 +97,8 @@ internal data class PluginCommandBinding(
     val aliases: List<String>,
     val usage: String,
     val description: String,
+    /** 非空时该命令直接打开插件页面，不进入 JS 运行时。 */
+    val openPage: String = "",
     /** 内置插件直接复用 APK 内的命令处理器，不进入第三方 JS 运行时。 */
     val builtInAction: LocalCommandAction? = null
 )
@@ -77,6 +122,7 @@ internal fun pluginCommandBindings(
                     aliases = aliases,
                     usage = command.usage.ifBlank { canonical },
                     description = command.description.ifBlank { "插件命令" },
+                    openPage = command.openPage,
                     builtInAction = BuiltInPlugins.actionFor(plugin.id, canonical.removePrefix("/"))
                 )
             }

@@ -127,4 +127,42 @@
     <string name="plugins_builtin_jm_desc">JM 만화 순위를 탐색하고 검색하거나 다운로드해요.</string>
     <string name="plugins_builtin_light_novel_name">라이트 노벨</string>
     <string name="plugins_builtin_light_novel_desc">Wenku8 라이트 노벨을 검색, 다운로드, 관리해요.</string>
+
+    <!-- ==================== 플러그인 페이지와 권한 ==================== -->
+    <string name="extensions_group_plugin_pages">플러그인 페이지</string>
+    <string name="plugin_page_title">플러그인 페이지</string>
+    <string name="plugin_page_not_found">페이지가 없거나 플러그인이 비활성화되어 있어요.</string>
+    <string name="plugin_page_reload">새로 고침</string>
+    <string name="plugins_pages_count">페이지: %1$d</string>
+    <string name="plugins_hooks_label">후크: %1$s</string>
+    <string name="plugin_hook_message_before_send">전송 전 메시지 재작성</string>
+    <string name="plugin_hook_app_lifecycle">앱 수명 주기</string>
+    <string name="plugins_permissions_unconfirmed">권한 미확인</string>
+    <string name="plugins_permissions_granted">권한 %1$d/%2$d 허용됨</string>
+    <string name="plugins_grant_manage">권한</string>
+    <string name="plugins_grant_title">플러그인 권한</string>
+    <string name="plugins_grant_message">필요한 권한만 허용하세요. 허용되지 않은 호출은 거부돼요.</string>
+    <string name="plugins_grant_permissions_title">이 플러그인이 요청하는 권한:</string>
+    <string name="plugin_perm_group_basic">기본</string>
+    <string name="plugin_perm_group_read">읽기</string>
+    <string name="plugin_perm_group_network">네트워크</string>
+    <string name="plugin_perm_group_write">쓰기</string>
+    <string name="plugin_perm_group_ai">AI</string>
+    <string name="plugin_perm_storage">키-값 저장소</string>
+    <string name="plugin_perm_notify">알림 표시</string>
+    <string name="plugin_perm_chat_progress">진행 카드</string>
+    <string name="plugin_perm_chat_read">채팅과 메시지 읽기</string>
+    <string name="plugin_perm_characters_read">캐릭터 카드 읽기</string>
+    <string name="plugin_perm_worldbooks_read">월드북 읽기</string>
+    <string name="plugin_perm_memory_read">에이전트 메모리 읽기</string>
+    <string name="plugin_perm_network">네트워크 접근</string>
+    <string name="plugin_perm_chat_write">메시지 보내기</string>
+    <string name="plugin_perm_memory_write">에이전트 메모리 쓰기</string>
+    <string name="plugin_perm_characters_write">캐릭터 생성/수정</string>
+    <string name="plugin_perm_ai_call">AI 호출</string>
+    <string name="plugins_compat_label">호환 수준: %1$s</string>
+    <string name="plugins_compat_native">네이티브</string>
+    <string name="plugins_compat_ported_full">전체 이식</string>
+    <string name="plugins_compat_ported_partial">부분 이식</string>
+    <string name="plugins_compat_unsupported">지원 안 함</string>
 </resources>
