@@ -1,12 +1,14 @@
 package com.nekobot.app.data.local.ai
 
 import com.nekobot.app.data.remote.ExecAuthorization
+import com.nekobot.app.data.remote.ExecConfirmationRequest
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 命令授权记忆粒度：普通命令按命令名，高危多用途命令按“命令名 + 子命令”，
@@ -102,11 +104,88 @@ class LocalExecAuthorizationFingerprintTest {
         )
         val sessionId = "session-c"
 
-        manager.requestAuthorization(sessionId, "npm install", "npm") { request ->
+        manager.requestAuthorization(sessionId, "git status", "git") { request ->
             manager.resolve(request.requestId, sessionId, ExecAuthorization.Always)
         }
 
-        assertTrue("始终允许应持久化指纹", saved[sessionId]?.contains("npm install") == true)
+        assertTrue("始终允许应持久化指纹", saved[sessionId]?.contains("git status") == true)
+    }
+
+    @Test
+    fun `不可记忆的命令覆盖解释器与安装类`() {
+        assertFalse(isMemorizableCommand("python3 train.py"))
+        assertFalse(isMemorizableCommand("""sh -c 'echo hi'"""))
+        assertFalse(isMemorizableCommand("npm install --save lodash"))
+        assertFalse(isMemorizableCommand("pip install requests"))
+        assertFalse(isMemorizableCommand("git status && apk add curl"))
+        assertTrue(isMemorizableCommand("git status"))
+        assertTrue(isMemorizableCommand("npm test"))
+        assertTrue(isMemorizableCommand("npm run build"))
+    }
+
+    @Test
+    fun `解释器命令不能始终允许但YOLO可以放行`() = runBlocking {
+        val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 5_000L)
+        val sessionId = "session-interpreter"
+
+        val captured = AtomicReference<ExecConfirmationRequest>()
+        manager.requestAuthorization(sessionId, "python3 train.py", "python3") { request ->
+            captured.set(request)
+            manager.resolve(request.requestId, sessionId, ExecAuthorization.Always)
+        }
+
+        assertFalse("解释器命令不应提供「始终允许」", captured.get().memorizable)
+        assertTrue("解释器命令不应写入授权记忆", manager.allowedKeys(sessionId).isEmpty())
+
+        manager.enableYolo(sessionId)
+        var yoloPopup = false
+        val yolo = manager.requestAuthorization(sessionId, "python3 train.py", "python3") { yoloPopup = true }
+        assertEquals(ExecAuthorization.Once, yolo)
+        assertFalse("YOLO 应放行解释器命令", yoloPopup)
+    }
+
+    @Test
+    fun `安装类命令不能始终允许`() = runBlocking {
+        val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 5_000L)
+        val sessionId = "session-install"
+
+        val captured = AtomicReference<ExecConfirmationRequest>()
+        manager.requestAuthorization(sessionId, "npm install lodash", "npm") { request ->
+            captured.set(request)
+            manager.resolve(request.requestId, sessionId, ExecAuthorization.Always)
+        }
+
+        assertFalse("安装类命令不应提供「始终允许」", captured.get().memorizable)
+        assertTrue("安装类命令不应写入授权记忆", manager.allowedKeys(sessionId).isEmpty())
+
+        val testRequest = AtomicReference<ExecConfirmationRequest>()
+        manager.requestAuthorization(sessionId, "npm test", "npm") { request ->
+            testRequest.set(request)
+            manager.resolve(request.requestId, sessionId, ExecAuthorization.Always)
+        }
+        assertTrue("npm test 仍可「始终允许」", testRequest.get().memorizable)
+        assertTrue("npm test 应写入授权记忆", manager.allowedKeys(sessionId).contains("npm test"))
+    }
+
+    @Test
+    fun `读取界面类操作连YOLO也不能跳过`() = runBlocking {
+        val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 5_000L)
+        val sessionId = "session-ui"
+        manager.enableYolo(sessionId)
+
+        var popup = false
+        val decision = manager.requestAuthorization(
+            sessionId = sessionId,
+            command = "android_ui_tree",
+            mainCommand = "android_ui_tree",
+            memorizable = false
+        ) { request ->
+            popup = true
+            manager.resolve(request.requestId, sessionId, ExecAuthorization.Once)
+        }
+
+        assertTrue("界面读取即使开启 YOLO 也必须确认", popup)
+        assertEquals(ExecAuthorization.Once, decision)
     }
 
     @Test

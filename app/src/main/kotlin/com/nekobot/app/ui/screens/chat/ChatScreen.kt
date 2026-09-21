@@ -1675,7 +1675,7 @@ fun ChatScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            // 解释器命令、读取界面、截图等操作不提供「始终允许」：一次授权等于无限期放行。
+            // 解释器/安装类命令、读取界面、截图等操作不提供「始终允许」：一次授权等于无限期放行。
             if (request.memorizable) {
                 OutlinedButton(
                     onClick = {

@@ -15,7 +15,7 @@ internal data class LocalCommandPolicy(
 )
 
 private val localSafeCommands = setOf(
-    "pwd", "ls", "cat", "head", "tail", "wc", "echo", "date", "whoami", "id", "uname"
+    "pwd", "ls", "cd", "cat", "head", "tail", "wc", "echo", "date", "whoami", "id", "uname"
 )
 
 private val localBlockedCommandPatterns = listOf(
@@ -152,7 +152,7 @@ internal fun extractLocalAuthorizationCommands(
  *
  * `sh -c "任意脚本"` 的指纹就是 `sh`（`-c` 被当选项跳过、脚本文本因含 `/` 被跳过），
  * `python -c`、`node -e`、`busybox sh` 同理。按命令名记住这类授权等于永久放行任意代码，
- * 所以它们只接受「仅本次」。
+ * 所以它们只接受「仅本次」；但 YOLO 是用户在本会话的显式选择，仍可放行。
  */
 private val localInterpreterCommands = setOf(
     "sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "csh", "tcsh",
@@ -161,21 +161,48 @@ private val localInterpreterCommands = setOf(
     "perl", "ruby", "php", "lua"
 )
 
+/** 会往沙盒里装入新可执行内容的包管理器。 */
+private val localPackageManagerCommands = setOf(
+    "npm", "pnpm", "yarn", "bun", "pip", "pip3", "pipx", "poetry", "uv", "conda", "mamba",
+    "apt", "apt-get", "dpkg", "apk", "pkg", "dnf", "yum", "zypper", "pacman", "opkg", "brew",
+    "cargo", "go", "gem", "composer", "bundle"
+)
+
+/** 包管理器的「装东西」子命令：会引入新的可执行内容。 */
+private val localInstallSubcommands = setOf(
+    "install", "i", "ci", "add", "update", "upgrade", "get", "require", "link", "fetch"
+)
+
 /**
  * 该命令是否允许被「始终允许」记忆。
  *
  * 任意一个 shell 分段以解释器/通用启动器开头就返回 false：`git status && sh -c ...`
- * 这种组合里只要有解释器，整条命令都不应被记住。
+ * 这种组合里只要有解释器，整条命令都不应被记住。安装类命令（`npm install`、`pip install`、
+ * `apk add`）同理：指纹只能记到「命令名 + 子命令」，一次「始终允许」等于放行后续任意安装。
  */
 internal fun isMemorizableCommand(command: String): Boolean {
     val segments = extractLocalSegments(command).map(String::trim).filter(String::isNotBlank)
     if (segments.isEmpty()) return false
     return segments.none { segment ->
-        val main = localCommandTokens(segment).firstOrNull()
-            ?.let(::normalizeLocalCommandName)
-            .orEmpty()
-        main in localInterpreterCommands
+        isInterpreterSegment(segment) || isInstallingSegment(segment)
     }
+}
+
+private fun isInterpreterSegment(segment: String): Boolean =
+    localCommandTokens(segment).firstOrNull()
+        ?.let(::normalizeLocalCommandName)
+        .orEmpty() in localInterpreterCommands
+
+/** 命令名是包管理器，且前两个非选项参数里出现安装类子命令。 */
+private fun isInstallingSegment(segment: String): Boolean {
+    val tokens = localCommandTokens(segment)
+    val main = tokens.firstOrNull()?.let(::normalizeLocalCommandName).orEmpty()
+    if (main !in localPackageManagerCommands) return false
+    return tokens.drop(1)
+        .map { it.trim('"', '\'') }
+        .filter { token -> token.isNotBlank() && !token.startsWith("-") && !token.contains('=') }
+        .take(2)
+        .any { it.lowercase() in localInstallSubcommands }
 }
 
 /**
@@ -309,8 +336,10 @@ internal fun toolAuthorizationFingerprint(toolName: String, argument: String): S
 /**
  * 本地 Agent 命令授权状态。
  *
- * `/yolo` 只在当前应用进程与当前会话内生效；“始终允许”按**授权指纹**记忆，
- * 并可按会话持久化（重启后仍有效），见 [extractLocalAuthorizationFingerprints]。
+ * `/yolo` 只在当前应用进程与当前会话内生效，可跳过命令类请求的授权（解释器、安装类命令
+ * 也在内，它们只是不能「始终允许」）；读取界面树、截图这类操作不可 YOLO 跳过。
+ * “始终允许”按**授权指纹**记忆，并可按会话持久化（重启后仍有效），
+ * 见 [extractLocalAuthorizationFingerprints]。
  */
 class LocalExecAuthorizationManager(
     private val authorizationTimeoutMs: Long = 10 * 60 * 1000L,
@@ -363,8 +392,11 @@ class LocalExecAuthorizationManager(
         mainCommand = mainCommand,
         authorizationKeys = extractLocalAuthorizationFingerprints(command, mainCommand),
         message = "本地 Agent 请求执行命令",
-        // 解释器类命令强制降级为「仅本次」，调用方只能让它更严格，不能更宽松。
+        // 解释器/安装类命令强制降级为「仅本次」，调用方只能让它更严格，不能更宽松。
         memorizable = memorizable && isMemorizableCommand(command),
+        // 解释器、安装类命令只是不能「始终允许」；YOLO 是用户在本会话的显式选择，仍按 YOLO 放行。
+        // 只有调用方明确要求逐次确认的工具（读取界面树、截图）才连 YOLO 也不能跳过。
+        yoloExempt = !memorizable,
         onRequest = onRequest
     )
 
@@ -403,11 +435,14 @@ class LocalExecAuthorizationManager(
         authorizationKeys: Set<String>,
         message: String,
         onRequest: (ExecConfirmationRequest) -> Unit,
-        memorizable: Boolean = true
+        memorizable: Boolean = true,
+        /** true 表示连 YOLO 也不能跳过（读取界面树、截图这类一次授权等于无限期放行的操作）。 */
+        yoloExempt: Boolean = false
     ): ExecAuthorization {
-        // 不可记忆的请求（读取界面树、截图）连 YOLO 也不能跳过：一次提示注入就能
-        // 通过它们悄悄取走整个界面内容，必须每次由用户显式确认。
-        if (memorizable && isYoloEnabled(sessionId)) return ExecAuthorization.Once
+        // 不可记忆且不可 YOLO 的请求（读取界面树、截图）必须每次由用户显式确认：一次提示
+        // 注入就能通过它们悄悄取走整个界面内容。命令类请求（解释器、安装类只是不可记忆）
+        // 由用户用 YOLO 显式选择放行。
+        if (!yoloExempt && isYoloEnabled(sessionId)) return ExecAuthorization.Once
         if (memorizable) {
             val allowedKeys = allowedKeySet(sessionId)
             if (authorizationKeys.isNotEmpty() && authorizationKeys.all { it in allowedKeys }) {
