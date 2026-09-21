@@ -1,11 +1,16 @@
 package com.nekobot.app.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -174,62 +179,72 @@ fun GlobalAgentMemoryScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                stringResource(R.string.global_memory_intro),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedTextField(
-                value = uiState.draft,
-                onValueChange = viewModel::updateDraft,
+            // 键盘弹出时不再压缩输入框：输入框保持固定高度，页面整体可滚动，
+            // 最近保存、提示与按钮顺次滚到键盘下方。
+            val fieldHeight = (maxHeight - 190.dp).coerceAtLeast(200.dp)
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                enabled = !uiState.loading && !uiState.saving,
-                label = { Text(stringResource(R.string.global_memory_label)) },
-                placeholder = { Text(stringResource(R.string.global_memory_placeholder)) },
-                supportingText = {
-                    Text("${uiState.draft.length} / ${GlobalAgentMemoryStore.MAX_CONTENT_CHARS}")
-                }
-            )
-            formatGlobalMemorySavedAt(uiState.updatedAt)?.let { savedAt ->
+                    .fillMaxSize()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
-                    stringResource(R.string.global_memory_last_saved, savedAt),
-                    style = MaterialTheme.typography.bodySmall,
+                    stringResource(R.string.global_memory_intro),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-            uiState.message?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (uiState.messageIsError) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary
+                OutlinedTextField(
+                    value = uiState.draft,
+                    onValueChange = viewModel::updateDraft,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(fieldHeight),
+                    enabled = !uiState.loading && !uiState.saving,
+                    label = { Text(stringResource(R.string.global_memory_label)) },
+                    placeholder = { Text(stringResource(R.string.global_memory_placeholder)) },
+                    supportingText = {
+                        Text("${uiState.draft.length} / ${GlobalAgentMemoryStore.MAX_CONTENT_CHARS}")
+                    }
                 )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    onClick = viewModel::reload,
-                    enabled = !uiState.loading && !uiState.saving
-                ) {
-                    Text(stringResource(R.string.global_memory_discard))
+                formatGlobalMemorySavedAt(uiState.updatedAt)?.let { savedAt ->
+                    Text(
+                        stringResource(R.string.global_memory_last_saved, savedAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Button(
-                    onClick = viewModel::save,
-                    modifier = Modifier.weight(1f),
-                    enabled = uiState.hasUnsavedChanges && !uiState.loading && !uiState.saving
+                uiState.message?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (uiState.messageIsError) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(if (uiState.saving) stringResource(R.string.global_memory_saving) else stringResource(R.string.common_save))
+                    TextButton(
+                        onClick = viewModel::reload,
+                        enabled = !uiState.loading && !uiState.saving
+                    ) {
+                        Text(stringResource(R.string.global_memory_discard))
+                    }
+                    Button(
+                        onClick = viewModel::save,
+                        modifier = Modifier.weight(1f),
+                        enabled = uiState.hasUnsavedChanges && !uiState.loading && !uiState.saving
+                    ) {
+                        Text(if (uiState.saving) stringResource(R.string.global_memory_saving) else stringResource(R.string.common_save))
+                    }
                 }
             }
         }
