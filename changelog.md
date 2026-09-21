@@ -2,6 +2,30 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.7.6-rc1 - 2026-09-21
+
+### 新增
+
+- 插件页面（pages[]）：插件可在应用内提供自己的页面，运行在虚拟源 `https://appassets.androidplatform.net/plugin/<id>/`；注入主题 CSS 变量与 `window.__NEKO_THEME__`（跟随浅色/深色就地换肤）；注入 `host.*` 桥与 `window.__NEKO_LAUNCH__`（会话上下文 / 命令参数），单次调用 10s 超时、并发 4、响应 256KB；命令声明 `open_page` 后输入命令直接打开页面（不执行 JS、不发 AI），离页销毁 WebView、崩溃转错误卡片。
+- 插件权限模型：白名单 12 项（storage / notify / chat.progress / chat.read / characters.read / worldbooks.read / memory.read / network / chat.write / memory.write / characters.write / ai.call），按「清单声明 ∧ 用户授权」双条件生效，危险权限默认不授予；安装与插件卡片提供逐项授权面板，可随时撤销。
+- 插件宿主 API：只读 chat.current/sessions/messages、characters.*、worldbooks.*、memory.read、http.get、storage.*、system.info、log、ui.toast/close、progress.update；写入 chat.write（appendMessage / sendMessage / createSession / switchSession）、memory.write、characters.write；ai.call 走聊天故障转移队列（不可自选模型，限流 10 次/分钟、20 万 token/小时）；ui.render 内置模板渲染；事件钩子 message.beforeSend 与 app.lifecycle。
+- 插件进度卡片 `chat.progress`：插件可向聊天页实时上报进度，支持 content / progress / steps / complete / force；steps 转思考步骤并限制长度，避免不可信脚本撑爆 UI。
+- 插件移植辅助：`plugin_use` 新增 inspect（安全解压 + 生态识别 + 权限建议）与 check（页面 / 清单 / API 静态自检）；新增 compat 兼容级别记录并在插件卡片展示。
+- 插件界面入口：扩展功能新增插件页面区块（页面数、入口、权限状态、钩子、兼容级别）；负一屏新增「插件页面」网格组件（默认隐藏）；新增桌面小组件「插件页面」。
+- Agent 会话支持「继承完整角色能力」：绑定角色的会话可加载角色卡 / 记忆 / 世界书与关系状态，注入现实时间连续性与昼夜节律，运行主动聊天与角色独处生活模拟，可选使用角色卡开场白（local_sessions 新增两列，DB 43 → 44）。
+- 聊天进度卡片与「思考中」加载气泡融合为一张卡片，消除两个并列加载态的观感。
+- 工具调用参数改为「参数名 → 参数值」列表展示，短值同行、长值堆叠。
+- Tokens 页面新增「本周」时间范围与 CSV 导出（含 BOM，Android 10+ 走 MediaStore），排行榜改为按当前时间范围在本地聚合。
+
+### 修复
+
+- 修复全局记忆页面键盘弹出时输入框被压缩的问题：输入框改固定高度，页面整体可滚动。
+- 加固状态历程页面的 JSON 解析与索引越界防护：缓存损坏不再白屏、切换会话不再越界崩溃、长对话时间线重组不再反复深比较卡顿。
+
+### 优化
+
+- `workspace_send_file` 工具描述由「发送文件」改为「交付文件」，中英日韩同步。
+
 ## v0.7.5 - 2026-09-19
 
 ### 新增
