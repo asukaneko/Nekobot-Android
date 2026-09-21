@@ -59,6 +59,8 @@
     <string name="tokens_stat_estimated_cost">估算费用</string>
     <string name="tokens_stat_active_sessions">活跃会话</string>
     <string name="tokens_stat_avg_price">平均价格</string>
+    <string name="tokens_hero_cost">价格：%1$s</string>
+    <string name="tokens_price_unit">$%1$s</string>
     <string name="tokens_session_prefix">会话 %1$s</string>
     <string name="tokens_unknown_model">未知模型</string>
     <string name="tokens_model_id">模型ID：%1$s</string>

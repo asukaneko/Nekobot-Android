@@ -474,10 +474,23 @@ class LocalAiClient(
             var usage = emptyMap<String, Int>()
             var terminal: LocalModelResponse? = null
             var finishReason = ""
+            // 思考正文与正文分开放行：
+            // - 思考内容不参与「短篇拒答占位」的故障转移判定，到达即转发给 UI（思考卡片实时增长）；
+            // - 正文仍先缓冲，超过阈值（或流正常结束）才放行，故障转移判定保持原样。
+            var thinkingReleased = false
             var callbacksReleased = false
+            fun releaseThinkingCallbacks() {
+                if (thinkingReleased || streamCallbacks == null) return
+                thinkingReleased = true
+                streamCallbacks.onStart()
+                thinking.takeIf { it.isNotEmpty() }?.let {
+                    streamCallbacks.onThinkingChunk(it.toString())
+                }
+            }
             fun releaseBufferedCallbacks() {
                 if (callbacksReleased || streamCallbacks == null) return
                 callbacksReleased = true
+                thinkingReleased = true
                 streamCallbacks.onStart()
                 thinking.takeIf { it.isNotEmpty() }?.let {
                     streamCallbacks.onThinkingChunk(it.toString())
@@ -540,6 +553,9 @@ class LocalAiClient(
                     protocol.parseStreamToolCallDeltas(data).forEach(toolCallAccumulator::add)
                     protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                         thinking.append(chunk)
+                        // 思考正文到达即放行：Agent 工具循环里正文常常很短甚至为空，
+                        // 若等正文阈值放行（旧实现），思考只能等流结束才整段出现。
+                        releaseThinkingCallbacks()
                         if (callbacksReleased) streamCallbacks?.onThinkingChunk?.invoke(chunk)
                     }
                     protocol.parseStreamThinkingSignature(data)?.takeIf(String::isNotEmpty)?.let {
@@ -1057,6 +1073,8 @@ class LocalAiClient(
             var failed = false
             var httpCode = 0
             var contentReleased = false
+            // 思考正文已在流式期间逐块转发（不参与拒答占位判定），结束时不再整段补发
+            var thinkingReleased = false
             var streamErrorMessage: String? = null
 
             // 直接复用 chatStream 的内部逻辑（避免嵌套 Flow）
@@ -1157,7 +1175,10 @@ class LocalAiClient(
                         }
                         protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
                             fullThinking.append(it)
-                            if (contentReleased) emit(RealtimeEvent.ReasoningChunk(it))
+                            // 思考正文到达即转发，不再等正文阈值放行：
+                            // 思考内容不参与「短篇拒答占位」判定，实时展示不影响故障转移。
+                            thinkingReleased = true
+                            emit(RealtimeEvent.ReasoningChunk(it))
                         }
                         protocol.parseStreamFinalResponse(data)?.let { parsed ->
                             terminal = mergeStreamTerminalResponse(terminal, parsed)
@@ -1213,8 +1234,11 @@ class LocalAiClient(
                 // 成功完成
                 failover.recordSuccess(model.id)
                 if (!contentReleased) {
-                    fullThinking.takeIf { it.isNotEmpty() }?.let {
-                        emit(RealtimeEvent.ReasoningChunk(it.toString()))
+                    // 思考正文已在流式期间逐块转发，这里只补发尚未转发的部分
+                    if (!thinkingReleased) {
+                        fullThinking.takeIf { it.isNotEmpty() }?.let {
+                            emit(RealtimeEvent.ReasoningChunk(it.toString()))
+                        }
                     }
                     emit(RealtimeEvent.StreamChunk(fullContent.toString()))
                 }

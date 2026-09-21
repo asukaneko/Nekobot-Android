@@ -564,12 +564,15 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                             }
                         } else when (section) {
                             SECTION_OVERVIEW -> stats?.let { currentStats ->
+                                // 当前范围估算总价：逐条记录成本汇总（服务端缺省时按模型定价实算）
+                                val rangeTotalPrice = resolveTokenRangeTotalPrice(records, currentStats)
                                 item(key = "usage_hero", contentType = "summary") {
                                     TokenUsageHero(
                                         stats = currentStats,
                                         dateRange = dateRange,
                                         startDate = startDate,
-                                        endDate = endDate
+                                        endDate = endDate,
+                                        totalPrice = rangeTotalPrice
                                     )
                                 }
                                 item(key = "key_metrics", contentType = "summary") {
@@ -950,7 +953,9 @@ private fun TokenUsageHero(
     stats: TokenStats,
     dateRange: String,
     startDate: String?,
-    endDate: String?
+    endDate: String?,
+    // 当前范围的估算总价（USD，由记录逐条成本汇总，取不到时由 stats 兜底）
+    totalPrice: Double?
 ) {
     val input = stats.todayInput ?: 0L
     val output = stats.todayOutput ?: 0L
@@ -1014,7 +1019,10 @@ private fun TokenUsageHero(
                 maxLines = 1
             )
             Text(
-                stringResource(R.string.tokens_stat_token),
+                // 大数字下方的说明行改为该范围的估算价格（记录成本汇总；取不到时回退为 Token 文案）
+                text = totalPrice
+                    ?.let { stringResource(R.string.tokens_hero_cost, formatUsdCost(it)) }
+                    ?: stringResource(R.string.tokens_stat_token),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.76f)
             )
@@ -1026,25 +1034,6 @@ private fun TokenUsageHero(
                     color = Color.White.copy(alpha = 0.72f)
                 )
             }
-            stats.estimatedCost
-                ?.takeIf { it.isNotBlank() && it != "—" }
-                ?.let { cost ->
-                    Spacer(Modifier.height(8.dp))
-                    Surface(
-                        modifier = Modifier.widthIn(max = 220.dp),
-                        shape = RoundedCornerShape(50),
-                        color = Color.White.copy(alpha = 0.16f)
-                    ) {
-                        Text(
-                            "${stringResource(R.string.tokens_stat_estimated_cost)} $cost",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
             Spacer(Modifier.height(17.dp))
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -1142,6 +1131,10 @@ private fun TokenKeyMetrics(stats: TokenStats, records: List<TokenRecordUi>) {
                 val messageCount = stats.messageCount ?: 0L
                 if (totalCost != null && messageCount > 0) formatUsdCost(totalCost / messageCount) else "—"
             }
+        }
+        .let { value ->
+            // 平均价格标注货币单位；未取到价格时保持占位符
+            if (value == "—") value else stringResource(R.string.tokens_price_unit, value)
         }
     val items = listOf(
         TokenStatItem(
@@ -1712,6 +1705,23 @@ private fun formatUsdCost(cost: Double): String = when {
     cost >= 0.01 -> String.format(Locale.US, "%.4f", cost)
     cost >= 0.000001 -> String.format(Locale.US, "%.6f", cost)
     else -> String.format(Locale.US, "%.8f", cost)
+}
+
+/**
+ * 当前时间范围的估算总价（USD）。
+ *
+ * 逐条记录的成本优先用服务端下发值，缺省时用模型定价表按 token 实算（见 [parseTokenRecord]）；
+ * 记录为空但 stats 带总费用时回退到 stats 值；两者都没有时返回 null（UI 回退为 Token 文案）。
+ */
+private fun resolveTokenRangeTotalPrice(
+    records: List<TokenRecordUi>,
+    stats: TokenStats
+): Double? {
+    val recordCosts = records.mapNotNull { record ->
+        record.cost?.toDoubleOrNull() ?: record.estimatedCostUsd
+    }
+    if (recordCosts.isNotEmpty()) return recordCosts.sum()
+    return stats.estimatedCost?.toDoubleOrNull()
 }
 
 /** 精简时间戳到 MM-dd HH:mm */

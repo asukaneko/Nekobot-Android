@@ -59,6 +59,8 @@
     <string name="tokens_stat_estimated_cost">예상 비용</string>
     <string name="tokens_stat_active_sessions">활성 대화</string>
     <string name="tokens_stat_avg_price">평균 가격</string>
+    <string name="tokens_hero_cost">가격: %1$s</string>
+    <string name="tokens_price_unit">$%1$s</string>
     <string name="tokens_session_prefix">대화 %1$s</string>
     <string name="tokens_unknown_model">알 수 없는 모델</string>
     <string name="tokens_model_id">모델 ID: %1$s</string>
