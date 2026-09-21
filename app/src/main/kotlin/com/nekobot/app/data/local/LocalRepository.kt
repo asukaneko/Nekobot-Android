@@ -70,6 +70,8 @@ import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.boundAgentToolHistoryJson
 import com.nekobot.app.data.local.ai.decodeAgentToolMessageRow
 import com.nekobot.app.data.local.ai.decodeToolCallHistory
+import com.nekobot.app.data.local.ai.toolCallRecordsFromHistory
+import com.nekobot.app.data.local.ai.LocalToolCallRecord
 import com.nekobot.app.data.local.ai.dropIncompleteAgentTail
 import com.nekobot.app.data.local.ai.estimateLocalTextTokens
 import com.nekobot.app.data.local.ai.estimateLocalMessagesTokens
@@ -9201,6 +9203,45 @@ ${AiOutputLanguage.directive()}
         // 中断可能停在一批工具执行中间，末尾未完成的块不会进入下一次请求。
         return dropIncompleteAgentTail(decoded)
     }
+
+    /**
+     * 会话工具调用记录：已完成轮次（助手消息折叠保存的 tool_call_history）与
+     * 进行中/中断轮次（逐条落库轨迹）合并后的时序列表。
+     *
+     * 与上下文占比同一口径：存在逐条落库轨迹时，它覆盖最后一条助手消息上的
+     * 折叠历史，避免同一批调用出现两份记录。
+     */
+    suspend fun sessionToolCallRecords(sessionId: String): List<LocalToolCallRecord> =
+        withContext(Dispatchers.IO) {
+            val durable = loadDurableToolHistory(sessionId)
+            val messages = messageDao.listBySession(sessionId).filterNot { it.isLocalCommandMessage() }
+            val supersededAnchorId = if (durable.isEmpty()) {
+                null
+            } else {
+                messages.lastOrNull { it.role.equals("assistant", ignoreCase = true) }?.id
+            }
+            val records = mutableListOf<LocalToolCallRecord>()
+            messages.forEach { message ->
+                if (message.id == supersededAnchorId) return@forEach
+                val history = decodeToolCallHistory(message.toolCallHistory)
+                if (history.isEmpty()) return@forEach
+                records += toolCallRecordsFromHistory(
+                    history = history,
+                    messageId = message.id,
+                    createdAt = message.createdAt,
+                    source = LocalToolCallRecord.SOURCE_HISTORY
+                )
+            }
+            if (durable.isNotEmpty()) {
+                records += toolCallRecordsFromHistory(
+                    history = durable,
+                    messageId = null,
+                    createdAt = null,
+                    source = LocalToolCallRecord.SOURCE_TRAJECTORY
+                )
+            }
+            records
+        }
 
     /** 组装占比分析用的消息行：窗口内消息 + 各自折叠的工具历史。 */
     private suspend fun contextUsageMessageRows(

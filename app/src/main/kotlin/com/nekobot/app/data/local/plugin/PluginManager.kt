@@ -1043,6 +1043,10 @@ class PluginManager(
               var api = {
                 getSession: function() { return __api("get_session", {}); },
                 getMessages: function(limit) { return __api("get_messages", { limit: limit }); },
+                contextUsage: function(options) { return __api("chat.context", options || {}); },
+                sessionConfig: function(options) { return __api("chat.session.config", options || {}); },
+                promptStack: function(options) { return __api("chat.prompt.stack", options || {}); },
+                toolCalls: function(options) { return __api("chat.tool.calls", options || {}); },
                 notify: function(message) { return __api("notify", { message: message }); },
                 httpGet: function(url) { return __api("http_get", { url: url }); },
                 aiComplete: function(options) { return __api("ai_complete", options || {}); },

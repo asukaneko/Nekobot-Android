@@ -169,6 +169,10 @@ class PluginAssetServer(
                 },
                 chat: {
                   current: function () { return callHost("chat.current", {}); },
+                  context: function (options) { return callHost("chat.context", options || {}); },
+                  sessionConfig: function (options) { return callHost("chat.session.config", options || {}); },
+                  promptStack: function (options) { return callHost("chat.prompt.stack", options || {}); },
+                  toolCalls: function (options) { return callHost("chat.tool.calls", options || {}); },
                   send: function (options) { return callHost("chat.send", options || {}); },
                   sessions: {
                     list: function () { return callHost("chat.sessions.list", {}); },

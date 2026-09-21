@@ -12,6 +12,9 @@ import com.google.gson.JsonParser
 import com.nekobot.app.data.local.LocalCommandProgressReporter
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.ai.estimateLocalTextTokens
+import com.nekobot.app.data.model.AgentTodo
+import com.nekobot.app.data.model.AiConfig
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Message
@@ -24,6 +27,7 @@ import okhttp3.Request
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.InetAddress
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /** 插件 API 调用失败；[code] 供插件 JS 分支处理（如 permission_denied）。 */
@@ -202,6 +206,10 @@ internal class PluginApiDispatcher(
                 val session = repository(context).getSession(sessionId) ?: return JsonNull.INSTANCE
                 if (context.isPage) sessionSummary(session) else session
             }
+            "chat.context" -> sessionContextUsage(context, payload)
+            "chat.session.config" -> sessionConfig(context, payload)
+            "chat.prompt.stack" -> sessionPromptStack(context, payload)
+            "chat.tool.calls" -> sessionToolCalls(context, payload)
             "chat.sessions.list" -> {
                 val sessions = repository(context).listSessions().take(MAX_SESSION_LIST)
                 sessions.map { if (context.isPage) sessionSummary(it) else it }
@@ -512,7 +520,8 @@ internal class PluginApiDispatcher(
         "ai.complete" -> "ai.call"
         "storage.get", "storage.set", "storage.remove", "storage.list" -> "storage"
         "ui.toast" -> "notify"
-        "chat.current", "chat.sessions.list", "chat.sessions.get", "chat.messages.list" -> "chat.read"
+        "chat.current", "chat.sessions.list", "chat.sessions.get", "chat.messages.list",
+        "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls" -> "chat.read"
         "chat.messages.append", "chat.send",
         "chat.sessions.create", "chat.sessions.switch" -> "chat.write"
         "characters.list", "characters.get" -> "characters.read"
@@ -551,10 +560,273 @@ internal class PluginApiDispatcher(
         "id" to message.id,
         "role" to message.role,
         "content" to message.content?.take(MAX_MESSAGE_CONTENT_CHARS),
+        "reasoningContent" to message.reasoningContent?.take(MAX_MESSAGE_CONTENT_CHARS),
+        "reasoningChars" to message.reasoningContent.orEmpty().length,
         "sender" to message.sender,
         "type" to message.type,
         "timestamp" to message.timestamp,
-        "createdAt" to message.createdAt
+        "createdAt" to message.createdAt,
+        "model" to message.model,
+        "inputTokens" to message.inputTokens,
+        "outputTokens" to message.outputTokens,
+        "source" to message.source
+    )
+
+    // ---- 会话洞察：上下文占比 / 会话配置 / 提示词注入栈 / 工具调用记录 ----
+
+    /** 解析目标会话：显式 sessionId 优先，否则使用调用上下文中的当前会话。 */
+    private fun resolveSessionId(context: CallContext, payload: JsonObject): String {
+        val id = payload.string("sessionId").ifBlank { context.sessionId.orEmpty() }
+        if (id.isBlank()) {
+            throw PluginApiException("缺少会话 id（可在调用时传入 sessionId）", "invalid_argument")
+        }
+        return id
+    }
+
+    private suspend fun requireSession(repository: LocalRepository, sessionId: String): Session =
+        repository.getSession(sessionId)
+            ?: throw PluginApiException("会话不存在：$sessionId", "not_found")
+
+    /**
+     * 会话上下文占比：用量 / 容量 / 百分比 + 各类型明细。
+     *
+     * 口径与聊天页圆环、上下文分析页一致（[LocalRepository.agentLiveContextUsage]）：
+     * 系统提示词、工具定义、压缩摘要、历史消息与工具轨迹；`parts[].percent` 为
+     * 占合计用量的比例，`usagePercent` 为占模型上下文窗口的比例。
+     */
+    private suspend fun sessionContextUsage(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val sessionId = resolveSessionId(context, payload)
+        val repository = repository(context)
+        requireSession(repository, sessionId)
+        val live = repository.agentLiveContextUsage(sessionId)
+        val usedTokens = live.totalTokens
+        val maxTokens = activeContextLength(repository)
+        return mapOf(
+            "sessionId" to sessionId,
+            "usedTokens" to usedTokens,
+            "maxTokens" to maxTokens,
+            "usagePercent" to if (maxTokens != null && maxTokens > 0) {
+                roundPercent(usedTokens.toDouble() * 100.0 / maxTokens)
+            } else {
+                null
+            },
+            "parts" to live.breakdown.parts.map { part ->
+                mapOf(
+                    "part" to part.part.name.lowercase(Locale.ROOT),
+                    "tokens" to part.tokens,
+                    "count" to part.itemCount,
+                    "percent" to if (usedTokens > 0) {
+                        roundPercent(part.tokens.toDouble() * 100.0 / usedTokens)
+                    } else {
+                        0.0
+                    }
+                )
+            },
+            "run" to mapOf(
+                "active" to live.hasActiveRun,
+                "stage" to live.stage,
+                "lastTool" to live.lastToolName,
+                "completedToolCalls" to live.completedToolCalls
+            )
+        )
+    }
+
+    /**
+     * 会话配置与功能启用情况：模式与角色绑定、剧情/继承角色/主动聊天/TTS 等开关、
+     * 提示词相关配置（自定义提示词、被禁用的注入项）与 Agent 任务状态。
+     */
+    private suspend fun sessionConfig(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val sessionId = resolveSessionId(context, payload)
+        val repository = repository(context)
+        val session = requireSession(repository, sessionId)
+        val todos = AgentTodo.fromJsonList(session.agentTodos)
+        val customPrompts = session.customPrompts?.takeIf { it.isJsonArray }?.asJsonArray
+        return mapOf(
+            "sessionId" to session.id,
+            "name" to session.displayName,
+            "type" to session.type,
+            "sessionMode" to session.sessionMode,
+            "characterId" to session.characterId,
+            "characterIds" to session.characterIds,
+            "characterName" to session.characterName,
+            "groupId" to session.groupId,
+            "features" to mapOf(
+                "plotMode" to (session.plotMode == true),
+                "plotRealTimeSync" to (session.plotRealTimeSync == true),
+                "inheritCharacter" to (session.inheritCharacter == true),
+                "inheritCharacterGreeting" to (session.inheritCharacterGreeting == true),
+                "proactiveChat" to jsonBooleanField(session.proactiveChat, "enabled"),
+                "tts" to jsonBooleanField(session.ttsConfig, "enabled"),
+                "favorite" to (session.favorite == true),
+                "pinned" to (session.pinned == true),
+                "archived" to (session.archived == true),
+                "publicShare" to (session.isPublic == true)
+            ),
+            "intervals" to mapOf(
+                "autoState" to session.autoStateInterval,
+                "autoName" to session.autoNameInterval
+            ),
+            "prompt" to mapOf(
+                "hasSystemPrompt" to !session.systemPrompt.isNullOrBlank(),
+                "systemPromptChars" to session.systemPrompt.orEmpty().length,
+                "composedSystemPromptChars" to session.composedSystemPrompt.orEmpty().length,
+                "customPromptCount" to (customPrompts?.size() ?: 0),
+                "customPrompts" to customPrompts?.mapNotNull { element ->
+                    (element as? JsonObject)?.let { prompt ->
+                        mapOf(
+                            "order" to jsonInt(prompt.get("order"), 0),
+                            "title" to prompt.string("title").take(MAX_PROMPT_TITLE_CHARS),
+                            "chars" to prompt.string("content").length
+                        )
+                    }
+                }.orEmpty(),
+                "disabledPromptKeys" to session.disabledPromptKeys.orEmpty()
+            ),
+            "plot" to mapOf(
+                "choiceStyle" to session.plotChoiceStyle,
+                "outlineChars" to session.plotOutline.orEmpty().length
+            ),
+            "userPersonaChars" to session.userPersona.orEmpty().length,
+            "agent" to mapOf(
+                "goal" to session.agentGoal?.take(MAX_AGENT_GOAL_CHARS),
+                "hasSpec" to !session.agentSpec.isNullOrBlank(),
+                "specChars" to session.agentSpec.orEmpty().length,
+                "todos" to todos.take(MAX_AGENT_TODOS).map { todo ->
+                    mapOf(
+                        "content" to todo.content.take(MAX_AGENT_TODO_CHARS),
+                        "status" to todo.status,
+                        "priority" to todo.priority
+                    )
+                }
+            )
+        )
+    }
+
+    /**
+     * 会话的提示词注入栈（最近一轮的实际内容）。
+     *
+     * 每项含 key / 优先级 / 作用域 / 启用状态 / token 估算与内容（可用
+     * `includeContent=false` 省略正文）；`includeComposedPrompt=true` 时附带
+     * 合成后的完整系统提示词（截断）。注入栈在每轮对话后写入会话记录，
+     * 因此这是最近一轮的快照，不是实时重算结果。
+     */
+    private suspend fun sessionPromptStack(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val sessionId = resolveSessionId(context, payload)
+        val repository = repository(context)
+        val session = requireSession(repository, sessionId)
+        val includeContent = payload.boolean("includeContent", true)
+        val includeComposedPrompt = payload.boolean("includeComposedPrompt", false)
+        val rawItems = session.promptStackDebug?.takeIf { it.isJsonArray }?.asJsonArray
+        val entries = mutableListOf<PromptStackEntry>()
+        rawItems?.forEach { element -> (element as? JsonObject)?.let { entries += promptStackEntry(it) } }
+        var budget = MAX_PROMPT_STACK_CONTENT_CHARS
+        val items = entries.sortedBy { it.priority }.map { entry ->
+            val content = if (includeContent && budget > 0) {
+                entry.content.take(budget).also { budget -= it.length }
+            } else {
+                null
+            }
+            mapOf(
+                "key" to entry.key,
+                "content" to content,
+                "enabled" to entry.enabled,
+                "priority" to entry.priority,
+                "role" to entry.role,
+                "scope" to entry.scope,
+                "chars" to entry.content.length,
+                "tokens" to estimateLocalTextTokens(entry.content)
+            )
+        }
+        return mapOf(
+            "sessionId" to sessionId,
+            "available" to (rawItems != null && rawItems.size() > 0),
+            "itemCount" to (rawItems?.size() ?: 0),
+            "items" to items,
+            "disabledKeys" to session.disabledPromptKeys.orEmpty(),
+            "composedSystemPrompt" to if (includeComposedPrompt) {
+                session.composedSystemPrompt?.take(MAX_COMPOSED_PROMPT_CHARS)
+            } else {
+                null
+            },
+            "composedSystemPromptChars" to session.composedSystemPrompt.orEmpty().length
+        )
+    }
+
+    /**
+     * 会话工具调用记录：已完成轮次与进行中/中断轮次合并后的时序列表。
+     *
+     * 每条记录含 callId / 工具名 / 参数 / 结果 / 状态（done|error|pending）；
+     * 参数与结果会截断，整体响应有预算上限，超出时优先保留最新记录。
+     */
+    private suspend fun sessionToolCalls(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val sessionId = resolveSessionId(context, payload)
+        val limit = resolveLimit(payload, TOOL_CALL_DEFAULT_LIMIT, TOOL_CALL_MAX_LIMIT)
+        val records = repository(context).sessionToolCallRecords(sessionId)
+        val selected = records.takeLast(limit)
+        var budget = MAX_TOOL_CALLS_PAYLOAD_CHARS
+        val bounded = mutableListOf<Map<String, Any?>>()
+        for (index in selected.indices.reversed()) {
+            if (budget <= 0) break
+            val record = selected[index]
+            val arguments = record.arguments.take(minOf(MAX_TOOL_ARGUMENT_CHARS, budget))
+            budget -= arguments.length
+            val result = record.result?.let { raw ->
+                raw.take(minOf(MAX_TOOL_RESULT_CHARS, budget.coerceAtLeast(0))).also { budget -= it.length }
+            }
+            bounded += mapOf(
+                "callId" to record.callId,
+                "name" to record.name.take(MAX_TOOL_NAME_CHARS),
+                "arguments" to arguments,
+                "result" to result,
+                "status" to record.status,
+                "messageId" to record.messageId,
+                "createdAt" to record.createdAt,
+                "source" to record.source
+            )
+        }
+        bounded.reverse()
+        return mapOf(
+            "sessionId" to sessionId,
+            "total" to records.size,
+            "returned" to bounded.size,
+            "records" to bounded
+        )
+    }
+
+    /** 当前激活模型的上下文窗口长度；未配置或读取失败时返回 null。 */
+    private suspend fun activeContextLength(repository: LocalRepository): Int? = runCatching {
+        gson.fromJson(repository.getAiConfig(), AiConfig::class.java)?.maxContextLength
+    }.getOrNull()?.takeIf { it > 0 }
+
+    private fun roundPercent(value: Double): Double = kotlin.math.round(value * 10.0) / 10.0
+
+    private fun jsonInt(element: com.google.gson.JsonElement?, default: Int): Int =
+        element?.takeIf { it.isJsonPrimitive }
+            ?.let { runCatching { it.asInt }.getOrNull() }
+            ?: default
+
+    private fun jsonBooleanField(element: com.google.gson.JsonElement?, field: String): Boolean {
+        val obj = element?.takeIf { it.isJsonObject }?.asJsonObject ?: return false
+        val value = obj.get(field)?.takeIf { it.isJsonPrimitive } ?: return false
+        return runCatching { value.asBoolean }.getOrDefault(false)
+    }
+
+    private data class PromptStackEntry(
+        val key: String,
+        val content: String,
+        val priority: Int,
+        val role: String,
+        val scope: String,
+        val enabled: Boolean
+    )
+
+    private fun promptStackEntry(obj: JsonObject): PromptStackEntry = PromptStackEntry(
+        key = obj.string("key").take(MAX_PROMPT_KEY_CHARS),
+        content = obj.string("content"),
+        priority = jsonInt(obj.get("priority"), 100),
+        role = obj.string("role").take(16).ifBlank { "system" },
+        scope = obj.string("scope").take(16).ifBlank { "turn" },
+        enabled = obj.boolean("enabled", true)
     )
 
     private fun characterSummary(character: CharacterPreset): Map<String, Any?> = mapOf(
@@ -896,7 +1168,11 @@ internal class PluginApiDispatcher(
             "memory.write",
             "network",
             "progress",
-            "ai.call"
+            "ai.call",
+            "chat.context",
+            "chat.session.config",
+            "chat.prompt.stack",
+            "chat.tool.calls"
         )
 
         /** 命令侧 API 名（`ctx.api.*`）。 */
@@ -906,7 +1182,8 @@ internal class PluginApiDispatcher(
             "ai_complete", "ui_render", "append_message",
             "chat_send", "create_session", "switch_session",
             "memory_read", "memory_write", "memory_append", "memory_edit",
-            "create_character", "update_character"
+            "create_character", "update_character",
+            "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
 
         /** 页面侧 API 名（`host.*`）。 */
@@ -918,7 +1195,8 @@ internal class PluginApiDispatcher(
             "characters.list", "characters.get", "characters.create", "characters.update",
             "worldbooks.list", "worldbooks.get",
             "memory.read", "memory.write", "memory.append", "memory.edit",
-            "http.get", "progress.update", "ai.complete"
+            "http.get", "progress.update", "ai.complete",
+            "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
 
         /** chat.write 允许写入的消息角色。 */
@@ -982,5 +1260,24 @@ internal class PluginApiDispatcher(
         const val MAX_PROGRESS_CONTENT_CHARS = 200
         const val MAX_PROGRESS_NAME_CHARS = 60
         const val MAX_PROGRESS_DETAIL_CHARS = 200
+
+        /** 会话洞察 API：提示词注入栈返回上限。 */
+        const val MAX_PROMPT_STACK_CONTENT_CHARS = 120_000
+        const val MAX_PROMPT_KEY_CHARS = 128
+        const val MAX_PROMPT_TITLE_CHARS = 120
+        const val MAX_COMPOSED_PROMPT_CHARS = 8_000
+
+        /** 会话配置 API：Agent 目标与任务列表返回上限。 */
+        const val MAX_AGENT_GOAL_CHARS = 2_000
+        const val MAX_AGENT_TODOS = 64
+        const val MAX_AGENT_TODO_CHARS = 200
+
+        /** 工具调用记录 API：条数与单字段上限，以及整体响应预算。 */
+        const val TOOL_CALL_DEFAULT_LIMIT = 50
+        const val TOOL_CALL_MAX_LIMIT = 200
+        const val MAX_TOOL_ARGUMENT_CHARS = 2_000
+        const val MAX_TOOL_RESULT_CHARS = 4_000
+        const val MAX_TOOL_NAME_CHARS = 128
+        const val MAX_TOOL_CALLS_PAYLOAD_CHARS = 120_000
     }
 }

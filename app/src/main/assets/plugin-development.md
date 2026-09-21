@@ -137,6 +137,10 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | --- | --- | --- |
 | `chat.read` | `ctx.api.getSession()` | 当前会话记录。 |
 | `chat.read` | `ctx.api.getMessages(limit)` | 当前会话最后的消息列表；`limit` 默认为 30，范围为 1-100。 |
+| `chat.read` | `ctx.api.contextUsage(options?)` | 当前会话上下文占比与类型明细，见下文「会话洞察」。 |
+| `chat.read` | `ctx.api.sessionConfig(options?)` | 当前会话的配置启用与配置情况，见下文「会话洞察」。 |
+| `chat.read` | `ctx.api.promptStack(options?)` | 提示词注入栈（最近一轮快照），见下文「会话洞察」。 |
+| `chat.read` | `ctx.api.toolCalls(options?)` | 工具调用记录，`limit` 默认 50、最大 200，见下文「会话洞察」。 |
 | `storage` | `ctx.api.storage.get(key)` | 读取当前插件的 JSON 值；不存在时返回 `null`。 |
 | `storage` | `ctx.api.storage.set(key, value)` | 写入当前插件的 JSON 值，返回 `true`。 |
 | `storage` | `ctx.api.storage.remove(key)` | 删除当前插件的键，返回 `true`。 |
@@ -351,6 +355,87 @@ NekoPlugin.registerCommand("download", async (ctx) => {
 - 每次调用都会**整体替换**卡片内容，步骤列表不会自动累加。需要保留前面的步骤时，请在每次上报中重新传入完整列表。
 - 卡片不会随命令结束自动收尾，请在最后一次上报中传 `complete: true`；否则卡片会停留在未完成状态。
 
+### 会话洞察（`chat.read`）
+
+四个只读 API 让插件读取当前会话的运行态：上下文占比、会话配置、提示词注入栈与工具调用记录。
+都支持 `sessionId` 参数（省略时用当前会话），返回内容受长度上限约束。
+
+**上下文占比** `ctx.api.contextUsage()` / `host.chat.context(options)`：
+
+```json
+{
+  "sessionId": "…",
+  "usedTokens": 21500,
+  "maxTokens": 100000,
+  "usagePercent": 21.5,
+  "parts": [
+    { "part": "system_prompt", "tokens": 3200, "count": 1, "percent": 14.9 },
+    { "part": "tool_definitions", "tokens": 15000, "count": 118, "percent": 69.8 },
+    { "part": "assistant_messages", "tokens": 3300, "count": 6, "percent": 15.3 }
+  ],
+  "run": { "active": true, "stage": "tool", "lastTool": "workspace_read_file", "completedToolCalls": 3 }
+}
+```
+
+`parts[].part` 取值：`system_prompt`、`tool_definitions`、`summary`、`user_messages`、
+`assistant_messages`、`tool_trajectory`、`other_messages`；与聊天页圆环、上下文分析页同一口径。
+`usagePercent` 为占模型上下文窗口的比例，`parts[].percent` 为占合计用量的比例。
+
+**会话配置** `ctx.api.sessionConfig()` / `host.chat.sessionConfig(options)`：
+
+```json
+{
+  "sessionId": "…",
+  "sessionMode": "agent",
+  "characterId": "…",
+  "features": {
+    "plotMode": false, "plotRealTimeSync": false,
+    "inheritCharacter": true, "inheritCharacterGreeting": false,
+    "proactiveChat": true, "tts": false,
+    "favorite": false, "pinned": false, "archived": false, "publicShare": false
+  },
+  "intervals": { "autoState": 2, "autoName": 10 },
+  "prompt": {
+    "hasSystemPrompt": true, "systemPromptChars": 120, "composedSystemPromptChars": 8600,
+    "customPromptCount": 2,
+    "customPrompts": [{ "order": 1, "title": "写作风格", "chars": 88 }],
+    "disabledPromptKeys": ["character.memories"]
+  },
+  "plot": { "choiceStyle": "balanced", "outlineChars": 0 },
+  "userPersonaChars": 0,
+  "agent": {
+    "goal": "…", "hasSpec": false, "specChars": 0,
+    "todos": [{ "content": "…", "status": "in_progress", "priority": "high" }]
+  }
+}
+```
+
+**提示词注入栈** `ctx.api.promptStack()` / `host.chat.promptStack(options)`：返回最近一轮对话实际使用的注入项。
+
+| 字段 | 说明 |
+| --- | --- |
+| `available` / `itemCount` | 是否已有注入记录 / 注入项数量 |
+| `items[].key`、`priority`、`role`、`scope`、`enabled` | 注入项标识、优先级、角色、作用域与启用状态 |
+| `items[].content` | 注入内容；传 `includeContent=false` 时为 `null`（只取结构） |
+| `items[].chars` / `tokens` | 内容长度与 token 估算 |
+| `disabledKeys` | 用户在会话中关闭的注入项 key |
+| `composedSystemPrompt` | 传 `includeComposedPrompt=true` 时返回截断后的完整系统提示词 |
+
+注入栈在每轮对话后写入会话记录，因此这是**最近一轮的快照**，不是实时重算结果。
+
+**工具调用记录** `ctx.api.toolCalls({limit})` / `host.chat.toolCalls({limit})`：
+
+```json
+{ "total": 12, "returned": 12, "records": [
+  { "callId": "call_1", "name": "workspace_read_file", "arguments": "{\"path\":\"a.txt\"}",
+    "result": "…", "status": "done", "messageId": "…", "source": "history" }
+] }
+```
+
+`status` 为 `done` / `error`（工具结果 `success=false`）/ `pending`（尚无结果，常见于中断轮次）；
+`source` 为 `history`（已完成轮次）或 `trajectory`（进行中轮次的逐条落库轨迹）；
+`messageId` 是记录归属的助手消息（进行中轮次为 `null`）。参数与结果会被截断，响应总量也有上限，超出时优先保留最新记录。
+
 ## 5. JavaScript 运行模型
 
 入口脚本会在每次命令调用时重新执行。脚本应注册与 `plugin.json` 中主命令同名的处理器：
@@ -459,7 +544,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 `builtin.jm`（JM 漫画）和 `builtin.light-novel`（轻小说）是应用随附的内置插件。它们可以停用，但不能卸载、覆盖或作为第三方 ZIP 的 `id` 使用。
 
-第三方插件 API 当前为 v2（App 同时接受 v1 清单）。新增能力优先通过 `host.system.info().capabilities` 做能力协商，而不是抬高版本号。升级应用后，请重新验证插件的清单、权限、命令与页面是否仍符合本指南；不受支持的 `api_version` 会在安装时被拒绝。
+第三方插件 API 当前为 v2（App 同时接受 v1 清单）。新增能力优先通过 `host.system.info().capabilities` 做能力协商，而不是抬高版本号；会话洞察能力对应 `chat.context`、`chat.session.config`、`chat.prompt.stack`、`chat.tool.calls`（需 `chat.read` 权限）。升级应用后，请重新验证插件的清单、权限、命令与页面是否仍符合本指南；不受支持的 `api_version` 会在安装时被拒绝。
 
 ## 9. 插件页面
 
@@ -501,7 +586,11 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | `host.chat.current()` | `chat.read` | 从会话上下文打开时返回当前会话（字段裁剪），否则 `null` |
 | `host.chat.sessions.list()` | `chat.read` | 会话摘要列表（≤ 100 条） |
 | `host.chat.sessions.get(id)` | `chat.read` | 单个会话摘要 |
-| `host.chat.messages.list(sessionId, limit)` | `chat.read` | 最近消息；`limit` 默认 50、最大 200；`sessionId` 省略时用当前会话 |
+| `host.chat.messages.list(sessionId, limit)` | `chat.read` | 最近消息（含 `reasoningContent`、`model`、`inputTokens`/`outputTokens` 等字段）；`limit` 默认 50、最大 200；`sessionId` 省略时用当前会话 |
+| `host.chat.context(options)` | `chat.read` | 上下文占比与类型明细（第 4 章「会话洞察」） |
+| `host.chat.sessionConfig(options)` | `chat.read` | 会话配置启用与配置情况（第 4 章「会话洞察」） |
+| `host.chat.promptStack(options)` | `chat.read` | 提示词注入栈（第 4 章「会话洞察」） |
+| `host.chat.toolCalls(options)` | `chat.read` | 工具调用记录（第 4 章「会话洞察」） |
 | `host.characters.list()` / `get(id)` | `characters.read` | 角色卡只读数据（不含提示词运行态） |
 | `host.worldbooks.list()` / `get(id)` | `worldbooks.read` | 世界书与条目只读数据 |
 | `host.ui.render(template, data)` | 免 | 模板渲染，返回 HTML 字符串（语法见第 4 章） |

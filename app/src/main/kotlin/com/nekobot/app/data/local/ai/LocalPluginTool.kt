@@ -498,7 +498,7 @@ internal class LocalPluginTool(
             - entry: 入口文件，默认 "main.js"，必须是安全的 .js 相对路径
             - permissions: 权限数组。基础/读取：storage、notify、chat.progress、chat.read、characters.read、worldbooks.read、memory.read；危险权限（network、chat.write、memory.write、characters.write、ai.call）需用户在插件页手动授权，AI 创建时不会自动授予。ai.call 开放 aiComplete（走聊天故障转移队列，每插件每分钟 10 次、每小时 20 万 token 上限）；chat.write 开放 appendMessage/sendMessage/createSession/switchSession；characters.write 开放 createCharacter/updateCharacter（无删除）。
             - hooks: 事件钩子数组（≤4，可省略）：message.beforeSend（发送前改写用户消息）、app.lifecycle（app.start/chat.open/chat.close）。声明后用 NekoPlugin.on(name, handler) 注册；声明 hooks 时 commands 可以为空。
-            - pages: 页面数组（≤8 个），每项 {"id": "小写id", "title": "标题", "title_i18n": {...}, "entry": "pages/x.html", "styles": [...], "scripts": [...], "order": 100}；entry 必须是以 .html 结尾的安全相对路径且文件真实存在。页面用 host.* API（host.storage.*、host.chat.*（含 chat.messages.append/send、chat.sessions.create/switch）、host.characters.*（含 create/update）、host.worldbooks.*、host.memory.read/write/append/edit、host.ui.render、host.http.get、host.ui.toast、host.system.info），与 ctx.api 共用权限与存储。
+            - pages: 页面数组（≤8 个），每项 {"id": "小写id", "title": "标题", "title_i18n": {...}, "entry": "pages/x.html", "styles": [...], "scripts": [...], "order": 100}；entry 必须是以 .html 结尾的安全相对路径且文件真实存在。页面用 host.* API（host.storage.*、host.chat.*（含 chat.messages.append/send、chat.sessions.create/switch、chat.context/sessionConfig/promptStack/toolCalls）、host.characters.*（含 create/update）、host.worldbooks.*、host.memory.read/write/append/edit、host.ui.render、host.http.get、host.ui.toast、host.system.info），与 ctx.api 共用权限与存储。
 
             二、入口 JS 运行时
             - 用 NekoPlugin.registerCommand(name, handler) 或 NekoPlugin.register({commands: {name: handler}}) 注册命令
@@ -506,7 +506,11 @@ internal class LocalPluginTool(
             - ctx 字段：command（命令名，不带 /）、args（按空白切分的参数数组）、argsText（原始参数文本）、raw（完整输入）、sessionId
             - API（全部返回 Promise，需 await，且需声明对应权限）：
               await ctx.api.getSession()            // 当前会话信息（chat.read）
-              await ctx.api.getMessages(limit)      // 最近消息，默认 30、最大 100（chat.read）
+              await ctx.api.getMessages(limit)      // 最近消息，默认 30、最大 100（chat.read）；页面侧返回含 reasoningContent/model/token 等字段
+              await ctx.api.contextUsage({sessionId})   // 上下文占比：{usedTokens, maxTokens, usagePercent, parts:[{part, tokens, count, percent}]}（chat.read）
+              await ctx.api.sessionConfig({sessionId})  // 会话配置启用情况：features/intervals/prompt/plot/agent（chat.read）
+              await ctx.api.promptStack({sessionId, includeContent, includeComposedPrompt})  // 提示词注入栈（chat.read）
+              await ctx.api.toolCalls({sessionId, limit})    // 工具调用记录：{records:[{callId, name, arguments, result, status, messageId}]}（chat.read）
               await ctx.api.notify(message)         // Toast 提示（notify）
               await ctx.api.progress(options)       // 更新进度卡片（chat.progress），耗时命令用
               await ctx.api.httpGet(url)            // 仅 https://，返回 {status, body}，body 上限 512KB（network）

@@ -54,6 +54,31 @@ class PluginApiDispatcherTest {
     }
 
     @Test
+    fun sessionInsightApisAreRegisteredForBothRuntimes() {
+        val capabilities = PluginApiDispatcher.CAPABILITIES
+        val insightApis = listOf(
+            "chat.context",
+            "chat.session.config",
+            "chat.prompt.stack",
+            "chat.tool.calls"
+        )
+        insightApis.forEach { api ->
+            assertTrue("$api 需要出现在能力协商清单", api in capabilities)
+            assertTrue("$api 需要命令运行时可用", api in PluginApiDispatcher.LEGACY_API_NAMES)
+            assertTrue("$api 需要页面运行时可用", api in PluginApiDispatcher.PAGE_API_NAMES)
+        }
+    }
+
+    @Test
+    fun insightApiResponseLimitsStayBounded() {
+        assertTrue(PluginApiDispatcher.MAX_PROMPT_STACK_CONTENT_CHARS > 0)
+        assertTrue(PluginApiDispatcher.MAX_COMPOSED_PROMPT_CHARS < PluginApiDispatcher.MAX_PROMPT_STACK_CONTENT_CHARS)
+        assertTrue(PluginApiDispatcher.TOOL_CALL_DEFAULT_LIMIT <= PluginApiDispatcher.TOOL_CALL_MAX_LIMIT)
+        assertTrue(PluginApiDispatcher.MAX_TOOL_ARGUMENT_CHARS > 0)
+        assertTrue(PluginApiDispatcher.MAX_TOOL_RESULT_CHARS > 0)
+    }
+
+    @Test
     fun chatWriteRolesAreRestricted() {
         assertEquals(setOf("user", "assistant"), PluginApiDispatcher.CHAT_WRITE_ROLES)
         assertTrue(PluginApiDispatcher.MAX_CHAT_WRITE_CHARS > 0)

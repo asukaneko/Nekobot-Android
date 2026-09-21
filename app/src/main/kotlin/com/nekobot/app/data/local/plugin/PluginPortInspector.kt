@@ -298,6 +298,10 @@ object PluginPortInspector {
                     "memoryWrite" -> "memory_write"
                     "memoryAppend" -> "memory_append"
                     "memoryEdit" -> "memory_edit"
+                    "contextUsage" -> "chat.context"
+                    "sessionConfig" -> "chat.session.config"
+                    "promptStack" -> "chat.prompt.stack"
+                    "toolCalls" -> "chat.tool.calls"
                     "storage" -> null
                     else -> name
                 }
