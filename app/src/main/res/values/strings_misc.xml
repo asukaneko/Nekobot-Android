@@ -5,10 +5,15 @@
     <string name="tokens_load_failed">加载 Token 用量失败</string>
     <string name="tokens_refresh">刷新用量</string>
     <string name="tokens_more_actions">更多操作</string>
+    <string name="tokens_export_csv">导出 CSV</string>
+    <string name="tokens_export_csv_success">已导出到下载目录：%1$s</string>
+    <string name="tokens_export_csv_failed">导出失败</string>
+    <string name="tokens_export_csv_empty">当前时间范围没有可导出的记录</string>
     <string name="tokens_route_history">路由决策历史</string>
     <string name="tokens_ab_test_settings">A/B 测试配置</string>
     <string name="tokens_date_filter">选择统计日期，当前：%1$s</string>
     <string name="tokens_range_today">今日</string>
+    <string name="tokens_range_week">本周</string>
     <string name="tokens_range_month">本月</string>
     <string name="tokens_range_total">全部</string>
     <string name="tokens_range_custom">自定义</string>
@@ -29,8 +34,9 @@
     <string name="tokens_tab_records">明细</string>
     <string name="tokens_metrics_title">关键指标</string>
     <string name="tokens_rankings_title">Token 排行榜</string>
-    <string name="tokens_rankings_scope_all">排行榜按全部历史记录统计</string>
+    <string name="tokens_rankings_scope_range">排行榜按当前时间范围统计</string>
     <string name="tokens_ranking_sessions">会话</string>
+    <string name="tokens_ranking_unknown_session">未知会话</string>
     <string name="tokens_ranking_models">模型</string>
     <string name="tokens_ranking_purposes">用途</string>
     <string name="tokens_records_title">Token 记录</string>
@@ -43,6 +49,7 @@
     <string name="tokens_prev_page">上一页</string>
     <string name="tokens_next_page">下一页</string>
     <string name="tokens_stat_today">今日 Token</string>
+    <string name="tokens_stat_week">本周 Token</string>
     <string name="tokens_stat_month">本月 Token</string>
     <string name="tokens_stat_total">累计 Token</string>
     <string name="tokens_stat_custom">自定义范围 Token</string>

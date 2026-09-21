@@ -5,10 +5,15 @@
     <string name="tokens_load_failed">Failed to load token usage</string>
     <string name="tokens_refresh">Refresh usage</string>
     <string name="tokens_more_actions">More actions</string>
+    <string name="tokens_export_csv">Export CSV</string>
+    <string name="tokens_export_csv_success">Exported to Downloads: %1$s</string>
+    <string name="tokens_export_csv_failed">Export failed</string>
+    <string name="tokens_export_csv_empty">No records to export in the selected range</string>
     <string name="tokens_route_history">Routing history</string>
     <string name="tokens_ab_test_settings">A/B test settings</string>
     <string name="tokens_date_filter">Select date range, currently: %1$s</string>
     <string name="tokens_range_today">Today</string>
+    <string name="tokens_range_week">This week</string>
     <string name="tokens_range_month">This month</string>
     <string name="tokens_range_total">All</string>
     <string name="tokens_range_custom">Custom</string>
@@ -29,8 +34,9 @@
     <string name="tokens_tab_records">Records</string>
     <string name="tokens_metrics_title">Key metrics</string>
     <string name="tokens_rankings_title">Token rankings</string>
-    <string name="tokens_rankings_scope_all">Rankings use all-time history</string>
+    <string name="tokens_rankings_scope_range">Rankings use the selected time range</string>
     <string name="tokens_ranking_sessions">Sessions</string>
+    <string name="tokens_ranking_unknown_session">Unknown session</string>
     <string name="tokens_ranking_models">Models</string>
     <string name="tokens_ranking_purposes">Purposes</string>
     <string name="tokens_records_title">Token records</string>
@@ -43,6 +49,7 @@
     <string name="tokens_prev_page">Previous</string>
     <string name="tokens_next_page">Next</string>
     <string name="tokens_stat_today">Today tokens</string>
+    <string name="tokens_stat_week">This week\'s tokens</string>
     <string name="tokens_stat_month">Month tokens</string>
     <string name="tokens_stat_total">Total tokens</string>
     <string name="tokens_stat_custom">Custom range tokens</string>

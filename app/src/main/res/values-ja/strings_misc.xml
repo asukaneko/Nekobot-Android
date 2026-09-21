@@ -5,10 +5,15 @@
     <string name="tokens_load_failed">トークン使用量の読み込みに失敗しました</string>
     <string name="tokens_refresh">使用量を更新</string>
     <string name="tokens_more_actions">その他の操作</string>
+    <string name="tokens_export_csv">CSV をエクスポート</string>
+    <string name="tokens_export_csv_success">ダウンロードフォルダに書き出しました：%1$s</string>
+    <string name="tokens_export_csv_failed">エクスポートに失敗しました</string>
+    <string name="tokens_export_csv_empty">現在の期間にエクスポートできる記録がありません</string>
     <string name="tokens_route_history">ルーティング履歴</string>
     <string name="tokens_ab_test_settings">A/B テスト設定</string>
     <string name="tokens_date_filter">集計期間を選択、現在：%1$s</string>
     <string name="tokens_range_today">今日</string>
+    <string name="tokens_range_week">今週</string>
     <string name="tokens_range_month">今月</string>
     <string name="tokens_range_total">すべて</string>
     <string name="tokens_range_custom">カスタム</string>
@@ -29,8 +34,9 @@
     <string name="tokens_tab_records">明細</string>
     <string name="tokens_metrics_title">主要指標</string>
     <string name="tokens_rankings_title">トークンランキング</string>
-    <string name="tokens_rankings_scope_all">ランキングは全期間の履歴を集計します</string>
+    <string name="tokens_rankings_scope_range">ランキングは選択中の期間で集計します</string>
     <string name="tokens_ranking_sessions">セッション</string>
+    <string name="tokens_ranking_unknown_session">不明なセッション</string>
     <string name="tokens_ranking_models">モデル</string>
     <string name="tokens_ranking_purposes">用途</string>
     <string name="tokens_records_title">トークン記録</string>
@@ -43,6 +49,7 @@
     <string name="tokens_prev_page">前へ</string>
     <string name="tokens_next_page">次へ</string>
     <string name="tokens_stat_today">今日のトークン</string>
+    <string name="tokens_stat_week">今週のトークン</string>
     <string name="tokens_stat_month">月間トークン</string>
     <string name="tokens_stat_total">合計トークン</string>
     <string name="tokens_stat_custom">カスタム期間のトークン</string>

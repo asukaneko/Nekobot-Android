@@ -2,6 +2,11 @@ package com.nekobot.app.ui.screens.tokens
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
@@ -39,6 +44,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Forum
@@ -69,6 +75,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Immutable
@@ -92,6 +99,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
@@ -114,10 +122,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 import java.util.concurrent.ConcurrentHashMap
 import java.util.Date
 import java.util.Locale
@@ -170,9 +183,6 @@ class TokensViewModel : BaseViewModel() {
     private val _loadedQueryKey = MutableStateFlow<String?>(null)
     internal val loadedQueryKey: StateFlow<String?> = _loadedQueryKey.asStateFlow()
 
-    private val _loadedRankingKey = MutableStateFlow<String?>(null)
-    internal val loadedRankingKey: StateFlow<String?> = _loadedRankingKey.asStateFlow()
-
     private var loadJob: Job? = null
     private var loadRequestId = 0L
     private val sessionNameCache = ConcurrentHashMap<String, String>()
@@ -180,37 +190,27 @@ class TokensViewModel : BaseViewModel() {
 
     /**
      * 仅保留最后一次筛选请求，避免用户快速切换日期时旧响应覆盖新范围。
-     * 排行榜接口是全量口径，不随日期范围变化，因此只在首次进入或主动刷新时请求。
+     * 排行榜与明细一样只反映当前所选时间范围，因此由同一批记录在本地聚合。
      */
-    fun load(refreshRankings: Boolean = false) {
+    fun load() {
         val range = _dateRange.value
-        val isCustom = range == "custom"
-        val start = if (isCustom) _startDate.value else null
-        val end = if (isCustom) _endDate.value else null
+        val query = resolveTokenRangeQuery(range, _startDate.value, _endDate.value)
         val mode = ServiceContainer.prefs.appMode.toString()
         val dataSourceRevision = ServiceContainer.dataSourceRevision.value
         val queryKey = tokenUsageQueryKey(
             mode = mode,
             dataSourceRevision = dataSourceRevision,
             range = range,
-            startDate = start,
-            endDate = end
+            startDate = _startDate.value,
+            endDate = _endDate.value
         )
-        val rankingKey = tokenUsageRankingKey(mode, dataSourceRevision)
-        val shouldLoadRankings = refreshRankings ||
-            _rankings.value == null ||
-            _loadedRankingKey.value != rankingKey
         val requestId = ++loadRequestId
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             setLoading(true)
             clearError()
             try {
-                val (statsResult, rankingsResult) = coroutineScope {
-                    val statsRequest = async { unified.tokenStats(range, start, end) }
-                    val rankingsRequest = if (shouldLoadRankings) async { unified.tokenRankings() } else null
-                    statsRequest.await() to rankingsRequest?.await()
-                }
+                val statsResult = unified.tokenStats(query.range, query.startDate, query.endDate)
                 if (requestId != loadRequestId) return@launch
                 when (statsResult) {
                     is Resource.Success -> {
@@ -222,22 +222,17 @@ class TokensViewModel : BaseViewModel() {
                                 // 混合时字符串排序错乱，导致同日记录时间不降序
                                 .sortedByDescending { it.timestamp.replace(' ', 'T') }
                         }
+                        val computedRankings = withContext(Dispatchers.Default) {
+                            buildTokenRankings(parsedRecords)
+                        }
                         if (requestId != loadRequestId) return@launch
                         _stats.value = value
                         _records.value = parsedRecords
+                        _rankings.value = computedRankings
                         _loadedQueryKey.value = queryKey
                     }
                     is Resource.Error -> showError(statsResult.message)
                     is Resource.Loading -> Unit
-                }
-                when (rankingsResult) {
-                    is Resource.Success -> {
-                        _rankings.value = rankingsResult.data
-                        _loadedRankingKey.value = rankingKey
-                    }
-                    is Resource.Error -> showError(rankingsResult.message)
-                    is Resource.Loading -> Unit
-                    null -> Unit
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -248,6 +243,52 @@ class TokensViewModel : BaseViewModel() {
             } finally {
                 if (requestId == loadRequestId) setLoading(false)
             }
+        }
+    }
+
+    /** 导出当前时间范围的明细记录为 CSV 到下载目录。 */
+    fun exportCsv(context: Context) {
+        val records = _records.value
+        if (records.isEmpty()) {
+            showToast(string(R.string.tokens_export_csv_empty))
+            return
+        }
+        viewModelScope.launch {
+            val fileName = tokenCsvFileName(
+                range = _dateRange.value,
+                startDate = _startDate.value,
+                endDate = _endDate.value
+            )
+            // 记录里通常只有会话 ID，导出前补全会话名称，否则 CSV 中该列全空
+            val sessionNames = withContext(Dispatchers.IO) {
+                records.asSequence()
+                    .filter { it.sessionName.isBlank() && it.sessionId.isNotBlank() }
+                    .map { it.sessionId.trim() }
+                    .distinct()
+                    .toList()
+                    .chunked(SESSION_NAME_RESOLVE_BATCH)
+                    .flatMap { batch ->
+                        batch.map { id -> async { id to resolveSessionNameOrNull(id) } }.awaitAll()
+                    }
+                    .filter { !it.second.isNullOrBlank() }
+                    .toMap()
+            }
+            val recordsWithNames = records.map { record ->
+                val resolvedName = sessionNames[record.sessionId.trim()]
+                if (record.sessionName.isBlank() && !resolvedName.isNullOrBlank()) {
+                    record.copy(sessionName = resolvedName)
+                } else {
+                    record
+                }
+            }
+            val content = withContext(Dispatchers.Default) { buildTokenCsv(recordsWithNames) }
+            val saved = withContext(Dispatchers.IO) {
+                writeCsvToDownloads(context.applicationContext, fileName, content)
+            }
+            showToast(
+                if (saved) string(R.string.tokens_export_csv_success, fileName)
+                else string(R.string.tokens_export_csv_failed)
+            )
         }
     }
 
@@ -266,8 +307,12 @@ class TokensViewModel : BaseViewModel() {
     }
 
     /** 同一模式、同一会话仅解析一次名称，避免明细滚动时重复触发网络或数据库查询。 */
-    internal suspend fun resolveSessionName(sessionId: String): String {
-        if (sessionId.isBlank()) return ""
+    internal suspend fun resolveSessionName(sessionId: String): String =
+        resolveSessionNameOrNull(sessionId) ?: sessionId.take(8)
+
+    /** 解析会话名称；会话不存在或解析失败时返回 null（调用方可自行决定兜底展示）。 */
+    internal suspend fun resolveSessionNameOrNull(sessionId: String): String? {
+        if (sessionId.isBlank()) return null
         val cacheKey = "${ServiceContainer.prefs.appMode}:${ServiceContainer.dataSourceRevision.value}:$sessionId"
         sessionNameCache[cacheKey]?.let { return it }
         val candidate = viewModelScope.async(start = CoroutineStart.LAZY) {
@@ -285,7 +330,7 @@ class TokensViewModel : BaseViewModel() {
         } else {
             candidate.cancel()
         }
-        return request.await() ?: sessionId.take(8)
+        return request.await()
     }
 }
 
@@ -300,7 +345,6 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     val startDate by vm.startDate.collectAsStateWithLifecycle()
     val endDate by vm.endDate.collectAsStateWithLifecycle()
     val loadedQueryKey by vm.loadedQueryKey.collectAsStateWithLifecycle()
-    val loadedRankingKey by vm.loadedRankingKey.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
@@ -329,8 +373,8 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     }
     val parsedRanking = remember(rankingData) {
         rankingData.orEmpty().map(::extractRankEntry)
-            .filter { it.first.isNotBlank() }
-            .sortedByDescending { it.second }
+            .filter { it.name.isNotBlank() || it.sessionId.isNotBlank() }
+            .sortedByDescending { it.tokens }
             .take(10)
     }
     val visibleRecords = remember(records, visibleRecordCount) {
@@ -350,11 +394,8 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
         startDate = startDate,
         endDate = endDate
     )
-    val rankingIsCurrent = loadedRankingKey == tokenUsageRankingKey(
-        mode = appMode.toString(),
-        dataSourceRevision = dataSourceRevision
-    )
-    LaunchedEffect(appMode, dataSourceRevision) { vm.load(refreshRankings = true) }
+    val rankingIsCurrent = contentIsCurrent
+    LaunchedEffect(appMode, dataSourceRevision) { vm.load() }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -386,7 +427,7 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                         }
                     )
                     IconButton(
-                        onClick = { vm.load(refreshRankings = true) },
+                        onClick = { vm.load() },
                         enabled = !loading
                     ) {
                         if (loading && stats != null) {
@@ -415,6 +456,14 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                             expanded = showMoreMenu,
                             onDismissRequest = { showMoreMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.tokens_export_csv)) },
+                                leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    vm.exportCsv(context)
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.tokens_route_history)) },
                                 leadingIcon = { Icon(Icons.Filled.Route, contentDescription = null) },
@@ -459,7 +508,7 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                 error?.let {
                     ErrorBanner(message = it, onRetry = {
                         vm.clearError()
-                        vm.load(refreshRankings = true)
+                        vm.load()
                     })
                 }
 
@@ -532,7 +581,7 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                                     SectionHeader(
                                         title = stringResource(R.string.tokens_rankings_title),
-                                        subtitle = stringResource(R.string.tokens_rankings_scope_all)
+                                        subtitle = stringResource(R.string.tokens_rankings_scope_range)
                                     )
                                     Spacer(Modifier.height(12.dp))
                                     TokenSegmentedBar(
@@ -552,13 +601,17 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     } else {
-                                        val maxTokens = parsedRanking.maxOf { it.second }.coerceAtLeast(1L)
+                                        val maxTokens = parsedRanking.maxOf { it.tokens }.coerceAtLeast(1L)
                                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                            parsedRanking.forEachIndexed { idx, (name, tokens) ->
+                                            parsedRanking.forEachIndexed { idx, entry ->
                                                 RankingBarRow(
                                                     rank = idx + 1,
-                                                    name = if (rankingTab == 2) purposeLabel(name) else name,
-                                                    tokens = tokens,
+                                                    name = when (rankingTab) {
+                                                        0 -> rankingSessionName(entry, vm::resolveSessionName)
+                                                        2 -> purposeLabel(entry.purpose.ifBlank { entry.name })
+                                                        else -> entry.name
+                                                    },
+                                                    tokens = entry.tokens,
                                                     maxTokens = maxTokens
                                                 )
                                             }
@@ -687,6 +740,9 @@ private const val SECTION_RANKINGS = 1
 private const val SECTION_RECORDS = 2
 private const val RECORD_BATCH_SIZE = 20
 
+/** 导出 CSV 前解析会话名称的并发批大小，避免会话较多时串行请求过慢。 */
+private const val SESSION_NAME_RESOLVE_BATCH = 4
+
 // 区块切换的淡入淡出时长：进/出必须一致，交叉淡化时总不透明度才恒为 1（不会露出背景闪一下）
 private const val TOKEN_SECTION_FADE_MS = 220
 private val TokenSectionFadeEasing = androidx.compose.animation.core.CubicBezierEasing(
@@ -696,6 +752,32 @@ private val TokenSectionFadeEasing = androidx.compose.animation.core.CubicBezier
     1f
 )
 
+/**
+ * 实际查询参数：服务端不保证支持 "week"，因此把本周换算为 custom 的日期闭区间，
+ * 本地与远程两种模式都能按同一口径过滤。
+ */
+private data class TokenRangeQuery(
+    val range: String,
+    val startDate: String?,
+    val endDate: String?
+)
+
+private fun resolveTokenRangeQuery(
+    range: String,
+    startDate: String?,
+    endDate: String?
+): TokenRangeQuery = when (range) {
+    "week" -> TokenRangeQuery("custom", weekStartDate(), todayDate())
+    "custom" -> TokenRangeQuery("custom", startDate, endDate)
+    else -> TokenRangeQuery(range, null, null)
+}
+
+/** 本周起始日（周一），yyyy-MM-dd。 */
+private fun weekStartDate(): String =
+    LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString()
+
+private fun todayDate(): String = LocalDate.now().toString()
+
 private fun tokenUsageQueryKey(
     mode: String,
     dataSourceRevision: Long,
@@ -703,13 +785,15 @@ private fun tokenUsageQueryKey(
     startDate: String?,
     endDate: String?
 ): String {
-    val customStart = if (range == "custom") startDate.orEmpty() else ""
-    val customEnd = if (range == "custom") endDate.orEmpty() else ""
-    return listOf(mode, dataSourceRevision, range, customStart, customEnd).joinToString("|")
+    val query = resolveTokenRangeQuery(range, startDate, endDate)
+    return listOf(
+        mode,
+        dataSourceRevision,
+        query.range,
+        query.startDate.orEmpty(),
+        query.endDate.orEmpty()
+    ).joinToString("|")
 }
-
-private fun tokenUsageRankingKey(mode: String, dataSourceRevision: Long): String =
-    "$mode|$dataSourceRevision"
 
 @Composable
 private fun TokenScopeLoading() {
@@ -741,6 +825,7 @@ private fun TokenDateFilterButton(
     var expanded by remember { mutableStateOf(false) }
     val ranges = listOf(
         "today" to stringResource(R.string.tokens_range_today),
+        "week" to stringResource(R.string.tokens_range_week),
         "month" to stringResource(R.string.tokens_range_month),
         "total" to stringResource(R.string.tokens_range_total),
         "custom" to stringResource(R.string.tokens_range_custom)
@@ -874,6 +959,12 @@ private fun TokenUsageHero(
     val rangeLabel = tokenRangeLabel(dateRange)
     val total = tokenRangeTotal(stats, dateRange)
     val shape = RoundedCornerShape(24.dp)
+    // 本周范围由客户端换算，展示时补上起止日期
+    val weekSpan = remember(dateRange) {
+        if (dateRange == "week") listOf(weekStartDate(), todayDate()) else null
+    }
+    val displayStart = weekSpan?.firstOrNull() ?: startDate
+    val displayEnd = weekSpan?.lastOrNull() ?: endDate
 
     Box(
         modifier = Modifier
@@ -927,10 +1018,10 @@ private fun TokenUsageHero(
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.76f)
             )
-            if (dateRange == "custom" && (startDate != null || endDate != null)) {
+            if ((dateRange == "custom" || dateRange == "week") && (displayStart != null || displayEnd != null)) {
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    listOfNotNull(startDate, endDate).joinToString("  —  "),
+                    listOfNotNull(displayStart, displayEnd).joinToString("  —  "),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.72f)
                 )
@@ -1157,6 +1248,7 @@ private fun TokenStatTile(
 @Composable
 private fun tokenRangeLabel(dateRange: String): String = when (dateRange) {
     "today" -> stringResource(R.string.tokens_stat_today)
+    "week" -> stringResource(R.string.tokens_stat_week)
     "month" -> stringResource(R.string.tokens_stat_month)
     "total" -> stringResource(R.string.tokens_stat_total)
     "custom" -> stringResource(R.string.tokens_stat_custom)
@@ -1165,6 +1257,7 @@ private fun tokenRangeLabel(dateRange: String): String = when (dateRange) {
 
 private fun tokenRangeTotal(stats: TokenStats, dateRange: String): Long = when (dateRange) {
     "today" -> stats.today ?: stats.todayTotal
+    "week" -> (stats.todayInput ?: 0L) + (stats.todayOutput ?: 0L)
     "month" -> stats.month ?: stats.todayTotal
     "total" -> stats.totalDisplay
     "custom" -> (stats.todayInput ?: 0L) + (stats.todayOutput ?: 0L)
@@ -1649,45 +1742,211 @@ private fun compactTimestamp(raw: String?): String? {
 }
 
 /**
- * 从 JsonElement 中提取 (name, tokens)，兼容多种字段命名。
- * 失败返回 ("未知", 0L)。
+ * 用当前时间范围内的明细记录在本地聚合排行榜（会话 / 模型 / 用途），
+ * 使排行榜与所选时间范围保持一致；本地与远程两种模式的记录字段语义相同，因此共用同一套聚合逻辑。
  */
-private fun extractRankEntry(elem: JsonElement): Pair<String, Long> {
-    val unknownName = ServiceContainer.getString(R.string.common_unknown)
-    return try {
-        if (elem.isJsonObject) {
-            val obj = elem.asJsonObject
-            val name = obj.get("name")?.asString
-                ?: obj.get("purpose")?.asString
-                ?: obj.get("session_name")?.asString
-                ?: obj.get("title")?.asString
-                ?: obj.get("model")?.asString
-                ?: obj.get("model_name")?.asString
-                ?: obj.get("user")?.asString
-                ?: obj.get("username")?.asString
-                ?: obj.get("user_name")?.asString
-                ?: obj.get("sessionName")?.asString
-                ?: obj.get("character_name")?.asString
-                ?: obj.get("id")?.asString
-                ?: obj.get("_id")?.asString
-                ?: obj.get("key")?.asString
-                ?: unknownName
-            val tokens = obj.get("tokens")?.asLong
-                ?: obj.get("token_count")?.asLong
-                ?: obj.get("total_tokens")?.asLong
-                ?: obj.get("total")?.asLong
-                ?: obj.get("count")?.asLong
-                ?: obj.get("usage")?.asLong
-                ?: obj.get("value")?.asLong
-                ?: obj.get("tokens_total")?.asLong
-                ?: obj.get("sum_tokens")?.asLong
-                ?: 0L
-            Pair(name, tokens)
-        } else {
-            Pair(unknownName, 0L)
+private fun buildTokenRankings(records: List<TokenRecordUi>): TokenRankings {
+    val unknownModel = ServiceContainer.getString(R.string.tokens_unknown_model)
+
+    val models = records.groupBy { it.actualModel.ifBlank { it.model }.ifBlank { unknownModel } }
+        .map { (model, recs) ->
+            val input = recs.sumOf { it.input }
+            val output = recs.sumOf { it.output }
+            JsonObject().apply {
+                addProperty("name", model)
+                addProperty("input_tokens", input)
+                addProperty("output_tokens", output)
+                addProperty("total_tokens", input + output)
+                addProperty("count", recs.size)
+            }
         }
+        .sortedByDescending { it.get("total_tokens").asLong }
+
+    val sessions = records.groupBy { it.sessionId.trim() }
+        .map { (sessionId, recs) ->
+            val input = recs.sumOf { it.input }
+            val output = recs.sumOf { it.output }
+            JsonObject().apply {
+                addProperty(
+                    "name",
+                    recs.firstNotNullOfOrNull { rec -> rec.sessionName.takeIf { it.isNotBlank() } }
+                        .orEmpty()
+                )
+                addProperty("session_id", sessionId)
+                addProperty("input_tokens", input)
+                addProperty("output_tokens", output)
+                addProperty("total_tokens", input + output)
+                addProperty("count", recs.size)
+            }
+        }
+        .sortedByDescending { it.get("total_tokens").asLong }
+
+    val purposes = records.groupBy { it.purpose.ifBlank { "chat" } }
+        .map { (purpose, recs) ->
+            val input = recs.sumOf { it.input }
+            val output = recs.sumOf { it.output }
+            JsonObject().apply {
+                addProperty("name", purpose)
+                addProperty("purpose", purpose)
+                addProperty("input_tokens", input)
+                addProperty("output_tokens", output)
+                addProperty("total_tokens", input + output)
+                addProperty("count", recs.size)
+            }
+        }
+        .sortedByDescending { it.get("total_tokens").asLong }
+
+    return TokenRankings(
+        sessions = sessions,
+        models = models,
+        users = emptyList(),
+        purposes = purposes
+    )
+}
+
+/** 排行榜单行数据：名称、会话 ID（会话榜用于懒解析名称）、用途键与 token 数。 */
+@Immutable
+private data class RankEntryUi(
+    val name: String,
+    val sessionId: String,
+    val purpose: String,
+    val tokens: Long
+)
+
+private fun extractRankEntry(elem: JsonElement): RankEntryUi {
+    if (!elem.isJsonObject) return RankEntryUi("", "", "", 0L)
+    val obj = elem.asJsonObject
+    fun string(key: String): String = obj.get(key)
+        ?.takeIf { it.isJsonPrimitive }
+        ?.runCatching { asString }
+        ?.getOrNull()
+        .orEmpty()
+    fun long(vararg keys: String): Long = keys.firstNotNullOfOrNull { key ->
+        obj.get(key)?.takeIf { it.isJsonPrimitive }?.runCatching { asLong }?.getOrNull()
+    } ?: 0L
+    return RankEntryUi(
+        name = string("name").ifBlank { string("session_name") },
+        sessionId = string("session_id").ifBlank { string("sessionId") },
+        purpose = string("purpose"),
+        tokens = long("total_tokens", "tokens", "value")
+    )
+}
+
+/** 会话榜：记录里带名称时直接展示，否则用会话 ID 懒解析名称（失败回退为未知会话）。 */
+@Composable
+private fun rankingSessionName(
+    entry: RankEntryUi,
+    resolve: suspend (String) -> String
+): String {
+    val resolved by produceState(initialValue = entry.name, key1 = entry.sessionId, key2 = entry.name) {
+        value = if (entry.name.isBlank() && entry.sessionId.isNotBlank()) {
+            resolve(entry.sessionId)
+        } else {
+            entry.name
+        }
+    }
+    return resolved.ifBlank { stringResource(R.string.tokens_ranking_unknown_session) }
+}
+
+private fun tokenCsvFileName(range: String, startDate: String?, endDate: String?): String {
+    val period = if (range == "custom") {
+        "${startDate ?: "start"}_${endDate ?: "end"}"
+    } else {
+        range.ifBlank { "total" }
+    }
+    val stamp = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date())
+    return "token_usage_records_${period}_$stamp.csv"
+}
+
+/**
+ * 生成当前范围明细的 CSV 文本（与服务器 /api/tokens/export 的表头风格一致），
+ * 前置 BOM 以便 Excel 正确识别 UTF-8 中文。
+ */
+private fun buildTokenCsv(records: List<TokenRecordUi>): String {
+    val builder = StringBuilder()
+    builder.append('\ufeff')
+    builder.append(
+        listOf(
+            "时间", "日期", "用途", "来源", "模型", "实际模型",
+            "会话ID", "会话名称", "输入Token", "输出Token", "总计",
+            "费用", "估算费用USD", "耗时ms", "首字耗时ms", "记录ID"
+        ).joinToString(",", transform = ::csvField)
+    )
+    builder.append("\r\n")
+    records.forEach { record ->
+        builder.append(
+            listOf(
+                record.timestamp,
+                record.date,
+                record.purpose,
+                record.source,
+                record.model,
+                record.actualModel,
+                record.sessionId,
+                record.sessionName,
+                record.input.toString(),
+                record.output.toString(),
+                record.total.toString(),
+                record.cost.orEmpty(),
+                record.estimatedCostUsd?.let { String.format(Locale.US, "%.6f", it) }.orEmpty(),
+                record.durationMs?.toLong()?.toString().orEmpty(),
+                record.ttftMs?.toLong()?.toString().orEmpty(),
+                record.id
+            ).joinToString(",", transform = ::csvField)
+        )
+        builder.append("\r\n")
+    }
+    return builder.toString()
+}
+
+private fun csvField(value: String): String {
+    val needsQuoting = value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }
+    return if (needsQuoting) "\"" + value.replace("\"", "\"\"") + "\"" else value
+}
+
+/** Android 10+ 走 MediaStore.Downloads 写入；Android 9 及以下直写公共下载目录。 */
+private suspend fun writeCsvToDownloads(
+    context: Context,
+    fileName: String,
+    content: String
+): Boolean = withContext(Dispatchers.IO) {
+    val bytes = content.toByteArray(Charsets.UTF_8)
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return@withContext false
+            try {
+                val output = resolver.openOutputStream(uri) ?: run {
+                    runCatching { resolver.delete(uri, null, null) }
+                    return@withContext false
+                }
+                output.use { it.write(bytes) }
+                resolver.update(
+                    uri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null
+                )
+            } catch (e: Exception) {
+                runCatching { resolver.delete(uri, null, null) }
+                return@withContext false
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists() && !downloadsDir.mkdirs()) return@withContext false
+            FileOutputStream(File(downloadsDir, fileName)).use { it.write(bytes) }
+        }
+        true
     } catch (e: Exception) {
-        Pair(unknownName, 0L)
+        false
     }
 }
 
