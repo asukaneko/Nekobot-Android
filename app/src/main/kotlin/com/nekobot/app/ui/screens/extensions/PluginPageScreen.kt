@@ -104,7 +104,7 @@ fun PluginPageScreen(
     val languageCode = configuration.locales[0]?.language.orEmpty()
     // 首屏 WebView 在 LaunchedEffect 之前就已创建，主题必须在这里算好并交给宿主。
     val tokens = pluginThemeTokens(languageCode)
-    val host = remember(resolved, launchArgs) {
+    val host = remember(resolved, launchArgs, languageCode) {
         PluginPageHost(
             context = context,
             resolved = resolved,
@@ -113,11 +113,14 @@ fun PluginPageScreen(
             launchArgs = launchArgs,
             progressParentMessageId = progressParentId,
             initialTheme = tokens,
+            languageCode = languageCode,
             onCloseRequested = onBack
         )
     }
     val state by host.state.collectAsStateWithLifecycle()
     val revision by host.revision.collectAsStateWithLifecycle()
+    val pageTitle by host.pageTitle.collectAsStateWithLifecycle()
+    val dialogRequest by host.dialog.collectAsStateWithLifecycle()
     LaunchedEffect(tokens) { host.updateTheme(tokens) }
     DisposableEffect(host) {
         onDispose { host.destroy() }
@@ -132,7 +135,7 @@ fun PluginPageScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = resolved.page.localizedTitle(languageCode),
+                        text = pageTitle,
                         fontWeight = FontWeight.SemiBold
                     )
                 },
@@ -185,6 +188,10 @@ fun PluginPageScreen(
                 )
                 is PluginPageHost.State.Ready -> Unit
             }
+        }
+        // 原生弹窗（alert/confirm/prompt/select）：由页面脚本或 host.ui.* 触发。
+        dialogRequest?.let { request ->
+            PluginPageDialogRenderer(request = request, onResult = host::respondDialog)
         }
     }
 }

@@ -319,7 +319,10 @@ object PluginPortInspector {
                     "system" -> name == "system.info"
                     "log" -> true
                     "storage" -> name in setOf("storage.get", "storage.set", "storage.remove", "storage.list")
-                    "ui" -> name in setOf("ui.toast", "ui.close", "ui.render")
+                    "ui" -> name in setOf(
+                        "ui.toast", "ui.close", "ui.render",
+                        "ui.openPage", "ui.alert", "ui.confirm", "ui.prompt", "ui.select"
+                    )
                     "chat" -> name.startsWith("chat.")
                     "characters" -> name.startsWith("characters.")
                     "worldbooks" -> name.startsWith("worldbooks.")

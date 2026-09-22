@@ -548,7 +548,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 ## 9. 插件页面
 
-插件可以声明独立页面：安装启用后出现在「更多 -> 扩展功能 -> 插件页面」区块，桌面小组件「插件页面」也会以网格显示这些入口；点击进入一个由插件自行设计的界面。页面是插件包内的 HTML + CSS + JS，运行在受限 WebView 中，只能通过 `host.*` 桥访问宿主能力。
+插件可以声明独立页面：安装启用后出现在「更多 -> 扩展功能 -> 插件页面」区块，桌面小组件「插件页面」也会以网格显示这些入口；点击进入一个由插件自行设计的界面。页面是插件包内的 HTML + CSS + JS，运行在受限 WebView 中，只能通过 `host.*` 桥访问宿主能力。单个页面可以在插件目录内的多个 HTML 之间切换（相对链接或 `host.ui.openPage`），并使用原生弹窗（`alert`/`confirm`/`prompt`/`select`）。
 
 ### 9.1 `pages[]` 字段
 
@@ -566,7 +566,8 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 页面运行在虚拟源 `https://appassets.androidplatform.net/plugin/<插件id>/<entry>`，`entry` 同目录的 CSS/JS/图片等相对引用会自动解析到插件目录内的对应文件。
 
-- 页面内 `fetch`、XHR、WebSocket、图片外链与页面跳转全部被禁止；网络只能走 `host.http.get`。
+- 页面内 `fetch`、XHR、WebSocket 与图片外链被禁止；网络只能走 `host.http.get`。
+- 页面跳转仅允许插件目录内的资源（相对链接、`location.href`、`host.ui.openPage`），外部地址、`target=_blank` 与自定义 scheme 一律拦截；用法见 9.4。
 - 不使用 `localStorage`：页面存储必须走 `host.storage.*`，这样卸载插件时数据能一次清干净。
 - 页面主题：宿主会在 HTML 的 `<head>` 起始处注入 CSS 变量与桥接脚本，可用变量（浅色/深色自动跟随 App）：
   `--neko-bg`、`--neko-surface`、`--neko-surface-variant`、`--neko-on-surface`、`--neko-on-surface-variant`、`--neko-primary`、`--neko-on-primary`、`--neko-secondary`、`--neko-outline`、`--neko-error`、`--neko-radius`、`--neko-font`。
@@ -574,7 +575,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 ### 9.3 `host.*` API
 
-全部返回 `Promise`；单次调用超时 10 秒、并发上限 4、响应上限 256 KiB；失败时 Promise 拒绝，错误对象带 `message` 与 `code`。
+全部返回 `Promise`；单次调用超时 10 秒、并发上限 4、响应上限 256 KiB；失败时 Promise 拒绝，错误对象带 `message` 与 `code`。原生弹窗等待用户回答，最长 5 分钟，超时按取消处理；`host.system.info().capabilities` 含 `ui.openPage`、`ui.alert`、`ui.confirm`、`ui.prompt`、`ui.select` 时对应能力可用。
 
 | API | 权限 | 说明 |
 | --- | --- | --- |
@@ -594,6 +595,11 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | `host.characters.list()` / `get(id)` | `characters.read` | 角色卡只读数据（不含提示词运行态） |
 | `host.worldbooks.list()` / `get(id)` | `worldbooks.read` | 世界书与条目只读数据 |
 | `host.ui.render(template, data)` | 免 | 模板渲染，返回 HTML 字符串（语法见第 4 章） |
+| `host.ui.openPage(pageId, args?)` | 免 | 在同一 WebView 内切换到声明过的页面（多 HTML 页面互跳），用法见 9.4 |
+| `host.ui.alert(message, options?)` | 免 | 原生提示弹窗，返回 `true`；`options.title` 覆盖标题 |
+| `host.ui.confirm(message, options?)` | 免 | 原生确认弹窗，返回 `boolean` |
+| `host.ui.prompt(options)` | 免 | 原生输入弹窗，返回输入文本；取消返回 `null` |
+| `host.ui.select(options)` | 免 | 原生单选弹窗，返回 `{index, value, label}`；取消返回 `null` |
 | `host.chat.messages.append(options)` | `chat.write` | 追加消息，`options = {sessionId?, role?, content}`；返回 `{id, sessionId, role, createdAt}` |
 | `host.chat.send(options)` | `chat.write` | 发送消息并触发后台回复生成，返回 `{messageId, sessionId, replyPending}` |
 | `host.chat.sessions.create(options)` / `switch(id)` | `chat.write` | 新建会话 / 请求跳转到会话 |
@@ -604,15 +610,59 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | `host.http.get(url)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`（≤ 512 KiB） |
 | `host.progress.update(options)` | `chat.progress` | 由聊天命令（`open_page`）打开时更新该命令消息上的进度卡片；其他入口返回 `false` |
 
-### 9.4 页面生命周期
+### 9.4 多页面与页内切换
+
+页面可以在多个 HTML 之间切换，不需要退回应用列表：
+
+- **相对链接**：`<a href="detail.html">`、`location.href = "views/detail.html"`、`location.replace(...)`、`history.back()` 都在插件目录内解析；路径越界（`..`、绝对路径）会被拒绝。
+- **声明页面互跳**：`await host.ui.openPage("detail", "id=3")` 切换到 `pages[]` 里声明过的页面；第二个参数是可选的参数文本（≤ 1000 字符），页面通过 `window.__NEKO_LAUNCH__.argsText` / `args` 读取，`sessionId` 保持不变。
+- 顶栏标题跟随当前页面：命中声明页面用其本地化标题，其他 HTML 用文档 `<title>`。
+- 返回键优先在页面历史中回退，只有没有上一页时才关闭页面。
+
+```js
+// 打开声明过的 detail 页面，并把当前记录的 id 传过去
+await host.ui.openPage("detail", "id=" + note.id);
+```
+
+### 9.5 原生弹窗
+
+页面里的 `alert()`、`confirm()`、`prompt()` 会显示为应用原生弹窗（不再被忽略）。HTML 的 `<select>` 下拉也会自动替换为应用弹窗（Nekobot 样式），选中后照常触发 `input` / `change` 事件，插件代码无需改动：
+
+- 需要弹窗标题时给 select 加 `data-neko-title="选择一项"`（否则用 `title` 属性）。
+- `multiple`、`size>1`、`disabled` 或带 `data-neko-native` 的 select 保留系统原生行为；`type=date` / `type=time` 等仍使用系统选择器。
+- 需要自己控制流程（异步取值、动态选项）时用下面的 `host.*` 弹窗 API。
+
+需要锚定展示或获取返回值时用 `host.*` 弹窗（都返回 Promise，取消/关闭同样有明确返回值）：
+
+| API | 返回 | 说明 |
+| --- | --- | --- |
+| `host.ui.alert(message, options?)` | `true` | 提示弹窗；`options.title` 覆盖标题（默认插件名） |
+| `host.ui.confirm(message, options?)` | `boolean` | 确认弹窗 |
+| `host.ui.prompt({message, value?, title?})` | `string \| null` | 输入弹窗；`value` 为初始文本 |
+| `host.ui.select({message?, title?, options, selected?})` | `{index, value, label} \| null` | 单选弹窗 |
+
+`options` 是字符串数组或 `{label, value}` 对象数组（≤ 32 项），`selected` 可传下标或 value 作为默认选中项。
+
+```js
+// 页面里的原生 select 已自动走应用弹窗；下面是等价的 API 用法
+const choice = await host.ui.select({
+  message: "选择要应用的风格",
+  options: [{ label: "简洁", value: "simple" }, { label: "华丽", value: "rich" }]
+});
+if (choice) await host.storage.set("style", choice.value);
+```
+
+### 9.6 页面生命周期
 
 - 同时只允许打开 1 个插件页面；打开新页面会先销毁旧的。
 - 页面没有总超时；单次 API 调用 10 秒超时。
 - 返回键优先页面内后退，其次关闭页面；关闭时 WebView 会被销毁。
+- 页面内切换页面（相对链接 / `host.ui.openPage`）不销毁 WebView，也会进入返回栈。
+- 展示原生弹窗期间共享该页面的 API 并发名额；离页会取消未回答的弹窗。
 - 页面进程崩溃时展示错误卡片，可点「重载」恢复，不会影响 App 其他部分。
 - 插件被停用或卸载后入口消失，页面无法再打开。
 
-### 9.5 从聊天命令打开页面
+### 9.7 从聊天命令打开页面
 
 除了「扩展功能 → 插件页面」入口，命令也可以直接打开页面：给命令加 `"open_page": "<页面id>"`。
 
@@ -648,7 +698,7 @@ if (launch.args[0] === "搜索") {
 
 `open_page` 引用的页面必须已在 `pages[]` 中声明，否则安装时会被拒绝。
 
-### 9.6 完整示例
+### 9.8 完整示例
 
 `plugin.json`：
 

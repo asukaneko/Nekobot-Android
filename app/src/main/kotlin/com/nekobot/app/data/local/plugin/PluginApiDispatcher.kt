@@ -116,6 +116,8 @@ internal class PluginApiDispatcher(
      *
      * @param sessionId 命令运行时为当前会话；页面仅当从会话上下文打开时才有值。
      * @param isPage 页面调用返回字段裁剪后的数据；命令调用保持既有原始对象（存量零回归）。
+     * @param openPage 页面内切换页面（`host.ui.openPage`）；命令运行时为 null。
+     * @param dialogs 原生弹窗能力（`host.ui.alert/confirm/prompt/select`）；命令运行时为 null。
      */
     data class CallContext(
         val plugin: InstalledPlugin,
@@ -124,7 +126,9 @@ internal class PluginApiDispatcher(
         val closePage: (() -> Unit)? = null,
         val isPage: Boolean = false,
         /** 命令运行时传入当前 LocalRepository，避免依赖全局单例。 */
-        val repositoryOverride: LocalRepository? = null
+        val repositoryOverride: LocalRepository? = null,
+        val openPage: ((pageId: String, args: String?) -> Boolean)? = null,
+        val dialogs: PluginPageDialogHost? = null
     )
 
     suspend fun dispatch(context: CallContext, name: String, payloadJson: String): Any? {
@@ -169,6 +173,20 @@ internal class PluginApiDispatcher(
                     throw PluginApiException("模板渲染失败：${error.message ?: "语法错误"}", "invalid_argument")
                 }
             }
+            "ui.openPage" -> {
+                val pageId = payload.string("pageId").ifBlank { payload.string("id") }.trim()
+                if (pageId.isBlank()) {
+                    throw PluginApiException("ui.openPage 需要 pageId", "invalid_argument")
+                }
+                val opener = context.openPage
+                    ?: throw PluginApiException("当前环境不支持切换页面", "unavailable")
+                val argsText = payload.string("args").take(MAX_LAUNCH_ARGS_CHARS).ifBlank { null }
+                if (!opener(pageId, argsText)) {
+                    throw PluginApiException("页面不存在或当前无法切换：$pageId", "not_found")
+                }
+                mapOf("pageId" to pageId, "opened" to true)
+            }
+            "ui.alert", "ui.confirm", "ui.prompt", "ui.select" -> showDialog(context, canonical, payload)
             "storage.get" -> {
                 val key = storageKey(context.plugin.id, payload.string("key"))
                 storage.getString(key, null)?.let { raw ->
@@ -473,6 +491,61 @@ internal class PluginApiDispatcher(
             ?: repositoryProvider()
             ?: throw PluginApiException("本地数据不可用", "unavailable")
 
+    /**
+     * `host.ui.alert/confirm/prompt/select`：转交页面宿主展示原生弹窗并等待结果。
+     *
+     * alert 恒为 true；confirm 返回是否确认；prompt 取消返回 null、否则返回文本；
+     * select 取消返回 null、否则返回 `{index, value, label}`。
+     */
+    private suspend fun showDialog(context: CallContext, name: String, payload: JsonObject): Any? {
+        val dialogs = context.dialogs
+            ?: throw PluginApiException("当前环境不支持原生弹窗", "unavailable")
+        val title = payload.string("title").take(MAX_DIALOG_TITLE_CHARS).ifBlank { context.plugin.name }
+        val message = payload.string("message").take(MAX_DIALOG_MESSAGE_CHARS)
+        if (name != "ui.select" && message.isBlank()) {
+            throw PluginApiException("$name 需要 message", "invalid_argument")
+        }
+        val request = when (name) {
+            "ui.alert" -> PluginPageDialog(kind = PluginPageDialog.Kind.ALERT, title = title, message = message)
+            "ui.confirm" -> PluginPageDialog(kind = PluginPageDialog.Kind.CONFIRM, title = title, message = message)
+            "ui.prompt" -> PluginPageDialog(
+                kind = PluginPageDialog.Kind.PROMPT,
+                title = title,
+                message = message,
+                defaultValue = payload.string("value").ifBlank { payload.string("defaultValue") }
+                    .take(MAX_DIALOG_DEFAULT_CHARS)
+            )
+            else -> {
+                val options = PluginDialogPayloads.parseOptions(payload)
+                PluginPageDialog(
+                    kind = PluginPageDialog.Kind.SELECT,
+                    title = title,
+                    message = message,
+                    options = options,
+                    selectedIndex = PluginDialogPayloads.resolveSelectedIndex(payload, options)
+                )
+            }
+        }
+        val result = dialogs.showDialog(request)
+        return when (name) {
+            "ui.alert" -> true
+            "ui.confirm" -> result.confirmed
+            "ui.prompt" -> if (result.confirmed) result.text else JsonNull.INSTANCE
+            else -> {
+                val option = request.options.getOrNull(result.selectedIndex)
+                if (result.confirmed && option != null) {
+                    mapOf(
+                        "index" to result.selectedIndex,
+                        "value" to option.value,
+                        "label" to option.label
+                    )
+                } else {
+                    JsonNull.INSTANCE
+                }
+            }
+        }
+    }
+
     private fun systemInfo(): Map<String, Any> {
         val configuration = appContext.resources.configuration
         val night = (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -516,7 +589,8 @@ internal class PluginApiDispatcher(
     }
 
     private fun permissionFor(canonical: String): String? = when (canonical) {
-        "system.info", "log", "ui.close", "ui.render" -> null
+        "system.info", "log", "ui.close", "ui.render",
+        "ui.openPage", "ui.alert", "ui.confirm", "ui.prompt", "ui.select" -> null
         "ai.complete" -> "ai.call"
         "storage.get", "storage.set", "storage.remove", "storage.list" -> "storage"
         "ui.toast" -> "notify"
@@ -1159,6 +1233,11 @@ internal class PluginApiDispatcher(
             "ui.toast",
             "ui.close",
             "ui.render",
+            "ui.openPage",
+            "ui.alert",
+            "ui.confirm",
+            "ui.prompt",
+            "ui.select",
             "chat.read",
             "chat.write",
             "characters.read",
@@ -1188,7 +1267,8 @@ internal class PluginApiDispatcher(
 
         /** 页面侧 API 名（`host.*`）。 */
         val PAGE_API_NAMES: Set<String> = setOf(
-            "system.info", "log", "ui.toast", "ui.close", "ui.render",
+            "system.info", "log", "ui.toast", "ui.close", "ui.render", "ui.openPage",
+            "ui.alert", "ui.confirm", "ui.prompt", "ui.select",
             "storage.get", "storage.set", "storage.remove", "storage.list",
             "chat.current", "chat.sessions.list", "chat.sessions.get", "chat.messages.list",
             "chat.messages.append", "chat.send", "chat.sessions.create", "chat.sessions.switch",
@@ -1244,6 +1324,12 @@ internal class PluginApiDispatcher(
 
         /** 单条写入消息的字符上限。 */
         const val MAX_CHAT_WRITE_CHARS = 8_000
+
+        /** `host.ui.openPage` 启动参数与原生弹窗的字段上限。 */
+        const val MAX_LAUNCH_ARGS_CHARS = 1_000
+        const val MAX_DIALOG_MESSAGE_CHARS = PluginDialogPayloads.MAX_MESSAGE_CHARS
+        const val MAX_DIALOG_TITLE_CHARS = PluginDialogPayloads.MAX_TITLE_CHARS
+        const val MAX_DIALOG_DEFAULT_CHARS = PluginDialogPayloads.MAX_DEFAULT_CHARS
 
         /** 角色卡写入上限。 */
         const val MAX_CHARACTER_NAME_CHARS = 128

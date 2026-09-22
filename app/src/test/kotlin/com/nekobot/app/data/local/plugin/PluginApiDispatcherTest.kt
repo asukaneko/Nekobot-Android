@@ -54,6 +54,18 @@ class PluginApiDispatcherTest {
     }
 
     @Test
+    fun pageNavigationAndNativeDialogApisAreRegistered() {
+        listOf("ui.openPage", "ui.alert", "ui.confirm", "ui.prompt", "ui.select").forEach { api ->
+            assertTrue("$api 需要出现在能力协商清单", api in PluginApiDispatcher.CAPABILITIES)
+            assertTrue("$api 需要页面运行时可用", api in PluginApiDispatcher.PAGE_API_NAMES)
+        }
+        assertTrue(PluginApiDispatcher.MAX_LAUNCH_ARGS_CHARS > 0)
+        assertTrue(PluginApiDispatcher.MAX_DIALOG_MESSAGE_CHARS > 0)
+        assertTrue(PluginApiDispatcher.MAX_DIALOG_TITLE_CHARS > 0)
+        assertTrue(PluginApiDispatcher.MAX_DIALOG_DEFAULT_CHARS > 0)
+    }
+
+    @Test
     fun sessionInsightApisAreRegisteredForBothRuntimes() {
         val capabilities = PluginApiDispatcher.CAPABILITIES
         val insightApis = listOf(

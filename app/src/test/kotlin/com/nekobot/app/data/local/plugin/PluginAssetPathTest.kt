@@ -2,6 +2,7 @@ package com.nekobot.app.data.local.plugin
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,6 +30,50 @@ class PluginAssetPathTest {
         listOf("notes.html", "pages/notes.html", "assets/img/icon.png", "a-b_c.1.js").forEach { path ->
             assertTrue("应接受：$path", PluginManifestValidator.isSafeRelativePath(path))
         }
+    }
+
+    @Test
+    fun samePluginNavigationPathsAreResolved() {
+        val server = PluginAssetServer(pluginDirectoryProvider = { null })
+        val origin = server.virtualOrigin("demo.notes")
+        assertEquals(
+            "pages/notes.html",
+            server.pluginRelativePath("demo.notes", origin + "pages/notes.html?x=1#top")
+        )
+        assertEquals(
+            "图标 页.html",
+            server.pluginRelativePath("demo.notes", origin + "%E5%9B%BE%E6%A0%87%20%E9%A1%B5.html")
+        )
+        assertNull("越界路径必须拒绝", server.pluginRelativePath("demo.notes", origin + "../secret.html"))
+        assertNull("编码后的越界路径必须拒绝", server.pluginRelativePath("demo.notes", origin + "a/%2e%2e/b.html"))
+        assertNull("外部地址必须拒绝", server.pluginRelativePath("demo.notes", "https://example.com/a.html"))
+        assertNull(
+            "其他插件必须拒绝",
+            server.pluginRelativePath("demo.notes", origin.replace("demo.notes", "other") + "a.html")
+        )
+        assertNull("非插件目录前缀必须拒绝", server.pluginRelativePath("demo.notes", origin.trimEnd('/')))
+        assertNull("自定义 scheme 必须拒绝", server.pluginRelativePath("demo.notes", "javascript:alert(1)"))
+    }
+
+    @Test
+    fun injectionExposesPageNavigationAndDialogApis() {
+        val server = PluginAssetServer(pluginDirectoryProvider = { null })
+        val injection = server.buildInjection()
+        listOf("ui.openPage", "ui.alert", "ui.confirm", "ui.prompt", "ui.select").forEach { api ->
+            assertTrue("注入脚本必须暴露 $api", injection.contains("\"$api\""))
+        }
+        assertTrue("弹窗参数组装函数必须存在", injection.contains("function dialogPayload"))
+    }
+
+    @Test
+    fun injectionRoutesSelectElementsToNativeDialog() {
+        val server = PluginAssetServer(pluginDirectoryProvider = { null })
+        val injection = server.buildInjection()
+        assertTrue("必须拦截 select 的触摸/鼠标事件", injection.contains("touchstart"))
+        assertTrue("必须拦截 select 的鼠标事件", injection.contains("mousedown"))
+        assertTrue("必须提供 data-neko-native 逃生开关", injection.contains("data-neko-native"))
+        assertTrue("选中后必须派发 change 事件", injection.contains("\"change\""))
+        assertTrue("选中后必须派发 input 事件", injection.contains("\"input\""))
     }
 
     @Test

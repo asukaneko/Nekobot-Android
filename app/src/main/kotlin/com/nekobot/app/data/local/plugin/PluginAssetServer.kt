@@ -1,11 +1,11 @@
 package com.nekobot.app.data.local.plugin
 
-import android.net.Uri
 import android.webkit.WebResourceResponse
 import com.google.gson.Gson
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.net.URI
 import java.util.Locale
 
 /** 注入插件页面的主题 token；取值来自当前 Compose 主题。 */
@@ -57,9 +57,28 @@ class PluginAssetServer(
 
     fun virtualOrigin(pluginId: String): String = "https://$VIRTUAL_HOST/plugin/$pluginId/"
 
+    /**
+     * 解析同插件虚拟源 URL 的相对路径（已解码）；非本插件地址或越界路径返回 null。
+     *
+     * 页面导航白名单（相对链接、`location.href`、`host.ui.openPage`）与当前页面标题
+     * 匹配都走这里；查询串与锚点不参与匹配。
+     */
+    fun pluginRelativePath(pluginId: String, url: String): String? {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        if (!uri.scheme.equals("https", ignoreCase = true)) return null
+        if (!uri.host.equals(VIRTUAL_HOST, ignoreCase = true)) return null
+        val path = uri.path ?: return null
+        val prefix = "/plugin/$pluginId/"
+        if (!path.startsWith(prefix)) return null
+        val relative = path.removePrefix(prefix)
+        if (!PluginManifestValidator.isSafeRelativePath(relative)) return null
+        return relative
+    }
+
+
     /** 拦截虚拟源请求；非虚拟源返回 null，交给 WebView 的默认网络策略（已被禁用）。 */
     fun intercept(pluginId: String, url: String): WebResourceResponse? {
-        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
         if (!uri.scheme.equals("https", ignoreCase = true)) return null
         if (!uri.host.equals(VIRTUAL_HOST, ignoreCase = true)) return null
         val path = uri.path ?: return null
@@ -149,6 +168,18 @@ class PluginAssetServer(
                 }
               };
               function callHost(name, payload) { return call(name, payload); }
+              function dialogPayload(message, options) {
+                if (message && typeof message === "object") {
+                  options = message;
+                  message = options.message;
+                }
+                var payload = {};
+                if (options && typeof options === "object" && options.title != null) {
+                  payload.title = String(options.title);
+                }
+                payload.message = message == null ? "" : String(message);
+                return payload;
+              }
               window.host = {
                 system: { info: function () { return callHost("system.info", {}); } },
                 log: function (level, message) {
@@ -165,6 +196,31 @@ class PluginAssetServer(
                   close: function () { return callHost("ui.close", {}); },
                   render: function (template, data) {
                     return callHost("ui.render", { template: template, data: data });
+                  },
+                  openPage: function (pageId, args) {
+                    return callHost("ui.openPage", { pageId: pageId, args: args });
+                  },
+                  alert: function (message, options) {
+                    return callHost("ui.alert", dialogPayload(message, options));
+                  },
+                  confirm: function (message, options) {
+                    return callHost("ui.confirm", dialogPayload(message, options));
+                  },
+                  prompt: function (options, defaultValue) {
+                    if (typeof options === "string") {
+                      var textPayload = { message: options };
+                      if (defaultValue != null) textPayload.value = String(defaultValue);
+                      return callHost("ui.prompt", textPayload);
+                    }
+                    options = options || {};
+                    var promptPayload = dialogPayload(options.message, options);
+                    var value = options.value != null ? options.value : options.defaultValue;
+                    if (value != null) promptPayload.value = String(value);
+                    return callHost("ui.prompt", promptPayload);
+                  },
+                  select: function (options) {
+                    if (Array.isArray(options)) return callHost("ui.select", { options: options });
+                    return callHost("ui.select", options || {});
                   }
                 },
                 chat: {
@@ -213,6 +269,66 @@ class PluginAssetServer(
                   update: function (options) { return callHost("progress.update", options || {}); }
                 }
               };
+              // <select> 的原生下拉由 WebView 绘制，样式与应用不一致；统一改走 host.ui.select。
+              // 例外：multiple / size>1 / disabled / 带 data-neko-native 的 select 保持原生行为。
+              (function () {
+                "use strict";
+                var active = false;
+                function skip(select) {
+                  return !select || select.disabled || select.multiple ||
+                    (select.size && select.size > 1) || select.hasAttribute("data-neko-native");
+                }
+                function optionText(option) {
+                  var text = String(option.label || option.textContent || "").trim();
+                  var group = option.parentNode;
+                  if (group && group.tagName === "OPTGROUP" && group.label) {
+                    return String(group.label) + " · " + text;
+                  }
+                  return text;
+                }
+                function open(select) {
+                  if (active || skip(select)) return;
+                  var options = [];
+                  var indices = [];
+                  for (var i = 0; i < select.options.length; i++) {
+                    var option = select.options[i];
+                    if (option.disabled) continue;
+                    options.push({ label: optionText(option) || ("#" + (i + 1)), value: option.value });
+                    indices.push(i);
+                  }
+                  if (options.length === 0) return;
+                  active = true;
+                  host.ui.select({
+                    options: options,
+                    selected: indices.indexOf(select.selectedIndex),
+                    message: select.getAttribute("data-neko-title") || select.title || ""
+                  }).then(function (choice) {
+                    if (!choice || choice.index == null) return;
+                    var index = indices[choice.index];
+                    if (index == null || index === select.selectedIndex) return;
+                    select.selectedIndex = index;
+                    select.dispatchEvent(new Event("input", { bubbles: true }));
+                    select.dispatchEvent(new Event("change", { bubbles: true }));
+                  }).catch(function () {}).then(function () { active = false; });
+                }
+                function onPointer(event) {
+                  var target = event.target;
+                  if (!target || String(target.tagName).toLowerCase() !== "select") return;
+                  if (skip(target)) return;
+                  if (event.button != null && event.button > 0) return;
+                  event.preventDefault();
+                  open(target);
+                }
+                document.addEventListener("touchstart", onPointer, { capture: true, passive: false });
+                document.addEventListener("mousedown", onPointer, true);
+                // 兜底：个别版本仍会在 click 阶段拉起原生下拉，这里再拦一次
+                document.addEventListener("click", function (event) {
+                  var target = event.target;
+                  if (!target || String(target.tagName).toLowerCase() !== "select") return;
+                  if (skip(target)) return;
+                  event.preventDefault();
+                }, true);
+              })();
             })();
             </script>
         """.trimIndent()

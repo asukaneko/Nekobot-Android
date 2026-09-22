@@ -175,6 +175,11 @@ class PluginPortInspectorTest {
             await host.memory.append("y");
             await host.memory.edit("a", "b");
             await host.ui.render("{{a}}", {});
+            await host.ui.openPage("detail", "id=1");
+            await host.ui.alert("提示");
+            await host.ui.confirm("确认？");
+            await host.ui.prompt({ message: "输入" });
+            await host.ui.select({ options: ["甲", "乙"] });
             await host.characters.create({name: "n"});
             await host.characters.update({id: "i", name: "n"});
             """.trimIndent()
