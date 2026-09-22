@@ -78,6 +78,75 @@ class LocalAiClientChatCompletionsTest {
     }
 
     @Test
+    fun agentThinkingCallbacksReceiveEveryStreamingDelta() = runBlocking {
+        val deltas = listOf("第一", "段思考", "继续", "输出")
+        val received = mutableListOf<String>()
+        val client = LocalAiClient(
+            sseClient(
+                buildList {
+                    deltas.forEach { delta ->
+                        add("""{"choices":[{"delta":{"reasoning_content":"$delta"}}]}""")
+                    }
+                    // 思考结束后只发起工具调用（Agent 轮次里正文常为空），
+                    // 用于验证思考不依赖正文阈值放行。
+                    add(
+                        """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",""" +
+                            """"type":"function","function":{"name":"lookup","arguments":"{}"}}]}}]}"""
+                    )
+                }
+            )
+        )
+
+        val result = client.chatOnce(
+            chatModel("agent-thinking"),
+            listOf(mapOf("role" to "user", "content" to "hello")),
+            streamCallbacks = LocalAiStreamCallbacks(
+                onThinkingChunk = { received += it }
+            )
+        )
+
+        assertEquals(deltas.joinToString(""), result.thinkingContent)
+        // 逐块转发（首个分片之后不再等待正文阈值），且结束后不整段补发造成重复
+        assertEquals(deltas, received)
+    }
+
+    @Test
+    fun agentThinkingIsNotDuplicatedWhenContentIsReleased() = runBlocking {
+        val thinkingDeltas = listOf("思考甲", "思考乙")
+        val receivedThinking = mutableListOf<String>()
+        val receivedContent = mutableListOf<String>()
+        val longContent = "正文内容".repeat(80)
+        val client = LocalAiClient(
+            sseClient(
+                buildList {
+                    thinkingDeltas.forEach { delta ->
+                        add("""{"choices":[{"delta":{"reasoning_content":"$delta"}}]}""")
+                    }
+                    add(
+                        """{"choices":[{"delta":{"content":"${longContent.substring(0, 120)}"}}]}"""
+                    )
+                    add(
+                        """{"choices":[{"delta":{"content":"${longContent.substring(120)}"}}]}"""
+                    )
+                }
+            )
+        )
+
+        val result = client.chatOnce(
+            chatModel("agent-content"),
+            listOf(mapOf("role" to "user", "content" to "hello")),
+            streamCallbacks = LocalAiStreamCallbacks(
+                onThinkingChunk = { receivedThinking += it },
+                onContentChunk = { receivedContent += it }
+            )
+        )
+
+        assertEquals(longContent, result.content)
+        assertEquals(thinkingDeltas.joinToString(""), receivedThinking.joinToString(""))
+        assertEquals(longContent, receivedContent.joinToString(""))
+    }
+
+    @Test
     fun chatCompletions400RetriesWithoutOptionalParametersOrStreamOptions() = runBlocking {
         val requestBodies = mutableListOf<String>()
         val okHttpClient = OkHttpClient.Builder()
@@ -163,6 +232,28 @@ class LocalAiClientChatCompletionsTest {
                                 "data: {\"choices\":[{\"delta\":{\"content\":${JsonParser.parseString(com.google.gson.Gson().toJson(content()))}}}]}"
                             )
                             appendLine()
+                            appendLine("data: [DONE]")
+                        }.toResponseBody("text/event-stream".toMediaType())
+                    )
+                    .build()
+            })
+            .build()
+
+    /** 按给定顺序逐条推送 SSE 负载，最后补发 [DONE]。 */
+    private fun sseClient(payloads: List<String>): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(
+                        buildString {
+                            payloads.forEach { payload ->
+                                appendLine("data: $payload")
+                                appendLine()
+                            }
                             appendLine("data: [DONE]")
                         }.toResponseBody("text/event-stream".toMediaType())
                     )

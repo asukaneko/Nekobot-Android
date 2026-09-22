@@ -479,10 +479,18 @@ class LocalAiClient(
             // - 正文仍先缓冲，超过阈值（或流正常结束）才放行，故障转移判定保持原样。
             var thinkingReleased = false
             var callbacksReleased = false
-            fun releaseThinkingCallbacks() {
-                if (thinkingReleased || streamCallbacks == null) return
-                thinkingReleased = true
+            var callbacksStarted = false
+            /** onStart 只允许触发一次，避免重复的 StreamStart 把 UI 已累积的思考/正文清空。 */
+            fun ensureCallbacksStarted() {
+                if (callbacksStarted || streamCallbacks == null) return
+                callbacksStarted = true
                 streamCallbacks.onStart()
+            }
+            fun releaseThinkingCallbacks() {
+                if (streamCallbacks == null) return
+                ensureCallbacksStarted()
+                if (thinkingReleased) return
+                thinkingReleased = true
                 thinking.takeIf { it.isNotEmpty() }?.let {
                     streamCallbacks.onThinkingChunk(it.toString())
                 }
@@ -490,10 +498,13 @@ class LocalAiClient(
             fun releaseBufferedCallbacks() {
                 if (callbacksReleased || streamCallbacks == null) return
                 callbacksReleased = true
-                thinkingReleased = true
-                streamCallbacks.onStart()
-                thinking.takeIf { it.isNotEmpty() }?.let {
-                    streamCallbacks.onThinkingChunk(it.toString())
+                ensureCallbacksStarted()
+                // 思考已逐块放行时不再整段补发，否则 UI 会把同一段思考重复累积
+                if (!thinkingReleased) {
+                    thinkingReleased = true
+                    thinking.takeIf { it.isNotEmpty() }?.let {
+                        streamCallbacks.onThinkingChunk(it.toString())
+                    }
                 }
                 content.takeIf { it.isNotEmpty() }?.let {
                     streamCallbacks.onContentChunk(it.toString())
@@ -553,10 +564,15 @@ class LocalAiClient(
                     protocol.parseStreamToolCallDeltas(data).forEach(toolCallAccumulator::add)
                     protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                         thinking.append(chunk)
-                        // 思考正文到达即放行：Agent 工具循环里正文常常很短甚至为空，
-                        // 若等正文阈值放行（旧实现），思考只能等流结束才整段出现。
-                        releaseThinkingCallbacks()
-                        if (callbacksReleased) streamCallbacks?.onThinkingChunk?.invoke(chunk)
+                        // 思考正文到达即放行：首个分片触发 onStart 并交付已累积思考，
+                        // 之后每个分片都必须立即转发，思考卡片才能逐字增长。
+                        // 旧实现只在 callbacksReleased（正文超过阈值）之后才逐块转发，
+                        // 于是首个分片之后思考停更，直到正文放行或流结束才整段出现。
+                        if (thinkingReleased) {
+                            streamCallbacks?.onThinkingChunk?.invoke(chunk)
+                        } else {
+                            releaseThinkingCallbacks()
+                        }
                     }
                     protocol.parseStreamThinkingSignature(data)?.takeIf(String::isNotEmpty)?.let {
                         thinkingSignature.append(it)
@@ -584,9 +600,13 @@ class LocalAiClient(
                 throw FailoverRejectedContentException()
             }
             if (!callbacksReleased) {
-                streamCallbacks?.onStart?.invoke()
-                finalThinking.takeIf(String::isNotBlank)?.let {
-                    streamCallbacks?.onThinkingChunk?.invoke(it)
+                ensureCallbacksStarted()
+                // 已逐块放行的思考不再整段补发，避免 UI 重复累积
+                if (!thinkingReleased) {
+                    thinkingReleased = true
+                    finalThinking.takeIf(String::isNotBlank)?.let {
+                        streamCallbacks?.onThinkingChunk?.invoke(it)
+                    }
                 }
                 finalContent.takeIf(String::isNotBlank)?.let {
                     streamCallbacks?.onContentChunk?.invoke(it)
@@ -1193,8 +1213,11 @@ class LocalAiClient(
                             if (contentReleased) {
                                 emit(RealtimeEvent.StreamChunk(chunk))
                             } else if (fullContent.length > FAILOVER_REFUSAL_MAX_CHARS) {
-                                fullThinking.takeIf { it.isNotEmpty() }?.let {
-                                    emit(RealtimeEvent.ReasoningChunk(it.toString()))
+                                // 思考若已逐块转发，这里不再整段补发，避免 UI 重复累积
+                                if (!thinkingReleased) {
+                                    fullThinking.takeIf { it.isNotEmpty() }?.let {
+                                        emit(RealtimeEvent.ReasoningChunk(it.toString()))
+                                    }
                                 }
                                 emit(RealtimeEvent.StreamChunk(fullContent.toString()))
                                 contentReleased = true

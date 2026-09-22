@@ -4141,7 +4141,7 @@ private fun GitDiffFileRow(
     }
 }
 
-/** 详情弹窗流式跟随阈值：距底部不超过该像素数仍视为“正在跟随”，超过则尊重用户上滑。 */
+/** 详情弹窗流式跟随恢复阈值：用户回滚到距底部不超过该像素数时重新自动跟随。 */
 private const val STEP_DETAIL_FOLLOW_SLOP_PX = 240
 
 /**
@@ -4152,7 +4152,8 @@ private const val STEP_DETAIL_FOLLOW_SLOP_PX = 240
  * 其余步骤（思考/等待确认等）沿用原来的摘要展示。
  *
  * 思考步骤仍在流式输出时（status = active/running），弹窗会自动跟随正文尾部，
- * 让用户在 Agent 调用工具的过程中也能看到完整思考内容；用户主动上滑后不再拉回。
+ * 让用户在 Agent 调用工具的过程中也能看到完整思考内容；用户主动上滑后不再拉回，
+ * 手动回到底部附近则恢复自动跟随。
  *
  * @param step 步骤数据（流式期间由调用方按定位实时刷新）
  * @param onDismiss 关闭回调
@@ -4203,19 +4204,32 @@ private fun StepDetailDialog(
 
     val scrollState = rememberScrollState()
     val followThinkingTail = isStreamingThinkingStep(step) && thinkingContent != null
-    // 打开弹窗时先跳到正文尾部（wait 一帧等布局算出 maxValue）
-    LaunchedEffect(followThinkingTail) {
-        if (followThinkingTail) {
-            withFrameNanos { }
-            scrollState.scrollTo(scrollState.maxValue)
-        }
-    }
-    // 流式追加期间保持跟随：距底部超过阈值（用户主动上滑阅读前文）时不再打扰
-    LaunchedEffect(scrollState.maxValue) {
-        if (followThinkingTail &&
-            scrollState.maxValue - scrollState.value <= STEP_DETAIL_FOLLOW_SLOP_PX
-        ) {
-            scrollState.scrollTo(scrollState.maxValue)
+    // 流式追加期间自动贴住正文尾部，用户不用手动滑动；用户主动上滑阅读前文后停止跟随，
+    // 手动回到底部附近自动恢复。
+    //
+    // 判定不能只看「当前距底部多少像素」：单次追加（合并批次最大 256 字符）经常一次就超过阈值，
+    // 那样会在跟随状态下被误判成用户上滑，从此不再跟随——只能靠用户自己滑。
+    // 这里改为跟踪偏移量变化：偏移量变小＝用户主动上滑；滚动范围变大只是内容增长。
+    LaunchedEffect(followThinkingTail, scrollState) {
+        if (!followThinkingTail) return@LaunchedEffect
+        // 打开弹窗时先等一帧让布局算出 maxValue，再跳到正文尾部
+        withFrameNanos { }
+        runCatching { scrollState.scrollTo(scrollState.maxValue) }
+        var following = true
+        var lastValue = scrollState.value
+        var lastMax = scrollState.maxValue
+        snapshotFlow { scrollState.value to scrollState.maxValue }.collect { (value, max) ->
+            // 偏移量变小（且滚动范围没有收缩）＝用户主动上滑：停止跟随，尊重阅读位置
+            if (value < lastValue && max >= lastMax) following = false
+            // 回到底部附近＝用户想继续看最新内容：恢复跟随
+            if (max - value <= STEP_DETAIL_FOLLOW_SLOP_PX) following = true
+            // 内容增长时贴住尾部：跟随状态下不管单次追加多少都拉到最新
+            if (following && max > lastMax) {
+                // 用户此刻正在拖动时，程序滚动会被更高优先级的用户输入取消，忽略即可
+                runCatching { scrollState.scrollTo(max) }
+            }
+            lastValue = scrollState.value
+            lastMax = max
         }
     }
 
