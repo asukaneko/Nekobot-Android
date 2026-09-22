@@ -2,6 +2,41 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.7.6 - 2026-09-21
+
+### 新增
+
+- 插件页面（pages[]）：插件可在应用内提供自己的页面，运行在虚拟源 `https://appassets.androidplatform.net/plugin/<id>/`；注入主题 CSS 变量与 `window.__NEKO_THEME__`（跟随浅色/深色就地换肤）；注入 `host.*` 桥与 `window.__NEKO_LAUNCH__`（会话上下文 / 命令参数），单次调用 10s 超时、并发 4、响应 256KB；命令声明 `open_page` 后输入命令直接打开页面（不执行 JS、不发 AI），离页销毁 WebView、崩溃转错误卡片。
+- 插件页面支持多页面切换与原生弹窗：`host.ui.openPage(pageId, args?)` 可在同一 WebView 内切换插件目录中的多个 HTML，保留历史且返回键逐页回退；新增 `host.ui.alert/confirm/prompt/select`，`window.alert/confirm/prompt` 与 HTML `<select>` 下拉统一改走应用原生弹窗；资源服务改用 URI 解析并只放行同插件虚拟源内的相对路径，拦截外部地址、越界路径与自定义 scheme。
+- 插件权限模型：白名单 12 项（storage / notify / chat.progress / chat.read / characters.read / worldbooks.read / memory.read / network / chat.write / memory.write / characters.write / ai.call），按「清单声明 ∧ 用户授权」双条件生效，危险权限默认不授予；安装与插件卡片提供逐项授权面板，可随时撤销。
+- 插件宿主 API：只读 chat.current/sessions/messages、characters.*、worldbooks.*、memory.read、http.get、storage.*、system.info、log、ui.toast/close、progress.update；写入 chat.write（appendMessage / sendMessage / createSession / switchSession）、memory.write、characters.write；ai.call 走聊天故障转移队列（不可自选模型，限流 10 次/分钟、20 万 token/小时）；ui.render 内置模板渲染；事件钩子 message.beforeSend 与 app.lifecycle。
+- 插件会话洞察 API：新增 chat.context / chat.session.config / chat.prompt.stack / chat.tool.calls 四个只读接口（命令侧与页面侧均可用，需 chat.read 权限），可读取上下文用量类型明细、提示词栈 token 估算、会话配置与 Agent 任务状态，并按 call id 配对工具调用与结果（done / error / pending）。
+- 插件进度卡片 `chat.progress`：插件可向聊天页实时上报进度，支持 content / progress / steps / complete / force；steps 转思考步骤并限制长度，避免不可信脚本撑爆 UI。
+- 插件移植辅助：`plugin_use` 新增 inspect（安全解压 + 生态识别 + 权限建议）与 check（页面 / 清单 / API 静态自检）；新增 compat 兼容级别记录并在插件卡片展示。
+- 插件界面入口：扩展功能新增插件页面区块（页面数、入口、权限状态、钩子、兼容级别）；负一屏新增「插件页面」网格组件（默认隐藏）；新增桌面小组件「插件页面」。
+- Agent 会话支持「继承完整角色能力」：绑定角色的会话可加载角色卡 / 记忆 / 世界书与关系状态，注入现实时间连续性与昼夜节律，运行主动聊天与角色独处生活模拟，可选使用角色卡开场白（local_sessions 新增两列，DB 43 → 44）。
+- 新增 Agent 等待处理提醒中心：命令授权与 ask_user_question 等待项统一登记，用户不在该会话（含应用后台）时发送系统通知，点击直接进入对应会话；会话列表新增「等待处理」标签，等待项 10 分钟超时或处理完成后自动撤销通知与标记。
+- 子代理新增 outputting 状态：区分「执行工具中」与「输出最终结果中」，`subagent_get` 返回 status / activity / elapsed_seconds / tools_used 并提示无需长 sleep 空等。
+- 聊天进度卡片与「思考中」加载气泡融合为一张卡片，消除两个并列加载态的观感。
+- 工具调用参数改为「参数名 → 参数值」列表展示，短值同行、长值堆叠。
+- Tokens 页面新增「本周」时间范围与 CSV 导出（含 BOM，Android 10+ 走 MediaStore），排行榜改为按当前时间范围在本地聚合。
+
+### 修复
+
+- 修复 Agent 流式思考重复累积与停更的问题：onStart 只触发一次，思考分片逐块转发使思考卡片逐字增长，正文放行或流结束时不再整段补发；详情弹窗改为按偏移量变化判定用户上滑，跟随状态下始终贴住尾部。
+- 修复 Token 用量页价格显示：页头改为展示当前范围的估算总价（逐条记录成本汇总，取不到时回退 stats 值），平均价格补充货币单位。
+- 修复全局记忆页面键盘弹出时输入框被压缩的问题：输入框改固定高度，页面整体可滚动。
+- 加固状态历程页面的 JSON 解析与索引越界防护：缓存损坏不再白屏、切换会话不再越界崩溃、长对话时间线重组不再反复深比较卡顿。
+
+### 重构
+
+- Agent 上下文压缩摘要提示词改为结构化模板：固定 Markdown 小节（目标 / 重要细节 / 工作状态 / 下一步 / 相关文件），要求保留确切的路径、符号、命令、报错文本与 URL，并支持与已有摘要滚动合并（冲突以新历史为准），总长限制 2000 字。
+
+### 优化
+
+- 本地执行授权收紧：安装类命令（npm / pip / apk / cargo 等）与解释器分段不再提供「始终允许」，可被 YOLO 放行但不可记忆；界面读取、截图等操作连 YOLO 也不能跳过。
+- `workspace_send_file` 工具描述由「发送文件」改为「交付文件」，中英日韩同步。
+
 ## v0.7.6-rc1 - 2026-09-21
 
 ### 新增
