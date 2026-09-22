@@ -64,6 +64,16 @@ class ToolArgumentPresentationTest {
     }
 
     @Test
+    fun nestedPreviewWrappingFromHistoryIsUnwrapped() {
+        // 历史进度卡：参数被落库逻辑包了两层 preview，展示时仍要还原成参数列表
+        val rows = toolArgumentRows(mapOf("preview" to "{preview={path=/sdcard/a.txt, limit=10}}"))
+
+        assertEquals(2, rows.size)
+        assertEquals(ToolArgumentRow("path", "/sdcard/a.txt"), rows[0])
+        assertEquals(ToolArgumentRow("limit", "10"), rows[1])
+    }
+
+    @Test
     fun plainTextPreviewFallsBackToSingleValueRow() {
         val rows = toolArgumentRows(mapOf("preview" to "adb shell input keyevent 3"))
 

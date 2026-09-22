@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
@@ -395,6 +396,9 @@ fun SessionsScreen(
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val toast by viewModel.toast.collectAsStateWithLifecycle()
+    // 有等待用户处理的 Agent 事件的会话（授权/提问），在列表中显示提示
+    val attentionBySession by com.nekobot.app.data.local.ai.AgentAttentionCenter.pendingBySession
+        .collectAsStateWithLifecycle()
     val dashboardData by viewModel.dashboardData.collectAsStateWithLifecycle()
     val dashboardLoading by viewModel.dashboardLoading.collectAsStateWithLifecycle()
 
@@ -769,6 +773,7 @@ fun SessionsScreen(
                             ) { row ->
                                 SessionItem(
                                     row = row,
+                                    hasAttention = row.id?.let { attentionBySession.containsKey(it) } == true,
                                     onClick = { row.id?.let(handleOpenChat) },
                                     onOpenDetail = { row.id?.let(onOpenDetail) },
                                     onRename = { if (row.id != null) renaming = row },
@@ -1777,6 +1782,33 @@ private fun SessionStatusIcon(icon: ImageVector, description: String) {
     )
 }
 
+/** 「等待处理」提示：该会话有 AI 授权/提问等待用户处理。 */
+@Composable
+private fun SessionAttentionChip(text: String) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.14f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Filled.NotificationsActive,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(11.dp)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 private val SessionItemShape = RoundedCornerShape(16.dp)
 private val SessionPortraitShape = RoundedCornerShape(12.dp)
 
@@ -1784,6 +1816,7 @@ private val SessionPortraitShape = RoundedCornerShape(12.dp)
 @Composable
 private fun SessionItem(
     row: SessionListRow,
+    hasAttention: Boolean = false,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
@@ -1933,6 +1966,9 @@ private fun SessionItem(
                         SessionMetaLabel(text = it, emphasized = true)
                     }
                     row.messageCount?.let { SessionMetaLabel(text = msgCountFmt.format(it)) }
+                    if (hasAttention) {
+                        SessionAttentionChip(stringResource(R.string.sessions_attention_pending))
+                    }
                     if (row.pinned) SessionStatusIcon(Icons.Filled.PushPin, pinnedBadge)
                     if (row.favorite) SessionStatusIcon(Icons.Filled.Favorite, favoritedBadge)
                     if (row.archived) SessionStatusIcon(Icons.Filled.Archive, archivedBadge)

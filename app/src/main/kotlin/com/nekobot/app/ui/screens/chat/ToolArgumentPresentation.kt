@@ -39,8 +39,26 @@ internal fun toolArgumentRows(arguments: Map<String, Any>?): List<ToolArgumentRo
         .singleOrNull()
         ?.takeIf { it.key == PREVIEW_KEY }
         ?.value as? String
-    if (preview != null) return previewTextArgumentRows(preview)
+    if (preview != null) return unwrapNestedPreviewRows(previewTextArgumentRows(preview))
     return arguments.entries.map { (name, value) -> ToolArgumentRow(name, formatArgumentValue(value)) }
+}
+
+/**
+ * 历史进度卡的参数可能被重复包进 preview（`{"preview": "{preview={...}}"}`），
+ * 只剩一行 "preview" 时逐层剥开，直到解析出真实参数。
+ */
+private fun unwrapNestedPreviewRows(rows: List<ToolArgumentRow>): List<ToolArgumentRow> {
+    var current = rows
+    var depth = 0
+    while (depth < 4 && current.size == 1 && current[0].name == PREVIEW_KEY) {
+        val text = current[0].value.trim()
+        if (text.isEmpty()) break
+        val next = previewTextArgumentRows(text)
+        if (next == current) break
+        current = next
+        depth++
+    }
+    return current
 }
 
 /**

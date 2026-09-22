@@ -152,6 +152,9 @@ internal class LocalPipelineCallbacks(
             // data URI 注入工具结果（_image_urls），模型可直接看截图。
             supportsVision = activeModel.purpose.equals("chat", ignoreCase = true) && activeModel.supportsVision,
             onConfirmationRequired = { request ->
+                // 子代理复用工具时的授权请求没有 SharedFlow emitter，仍需登记等待中心，
+                // 否则应用在后台/用户不在会话内时不会有通知提醒。
+                AgentAttentionCenter.registerExecAuthorization(request)
                 emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
             },
             thinkingHistoryProvider = { limit ->
@@ -192,7 +195,10 @@ internal class LocalPipelineCallbacks(
                 // 与命令授权一致：优先走 LocalRepository SharedFlow（ChatViewModel 始终收集），
                 // 避免依赖 eventChannel 的收集时序导致挂起无人解除。
                 askUserQuestionEmitter?.invoke(request)
-                    ?: emitEvent(RealtimeEvent.AskUserQuestionRequired(request))
+                    ?: run {
+                        AgentAttentionCenter.registerQuestion(request)
+                        emitEvent(RealtimeEvent.AskUserQuestionRequired(request))
+                    }
             },
             onTodosUpdated = { todos ->
                 // 任务列表持久化到会话实体，并推送事件刷新输入框上方可视化面板
@@ -239,7 +245,10 @@ internal class LocalPipelineCallbacks(
                 // 改为路由到 LocalRepository 的 execConfirmationEvents SharedFlow，
                 // 由 ChatViewModel.connectLocalHookEvents 统一收集弹窗。
                 execConfirmationEmitter?.invoke(request)
-                    ?: emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
+                    ?: run {
+                        AgentAttentionCenter.registerExecAuthorization(request)
+                        emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
+                    }
             },
             generationController = generationController
         )

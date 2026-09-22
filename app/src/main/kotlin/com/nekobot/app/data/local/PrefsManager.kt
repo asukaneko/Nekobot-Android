@@ -1014,6 +1014,18 @@ class PrefsManager(context: Context) {
         prefs.edit().putBoolean("notif_$sessionId", enabled).apply()
     }
 
+    /**
+     * 是否已就系统通知权限向用户发起过请求。
+     *
+     * Android 13+ 的通知权限是运行时权限；Agent 等待提醒依赖它，启动时主动请求一次，
+     * 避免用户从未打开会话通知开关时权限一直缺失、后台提醒静默失效。
+     */
+    var notificationPermissionAsked: Boolean
+        get() = prefs.getBoolean("notif_permission_asked", false)
+        set(value) {
+            prefs.edit().putBoolean("notif_permission_asked", value).apply()
+        }
+
     // ==================== 会话输入框草稿缓存 ====================
 
     /** 获取指定会话的输入框草稿（退出会话后保留） */

@@ -1,6 +1,7 @@
 package com.nekobot.app
 
 import android.app.Application
+import android.app.Activity
 import android.content.Context
 import android.os.Build
 import com.google.gson.Gson
@@ -46,6 +47,33 @@ object ServiceContainer {
     /** 应用上下文（用于发送通知等需要 Context 的操作） */
     var appContext: android.content.Context? = null
         private set
+    /**
+     * 应用是否处于前台（有 Activity 已 start）。
+     *
+     * 由 [NekobotApp] 的 Activity 生命周期回调维护，用于判断 AI 等待用户授权/回答时
+     * 是否需要发系统通知提醒（前台直接弹窗，后台才通知）。
+     */
+    @Volatile
+    var isAppForeground: Boolean = false
+        internal set
+
+    /** 当前可见的聊天会话 id（聊天界面在前台且处于 resumed 状态）；null 表示不在任何会话内。 */
+    @Volatile
+    var activeChatSessionId: String? = null
+        private set
+
+    /**
+     * 聊天界面可见性变化：用于判断 Agent 等待提醒（授权/提问）是否要发系统通知。
+     *
+     * 不在该会话（含应用在后台）时需要提醒；回到该会话时撤销通知并允许离开后再次提醒。
+     */
+    fun setActiveChatSession(sessionId: String?) {
+        val normalized = sessionId?.takeIf { it.isNotBlank() }
+        if (activeChatSessionId == normalized) return
+        activeChatSessionId = normalized
+        normalized?.let { com.nekobot.app.data.local.ai.AgentAttentionCenter.onSessionVisible(it) }
+        com.nekobot.app.data.local.ai.AgentAttentionCenter.recheck()
+    }
     /** 带选定语言配置的上下文，供 ViewModel 等非 Composable 代码获取本地化字符串。 */
     var localizedContext: Context? = null
         private set
@@ -414,10 +442,42 @@ class NekobotApp : Application(), coil.ImageLoaderFactory {
         super.onCreate()
         PDFBoxResourceLoader.init(this)
         ServiceContainer.init(this)
+        registerForegroundTracking()
         // 事件钩子：app.lifecycle（app.start），异步执行，不阻塞启动
         ServiceContainer.applicationScope.launch {
             runCatching { ServiceContainer.pluginManager.runLifecycleHook("app.start") }
         }
+    }
+
+    /** 通过 Activity 生命周期维护全局前后台状态（App 在后台时才发等待提醒通知）。 */
+    private fun registerForegroundTracking() {
+        registerActivityLifecycleCallbacks(
+            object : Application.ActivityLifecycleCallbacks {
+                private var startedActivities = 0
+
+                override fun onActivityStarted(activity: Activity) {
+                    startedActivities += 1
+                    if (startedActivities == 1) {
+                        ServiceContainer.isAppForeground = true
+                        com.nekobot.app.data.local.ai.AgentAttentionCenter.recheck()
+                    }
+                }
+
+                override fun onActivityStopped(activity: Activity) {
+                    startedActivities = (startedActivities - 1).coerceAtLeast(0)
+                    if (startedActivities == 0) {
+                        ServiceContainer.isAppForeground = false
+                        com.nekobot.app.data.local.ai.AgentAttentionCenter.recheck()
+                    }
+                }
+
+                override fun onActivityCreated(activity: Activity, savedInstanceState: android.os.Bundle?) = Unit
+                override fun onActivityResumed(activity: Activity) = Unit
+                override fun onActivityPaused(activity: Activity) = Unit
+                override fun onActivitySaveInstanceState(activity: Activity, outState: android.os.Bundle) = Unit
+                override fun onActivityDestroyed(activity: Activity) = Unit
+            }
+        )
     }
 
     override fun newImageLoader(): coil.ImageLoader {

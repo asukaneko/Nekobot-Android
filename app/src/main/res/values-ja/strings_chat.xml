@@ -56,6 +56,7 @@
     <string name="sessions_none_select">(なし)</string>
     <string name="sessions_first_message_optional">最初のメッセージ (任意)</string>
     <string name="sessions_msg_count">%1$d 件</string>
+    <string name="sessions_attention_pending">対応待ち</string>
     <string name="sessions_pinned_badge">ピン留め</string>
     <string name="sessions_favorited_badge">お気に入り</string>
     <string name="sessions_archived_badge">アーカイブ済み</string>
@@ -421,6 +422,11 @@
     <string name="chat_send_failed">送信に失敗しました</string>
     <string name="chat_notification_channel">AI 応答通知</string>
     <string name="chat_notification_desc">AI が応答しチャット画面にいない時に通知を表示</string>
+    <string name="agent_attention_channel">Agent 対応待ち通知</string>
+    <string name="agent_attention_channel_desc">アプリがバックグラウンドのときに、AI のコマンド許可要求や回答待ちを通知します</string>
+    <string name="agent_attention_auth_title">AI がコマンド許可を求めています</string>
+    <string name="agent_attention_question_title">AI が回答を待っています</string>
+    <string name="agent_attention_question_more">他に %1$d 件の質問</string>
 
     <!-- ==================== モダンチャット (ModernChatScreen) ==================== -->
     <string name="chat_close_action_menu">アクションメニューを閉じる</string>

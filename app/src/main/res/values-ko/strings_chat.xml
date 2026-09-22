@@ -56,6 +56,7 @@
     <string name="sessions_none_select">(없음)</string>
     <string name="sessions_first_message_optional">첫 메시지(선택)</string>
     <string name="sessions_msg_count">메시지 %1$d</string>
+    <string name="sessions_attention_pending">처리 대기</string>
     <string name="sessions_pinned_badge">고정됨</string>
     <string name="sessions_favorited_badge">즐겨찾기</string>
     <string name="sessions_archived_badge">보관됨</string>
@@ -421,6 +422,11 @@
     <string name="chat_send_failed">전송 실패</string>
     <string name="chat_notification_channel">AI 응답 알림</string>
     <string name="chat_notification_desc">AI가 응답하고 대화에 없을 때 알림 표시</string>
+    <string name="agent_attention_channel">Agent 대기 알림</string>
+    <string name="agent_attention_channel_desc">앱이 백그라운드일 때 AI의 명령 권한 요청이나 답변 대기를 알려줘요</string>
+    <string name="agent_attention_auth_title">AI가 명령 권한을 요청해요</string>
+    <string name="agent_attention_question_title">AI가 답변을 기다리고 있어요</string>
+    <string name="agent_attention_question_more">추가 질문 %1$d개</string>
 
     <!-- ==================== 모던 채팅 (ModernChatScreen) ==================== -->
     <string name="chat_close_action_menu">동작 메뉴 닫기</string>

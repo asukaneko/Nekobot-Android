@@ -56,6 +56,7 @@
     <string name="sessions_none_select">(none)</string>
     <string name="sessions_first_message_optional">First message (optional)</string>
     <string name="sessions_msg_count">%1$d msgs</string>
+    <string name="sessions_attention_pending">Action needed</string>
     <string name="sessions_pinned_badge">Pinned</string>
     <string name="sessions_favorited_badge">Favorited</string>
     <string name="sessions_archived_badge">Archived</string>
@@ -421,6 +422,11 @@
     <string name="chat_send_failed">Send failed</string>
     <string name="chat_notification_channel">AI reply notification</string>
     <string name="chat_notification_desc">Show notification when AI replies and you are not in the chat</string>
+    <string name="agent_attention_channel">Agent action alerts</string>
+    <string name="agent_attention_channel_desc">Alert when AI requests command authorization or waits for an answer while the app is in the background</string>
+    <string name="agent_attention_auth_title">AI requests command authorization</string>
+    <string name="agent_attention_question_title">AI is waiting for your answer</string>
+    <string name="agent_attention_question_more">%1$d more question(s)</string>
 
     <!-- ==================== Modern chat (ModernChatScreen) ==================== -->
     <string name="chat_close_action_menu">Close action menu</string>

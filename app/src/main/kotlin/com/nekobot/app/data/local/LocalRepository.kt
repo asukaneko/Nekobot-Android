@@ -951,6 +951,27 @@ class LocalRepository(
         _askUserQuestionEvents
 
     /**
+     * 发出命令授权请求：转发给 UI 弹窗，并登记到 [com.nekobot.app.data.local.ai.AgentAttentionCenter]。
+     *
+     * 用户不在该会话（含应用在后台）时由等待中心发系统通知，并在会话列表显示提示；
+     * 后台 Agent（含自动化任务）挂起等待授权时也能把用户拉回会话处理。
+     */
+    private fun emitExecConfirmation(
+        request: com.nekobot.app.data.remote.ExecConfirmationRequest
+    ) {
+        _execConfirmationEvents.tryEmit(request)
+        com.nekobot.app.data.local.ai.AgentAttentionCenter.registerExecAuthorization(request)
+    }
+
+    /** 发出提问请求：转发给 UI 弹窗，并登记到等待中心（不在该会话时通知提醒）。 */
+    private fun emitAskUserQuestion(
+        request: com.nekobot.app.data.local.ai.AskUserQuestionRequest
+    ) {
+        _askUserQuestionEvents.tryEmit(request)
+        com.nekobot.app.data.local.ai.AgentAttentionCenter.registerQuestion(request)
+    }
+
+    /**
      * 自动技能沉淀通知流：Agent 回合结束后的后台审查新建/更新了 Skill 时发出，
      * 由 ChatViewModel 收集并在会话界面提示用户（技能目录本身可在「扩展功能 → Skills」查看）。
      */
@@ -5807,6 +5828,8 @@ class LocalRepository(
             askUserQuestionManager.cancelSession(id)
             aiClient.cancelRequests(id)
             localMcpRuntime.cancelActiveToolCall(id)
+            // 等待已被取消，撤掉提醒通知与会话列表标记
+            com.nekobot.app.data.local.ai.AgentAttentionCenter.clearSession(id)
         }
         if (sessionId == null) {
             localMcpRuntime.cancelActiveToolCall()
@@ -6006,11 +6029,11 @@ class LocalRepository(
             workspaceRoot = workspaceRoot,
             authorizationManager = localExecAuthorizationManager,
             onConfirmationRequired = { request ->
-                _execConfirmationEvents.tryEmit(request)
+                emitExecConfirmation(request)
             },
             askUserQuestionManager = askUserQuestionManager,
             onAskUserQuestionRequired = { request ->
-                _askUserQuestionEvents.tryEmit(request)
+                emitAskUserQuestion(request)
             },
             thinkingHistoryProvider = { limit ->
                 kotlinx.coroutines.runBlocking(Dispatchers.IO) {
@@ -6054,7 +6077,7 @@ class LocalRepository(
             sessionId = sessionId,
             authorizationManager = localExecAuthorizationManager,
             onConfirmationRequired = { request ->
-                _execConfirmationEvents.tryEmit(request)
+                emitExecConfirmation(request)
             },
             generationController = generationController
         )
@@ -6495,9 +6518,9 @@ class LocalRepository(
             agentRunId = agentRunId,
             reasoningEffort = reasoningEffort,
             pendingUserMessageProvider = pendingUserMessageProvider,
-            execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) },
+            execConfirmationEmitter = { request -> emitExecConfirmation(request) },
             askUserQuestionManager = askUserQuestionManager,
-            askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) },
+            askUserQuestionEmitter = { request -> emitAskUserQuestion(request) },
             mcpToolDefinitions = prepareMcpAgentTools(),
             sessionToolFilter = { definitions -> filterDefinitionsForSession(sessionId, definitions) }
         )
@@ -7079,9 +7102,9 @@ class LocalRepository(
                 },
                 generationController = generationController,
                 reasoningEffort = reasoningEffort,
-                execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) },
+                execConfirmationEmitter = { request -> emitExecConfirmation(request) },
                 askUserQuestionManager = askUserQuestionManager,
-                askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) },
+                askUserQuestionEmitter = { request -> emitAskUserQuestion(request) },
                 sessionToolFilter = { definitions -> filterDefinitionsForSession(session.id, definitions) }
             )
 
@@ -7434,31 +7457,49 @@ class LocalRepository(
         requestId: String,
         sessionId: String,
         authorization: com.nekobot.app.data.remote.ExecAuthorization
-    ): Boolean = localExecAuthorizationManager.resolve(
-        requestId = requestId,
-        sessionId = sessionId,
-        authorization = authorization
-    )
+    ): Boolean {
+        val resolved = localExecAuthorizationManager.resolve(
+            requestId = requestId,
+            sessionId = sessionId,
+            authorization = authorization
+        )
+        if (resolved) {
+            com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveExecAuthorization(sessionId)
+        }
+        return resolved
+    }
 
     /** 提交 ask_user_question 的用户回答；requestId 失效或会话不匹配时返回 false。 */
     fun respondToAskUserQuestion(
         requestId: String,
         sessionId: String,
         answers: List<com.nekobot.app.data.local.ai.AskUserQuestionAnswer>
-    ): Boolean = askUserQuestionManager.resolve(
-        requestId = requestId,
-        sessionId = sessionId,
-        answers = answers
-    )
+    ): Boolean {
+        val resolved = askUserQuestionManager.resolve(
+            requestId = requestId,
+            sessionId = sessionId,
+            answers = answers
+        )
+        if (resolved) {
+            com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveQuestion(sessionId)
+        }
+        return resolved
+    }
 
     /** 用户跳过 ask_user_question 提问；AI 收到 cancelled 结果后继续任务。 */
     fun cancelAskUserQuestion(
         requestId: String,
         sessionId: String
-    ): Boolean = askUserQuestionManager.cancel(
-        requestId = requestId,
-        sessionId = sessionId
-    )
+    ): Boolean {
+        val cancelled = askUserQuestionManager.cancel(
+            requestId = requestId,
+            sessionId = sessionId
+        )
+        if (cancelled) {
+            com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveQuestion(sessionId)
+        }
+        return cancelled
+    }
 
     /**
      * 本地模式：单独重新生成剧情选项（不重新跑完整 Pipeline）。

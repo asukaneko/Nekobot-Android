@@ -88,14 +88,25 @@ internal fun ThinkingCard.toPersistedProgressCard(): ThinkingCard {
 private fun ThinkingStep.toPersistedProgressStep(keptReasoning: String?): ThinkingStep = copy(
     name = name?.take(AgentToolLimits.PROGRESS_PERSISTED_NAME_CHARS),
     detail = detail?.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS),
-    arguments = arguments?.let { value ->
-        mapOf("preview" to boundedAgentValuePreview(value, AgentToolLimits.progressPreviewChars()))
-    },
+    arguments = arguments?.toPersistedArguments(),
     fullResult = fullResult?.let { value ->
         boundedAgentValuePreview(value, AgentToolLimits.progressPreviewChars())
     },
     thinkingContent = keptReasoning
 )
+
+/**
+ * 参数落库：进度报告器写入的已经是 `{"preview": "<扁平化预览文本>"}` 形态，
+ * 不能再套一层 preview，否则详情弹窗的参数列表只会剩一行 "preview = {...}"。
+ * 只有真实参数字典（远程/历史形态）才需要转成预览文本。
+ */
+private fun Map<String, Any>.toPersistedArguments(): Map<String, Any> {
+    val previewText = if (size == 1) get("preview") as? String else null
+    if (previewText != null) {
+        return mapOf("preview" to previewText.take(AgentToolLimits.progressPreviewChars()))
+    }
+    return mapOf("preview" to boundedAgentValuePreview(this, AgentToolLimits.progressPreviewChars()))
+}
 
 /** 不创建完整 toString/JSON 副本地生成嵌套工具参数或结果预览。 */
 internal fun boundedAgentValuePreview(value: Any?, maxChars: Int): String {

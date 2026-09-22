@@ -56,6 +56,11 @@ class MainActivity : FragmentActivity() {
     private var activityStarted = false
     private lateinit var biometricPrompt: BiometricPrompt
 
+    /** Android 13+ 通知权限：Agent 等待提醒依赖它，启动后请求一次。 */
+    private val notificationPermissionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { /* 授权结果无需处理：未授权时提醒自动降级为会话列表提示 */ }
+
     override fun attachBaseContext(newBase: android.content.Context) {
         // 在 Activity 创建前应用选定语言，确保所有 Composable 资源读取使用正确 locale
         super.attachBaseContext(LocaleHelper.wrap(newBase))
@@ -140,10 +145,28 @@ class MainActivity : FragmentActivity() {
         }
         if (!ServiceContainer.prefs.appLockEnabled) {
             appUnlocked = true
+            requestNotificationPermissionIfNeeded()
             return
         }
         if (!appUnlocked) {
             window.decorView.post(::requestAppUnlock)
+            return
+        }
+        requestNotificationPermissionIfNeeded()
+    }
+
+    /** 首次进入应用时请求通知权限（Android 13+），只请求一次。 */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return
+        if (ServiceContainer.prefs.notificationPermissionAsked) return
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.POST_NOTIFICATIONS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) return
+        ServiceContainer.prefs.notificationPermissionAsked = true
+        runCatching {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

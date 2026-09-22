@@ -513,6 +513,7 @@ class SocketManager(private val prefs: PrefsManager) {
             buildExecConfirmationPayload(requestId, authorization, sessionId)
         )
         s.emit("confirm_exec", payload)
+        com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveExecAuthorization(sessionId)
         return true
     }
 
@@ -609,6 +610,8 @@ class SocketManager(private val prefs: PrefsManager) {
     private fun handleExecConfirmationRequest(args: Array<Any>) {
         val request = parseExecConfirmationPayload(args.firstOrNull()) ?: return
         _events.tryEmit(RealtimeEvent.ExecConfirmationRequired(request))
+        // 用户不在该会话（含应用在后台）时由等待中心发系统通知
+        com.nekobot.app.data.local.ai.AgentAttentionCenter.registerExecAuthorization(request)
     }
 
     private fun handleExecConfirmationResult(args: Array<Any>) {
@@ -624,6 +627,9 @@ class SocketManager(private val prefs: PrefsManager) {
                 ?.takeUnless { it.isJsonNull }
                 ?.asBoolean == true
             _events.tryEmit(RealtimeEvent.ExecConfirmationResolved(sessionId, approved))
+            sessionId?.takeIf { it.isNotBlank() }?.let {
+                com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveExecAuthorization(it)
+            }
         } catch (_: Exception) {
             // 无效结果事件不应影响聊天状态
         }

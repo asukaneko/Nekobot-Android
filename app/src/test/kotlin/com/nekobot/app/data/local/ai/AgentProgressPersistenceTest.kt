@@ -109,6 +109,29 @@ class AgentProgressPersistenceTest {
     }
 
     @Test
+    fun alreadyPreviewShapedArgumentsAreNotWrappedTwice() {
+        // 进度报告器写入的已经是预览文本；落库再包一层会让详情弹窗只剩一行 "preview = {...}"。
+        val card = ThinkingCard(
+            id = "card",
+            content = "done",
+            steps = listOf(
+                ThinkingStep(
+                    type = "tool",
+                    arguments = mapOf("preview" to "{path=/sdcard/a.txt, limit=10}")
+                )
+            ),
+            isAgent = true
+        )
+
+        val persisted = card.toPersistedProgressCard()
+
+        assertEquals(
+            "{path=/sdcard/a.txt, limit=10}",
+            persisted.steps.single().arguments?.get("preview")
+        )
+    }
+
+    @Test
     fun boundedPreviewStopsCyclesAndNeverExceedsBudget() {
         val cyclic = linkedMapOf<String, Any>()
         cyclic["self"] = cyclic

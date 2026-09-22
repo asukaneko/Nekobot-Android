@@ -607,6 +607,10 @@ class ChatViewModel : BaseViewModel() {
     /** 标记聊天界面可见性（由 ChatScreen 的 onResume/onPause 调用） */
     fun setChatVisible(visible: Boolean) {
         isChatVisible = visible
+        // 全局登记当前可见会话：等待中心据此判断授权/提问是否需要发系统通知
+        com.nekobot.app.ServiceContainer.setActiveChatSession(
+            if (visible) currentSessionId.takeIf { it.isNotBlank() } else null
+        )
     }
 
     /** 返回已存在的聊天页时重新把全局 Socket 切换到当前会话 room。 */
@@ -614,6 +618,25 @@ class ChatViewModel : BaseViewModel() {
         if (!isLocalMode && currentSessionId.isNotBlank()) {
             connectSocket(currentSessionId)
         }
+    }
+
+    /**
+     * 恢复该会话等待处理的授权/提问弹窗。
+     *
+     * 等待期间用户可能退出了会话（弹窗状态随 VM 销毁），重新进入时从等待中心取回请求，
+     * 保证从通知点进来就能直接处理，而不是一直等到超时。
+     */
+    private fun restorePendingAttention(sessionId: String) {
+        com.nekobot.app.data.local.ai.AgentAttentionCenter
+            .pendingExecConfirmation(sessionId)
+            ?.let { request ->
+                if (runtime.execConfirmation.value == null) runtime.execConfirmation.value = request
+            }
+        com.nekobot.app.data.local.ai.AgentAttentionCenter
+            .pendingAskUserQuestion(sessionId)
+            ?.let { request ->
+                if (runtime.askUserQuestion.value == null) runtime.askUserQuestion.value = request
+            }
     }
 
     /** 初始化：加载会话信息与消息列表；服务器模式额外连接 Socket.IO。 */
@@ -637,6 +660,9 @@ class ChatViewModel : BaseViewModel() {
         runtime.restoreAutoSkillNotice()
         // 自动长期记忆提示同理：恢复上次的写入结果，避免提示消失后无处可查。
         runtime.restoreAutoMemoryNotice()
+        // 该会话仍有等待处理的授权/提问时恢复弹窗（例如从通知点进会话）
+        restorePendingAttention(sessionId)
+        if (isChatVisible) ServiceContainer.setActiveChatSession(sessionId)
         startQueuedAutoSendWatcher()
         // 订阅本地后台压缩结果：仅通知当前存活界面（退出期间完成的压缩由 loadMessages 恢复）。
         compressionEventsJob?.cancel()
@@ -3375,6 +3401,11 @@ class ChatViewModel : BaseViewModel() {
         // 仅释放本 VM 对 runtime 的引用计数；若没有其他订阅者且无活跃 Job，状态会被清理
         if (currentSessionId.isNotBlank()) {
             ChatSessionManager.release(currentSessionId)
+            // 退出会话后等待提醒仍应生效：清掉"当前可见会话"标记，
+            // 由等待中心重新评估是否需要系统通知。
+            if (ServiceContainer.activeChatSessionId == currentSessionId) {
+                ServiceContainer.setActiveChatSession(null)
+            }
         }
         // 服务器模式：不主动 leaveSession，让 Socket.IO 继续接收推送，
         // 用户下次进入会话时通过 loadMessages 拉持久化结果即可
