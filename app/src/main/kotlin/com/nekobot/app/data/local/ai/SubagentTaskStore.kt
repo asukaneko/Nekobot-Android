@@ -8,9 +8,15 @@ import kotlin.collections.set
 
 /**
  * 子代理任务状态。
+ *
+ * [RUNNING] 与 [OUTPUTTING] 都是非终态：
+ * - [RUNNING]：正在思考或执行工具调用，剩余工作量不确定；
+ * - [OUTPUTTING]：工具调用已经结束，模型正在输出最终结论文本。此阶段通常只需数十秒即可完成，
+ *   父 Agent 查询到该状态时不应再做长时间空等。
  */
 enum class SubagentTaskStatus {
     RUNNING,
+    OUTPUTTING,
     SUCCEEDED,
     FAILED,
     KILLED
@@ -50,7 +56,13 @@ data class SubagentTask(
 
     /** 是否已结束（不再变化）。 */
     val isTerminal: Boolean
-        get() = status != SubagentTaskStatus.RUNNING
+        get() = status == SubagentTaskStatus.SUCCEEDED ||
+            status == SubagentTaskStatus.FAILED ||
+            status == SubagentTaskStatus.KILLED
+
+    /** 是否仍在进行（running / outputting）。 */
+    val isActive: Boolean
+        get() = !isTerminal
 }
 
 /**
@@ -126,6 +138,27 @@ object SubagentTaskStore {
     fun appendStep(id: String, step: ThinkingStep) {
         val current = tasks[id] ?: return
         tasks[id] = current.copy(steps = current.steps + step)
+    }
+
+    /**
+     * 标记任务进入「正在输出最终结果」阶段（RUNNING → OUTPUTTING）。
+     *
+     * 只在任务仍为 RUNNING 时生效：已结束或被终止的任务不受影响。
+     * @return 状态是否真的发生变化（供 UI 去重，只推一次卡片）。
+     */
+    fun markOutputting(id: String): Boolean {
+        val current = tasks[id] ?: return false
+        if (current.status != SubagentTaskStatus.RUNNING) return false
+        tasks[id] = current.copy(status = SubagentTaskStatus.OUTPUTTING)
+        return true
+    }
+
+    /** 从「输出中」回到「执行中」（模型本轮又开始调用工具）。只在 OUTPUTTING 时生效。 */
+    fun markRunning(id: String): Boolean {
+        val current = tasks[id] ?: return false
+        if (current.status != SubagentTaskStatus.OUTPUTTING) return false
+        tasks[id] = current.copy(status = SubagentTaskStatus.RUNNING)
+        return true
     }
 
     fun get(id: String): SubagentTask? = tasks[id]

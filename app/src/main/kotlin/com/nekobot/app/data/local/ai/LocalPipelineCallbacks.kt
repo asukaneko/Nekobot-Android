@@ -1742,7 +1742,8 @@ internal class LocalPipelineCallbacks(
                         "background" to true,
                         "task_id" to task.id,
                         "instruction" to "子代理已在后台运行。可用 subagent_list 查看状态、subagent_get 查询结果（任务 id=${task.id}）；" +
-                            "任务结束时父会话会收到系统通知，无需反复轮询。"
+                            "任务结束时父会话会收到系统通知，无需反复轮询，也不要用 sleep 等方式长时间空等；" +
+                            "若查询到 status=outputting，表示工具调用已结束、正在输出最终结果，稍等片刻再查一次即可。"
                     )
                 }
 
@@ -1757,7 +1758,14 @@ internal class LocalPipelineCallbacks(
         return mapOf(
             "success" to true,
             "count" to tasks.size,
-            "tasks" to tasks.take(50).map { t -> t.toMap(gson) }
+            "tasks" to tasks.take(50).map { t ->
+                // status 统一为小写（与 subagent_get 一致，便于模型按 outputting 判断）；
+                // 进行中的任务补一条 activity，说明当前在做什么。
+                t.toMap(gson).toMutableMap().apply {
+                    put("status", t.status.name.lowercase())
+                    if (t.isActive) put("activity", subagentActivityText(t))
+                }
+            }
         )
     }
 
@@ -1768,8 +1776,26 @@ internal class LocalPipelineCallbacks(
         if (t == null || t.sessionId != session.id) {
             return mapOf("success" to false, "error" to "子代理任务不存在或不属于当前会话: $id")
         }
-        if (t.status == SubagentTaskStatus.RUNNING) {
-            return mapOf("success" to true, "status" to "running", "task_id" to id)
+        if (t.isActive) {
+            val outputting = t.status == SubagentTaskStatus.OUTPUTTING
+            return mapOf(
+                "success" to true,
+                "task_id" to id,
+                "status" to t.status.name.lowercase(),
+                "activity" to subagentActivityText(t),
+                "elapsed_seconds" to ((System.currentTimeMillis() - (t.startedAt ?: t.createdAt)) / 1000)
+                    .coerceAtLeast(0),
+                "tools_used" to t.steps.count { it.type == "tool" || it.type == "tool_done" },
+                "instruction" to if (outputting) {
+                    "子代理工具调用已结束，正在输出最终结果，通常数十秒内完成。" +
+                        "请不要执行 sleep 等长时间等待，也不要连续轮询；" +
+                        "稍等片刻后再调用一次 subagent_get 即可拿到 result，或直接结束本轮等待系统通知。"
+                } else {
+                    "子代理仍在执行工具任务，剩余时间不确定。" +
+                        "请不要用 sleep 数分钟的方式空等；可继续处理其它不依赖该结果的工作，" +
+                        "任务结束时父会话会自动收到系统通知。"
+                }
+            )
         }
         return mapOf(
             "success" to (t.status == SubagentTaskStatus.SUCCEEDED),
@@ -1781,6 +1807,18 @@ internal class LocalPipelineCallbacks(
                 "result" to t.result.take(AgentToolLimits.toolOutputChars())
             } else "error" to (t.error ?: "子代理执行失败")
         )
+    }
+
+    /** 用最近一条进度步骤描述子代理当前在做什么（供 subagent_get 返回给父模型）。 */
+    private fun subagentActivityText(task: SubagentTask): String {
+        if (task.status == SubagentTaskStatus.OUTPUTTING) return "正在输出最终结果"
+        val last = task.steps.lastOrNull() ?: return "正在思考"
+        if (last.status != "running" && last.status != "active") return "正在思考"
+        return when (last.type) {
+            "tool" -> "正在执行工具: ${last.name ?: "tool"}"
+            "ai_thinking", "thinking" -> "正在思考 / 生成中"
+            else -> "正在执行: ${last.name ?: "步骤"}"
+        }
     }
 
     /** subagent_kill：终止本会话中正在运行的后台子代理任务。 */
@@ -1967,6 +2005,37 @@ internal class LocalPipelineCallbacks(
             detail = "已委派独立任务，正在通过故障转移模型队列执行…"
         )
 
+    /**
+     * 子代理进入「正在输出最终结果」阶段：任务状态切到 outputting，并同步刷新进度卡片头部。
+     *
+     * 触发点是子代理模型调用到达的流式正文（非思考）内容——说明工具调用已经结束，
+     * 只差最终结论文本。父 Agent 轮询时据此可判断"马上就好"，避免长时间空等。
+     * 同一阶段只推一次卡片（由 [SubagentTaskStore.markOutputting] 的返回值去重）。
+     */
+    private fun markSubagentOutputting(taskId: String) {
+        if (!SubagentTaskStore.markOutputting(taskId)) return
+        val task = SubagentTaskStore.get(taskId) ?: return
+        val card = com.nekobot.app.data.model.ThinkingCard(
+            id = taskId,
+            content = "子代理输出结果中: ${task.description}",
+            steps = task.steps + outputtingMarker(),
+            isComplete = false,
+            isAgent = true,
+            timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+            parentMessageId = parentMessageId
+        )
+        emitEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
+    }
+
+    /** 子代理"正在输出最终结论文本"的进行中占位步骤。 */
+    private fun outputtingMarker(): com.nekobot.app.data.model.ThinkingStep =
+        com.nekobot.app.data.model.ThinkingStep(
+            type = "ai_thinking",
+            name = "AI 正在输出结果",
+            status = "active",
+            detail = "工具调用已结束，正在生成最终结论文本…"
+        )
+
     /** 当前会话的子代理提示词语言。 */
     private fun subagentLanguage(): String {
         val ctx = com.nekobot.app.ServiceContainer.appContext ?: return "zh"
@@ -1995,6 +2064,13 @@ internal class LocalPipelineCallbacks(
                 mcpToolDefinitions
         )
         val toolDefinitions = sessionToolFilter?.invoke(rawToolDefinitions) ?: rawToolDefinitions
+        // 子代理开始输出最终结论文本（流式正文到达）时，把任务状态从 running 切到 outputting：
+        // 让父 Agent 轮询时知道"工具调用已结束、只差最终文本"，不要再用长 sleep 空等。
+        val outputtingCallbacks = ownerTaskId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { taskId ->
+                LocalAiStreamCallbacks(onContentChunk = { markSubagentOutputting(taskId) })
+            }
         val modelCall: ModelCall = { messages, stopped ->
             if (stopped || subagentShouldStop() || (respectParentStop && generationController.isStopped)) {
                 throw kotlinx.coroutines.CancellationException("子代理已停止")
@@ -2014,7 +2090,7 @@ internal class LocalPipelineCallbacks(
                                 models = modelQueue,
                                 purpose = "agent",
                                 requiredContextTokens = estimateLocalMessagesTokens(messages)
-                            ) { model -> chatOnceForGeneration(model, messages, extra) }
+                            ) { model -> chatOnceForGeneration(model, messages, extra, outputtingCallbacks) }
                             exec.value.copy(
                                 usedModelId = exec.model.id,
                                 usedModelName = exec.model.name,
@@ -2029,6 +2105,7 @@ internal class LocalPipelineCallbacks(
                         extra,
                         requestTag = session.id,
                         shouldStop = { generationController.isStopped || subagentShouldStop() },
+                        streamCallbacks = outputtingCallbacks,
                         requiredContextTokens = estimateLocalMessagesTokens(messages)
                     )
                 }

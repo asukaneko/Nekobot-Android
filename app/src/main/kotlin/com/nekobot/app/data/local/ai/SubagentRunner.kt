@@ -106,10 +106,14 @@ internal object SubagentRunner {
         val stepSink = SubagentProgressCollector(description)
         val hooks = ToolLoopHooks(
             onIterationStart = { iteration, _ ->
+                // 新一轮模型调用开始：若上一轮停在"输出中"，状态回到"执行中"。
+                SubagentTaskStore.markRunning(taskId)
                 stepSink.markIteration(iteration)
                 onProgress?.invoke(stepSink.header(), stepSink.complete, stepSink.steps())
             },
             onToolStart = { toolCall, thinking, iteration, _ ->
+                // 模型又开始调用工具：确认为"执行中"（本轮正文流若已标记为输出中，需要撤回）。
+                SubagentTaskStore.markRunning(taskId)
                 stepSink.onToolStart(toolCall, thinking)
                 onProgress?.invoke(stepSink.header(), stepSink.complete, stepSink.steps())
             },

@@ -47,7 +47,9 @@ internal fun buildSubagentToolDefinitions(): List<Map<String, Any>> {
                 "使用与当前主模型一致的故障转移模型队列完成推理，并可调用当前会话可用的本地工具真正执行任务（读写文件、执行命令、访问网络、操作 Android 等）." +
                 "子代理会返回它执行后得到的最终结论文本，而不是中间步骤。前台（默认）调用会等待子代理完成并返回结果；" +
                 "设置 run_in_background=true 可让子代理在后台运行并返回任务 id，随后用 subagent_list / subagent_get 查询进度与结果。" +
-                "当子任务较大、可以并行、或只需要其结论而不需立刻使用结果时，优先考虑后台运行。",
+                "当子任务较大、可以并行、或只需要其结论而不需立刻使用结果时，优先考虑后台运行。" +
+                "后台任务结束时会向父会话推送系统通知；不要用 sleep 等方式长时间空等，" +
+                "若查询到 status=outputting 说明工具调用已结束、正在输出最终结果，稍等片刻再查询即可。",
             mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -74,7 +76,10 @@ internal fun buildSubagentToolDefinitions(): List<Map<String, Any>> {
         ),
         definition(
             TOOL_SUBAGENT_GET,
-            "查询指定子代理任务的结果与状态。用于后台子代理完成后取回其结论。",
+            "查询指定子代理任务的结果与状态。用于后台子代理完成后取回其结论。" +
+                "status=running 表示仍在执行工具任务；status=outputting 表示工具调用已结束、正在输出最终结果（通常数十秒内完成），" +
+                "此时不要用 sleep 长时间等待或连续轮询，稍等片刻再查询一次即可；" +
+                "任务结束时父会话也会收到系统通知。",
             mapOf(
                 "type" to "object",
                 "properties" to mapOf(
