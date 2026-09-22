@@ -1,3 +1,4 @@
+{% raw %}
 # NekoBot Android 插件开发指南
 
 NekoBot Android 支持在**本地模式**安装 ZIP 格式的 JavaScript 插件。插件通过 `plugin.json`
@@ -874,3 +875,5 @@ NekoPlugin.registerCommand("note", async (ctx) => {
 3. 至少用 `plugin_use execute` 测通一条命令；有页面时确认页面文件已写入且无 `http(s)://` 外链引用。
 4. 报告内容：插件 id、可用命令、页面入口位置、**权限申请清单**、**与原插件的行为差异 / 未实现项**。
 5. 不得声称「完全兼容」，只描述实际实现的功能。
+
+{% endraw %}

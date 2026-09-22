@@ -208,6 +208,7 @@ class SkillsViewModel : BaseViewModel() {
  */
 private suspend fun writeZipToDownloads(context: Context, export: SkillZipExport): Boolean =
     withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@withContext false
         val resolver = context.contentResolver
         var targetUri: Uri? = null
         try {

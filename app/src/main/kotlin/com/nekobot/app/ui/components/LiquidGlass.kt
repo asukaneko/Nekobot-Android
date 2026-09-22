@@ -270,24 +270,26 @@ private fun GlassSamplingLayer(
             .graphicsLayer {
                 renderEffect = handle?.effect
                 clip = true
-                handle?.shader?.let { shader ->
-                    val progress = liquidProgress()
-                    // 交互时折射更强，玻璃“活”起来。
-                    shader.setFloatUniform(
-                        "refraction",
-                        refractionPx * (1f + (LiquidRefractionBoost - 1f) * progress),
-                    )
-                    shader.setFloatUniform("dispersion", dispersion)
-                    // 把取样范围限制在真正被录制到的页面区域内，杜绝取到空像素产生的描边杂色。
-                    if (backdrop.sourceSizeInRoot != IntSize.Zero) {
-                        val minX = backdrop.sourcePositionInRoot.x - positionInRoot.x
-                        val minY = backdrop.sourcePositionInRoot.y - positionInRoot.y
-                        shader.setFloatUniform("validMin", minX, minY)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    handle?.shader?.let { shader ->
+                        val progress = liquidProgress()
+                        // 交互时折射更强，玻璃“活”起来。
                         shader.setFloatUniform(
-                            "validMax",
-                            minX + backdrop.sourceSizeInRoot.width,
-                            minY + backdrop.sourceSizeInRoot.height,
+                            "refraction",
+                            refractionPx * (1f + (LiquidRefractionBoost - 1f) * progress),
                         )
+                        shader.setFloatUniform("dispersion", dispersion)
+                        // 把取样范围限制在真正被录制到的页面区域内，杜绝取到空像素产生的描边杂色。
+                        if (backdrop.sourceSizeInRoot != IntSize.Zero) {
+                            val minX = backdrop.sourcePositionInRoot.x - positionInRoot.x
+                            val minY = backdrop.sourcePositionInRoot.y - positionInRoot.y
+                            shader.setFloatUniform("validMin", minX, minY)
+                            shader.setFloatUniform(
+                                "validMax",
+                                minX + backdrop.sourceSizeInRoot.width,
+                                minY + backdrop.sourceSizeInRoot.height,
+                            )
+                        }
                     }
                 }
             }
