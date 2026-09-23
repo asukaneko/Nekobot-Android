@@ -17,13 +17,13 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
 [![License](https://img.shields.io/badge/license-GPL--3.0-f78fb3?style=flat-square&labelColor=2b2b3a)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/asukaneko/Nekobot-Android?style=flat-square&color=f78fb3&labelColor=2b2b3a&logo=github)](https://github.com/asukaneko/Nekobot-Android/stargazers)
 
-[Screenshots](#-screenshots) · [Features](#-features) · [Agent Mode](#-agent-mode) · [Install](#-install) · [Dual Mode](#-dual-mode-architecture) · [Build from Source](#-build-from-source) · [Changelog](changelog.md) · [Official Site](https://asukaneko.github.io/Nekobot-Android/)
+[Screenshots](#screenshots) · [Features](#features) · [Agent Mode](#agent-mode) · [Install](#install) · [Dual Mode](#dual-mode-architecture) · [Build from Source](#build-from-source) · [Changelog](changelog.md) · [Official Site](https://asukaneko.github.io/Nekobot-Android/)
 
 </div>
 
 ---
 
-## 📱 Screenshots
+## Screenshots
 
 <table>
   <tr>
@@ -60,37 +60,37 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
 
 > All characters and conversations shown in the screenshots are fictional demo content. You can download the [README demo data pack](docs/assets/nekobot_readme_demo_data.zip) and import it under "More → Database Manager" to reproduce them.
 
-## ✨ Features
+## Features
 
-### 🐾 Core Experience
+### Core Experience
 
-- **💬 Immersive Chat** — Socket.IO streaming replies, optimistic updates, multi-candidate replies (swipes), in-place reply editing, regenerate / stop, edit & resend, message queuing with priority sending during generation, message forking and multi-select, generation speed in tok/s
-- **🎭 Character Cards** — Full field editing (description / personality / greeting / scenario / rules / avatar) with SillyTavern import support (embedded PNG, v2 / v3 JSON)
-- **💞 Character Runtime** — Six-dimension relationship system, state evaluation, memory extraction, world book injection, PromptStack composition
-- **🌍 World Books** — Entry CRUD (keywords / always-on / selective / position / priority), book metadata editing, multi-character binding, hit debugging
-- **🌳 Story Graph** — Canvas tree layout for plot branches; supports branch selection, rollback and regeneration with local persistence
-- **📈 State History** — Visual timeline of how a character's state evolves over time
-- **🧠 Memory Management** — View and edit character memories and Agent long-term memory (isolated per database profile, retrieval-based injection)
-- **🤖 Agent Mode** — Multi-turn tool calling, expandable real-time progress cards, subagent delegation, task lists and structured Q&A, character ability inheritance, native browser, Android device control, Linux sandbox, PTY terminal and file handling
+- **Immersive Chat** — Socket.IO streaming replies, optimistic updates, multi-candidate replies (swipes), in-place reply editing, regenerate / stop, edit & resend, message queuing with priority sending during generation, message forking and multi-select, generation speed in tok/s
+- **Character Cards** — Full field editing (description / personality / greeting / scenario / rules / avatar) with SillyTavern import support (embedded PNG, v2 / v3 JSON)
+- **Character Runtime** — Six-dimension relationship system, state evaluation, memory extraction, world book injection, PromptStack composition
+- **World Books** — Entry CRUD (keywords / always-on / selective / position / priority), book metadata editing, multi-character binding, hit debugging
+- **Story Graph** — Canvas tree layout for plot branches; supports branch selection, rollback and regeneration with local persistence
+- **State History** — Visual timeline of how a character's state evolves over time
+- **Memory Management** — View and edit character memories and Agent long-term memory (isolated per database profile, retrieval-based injection)
+- **Agent Mode** — Multi-turn tool calling, expandable real-time progress cards, subagent delegation, task lists and structured Q&A, character ability inheritance, native browser, Android device control, Linux sandbox, PTY terminal and file handling
 
-### 🛠 Personalization & Tools
+### Personalization & Tools
 
-- **🤖 AI Config Center** — Edit model / temperature / max_tokens / top_p / penalty parameters and stop strings, failure transfer queue, one-click connection test
-- **🧩 AI Model Management** — Model CRUD, apply / enable / disable / clone, fetch available model list, local AI model config
-- **📊 Token Usage** — Today / this week / this month / all-time / cost statistics, CSV export, daily grouping, session / model / user ranking, performance metrics
-- **🎤 Voice & TTS** — Record and transcribe to text (server mode), TTS preview
-- **📝 Markdown Rendering** — Inner monologue folding, full-width bracket italics, code blocks with language labels and copy button, horizontally scrollable tables
-- **🗂 Workspace** — File reference, Markdown preview, true full-screen viewing, encoding detection (UTF-8 / GBK) and download
-- **🧩 Plugin System** — Local mode supports built-in modules and ZIP JavaScript plugins that can provide in-app pages (theme-aware, native dialogs, multi-page switching, host APIs and progress cards); 12 permissions follow a "manifest declaration ∧ user grant" dual condition, and the Agent can install, enable/disable, uninstall and self-check plugins via the `plugin_use` tool; see the [Plugin Development Guide](docs/plugin-development.md)
-- **🧰 15+ Extensions** — API Keys, plugins, channels, hooks, knowledge base, skills, task center, tools, workflows, MCP servers, message filters, login tokens, achievements, TTS / image generation playgrounds
-- **⚙️ System Settings** — Server URL switching, settings JSON editor, feature switches, data maintenance, config migration, WebDAV backup
+- **AI Config Center** — Edit model / temperature / max_tokens / top_p / penalty parameters and stop strings, failure transfer queue, one-click connection test
+- **AI Model Management** — Model CRUD, apply / enable / disable / clone, fetch available model list, local AI model config
+- **Token Usage** — Today / this week / this month / all-time / cost statistics, CSV export, daily grouping, session / model / user ranking, performance metrics
+- **Voice & TTS** — Record and transcribe to text (server mode), TTS preview
+- **Markdown Rendering** — Inner monologue folding, full-width bracket italics, code blocks with language labels and copy button, horizontally scrollable tables
+- **Workspace** — File reference, Markdown preview, true full-screen viewing, encoding detection (UTF-8 / GBK) and download
+- **Plugin System** — Local mode supports built-in modules and ZIP JavaScript plugins that can provide in-app pages (theme-aware, native dialogs, multi-page switching, host APIs and progress cards); 12 permissions follow a "manifest declaration ∧ user grant" dual condition, and the Agent can install, enable/disable, uninstall and self-check plugins via the `plugin_use` tool; see the [Plugin Development Guide](docs/plugin-development.md)
+- **15+ Extensions** — API Keys, plugins, channels, hooks, knowledge base, skills, task center, tools, workflows, MCP servers, message filters, login tokens, achievements, TTS / image generation playgrounds
+- **System Settings** — Server URL switching, settings JSON editor, feature switches, data maintenance, config migration, WebDAV backup
 
-### 🎨 Design
+### Design
 
-- **🌙 Dark Glassmorphism** — Liquid-glass bottom navigation bar, glass cards, custom dialogs and status chips
-- **🌈 Custom Theme Color** — Paired with streaming placeholder skeleton animation, so even waiting feels elegant
+- **Dark Glassmorphism** — Liquid-glass bottom navigation bar, glass cards, custom dialogs and status chips
+- **Custom Theme Color** — Paired with streaming placeholder skeleton animation, so even waiting feels elegant
 
-## 🤖 Agent Mode
+## Agent Mode
 
 Agent mode runs in local mode, allowing models that support Function Calling / Tool Use not only to generate text, but also to browse the web, manipulate files, execute Linux commands and continuously complete multi-step tasks within a session.
 
@@ -124,9 +124,9 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 
 > The Linux sandbox currently only supports `arm64-v8a` devices. The model used by Agent should support tool calling; web screenshots and local image understanding additionally require a configured vision model.
 
-## 🔄 Dual Mode Architecture
+## Dual Mode Architecture
 
-|                   | 🌐 Server Mode                            | 📱 Local Mode                                                 |
+|                   | Server Mode                            | Local Mode                                                 |
 | ----------------- | ----------------------------------------- | ------------------------------------------------------------- |
 | **Backend**       | Connect to the NekoBot Web backend        | No backend, direct connection to OpenAI-compatible API        |
 | **Communication** | REST + Socket.IO real-time streaming      | Local direct AI API requests                                  |
@@ -134,7 +134,7 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 | **Agent**         | Depends on server capabilities            | Built-in browser, Linux sandbox, PTY terminal, plugin pages, Skills, MCP, subagents and Android control     |
 | **Use Cases**     | Full feature ecosystem, multi-device sync | Privacy-first, local data, your own API keys, on-device Agent |
 
-## 📦 Install
+## Install
 
 <div align="center">
 
@@ -144,23 +144,23 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 
 </div>
 
-## 🚀 Quick Start
+## Quick Start
 
-**🌐 Server Mode**
+**Server Mode**
 
 1. Launch the app, enter the server URL, username and password on the login page
 2. After successful login, the sessions page opens with the bottom navigation switching features
 3. Send a message on the chat page and the AI reply streams in real time via Socket.IO
 4. The server URL can be changed in the settings page (the network and Socket client are rebuilt automatically after writing)
 
-**📱 Local Mode**
+**Local Mode**
 
 1. Switch to local mode on the login page
 2. Configure the OpenAI-compatible API URL and key under "Local AI Model"
 3. All data is stored locally, supporting full features like sessions / characters / world books / memory
 4. View local runtime logs on the settings page
 
-**🤖 Agent Mode**
+**Agent Mode**
 
 1. Complete the model configuration as in local mode, and confirm the chat model supports tool calling
 2. Choose "Agent" when creating a new session on the sessions page
@@ -171,7 +171,7 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 
 > For commands that need to write or modify system state, the app will pop up an authorization confirmation. Entering `/yolo` skips normal command confirmation for the current session, but the high-risk blacklist still applies — use it only on trusted tasks. Placing an `AGENTS.md` (case-insensitive) at the session workspace root injects its content as behavior guidance into every Agent turn.
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Category      | Stack                                        |
 | ------------- | -------------------------------------------- |
@@ -187,7 +187,7 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 | Agent Runtime | Android WebView + Alpine Linux + PRoot       |
 | Build         | Gradle 8.11.1 + AGP 8.9.1 + KSP              |
 
-## 🔧 Build from Source
+## Build from Source
 
 <details>
 <summary><b>Expand build guide</b> (JDK 17+ / Android SDK 35)</summary>
@@ -297,7 +297,7 @@ app/src/main/kotlin/com/nekobot/app/
 
 </details>
 
-## 🔐 Permissions
+## Permissions
 
 | Permission                                            | Purpose                                                         |
 | ----------------------------------------------------- | --------------------------------------------------------------- |
@@ -313,7 +313,7 @@ app/src/main/kotlin/com/nekobot/app/
 
 > The accessibility service and notification listener service are optional; they power Android control, notification reading and quick replies. Accessibility settings support excluding specific apps, in-app updates verify the APK package name and signature, and plugin network requests are blocked from reaching intranet addresses.
 
-## 🐞 Debugging
+## Debugging
 
 The real-time communication log tag is `NekoSocket`:
 
@@ -321,7 +321,7 @@ The real-time communication log tag is `NekoSocket`:
 adb logcat -s NekoSocket:V
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Issues and Pull Requests are welcome! See [changelog.md](changelog.md) for version history, and the [Plugin Development Guide](docs/plugin-development.md) for plugin development.
 
