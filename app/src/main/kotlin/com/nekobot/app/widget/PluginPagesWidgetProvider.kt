@@ -28,24 +28,6 @@ class PluginPagesWidgetProvider : AppWidgetProvider() {
         appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_plugin_pages_grid)
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == ACTION_OPEN_PAGE) {
-            val pluginId = intent.getStringExtra(EXTRA_PLUGIN_ID)
-            val pageId = intent.getStringExtra(EXTRA_PAGE_ID)
-            if (!pluginId.isNullOrBlank() && !pageId.isNullOrBlank()) {
-                context.startActivity(
-                    Intent(context, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        putExtra(EXTRA_PLUGIN_ID, pluginId)
-                        putExtra(EXTRA_PAGE_ID, pageId)
-                    }
-                )
-            }
-            return
-        }
-        super.onReceive(context, intent)
-    }
-
     /** 网格单元：一个插件页面入口。 */
     data class PageEntry(
         val pluginId: String,
@@ -56,7 +38,6 @@ class PluginPagesWidgetProvider : AppWidgetProvider() {
     )
 
     companion object {
-        const val ACTION_OPEN_PAGE = "com.nekobot.app.widget.OPEN_PLUGIN_PAGE"
         const val EXTRA_PLUGIN_ID = "plugin_id"
         const val EXTRA_PAGE_ID = "page_id"
 
@@ -110,13 +91,18 @@ class PluginPagesWidgetProvider : AppWidgetProvider() {
             )
             views.setEmptyView(R.id.widget_plugin_pages_grid, R.id.widget_plugin_pages_empty)
             // 点击模板：网格单元通过 fill-in intent 传入 pluginId / pageId。
+            // 必须用 FLAG_MUTABLE：Android 12+ 下不可变的 PendingIntent 会丢弃 fill-in intent，
+            // 点击只会带着空 extras 到达，表现为点击无反应。
+            // 模板直接指向 MainActivity（而非广播转跳），避免后台启动 Activity 被系统限制拦截。
             views.setPendingIntentTemplate(
                 R.id.widget_plugin_pages_grid,
-                PendingIntent.getBroadcast(
+                PendingIntent.getActivity(
                     context,
                     TEMPLATE_REQUEST_CODE,
-                    Intent(context, PluginPagesWidgetProvider::class.java).setAction(ACTION_OPEN_PAGE),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    Intent(context, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                 )
             )
             views.setOnClickPendingIntent(
