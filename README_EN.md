@@ -64,25 +64,25 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
 
 ### 🐾 Core Experience
 
-- **💬 Immersive Chat** — Socket.IO streaming replies, optimistic updates, regenerate / stop, edit & resend, message queuing with priority sending during generation, message forking and multi-select
+- **💬 Immersive Chat** — Socket.IO streaming replies, optimistic updates, multi-candidate replies (swipes), in-place reply editing, regenerate / stop, edit & resend, message queuing with priority sending during generation, message forking and multi-select, generation speed in tok/s
 - **🎭 Character Cards** — Full field editing (description / personality / greeting / scenario / rules / avatar) with SillyTavern import support (embedded PNG, v2 / v3 JSON)
 - **💞 Character Runtime** — Six-dimension relationship system, state evaluation, memory extraction, world book injection, PromptStack composition
-- **🌍 World Books** — Entry CRUD (keywords / always-on / selective / position / priority), book metadata editing, multi-character binding
+- **🌍 World Books** — Entry CRUD (keywords / always-on / selective / position / priority), book metadata editing, multi-character binding, hit debugging
 - **🌳 Story Graph** — Canvas tree layout for plot branches; supports branch selection, rollback and regeneration with local persistence
 - **📈 State History** — Visual timeline of how a character's state evolves over time
-- **🧠 Memory Management** — View and edit character memories
-- **🤖 Agent Mode** — Multi-turn tool calling, expandable real-time progress cards, subagent delegation, task lists and structured Q&A, native browser, Android device control, Linux sandbox, session terminal and file handling
+- **🧠 Memory Management** — View and edit character memories and Agent long-term memory (isolated per database profile, retrieval-based injection)
+- **🤖 Agent Mode** — Multi-turn tool calling, expandable real-time progress cards, subagent delegation, task lists and structured Q&A, character ability inheritance, native browser, Android device control, Linux sandbox, PTY terminal and file handling
 
 ### 🛠 Personalization & Tools
 
-- **🤖 AI Config Center** — Edit model / temperature / max_tokens / top_p / penalty parameters, failure transfer queue, one-click connection test
-- **🧩 AI Model Management** — Model CRUD, apply / enable / clone, fetch available model list, local AI model config
-- **📊 Token Usage** — Today / this month / all-time / cost statistics, daily grouping, session / model / user ranking, performance metrics
+- **🤖 AI Config Center** — Edit model / temperature / max_tokens / top_p / penalty parameters and stop strings, failure transfer queue, one-click connection test
+- **🧩 AI Model Management** — Model CRUD, apply / enable / disable / clone, fetch available model list, local AI model config
+- **📊 Token Usage** — Today / this week / this month / all-time / cost statistics, CSV export, daily grouping, session / model / user ranking, performance metrics
 - **🎤 Voice & TTS** — Record and transcribe to text (server mode), TTS preview
 - **📝 Markdown Rendering** — Inner monologue folding, full-width bracket italics, code blocks with language labels and copy button, horizontally scrollable tables
-- **🗂 Workspace** — File reference, preview and download
-- **🧩 Plugin System** — Local mode supports built-in modules and ZIP JavaScript plugins; commands, session reads, isolated storage, notifications and controlled HTTPS requests are all governed by explicit permissions, and the Agent can install, enable/disable and uninstall plugins via the `plugin_use` tool; see the [Plugin Development Guide](docs/plugin-development.md)
-- **🧰 12+ Extensions** — API Keys, channels, hooks, knowledge base, login tokens, MCP servers, message filters, skills, task center, tools, workflows
+- **🗂 Workspace** — File reference, Markdown preview, true full-screen viewing, encoding detection (UTF-8 / GBK) and download
+- **🧩 Plugin System** — Local mode supports built-in modules and ZIP JavaScript plugins that can provide in-app pages (theme-aware, native dialogs, multi-page switching, host APIs and progress cards); 12 permissions follow a "manifest declaration ∧ user grant" dual condition, and the Agent can install, enable/disable, uninstall and self-check plugins via the `plugin_use` tool; see the [Plugin Development Guide](docs/plugin-development.md)
+- **🧰 15+ Extensions** — API Keys, plugins, channels, hooks, knowledge base, skills, task center, tools, workflows, MCP servers, message filters, login tokens, achievements, TTS / image generation playgrounds
 - **⚙️ System Settings** — Server URL switching, settings JSON editor, feature switches, data maintenance, config migration, WebDAV backup
 
 ### 🎨 Design
@@ -96,20 +96,23 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 
 | Capability                    | Description                                                                                                                                                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Multi-turn Tool Execution** | Models can plan and call tools continuously; the progress card displays reasoning, parameters, results, errors and execution duration in real time, and the expanded state is preserved across new tool events.                  |
-| **Subagents**                 | Delegate independent tasks to subagents with their own context; supports foreground synchronous and background asynchronous execution plus depth-limited nesting. Progress streams into dedicated cards, with an enable switch and nesting-depth / tool-call limits. |
-| **Session Tool Catalog**      | Tools are grouped by category; toggle the current session's toolset by category or individual tool from the chat panel. Custom sets are persisted per session, all tools enabled by default, with one-tap reset. |
+| **Multi-turn Tool Execution** | Models can plan and call tools continuously, with parallel execution for read-only tools in the same batch; the progress card displays reasoning, parameters, results, errors and execution duration in real time, and the expanded state is preserved across new tool events.                  |
+| **Subagents**                 | Delegate independent tasks to subagents with their own context; supports foreground synchronous and background asynchronous execution, depth-limited nesting and a background concurrency cap. Progress streams into dedicated cards, with an enable switch and nesting-depth / tool-call limits. |
+| **Session Tool Catalog**      | Tools are grouped by category; toggle the current session's toolset by category or individual tool from the chat panel. Custom sets are persisted per session, all tools enabled by default; built-in Minimal / Standard / Roleplay / Android / All modes plus custom modes, and a configurable default toolset for new sessions. |
+| **Roleplay Agent**            | Agent sessions bound to a character can enable "inherit full character abilities" to load the character card, memory, world books and relationship state, inject real-time continuity and day-night rhythm, and run proactive chat and character life simulation. |
 | **Tasks & Q&A**               | `todo_write` collapsible task panel and `ask_user_question` structured Q&A (single choice / multi-select / free text), paired with `/goal` persistent session goals and `/spec` spec-driven development. |
+| **Pending Reminders**         | Command authorizations and structured questions are registered while waiting; a system notification is sent when the user is not in that session, and the session list shows a "pending" badge that jumps straight to the session. |
 | **Native Browser**            | Multi-tab support, click, input, scroll, forward/back, JavaScript, viewport and User-Agent switching.                                                                                                        |
 | **Web Reading**               | Read body content, dynamic DOM source, interaction skeletons and structured URLs; supports Cookie-authenticated requests and file downloads.                                                                 |
 | **Browser Preview**           | View the current page in real time on the chat screen with full-screen zoom; AI can capture the current page or long pages and send them to a vision model to understand images, charts and complex layouts. |
 | **Android Control**           | Accessibility-driven tap / swipe / input (numbered element targeting with coordinate-gesture fallback) plus native tools for device info / calendar / alarms / media control; tool screenshots can be handed directly to a vision model. |
 | **Image Generation**          | Call a configured image generation model with a text prompt and render the result inline; the message long-press menu also supports multi-provider text-to-image and image-to-image. |
 | **Linux Sandbox**             | Built-in Alpine Linux + PRoot, supports package installation, running scripts, launching background processes and reusing the command-line environment; interactive REPL sessions (python3 and more) and a cross-session shared workspace mounted at `/shared` are supported.                                                      |
-| **Session Terminal**          | A full-screen command line can be opened from the top-right menu of an Agent session, directly operating the session's `/workspace`; a companion sandbox file browser supports directory browsing, editing of text files up to 16 KB and read-only preview of larger files.                                                                         |
+| **Session Terminal**          | A full-screen PTY terminal (VT/ANSI, 256 colors, Ctrl+C, Tab completion and full-screen programs like vi/top) can be opened from the top-right menu of an Agent session, directly operating the session's `/workspace`; a companion sandbox file browser supports directory browsing, editing of text files up to 16 KB and read-only preview of larger files.                                                                         |
 | **Files & Images**            | Read, write, edit precisely, list, parse and send workspace files; can call vision models to understand local images. File changes are surfaced as a git summary card with per-file diffs.                                                                                        |
 | **Skills & MCP**              | Agent can read enabled local Skills and call tools provided by connected MCP servers.                                                                                                                        |
-| **Execution Guard**           | High-risk commands require confirmation; tool parameters are fixed and validated before execution; repeated, no-progress calls are auto-stopped; the maximum number of tool calls is configurable (150 by default).                                                             |
+| **Execution Guard**           | High-risk commands require confirmation; authorizations are remembered by fingerprint (approving `git status` does not allow `git push`), while interpreter and installer commands cannot be remembered; tool parameters are fixed and validated before execution; repeated, no-progress calls are auto-stopped; the maximum number of tool calls is configurable (150 by default).                                                             |
+| **Agent Settings**            | Tool-call limit, output and progress-preview truncation, browser User-Agent / viewport / JavaScript / tab limit, sandbox mirrors and rootfs reset, default toolset for new sessions, automatic long-term memory and automatic Skill distillation. |
 | **Background Execution**      | Foreground service and persistent notification are enabled during Agent work, reducing the chance of Android killing tasks when going to the background.                                                     |
 
 ### Sandbox Data & Session Isolation
@@ -128,7 +131,7 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 | **Backend**       | Connect to the NekoBot Web backend        | No backend, direct connection to OpenAI-compatible API        |
 | **Communication** | REST + Socket.IO real-time streaming      | Local direct AI API requests                                  |
 | **Data Storage**  | Server + local cache                      | Room database + session workspace + writable Linux rootfs     |
-| **Agent**         | Depends on server capabilities            | Built-in browser, Linux sandbox, terminal, Skills, MCP, subagents and Android control     |
+| **Agent**         | Depends on server capabilities            | Built-in browser, Linux sandbox, PTY terminal, plugin pages, Skills, MCP, subagents and Android control     |
 | **Use Cases**     | Full feature ecosystem, multi-device sync | Privacy-first, local data, your own API keys, on-device Agent |
 
 ## 📦 Install
@@ -164,7 +167,7 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 3. Describe the goal directly; the AI will use the browser, workspace, Linux, Skills or MCP tools as needed
 4. Click the progress card to view the parameters and result of each step; a real-time preview opens when the browser is running
 5. Click "Command Line" in the top-right menu of the chat page to enter the current session sandbox
-6. Toggle the current session's available tools by category or individual tool from the "Agent Toolset" panel in the chat; custom selections are persisted per session
+6. Toggle the current session's available tools by category or individual tool from the "Agent Toolset" panel in the chat, or apply a Minimal / Standard / Roleplay / Android / All mode in one tap; custom selections are persisted per session
 
 > For commands that need to write or modify system state, the app will pop up an authorization confirmation. Entering `/yolo` skips normal command confirmation for the current session, but the high-risk blacklist still applies — use it only on trusted tasks. Placing an `AGENTS.md` (case-insensitive) at the session workspace root injects its content as behavior guidance into every Agent turn.
 
@@ -236,14 +239,19 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ```
 app/src/main/kotlin/com/nekobot/app/
-├── MainActivity.kt                  # Activity entry
+├── MainActivity.kt                  # Activity entry (privacy lock / share & deep links)
 ├── NekobotApp.kt                    # Application + ServiceContainer + Coil ImageLoader
 ├── data/
 │   ├── local/
-│   │   ├── ai/                       # Agent Pipeline, tool loop, browser & Linux sandbox
-│   │   ├── LocalLogger.kt           # Local logger (SharedPreferences persistent, max 2000 entries)
-│   │   ├── LocalRepository.kt       # Local mode data repository (Room)
-│   │   └── PrefsManager.kt          # SharedPreferences wrapper
+│   │   ├── ai/                       # Agent Pipeline, tool loop, browser, Linux sandbox & subagents
+│   │   ├── automation/               # Local automation scheduling and notifications
+│   │   ├── db/                       # Room database (entities / DAOs / migrations / built-in tools)
+│   │   ├── knowledge/                # RAG knowledge base (search / rerank / MMR)
+│   │   ├── oauth/                    # OAuth login and secret storage
+│   │   ├── plugin/                   # ZIP plugins (manifest validation / permissions / host APIs / pages)
+│   │   ├── security/                 # Keystore encryption and secure storage
+│   │   ├── LocalRepository.kt        # Local mode data repository (Room + local AI)
+│   │   └── PrefsManager.kt           # SharedPreferences wrapper
 │   ├── model/Models.kt              # Data models
 │   ├── remote/
 │   │   ├── ApiService.kt            # Retrofit interface
@@ -253,10 +261,14 @@ app/src/main/kotlin/com/nekobot/app/
 │   └── repository/
 │       ├── NekobotRepository.kt     # Server mode repository
 │       └── UnifiedRepository.kt     # Unified mode entry (dispatched by appMode)
+├── integration/                     # Accessibility / notification listener / shortcuts / share parsing
 ├── service/
 │   └── AgentForegroundService.kt    # Foreground service for Agent background execution
+├── update/UpdateChecker.kt          # In-app update check and install
+├── widget/                          # Home screen widgets
 └── ui/
     ├── BaseViewModel.kt             # Unified loading/error handling
+    ├── adaptive/                    # Large-screen / tablet adaptive layout
     ├── components/
     │   ├── CommonComponents.kt      # GlassCard, NekoDialog, ToggleChip, etc.
     │   └── MarkdownText.kt          # Markdown rendering component
@@ -265,18 +277,20 @@ app/src/main/kotlin/com/nekobot/app/
     │   ├── Routes.kt                # Route definitions
     │   └── LiquidGlassBottomBar.kt  # Liquid glass bottom navigation bar
     ├── screens/
-    │   ├── login/                   # Login
+    │   ├── login/                   # Login and local mode switch
+    │   ├── onboarding/              # Quick setup
     │   ├── sessions/                # Session list + session detail
     │   ├── chat/                    # Chat + workspace + multimedia content
     │   ├── characters/              # Character card list + detail
-    │   ├── worldbook/               # World book list + detail
+    │   ├── worldbook/               # World book list + detail + hit debugging
     │   ├── memory/                  # Character memory
     │   ├── plot/                    # Story graph
     │   ├── statehistory/            # State history
     │   ├── tokens/                  # Token usage
     │   ├── aiconfig/                # AI config center + models + failover + local models
-    │   ├── extensions/              # Extensions (12 advanced config pages)
-    │   ├── settings/                # System settings + feature switches + data maintenance + config migration + WebDAV + styles
+    │   ├── extensions/              # Extensions (plugins / knowledge / skills / MCP, etc.)
+    │   ├── settings/                # System settings + Agent settings + data maintenance + config migration + WebDAV
+    │   ├── search/                  # Global search
     │   └── more/                    # More
     └── theme/                       # Colors / typography / theme
 ```
@@ -293,8 +307,11 @@ app/src/main/kotlin/com/nekobot/app/
 | `POST_NOTIFICATIONS`                                  | Session notifications and Agent background status               |
 | `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` | Agent long-running tasks continue in the foreground service     |
 | `WAKE_LOCK`                                           | Avoid early CPU sleep during Agent execution |
+| `WRITE_EXTERNAL_STORAGE` (Android 9 and below)        | Export token records, Skills and other files to the public Downloads directory |
 | `REQUEST_INSTALL_PACKAGES`                            | Install APK updates downloaded in-app |
 | `USE_BIOMETRIC` / `USE_FINGERPRINT`                   | Biometric unlock for the privacy lock                    |
+
+> The accessibility service and notification listener service are optional; they power Android control, notification reading and quick replies. Accessibility settings support excluding specific apps, in-app updates verify the APK package name and signature, and plugin network requests are blocked from reaching intranet addresses.
 
 ## 🐞 Debugging
 
