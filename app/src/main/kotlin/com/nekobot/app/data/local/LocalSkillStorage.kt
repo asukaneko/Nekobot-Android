@@ -458,6 +458,31 @@ internal class LocalSkillStorage(private val root: File) {
         saveSource(directory, sourceUrl)
     }
 
+    /**
+     * 写入 Skill 目录下的附加文件（相对路径 → 文本内容）。
+     *
+     * 支持 `scripts/main.py`、`resources/data.md` 等任意相对路径，
+     * 与 SKILL.md 同级原样保存；只覆盖传入的文件，不动其它内容。
+     * 路径越界（`..`、绝对路径）由 [resolveInside] 拦截。
+     */
+    fun writeFiles(name: String, files: Map<String, String>) {
+        if (files.isEmpty()) return
+        val directory = directoryFor(name)
+        directory.mkdirs()
+        for ((relativePath, content) in files) {
+            val cleaned = relativePath.trim().replace('\\', '/')
+            require(cleaned.isNotBlank() && !cleaned.endsWith("/")) {
+                "Skill 附加文件路径无效: $relativePath"
+            }
+            require(!cleaned.equals("config.json", ignoreCase = true)) {
+                "config.json 为本地元数据，不能作为 Skill 文件写入"
+            }
+            val file = resolveInside(directory, cleaned)
+            file.parentFile?.mkdirs()
+            file.writeText(content, Charsets.UTF_8)
+        }
+    }
+
     fun install(pkg: DownloadedSkillPackage, overwrite: Boolean) {
         val target = directoryFor(pkg.name)
         if (target.exists() && !overwrite) throw IllegalStateException("Skill「${pkg.name}」已存在")

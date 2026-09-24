@@ -299,6 +299,7 @@
     <string name="tool_param_desc_manifest_json">plugin.json の内容</string>
     <string name="tool_param_desc_main_js">main.js のソース</string>
     <string name="tool_param_desc_extra_files_json">追加ファイルの内容</string>
+    <string name="tool_param_desc_files">追加ファイル（相対パス → 内容）</string>
     <string name="tool_param_desc_actions">実行するアクションの一覧</string>
     <string name="tool_param_desc_active">有効かどうか</string>
     <string name="tool_param_desc_aliases">別名の一覧</string>

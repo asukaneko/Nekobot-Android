@@ -76,6 +76,11 @@ internal class LocalPipelineCallbacks(
     private val mcpToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 只读 Skills 存储工具执行入口。 */
     private val skillToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
+    /**
+     * Skills 目录存储：供 db_create_skill / db_update_skill 把 SKILL.md 与附加文件真正写到磁盘。
+     * 为空时数据库工具仍可改元数据，但拒绝写入文件内容。
+     */
+    private val skillStorage: com.nekobot.app.data.local.LocalSkillStorage? = null,
     /** 会话级原生浏览器工具执行入口。 */
     private val browserToolExecutor: ((args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 本地数据库操作工具执行入口（角色卡/世界书/Hook/工作流/Skill/AI 模型等 CRUD）。 */
@@ -250,7 +255,8 @@ internal class LocalPipelineCallbacks(
                         emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
                     }
             },
-            generationController = generationController
+            generationController = generationController,
+            skillStorage = skillStorage
         )
     }
 

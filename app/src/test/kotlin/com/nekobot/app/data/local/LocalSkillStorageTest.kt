@@ -197,6 +197,27 @@ class LocalSkillStorageTest {
         assertEquals("# preserve v2", storage.skillMd("preserve"))
     }
 
+    @Test
+    fun `writeFiles writes ai generated skill files and blocks unsafe paths`() {
+        val root = temporaryFolder.newFolder("skills-write")
+        val storage = LocalSkillStorage(root)
+
+        storage.save("ai-demo", skillMd = "---\nname: ai-demo\n---\n# ai-demo", referenceMd = null)
+        storage.writeFiles(
+            "ai-demo",
+            mapOf(
+                "scripts/main.py" to "print('ai')",
+                "resources/说明.md" to "资料"
+            )
+        )
+
+        assertTrue(storage.skillMd("ai-demo").orEmpty().contains("ai-demo"))
+        assertEquals("print('ai')", storage.readText("ai-demo", "scripts/main.py"))
+        assertEquals("资料", storage.readText("ai-demo", "resources/说明.md"))
+        assertTrue(runCatching { storage.writeFiles("ai-demo", mapOf("../escape.txt" to "nope")) }.isFailure)
+        assertTrue(runCatching { storage.writeFiles("ai-demo", mapOf("config.json" to "{}")) }.isFailure)
+    }
+
     // ==================== 导出 ZIP ====================
 
     @Test

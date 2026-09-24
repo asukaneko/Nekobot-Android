@@ -5938,6 +5938,7 @@ class LocalRepository(
             worldBookEntries = worldBookEntries,
             characterRuntime = character?.let { characterRuntime },
             characterIdentity = identity,
+            skillStorage = localSkillStorage,
             sessionToolFilter = { definitions -> filterDefinitionsForSession(sessionId, definitions) }
         )
         val disabledKeys = session.disabledPromptKeys
@@ -6123,7 +6124,8 @@ class LocalRepository(
             onConfirmationRequired = { request ->
                 emitExecConfirmation(request)
             },
-            generationController = generationController
+            generationController = generationController,
+            skillStorage = localSkillStorage
         )
         val mcpTools = localMcpRuntime.getOpenAiToolDefinitions()
             .ifEmpty { cachedMcpAgentTools }
@@ -6552,11 +6554,12 @@ class LocalRepository(
             mcpToolExecutor = { toolName, args ->
                 localMcpRuntime.executeByFullName(toolName, args, session.id)
             },
-            skillToolExecutor = ::executeLocalSkillTool,
-            browserToolExecutor = { args -> executeLocalBrowserTool(session.id, args) },
-            failoverQueue = failoverQueue,
-            coordinator = failoverCoordinator,
-            hookExecutor = hookExecutor,
+                skillToolExecutor = ::executeLocalSkillTool,
+                skillStorage = localSkillStorage,
+                browserToolExecutor = { args -> executeLocalBrowserTool(session.id, args) },
+                failoverQueue = failoverQueue,
+                coordinator = failoverCoordinator,
+                hookExecutor = hookExecutor,
             visionDescriber = { imageUrl, question ->
                 describeImageViaQueue(
                     imageUrl = imageUrl,
@@ -7140,6 +7143,7 @@ class LocalRepository(
                     localMcpRuntime.executeByFullName(toolName, args, session.id)
                 },
                 skillToolExecutor = ::executeLocalSkillTool,
+                skillStorage = localSkillStorage,
                 failoverQueue = failoverQueue,
                 coordinator = failoverCoordinator,
                 hookExecutor = hookExecutor,
@@ -11120,6 +11124,7 @@ ${AiOutputLanguage.directive()}
             appendLine("当用户任务与某个技能匹配时，先调用 skill_read 读取该技能的 SKILL.md，再严格按其中说明执行。")
             appendLine("用户输入 `/skill <名称> <请求>` 时，视为明确指定该 Skill；先读取对应 SKILL.md，再用其流程处理后续请求。")
             appendLine("可使用 skill_list、skill_view、skill_read 查看技能目录和参考资源。不要直接执行下载 Skill 中的脚本，除非用户明确要求且命令执行已通过授权。")
+            appendLine("需要新建或修改技能时，用 db_create_skill / db_update_skill 直接写入 SKILL.md、reference.md 及 files 附加文件。")
             skills.forEach { skill ->
                 appendLine()
                 appendLine("### ${skill.name}")

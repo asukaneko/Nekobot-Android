@@ -299,6 +299,7 @@
     <string name="tool_param_desc_manifest_json">plugin.json 内容</string>
     <string name="tool_param_desc_main_js">main.js 源码</string>
     <string name="tool_param_desc_extra_files_json">附加文件内容</string>
+    <string name="tool_param_desc_files">附加文件（相对路径 → 内容）</string>
     <string name="tool_param_desc_actions">要执行的动作列表</string>
     <string name="tool_param_desc_active">是否启用</string>
     <string name="tool_param_desc_aliases">别名列表</string>

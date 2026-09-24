@@ -299,6 +299,7 @@
     <string name="tool_param_desc_manifest_json">plugin.json 내용</string>
     <string name="tool_param_desc_main_js">main.js 소스</string>
     <string name="tool_param_desc_extra_files_json">추가 파일 내용</string>
+    <string name="tool_param_desc_files">추가 파일(상대 경로 → 내용)</string>
     <string name="tool_param_desc_actions">실행할 동작 목록</string>
     <string name="tool_param_desc_active">활성화 여부</string>
     <string name="tool_param_desc_aliases">별칭 목록</string>

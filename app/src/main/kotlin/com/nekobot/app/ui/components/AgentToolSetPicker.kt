@@ -612,6 +612,7 @@ internal fun toolParamResId(paramName: String): Int = when (paramName) {
     "manifest_json" -> R.string.tool_param_desc_manifest_json
     "main_js" -> R.string.tool_param_desc_main_js
     "extra_files_json" -> R.string.tool_param_desc_extra_files_json
+    "files" -> R.string.tool_param_desc_files
     "actions" -> R.string.tool_param_desc_actions
     "active" -> R.string.tool_param_desc_active
     "aliases" -> R.string.tool_param_desc_aliases

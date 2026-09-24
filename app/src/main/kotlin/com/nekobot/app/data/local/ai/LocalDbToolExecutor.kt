@@ -1,6 +1,8 @@
 package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
+import com.nekobot.app.data.local.LocalSkillStorage
+import com.nekobot.app.data.local.validateSkillNameValue
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalHookEntity
@@ -95,6 +97,12 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         "type" to "array",
         "description" to desc,
         "items" to mapOf("type" to "object", "additionalProperties" to true)
+    )
+    /** 相对路径 → 文本内容 的文件对象（Skill 附加文件等）。 */
+    fun fileObj(desc: String) = mapOf(
+        "type" to "object",
+        "description" to desc,
+        "additionalProperties" to mapOf("type" to "string")
     )
 
     return listOf(
@@ -421,23 +429,27 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition("db_list_skills", "列出所有本地 Skill 元数据。", params(emptyMap())),
         definition(
             "db_create_skill",
-            "创建一个新的本地 Skill（仅元数据；如需 SKILL.md 内容请通过 UI 上传）。",
+            "创建一个新的本地 Skill，并把 SKILL.md / reference.md / 附加文件直接写入技能目录，无需再通过 UI 上传。" +
+                "skill_md 建议写成完整标准格式：首行 YAML frontmatter（name/description/aliases），正文含 `# 名称`、" +
+                "`## 小节` 与可执行步骤列表。",
             params(
                 mapOf(
-                    "name" to str("Skill 名称（必填，唯一）"),
+                    "name" to str("Skill 名称（必填，唯一，同时作为存储目录名）"),
                     "description" to str("描述"),
                     "aliases" to strArr("别名数组（字符串）"),
                     "enabled" to bool("是否启用，默认 true"),
                     "parameters" to obj("参数 JSON"),
-                    "skill_md" to str("SKILL.md 内容（可选）"),
-                    "reference_md" to str("reference.md 内容（可选）")
+                    "skill_md" to str("SKILL.md 完整内容（可选；不传则生成默认模板）"),
+                    "reference_md" to str("reference.md 内容（可选）"),
+                    "files" to fileObj("附加文件对象：相对路径 → 文本内容，如 {\"scripts/main.py\": \"print(1)\"}（可选）")
                 ),
                 listOf("name")
             )
         ),
         definition(
             "db_update_skill",
-            "修改指定 Skill。",
+            "修改指定 Skill：名称（会同步重命名存储目录）、描述、别名、启用状态、参数，" +
+                "并可直接写入 SKILL.md / reference.md / 附加文件；未传的内容保持原样。",
             params(
                 mapOf(
                     "skill_id" to str("Skill ID（必填）"),
@@ -446,8 +458,9 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "aliases" to strArr("别名数组（字符串）"),
                     "enabled" to bool("是否启用"),
                     "parameters" to obj("参数 JSON"),
-                    "skill_md" to str("SKILL.md 内容"),
-                    "reference_md" to str("reference.md 内容")
+                    "skill_md" to str("SKILL.md 完整内容（不传则保留原文件）"),
+                    "reference_md" to str("reference.md 内容（不传则保留原文件）"),
+                    "files" to fileObj("附加文件对象：相对路径 → 文本内容；只覆盖传入的文件")
                 ),
                 listOf("skill_id")
             )
@@ -551,7 +564,9 @@ internal class LocalDbToolExecutor(
     private val sessionId: String,
     private val authorizationManager: LocalExecAuthorizationManager,
     private val onConfirmationRequired: (ExecConfirmationRequest) -> Unit,
-    private val generationController: LocalGenerationController = LocalGenerationController()
+    private val generationController: LocalGenerationController = LocalGenerationController(),
+    /** Skills 目录存储；用于把 AI 生成的 SKILL.md / 附加文件真正写到磁盘。 */
+    private val skillStorage: LocalSkillStorage? = null
 ) {
     private val gson = Gson()
 
@@ -1280,27 +1295,87 @@ internal class LocalDbToolExecutor(
 
     private suspend fun createSkill(args: Map<String, Any>): Map<String, Any> {
         val name = args.string("name").ifBlank { return failure("name 不能为空") }
-        if (db.skillDao().listAll().any { it.name.equals(name, ignoreCase = true) }) {
-            return failure("Skill 名称已存在: $name")
+        val validated = runCatching { validateSkillNameValue(name) }.getOrElse {
+            return failure(it.message ?: "Skill 名称无效")
+        }
+        if (db.skillDao().listAll().any { it.name.equals(validated, ignoreCase = true) }) {
+            return failure("Skill 名称已存在: $validated")
+        }
+        val storage = skillStorage
+        if (storage != null && storage.exists(validated)) {
+            return failure("Skill 存储目录已存在: $validated")
+        }
+        val skillMd = args.string("skill_md").takeIf { it.isNotBlank() }
+        val referenceMd = args.string("reference_md").takeIf { it.isNotBlank() }
+        val extraFiles = args.textFileMap("files")
+        if (storage == null && (skillMd != null || referenceMd != null || extraFiles.isNotEmpty())) {
+            return failure("本地 Skill 存储不可用，无法写入 SKILL.md / 附加文件")
         }
         val entity = LocalSkillEntity(
             id = UUID.randomUUID().toString(),
-            name = name.trim(),
+            name = validated,
             description = args.string("description").ifBlank { null },
             aliasesJson = args.stringList("aliases")?.let { gson.toJson(it) } ?: "[]",
             enabled = args.bool("enabled", true),
             parametersJson = args.any("parameters")?.let { gson.toJson(it) },
             createdAt = nowIso()
         )
-        db.skillDao().upsert(entity)
+        // 先把 SKILL.md / 参考文件 / 附加文件写到技能目录，再写库；写库失败则回滚目录。
+        runCatching {
+            storage?.save(validated, skillMd = skillMd, referenceMd = referenceMd)
+            storage?.writeFiles(validated, extraFiles)
+            db.skillDao().upsert(entity)
+        }.getOrElse { error ->
+            storage?.delete(validated)
+            return failure(error.message ?: "创建 Skill 失败")
+        }
         return success("skill_id" to entity.id, "skill" to entity.toMap())
     }
 
     private suspend fun updateSkill(args: Map<String, Any>): Map<String, Any> {
         val id = args.string("skill_id").ifBlank { return failure("skill_id 不能为空") }
         val existing = db.skillDao().getById(id) ?: return failure("Skill 不存在: $id")
+        val newName = args.string("name").ifBlank { existing.name }.trim()
+        val validated = runCatching { validateSkillNameValue(newName) }.getOrElse {
+            return failure(it.message ?: "Skill 名称无效")
+        }
+        if (db.skillDao().listAll().any { it.id != id && it.name.equals(validated, ignoreCase = true) }) {
+            return failure("Skill 名称已存在: $validated")
+        }
+        val storage = skillStorage
+        val skillMd = args.string("skill_md").takeIf { it.isNotBlank() }
+        val referenceMd = args.string("reference_md").takeIf { it.isNotBlank() }
+        val extraFiles = args.textFileMap("files")
+        if (storage == null && (skillMd != null || referenceMd != null || extraFiles.isNotEmpty())) {
+            return failure("本地 Skill 存储不可用，无法写入 SKILL.md / 附加文件")
+        }
+        if (storage != null) {
+            val oldSkillMd = storage.skillMd(existing.name)
+            val oldReference = storage.referenceMd(existing.name)
+            val sourceUrl = storage.sourceUrl(existing.name)
+            val renamed = existing.name != validated
+            if (renamed && storage.exists(existing.name)) {
+                if (storage.exists(validated)) return failure("Skill 存储目录已存在: $validated")
+                storage.rename(existing.name, validated)
+            }
+            runCatching {
+                storage.save(
+                    name = validated,
+                    skillMd = skillMd ?: oldSkillMd,
+                    referenceMd = referenceMd ?: oldReference,
+                    sourceUrl = sourceUrl
+                )
+                storage.writeFiles(validated, extraFiles)
+            }.getOrElse { error ->
+                // 保存失败时尽量把目录名改回去，避免库与磁盘目录名不一致。
+                if (renamed && storage.exists(validated) && !storage.exists(existing.name)) {
+                    runCatching { storage.rename(validated, existing.name) }
+                }
+                return failure(error.message ?: "写入 Skill 文件失败")
+            }
+        }
         val updated = existing.copy(
-            name = args.string("name").ifBlank { existing.name }.trim(),
+            name = validated,
             description = args.optString("description", existing.description),
             aliasesJson = args.stringList("aliases")?.let { gson.toJson(it) } ?: existing.aliasesJson,
             enabled = args.optBool("enabled", existing.enabled),
@@ -1312,7 +1387,9 @@ internal class LocalDbToolExecutor(
 
     private suspend fun deleteSkill(args: Map<String, Any>): Map<String, Any> {
         val id = args.string("skill_id").ifBlank { return failure("skill_id 不能为空") }
+        val existing = db.skillDao().getById(id)
         db.skillDao().deleteById(id)
+        existing?.let { entity -> runCatching { skillStorage?.delete(entity.name) } }
         return success("deleted" to true, "skill_id" to id)
     }
 
@@ -1659,6 +1736,43 @@ internal class LocalDbToolExecutor(
 
     private fun Map<String, Any>.any(key: String): Any? = this[key]
 
+    /**
+     * 提取「相对路径 → 文本内容」的附加文件表，兼容以下输入：
+     *  - Map<String, String>：原生对象
+     *  - JSON 字符串：`{"scripts/a.py": "..."}`
+     *  - List<{path, content}>：部分模型偏好的数组形式
+     *
+     * 返回空表表示未传或内容不可用；非法条目直接忽略，避免整次调用失败。
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun Map<String, Any>.textFileMap(key: String): Map<String, String> {
+        val raw = this[key] ?: return emptyMap()
+        val map: Map<String, Any> = when (raw) {
+            is Map<*, *> -> raw.entries
+                .mapNotNull { (k, v) -> k?.toString()?.let { kt -> v?.let { kt to it } } }
+                .toMap()
+            is String -> {
+                val trimmed = raw.trim()
+                if (trimmed.isEmpty()) return emptyMap()
+                runCatching {
+                    gson.fromJson(trimmed, Map::class.java) as? Map<String, Any>
+                }.getOrNull() ?: return emptyMap()
+            }
+            is List<*> -> raw.mapNotNull { item ->
+                val entry = item as? Map<*, *> ?: return@mapNotNull null
+                val path = (entry["path"] ?: entry["file"] ?: entry["name"])?.toString()
+                    ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val content = entry["content"]?.toString() ?: return@mapNotNull null
+                path to content
+            }.toMap()
+            else -> return emptyMap()
+        }
+        return map.mapNotNull { (path, value) ->
+            val cleanPath = path.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            cleanPath to (value as? String ?: value.toString())
+        }.toMap()
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun Map<String, Any>.anyList(key: String): List<Any>? =
         (this[key] as? List<Any>)?.takeIf { it.isNotEmpty() }
@@ -1760,15 +1874,20 @@ internal class LocalDbToolExecutor(
         "next_run" to (nextRun ?: "")
     )
 
-    private fun LocalSkillEntity.toMap(): Map<String, Any> = mapOf(
-        "id" to id,
-        "name" to name,
-        "description" to (description ?: ""),
-        "aliases" to aliasesJson,
-        "enabled" to enabled,
-        "parameters" to (parametersJson ?: "null"),
-        "created_at" to createdAt
-    )
+    private fun LocalSkillEntity.toMap(): Map<String, Any> = buildMap {
+        put("id", id)
+        put("name", name)
+        put("description", description ?: "")
+        put("aliases", aliasesJson)
+        put("enabled", enabled)
+        put("parameters", parametersJson ?: "null")
+        put("created_at", createdAt)
+        // 存储目录存在时附带文件清单，方便模型确认 SKILL.md / 脚本是否已落盘。
+        val storage = skillStorage
+        if (storage != null && storage.exists(name)) {
+            put("files", storage.listFiles(name).map { it.path })
+        }
+    }
 
     private fun LocalAiModelEntity.toSummary(): Map<String, Any> = mapOf(
         "id" to id,

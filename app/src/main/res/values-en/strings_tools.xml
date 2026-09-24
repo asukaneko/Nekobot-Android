@@ -299,6 +299,7 @@
     <string name="tool_param_desc_manifest_json">plugin.json content</string>
     <string name="tool_param_desc_main_js">main.js source</string>
     <string name="tool_param_desc_extra_files_json">Extra file contents</string>
+    <string name="tool_param_desc_files">Extra files (relative path → content)</string>
     <string name="tool_param_desc_actions">Actions to perform</string>
     <string name="tool_param_desc_active">Whether it is enabled</string>
     <string name="tool_param_desc_aliases">Alias list</string>
