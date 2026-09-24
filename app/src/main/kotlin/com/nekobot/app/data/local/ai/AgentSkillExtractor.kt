@@ -60,8 +60,17 @@ internal object AgentSkillExtractor {
     /** Skill 描述长度上限（技能目录会注入系统提示词，过长会持续消耗 token）。 */
     internal const val MAX_DESCRIPTION_CHARS = 120
 
-    /** 注入提示词的工具调用轨迹上限。 */
-    internal const val MAX_TRAJECTORY_CHARS = 6_000
+    /** 注入提示词的工具调用轨迹上限（超长时保留头尾，省略中间）。 */
+    internal const val MAX_TRAJECTORY_CHARS = 16_000
+
+    /** 单条工具参数的保留上限（命令、参数本身就是"怎么做"的关键）。 */
+    internal const val TOOL_ARGUMENT_PREVIEW_CHARS = 1_000
+
+    /** 单条工具结果的保留上限。 */
+    internal const val TOOL_RESULT_PREVIEW_CHARS = 1_500
+
+    /** 单条中间回复的保留上限（中间回复通常是进度总结；思考内容不纳入）。 */
+    internal const val ASSISTANT_NOTE_PREVIEW_CHARS = 800
 
     private const val SYSTEM_PROMPT =
         "你是技能沉淀器（Skill Reviewer）。你只输出一个 JSON 对象，不要输出解释、寒暄或 Markdown 代码块。"
@@ -252,25 +261,43 @@ internal object AgentSkillExtractor {
         toolTrace.forEach { message ->
             when (message["role"]) {
                 "assistant" -> {
+                    // 中间回复是模型对当前进度的总结与关键判断，一并保留；
+                    // 思考内容（reasoning_content）通常极长且无操作价值，不纳入。
+                    val note = toolResultPreview(message["content"]).take(ASSISTANT_NOTE_PREVIEW_CHARS)
+                    if (note.isNotBlank()) builder.appendLine("- 进度说明: $note")
                     val calls = message["tool_calls"] as? List<*> ?: return@forEach
                     calls.forEach { entry ->
                         val function = (entry as? Map<*, *>)?.get("function") as? Map<*, *> ?: return@forEach
                         val name = function["name"]?.toString().orEmpty()
                         if (name.isBlank()) return@forEach
-                        val arguments = function["arguments"]?.toString().orEmpty().take(400)
+                        val arguments = function["arguments"]?.toString().orEmpty()
+                            .take(TOOL_ARGUMENT_PREVIEW_CHARS)
                         builder.appendLine("- 调用 $name($arguments)")
                     }
                 }
                 "tool" -> {
                     val name = message["name"]?.toString().orEmpty()
-                    val preview = toolResultPreview(message["content"]).take(300)
+                    val preview = toolResultPreview(message["content"]).take(TOOL_RESULT_PREVIEW_CHARS)
                     builder.appendLine("  ↳ ${name.ifBlank { "工具" }} 结果: $preview")
                 }
             }
         }
         val text = builder.toString().trim()
         if (text.isEmpty()) return "（本轮没有工具调用）"
-        return if (text.length <= MAX_TRAJECTORY_CHARS) text else text.take(MAX_TRAJECTORY_CHARS) + "\n（轨迹过长已截断）"
+        return truncateKeepingHeadAndTail(text, MAX_TRAJECTORY_CHARS)
+    }
+
+    /**
+     * 轨迹超长时保留头尾：开头是任务背景与最初几步，结尾通常是任务最终做成的关键路径，
+     * 中间省略。尾部配额大于头部，避免丢掉成功收尾的步骤。
+     */
+    internal fun truncateKeepingHeadAndTail(text: String, maxChars: Int): String {
+        if (text.length <= maxChars) return text
+        val marker = "\n……（中间内容已省略）……\n"
+        val budget = (maxChars - marker.length).coerceAtLeast(0)
+        val headLength = budget * 2 / 5
+        val tailLength = budget - headLength
+        return text.take(headLength) + marker + text.takeLast(tailLength)
     }
 
     /** 工具结果可能是字符串或多模态分块，这里统一拍平成短文本。 */

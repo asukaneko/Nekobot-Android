@@ -415,6 +415,58 @@ class AgentSkillDistillationTest {
     }
 
     @Test
+    fun trajectoryKeepsIntermediateReplyButDropsReasoning() {
+        val trace = listOf(
+            mapOf(
+                "role" to "assistant",
+                "content" to "已确认构建参数，先执行一次 release 构建。",
+                "reasoning_content" to "这段思考内容很长但不应进入轨迹",
+                "tool_calls" to listOf(
+                    mapOf("function" to mapOf("name" to "exec_command", "arguments" to "{}"))
+                )
+            ),
+            mapOf("role" to "tool", "name" to "exec_command", "content" to "BUILD SUCCESSFUL")
+        )
+
+        val text = AgentSkillExtractor.buildToolTrajectory(trace)
+
+        assertTrue(text.contains("已确认构建参数"))
+        assertFalse(text.contains("这段思考内容"))
+    }
+
+    @Test
+    fun longTrajectoryKeepsHeadAndTail() {
+        val trace = buildList {
+            add(
+                mapOf(
+                    "role" to "assistant",
+                    "tool_calls" to listOf(
+                        mapOf("function" to mapOf("name" to "first_tool", "arguments" to "{}"))
+                    )
+                )
+            )
+            add(mapOf("role" to "tool", "name" to "first_tool", "content" to "HEAD_MARKER"))
+            repeat(30) { index ->
+                add(
+                    mapOf(
+                        "role" to "tool",
+                        "name" to "tool_$index",
+                        "content" to "中间过程数据".repeat(200)
+                    )
+                )
+            }
+            add(mapOf("role" to "tool", "name" to "last_tool", "content" to "TAIL_MARKER"))
+        }
+
+        val text = AgentSkillExtractor.buildToolTrajectory(trace)
+
+        assertTrue(text.length <= AgentSkillExtractor.MAX_TRAJECTORY_CHARS)
+        assertTrue(text.contains("HEAD_MARKER"))
+        assertTrue(text.contains("TAIL_MARKER"))
+        assertTrue(text.contains("中间内容已省略"))
+    }
+
+    @Test
     fun emptyTrajectoryIsReportedAsNoToolCalls() {
         assertEquals("（本轮没有工具调用）", AgentSkillExtractor.buildToolTrajectory(emptyList()))
     }
