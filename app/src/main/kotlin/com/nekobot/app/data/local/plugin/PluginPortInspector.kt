@@ -209,6 +209,9 @@ object PluginPortInspector {
         if (Regex("fetch\\(|XMLHttpRequest|\\$\\.ajax|\\$\\.get\\(|httpGet|http\\.get").containsMatchIn(source)) {
             permissions += "network"
         }
+        if (Regex("Tools\\.Files|workspace\\.(save|list|read|delete)|workspace_(save|list|read|delete)").containsMatchIn(source)) {
+            permissions += "workspace"
+        }
         if (ecosystem == Ecosystem.OPERIT_TOOLPKG) permissions += "storage"
         return permissions.toList()
     }
@@ -303,6 +306,7 @@ object PluginPortInspector {
                     "promptStack" -> "chat.prompt.stack"
                     "toolCalls" -> "chat.tool.calls"
                     "storage" -> null
+                    "workspace" -> null
                     else -> name
                 }
                 if (candidate != null && candidate !in PluginApiDispatcher.LEGACY_API_NAMES) {
@@ -328,6 +332,9 @@ object PluginPortInspector {
                     "worldbooks" -> name.startsWith("worldbooks.")
                     "memory" -> name in setOf(
                         "memory.read", "memory.write", "memory.append", "memory.edit"
+                    )
+                    "workspace" -> name in setOf(
+                        "workspace.save", "workspace.list", "workspace.read", "workspace.delete"
                     )
                     "http" -> name == "http.get"
                     "progress" -> name == "progress.update"

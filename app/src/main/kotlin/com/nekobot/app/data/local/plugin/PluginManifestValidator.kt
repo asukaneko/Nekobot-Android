@@ -22,7 +22,8 @@ object PluginManifestValidator {
         "chat.write",
         "memory.write",
         "characters.write",
-        "ai.call"
+        "ai.call",
+        "workspace"
     )
 
     /** 支持的事件钩子：声明后由无界面运行时执行入口脚本注册。 */
@@ -37,7 +38,8 @@ object PluginManifestValidator {
         "chat.write",
         "memory.write",
         "characters.write",
-        "ai.call"
+        "ai.call",
+        "workspace"
     )
 
     /** 权限分组：授权界面按「基础 / 读取 / 网络 / 写入 / AI」渲染。 */
@@ -45,7 +47,7 @@ object PluginManifestValidator {
         "basic" to listOf("storage", "notify", "chat.progress"),
         "read" to listOf("chat.read", "characters.read", "worldbooks.read", "memory.read"),
         "network" to listOf("network"),
-        "write" to listOf("chat.write", "memory.write", "characters.write"),
+        "write" to listOf("chat.write", "memory.write", "characters.write", "workspace"),
         "ai" to listOf("ai.call")
     )
 

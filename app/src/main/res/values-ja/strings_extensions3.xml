@@ -159,6 +159,7 @@
     <string name="plugin_perm_chat_write">メッセージの送信</string>
     <string name="plugin_perm_memory_write">エージェントメモリへの書き込み</string>
     <string name="plugin_perm_characters_write">キャラクターの作成・編集</string>
+    <string name="plugin_perm_workspace">ワークスペースファイルの読み書き</string>
     <string name="plugin_perm_ai_call">AI の呼び出し</string>
     <string name="plugins_compat_label">互換性: %1$s</string>
     <string name="plugins_compat_native">ネイティブ</string>

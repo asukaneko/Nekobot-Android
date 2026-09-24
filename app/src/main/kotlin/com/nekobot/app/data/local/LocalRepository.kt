@@ -12026,6 +12026,31 @@ ${AiOutputLanguage.directive()}
 
     suspend fun createWorkspaceFolder(sessionId: String, folderPath: String): JsonElement =
         workspaceRepository.createSessionFolder(sessionId, folderPath)
+
+    // ---- 插件专属文件夹：会话工作区（有会话）或共享工作区（无会话） ----
+
+    suspend fun savePluginWorkspaceFile(
+        sessionId: String?,
+        pluginId: String,
+        relativePath: String,
+        content: String
+    ): JsonElement = workspaceRepository.savePluginFile(sessionId, pluginId, relativePath, content)
+
+    suspend fun listPluginWorkspaceFiles(sessionId: String?, pluginId: String, path: String?): JsonElement =
+        workspaceRepository.listPluginFiles(sessionId, pluginId, path)
+
+    suspend fun readPluginWorkspaceFile(
+        sessionId: String?,
+        pluginId: String,
+        relativePath: String,
+        maxBytes: Long
+    ): JsonElement = workspaceRepository.readPluginFile(sessionId, pluginId, relativePath, maxBytes)
+
+    suspend fun deletePluginWorkspaceFile(
+        sessionId: String?,
+        pluginId: String,
+        relativePath: String
+    ): JsonElement = workspaceRepository.deletePluginFile(sessionId, pluginId, relativePath)
 }
 
 // ============================================================================

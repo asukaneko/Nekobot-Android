@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.widget.Toast
 import com.google.gson.Gson
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -461,6 +462,10 @@ internal class PluginApiDispatcher(
                     mapOf("status" to response.code, "body" to body)
                 }
             }
+            "workspace.save" -> pluginWorkspaceSave(context, payload)
+            "workspace.list" -> pluginWorkspaceList(context, payload)
+            "workspace.read" -> pluginWorkspaceRead(context, payload)
+            "workspace.delete" -> pluginWorkspaceDelete(context, payload)
             "progress.update" -> {
                 // 没有关联的用户消息时（如 plugin_use 的 execute 测试、无会话上下文的页面）
                 // 静默忽略：这是宿主环境的差异，不该让插件调用本身失败。
@@ -546,6 +551,135 @@ internal class PluginApiDispatcher(
         }
     }
 
+    // ---- 工作区文件：插件专属文件夹（有会话 → 会话工作区，无会话 → 共享工作区） ----
+
+    /**
+     * 保存插件生成的内容。
+     *
+     * 有会话上下文（命令、从会话打开的页面、消息钩子）时写入会话工作区
+     * `plugins/<插件id>/`；没有会话（扩展页、桌面小组件等入口）时写入共享工作区
+     * `plugins/<插件id>/`。返回值里的 `file_reference` 可直接用于聊天文件卡片标记。
+     */
+    private suspend fun pluginWorkspaceSave(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val path = payload.workspacePath()
+        val content = payload.string("content")
+        if (content.isEmpty()) throw PluginApiException("workspace.save 需要 content", "invalid_argument")
+        if (content.length > MAX_WORKSPACE_SAVE_CHARS) {
+            throw PluginApiException("内容最多 $MAX_WORKSPACE_SAVE_CHARS 个字符", "invalid_argument")
+        }
+        val result = pluginWorkspaceResult(
+            repository(context).savePluginWorkspaceFile(
+                sessionId = context.sessionId,
+                pluginId = context.plugin.id,
+                relativePath = path,
+                content = content
+            )
+        )
+        val scope = result.string("scope")
+        return mapOf(
+            "scope" to scope,
+            "path" to result.string("path"),
+            "name" to result.string("name"),
+            "size" to jsonInt(result.get("size"), 0),
+            "mime_type" to result.string("mime_type"),
+            "file_reference" to pluginFileReference(scope, context.plugin.id, result.string("path"))
+        )
+    }
+
+    private suspend fun pluginWorkspaceList(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val path = payload.string("path").trim()
+        if (path.isNotEmpty()) {
+            val normalized = path.replace('\\', '/').trim('/')
+            if (!PluginManifestValidator.isSafeRelativePath(normalized)) {
+                throw PluginApiException("路径不安全：$path", "invalid_argument")
+            }
+        }
+        val result = pluginWorkspaceResult(
+            repository(context).listPluginWorkspaceFiles(context.sessionId, context.plugin.id, path)
+        )
+        val scope = result.string("scope")
+        val files = result.getAsJsonArray("files")?.mapNotNull { element ->
+            val file = element as? JsonObject ?: return@mapNotNull null
+            mapOf(
+                "name" to file.string("name"),
+                "type" to file.string("type"),
+                "size" to jsonInt(file.get("size"), 0),
+                "path" to file.string("path"),
+                "mime_type" to file.string("mime_type"),
+                "file_reference" to pluginFileReference(scope, context.plugin.id, file.string("path"))
+            )
+        }.orEmpty()
+        return mapOf(
+            "scope" to scope,
+            "path" to result.string("path"),
+            "files" to files
+        )
+    }
+
+    private suspend fun pluginWorkspaceRead(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val path = payload.workspacePath()
+        val result = pluginWorkspaceResult(
+            repository(context).readPluginWorkspaceFile(
+                sessionId = context.sessionId,
+                pluginId = context.plugin.id,
+                relativePath = path,
+                maxBytes = MAX_WORKSPACE_READ_BYTES
+            )
+        )
+        val scope = result.string("scope")
+        return mapOf(
+            "scope" to scope,
+            "path" to result.string("path"),
+            "size" to jsonInt(result.get("size"), 0),
+            "truncated" to result.boolean("truncated", false),
+            "content" to result.string("content"),
+            "file_reference" to pluginFileReference(scope, context.plugin.id, result.string("path"))
+        )
+    }
+
+    private suspend fun pluginWorkspaceDelete(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val path = payload.workspacePath()
+        val result = pluginWorkspaceResult(
+            repository(context).deletePluginWorkspaceFile(context.sessionId, context.plugin.id, path)
+        )
+        return mapOf("path" to result.string("path"), "deleted" to true)
+    }
+
+    /** 解析并校验插件文件夹内的相对路径；同时兼容 `path` 与 `name` 两种字段名。 */
+    private fun JsonObject.workspacePath(): String {
+        val raw = string("path").ifBlank { string("name") }.trim()
+        if (raw.isBlank()) {
+            throw PluginApiException("需要 path（插件文件夹内的相对路径）", "invalid_argument")
+        }
+        if (raw.length > MAX_WORKSPACE_PATH_CHARS) {
+            throw PluginApiException("路径最多 $MAX_WORKSPACE_PATH_CHARS 个字符", "invalid_argument")
+        }
+        val normalized = raw.replace('\\', '/').trim('/')
+        if (!PluginManifestValidator.isSafeRelativePath(normalized)) {
+            throw PluginApiException("路径不安全：$raw", "invalid_argument")
+        }
+        return normalized
+    }
+
+    /** 工作区仓库的失败结果转成插件可见的异常（保留 code 供插件分支处理）。 */
+    private fun pluginWorkspaceResult(result: JsonElement?): JsonObject {
+        val obj = result?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: throw PluginApiException("工作区操作失败", "workspace_failed")
+        if (!obj.boolean("success", false)) {
+            throw PluginApiException(
+                obj.string("message").ifBlank { "工作区操作失败" },
+                obj.string("code").ifBlank { "workspace_failed" }
+            )
+        }
+        return obj
+    }
+
+    /** 聊天文件卡片引用：会话工作区用相对路径，共享工作区补 `shared://` 前缀。 */
+    private fun pluginFileReference(scope: String, pluginId: String, relativePath: String): String {
+        val path = "plugins/$pluginId/${relativePath.trim('/')}"
+        return if (scope == "shared") "shared://$path" else path
+    }
+
     private fun systemInfo(): Map<String, Any> {
         val configuration = appContext.resources.configuration
         val night = (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -585,6 +719,10 @@ internal class PluginApiDispatcher(
         "memory_write" -> "memory.write"
         "memory_append" -> "memory.append"
         "memory_edit" -> "memory.edit"
+        "workspace_save" -> "workspace.save"
+        "workspace_list" -> "workspace.list"
+        "workspace_read" -> "workspace.read"
+        "workspace_delete" -> "workspace.delete"
         else -> raw
     }
 
@@ -603,6 +741,7 @@ internal class PluginApiDispatcher(
         "worldbooks.list", "worldbooks.get" -> "worldbooks.read"
         "memory.read" -> "memory.read"
         "memory.write", "memory.append", "memory.edit" -> "memory.write"
+        "workspace.save", "workspace.list", "workspace.read", "workspace.delete" -> "workspace"
         "http.get" -> "network"
         "progress.update" -> "chat.progress"
         else -> null
@@ -1247,6 +1386,7 @@ internal class PluginApiDispatcher(
             "memory.write",
             "network",
             "progress",
+            "workspace",
             "ai.call",
             "chat.context",
             "chat.session.config",
@@ -1262,6 +1402,7 @@ internal class PluginApiDispatcher(
             "chat_send", "create_session", "switch_session",
             "memory_read", "memory_write", "memory_append", "memory_edit",
             "create_character", "update_character",
+            "workspace_save", "workspace_list", "workspace_read", "workspace_delete",
             "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
 
@@ -1275,6 +1416,7 @@ internal class PluginApiDispatcher(
             "characters.list", "characters.get", "characters.create", "characters.update",
             "worldbooks.list", "worldbooks.get",
             "memory.read", "memory.write", "memory.append", "memory.edit",
+            "workspace.save", "workspace.list", "workspace.read", "workspace.delete",
             "http.get", "progress.update", "ai.complete",
             "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
@@ -1324,6 +1466,11 @@ internal class PluginApiDispatcher(
 
         /** 单条写入消息的字符上限。 */
         const val MAX_CHAT_WRITE_CHARS = 8_000
+
+        /** 工作区文件 API：路径长度、写入内容与读取上限。 */
+        const val MAX_WORKSPACE_PATH_CHARS = 200
+        const val MAX_WORKSPACE_SAVE_CHARS = 2_000_000
+        const val MAX_WORKSPACE_READ_BYTES = 128L * 1024
 
         /** `host.ui.openPage` 启动参数与原生弹窗的字段上限。 */
         const val MAX_LAUNCH_ARGS_CHARS = 1_000

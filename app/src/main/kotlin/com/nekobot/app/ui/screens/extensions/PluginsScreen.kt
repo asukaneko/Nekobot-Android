@@ -429,6 +429,7 @@ private fun permissionNameRes(permission: String): Int = when (permission) {
     "chat.write" -> R.string.plugin_perm_chat_write
     "memory.write" -> R.string.plugin_perm_memory_write
     "characters.write" -> R.string.plugin_perm_characters_write
+    "workspace" -> R.string.plugin_perm_workspace
     else -> R.string.plugin_perm_ai_call
 }
 

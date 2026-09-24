@@ -159,6 +159,7 @@
     <string name="plugin_perm_chat_write">发送消息</string>
     <string name="plugin_perm_memory_write">写入 Agent 记忆</string>
     <string name="plugin_perm_characters_write">创建/修改角色卡</string>
+    <string name="plugin_perm_workspace">读写工作区文件</string>
     <string name="plugin_perm_ai_call">调用 AI</string>
     <string name="plugins_compat_label">兼容级别：%1$s</string>
     <string name="plugins_compat_native">原生</string>

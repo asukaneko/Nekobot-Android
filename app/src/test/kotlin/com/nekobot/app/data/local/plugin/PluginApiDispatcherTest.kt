@@ -98,6 +98,20 @@ class PluginApiDispatcherTest {
     }
 
     @Test
+    fun workspaceApisAreRegisteredForBothRuntimes() {
+        listOf("workspace_save", "workspace_list", "workspace_read", "workspace_delete").forEach { api ->
+            assertTrue("$api 需要命令运行时可用", api in PluginApiDispatcher.LEGACY_API_NAMES)
+        }
+        listOf("workspace.save", "workspace.list", "workspace.read", "workspace.delete").forEach { api ->
+            assertTrue("$api 需要页面运行时可用", api in PluginApiDispatcher.PAGE_API_NAMES)
+        }
+        assertTrue("workspace" in PluginApiDispatcher.CAPABILITIES)
+        assertTrue(PluginApiDispatcher.MAX_WORKSPACE_SAVE_CHARS > 0)
+        assertTrue(PluginApiDispatcher.MAX_WORKSPACE_READ_BYTES > 0)
+        assertTrue(PluginApiDispatcher.MAX_WORKSPACE_PATH_CHARS > 0)
+    }
+
+    @Test
     fun limitIsClampedToRange() {
         val payload = JsonObject()
         assertEquals(50, PluginApiDispatcher.resolveLimit(payload, 50, 200))

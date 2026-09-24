@@ -182,6 +182,14 @@ class PluginPortInspectorTest {
             await host.ui.select({ options: ["甲", "乙"] });
             await host.characters.create({name: "n"});
             await host.characters.update({id: "i", name: "n"});
+            await ctx.api.workspace.save("a.md", "x");
+            await ctx.api.workspace.list();
+            await ctx.api.workspace.read("a.md");
+            await ctx.api.workspace.delete("a.md");
+            await host.workspace.save({path: "a.md", content: "x"});
+            await host.workspace.list({});
+            await host.workspace.read({path: "a.md"});
+            await host.workspace.delete({path: "a.md"});
             """.trimIndent()
         )
         assertTrue(supported.isEmpty())

@@ -159,6 +159,7 @@
     <string name="plugin_perm_chat_write">메시지 보내기</string>
     <string name="plugin_perm_memory_write">에이전트 메모리 쓰기</string>
     <string name="plugin_perm_characters_write">캐릭터 생성/수정</string>
+    <string name="plugin_perm_workspace">워크스페이스 파일 읽기/쓰기</string>
     <string name="plugin_perm_ai_call">AI 호출</string>
     <string name="plugins_compat_label">호환 수준: %1$s</string>
     <string name="plugins_compat_native">네이티브</string>

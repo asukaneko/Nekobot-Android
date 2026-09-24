@@ -159,6 +159,7 @@
     <string name="plugin_perm_chat_write">Send messages</string>
     <string name="plugin_perm_memory_write">Write agent memory</string>
     <string name="plugin_perm_characters_write">Create/edit characters</string>
+    <string name="plugin_perm_workspace">Read/write workspace files</string>
     <string name="plugin_perm_ai_call">Call AI</string>
     <string name="plugins_compat_label">Compatibility: %1$s</string>
     <string name="plugins_compat_native">Native</string>

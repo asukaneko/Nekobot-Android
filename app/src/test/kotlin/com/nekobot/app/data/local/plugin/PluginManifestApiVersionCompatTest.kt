@@ -60,6 +60,14 @@ class PluginManifestApiVersionCompatTest {
     }
 
     @Test
+    fun workspacePermissionIsSupportedButDangerous() {
+        val errors = PluginManifestValidator.validate(manifest(2, listOf("workspace")))
+        assertTrue(errors.none { it.contains("未知插件权限") })
+        assertTrue("workspace" in PluginManifestValidator.dangerousPermissions)
+        assertTrue("workspace" !in PluginManifestValidator.defaultGrantedPermissions(listOf("workspace")))
+    }
+
+    @Test
     fun unknownPermissionIsRejected() {
         val errors = PluginManifestValidator.validate(manifest(2, listOf("camera")))
         assertTrue(errors.any { it.contains("未知插件权限") })

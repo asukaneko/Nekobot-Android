@@ -261,6 +261,12 @@ class PluginAssetServer(
                     return callHost("memory.edit", { oldText: oldText, newText: newText });
                   }
                 },
+                workspace: {
+                  save: function (options) { return callHost("workspace.save", options || {}); },
+                  list: function (options) { return callHost("workspace.list", options || {}); },
+                  read: function (options) { return callHost("workspace.read", options || {}); },
+                  delete: function (options) { return callHost("workspace.delete", options || {}); }
+                },
                 http: { get: function (url) { return callHost("http.get", { url: url }); } },
                 ai: {
                   complete: function (options) { return callHost("ai.complete", options || {}); }

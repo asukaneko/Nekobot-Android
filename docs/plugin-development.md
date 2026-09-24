@@ -77,7 +77,7 @@ weather-plugin.zip
     └── weather.js
 ```
 
-命令运行时只加载 `entry` 指定的 JavaScript 文件；插件页面运行时（第 9 章）会加载页面 HTML 及其相对引用的资源。插件不能读取本地文件系统或工作区，静态数据应写入插件包内或在构建时合并。
+命令运行时只加载 `entry` 指定的 JavaScript 文件；插件页面运行时（第 9 章）会加载页面 HTML 及其相对引用的资源。插件不能读取本地文件系统；声明 `workspace` 权限后只能读写工作区中本插件的专属文件夹（见第 4 章「工作区文件」），静态数据应写入插件包内或在构建时合并。
 
 ## 3. plugin.json
 
@@ -156,6 +156,7 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | `characters.write` | `ctx.api.createCharacter(options)` / `updateCharacter(options)` | 创建 / 修改角色卡，返回 `{ id, name, updatedAt }`；**没有删除 API**。 |
 | `memory.write` | `ctx.api.memoryWrite/append/edit(...)` | 覆盖/追加/替换 Agent 长期记忆，返回 `{ charCount }`。 |
 | `memory.read` | `ctx.api.memoryRead()` | 读取 Agent 长期记忆，返回 `{ content, charCount }`。 |
+| `workspace` | `ctx.api.workspace.save/list/read/delete(...)` | 读写工作区中本插件的专属文件夹，见下文「工作区文件」。 |
 | 免 | `ctx.api.render(template, data)` | 内置模板渲染（Handlebars 子集），返回 HTML 字符串。 |
 
 ### 权限分级与用户授权
@@ -165,7 +166,7 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | 基础 | `storage`、`notify`、`chat.progress` | 安装时默认勾选 |
 | 读取 | `chat.read`、`characters.read`、`worldbooks.read`、`memory.read` | 安装时默认勾选 |
 | 网络 | `network` | **需用户手动授权** |
-| 写入 | `chat.write`、`memory.write`、`characters.write` | **需用户手动授权** |
+| 写入 | `chat.write`、`memory.write`、`characters.write`、`workspace` | **需用户手动授权** |
 | AI | `ai.call` | **需用户手动授权** |
 
 调用宿主 API 必须同时满足「清单已声明」与「用户已授权」。危险权限（网络/写入/AI）在 AI 创建或安装插件时**不会自动授予**，用户需要在插件卡片的「权限」入口勾选；未授权时调用会失败并返回 `permission_denied`（错误对象含 `code` 字段）。
@@ -287,6 +288,37 @@ NekoPlugin.registerCommand("remember", async (ctx) => {
 | `state` | 初始六维状态对象 |
 
 `update` 是补丁语义：只覆盖传入的字段，其余保持原值。返回 `{id, name, updatedAt}`；**没有删除角色卡的 API**，需要删除时请用户在角色页操作。
+
+### 工作区文件（`workspace`）
+
+插件生成的内容可以保存到工作区，与「工作区」页面看到的是同一份文件，聊天里用 `[File: ...]` 标记即可渲染文件卡片：
+
+- 有会话上下文（命令、从会话打开的页面、消息钩子）时保存到**当前会话工作区** `plugins/<插件id>/`；
+- 没有会话上下文（扩展功能页、桌面小组件等入口打开的页面）时保存到**共享工作区** `plugins/<插件id>/`；
+- 插件只能访问自己的专属文件夹，无法读取或修改用户文件与其他插件的文件。
+
+| API | 说明 |
+| --- | --- |
+| `ctx.api.workspace.save(path, content)`（页面侧 `host.workspace.save({path, content})`） | 保存 UTF-8 文本，`path` 是专属文件夹内的相对路径（可含子目录）。返回 `{scope, path, name, size, mime_type, file_reference}`。 |
+| `ctx.api.workspace.list(path?)`（页面侧 `host.workspace.list({path?})`） | 列出子目录（默认根）内容；每项含 `name`/`type`/`size`/`path`/`mime_type`/`file_reference`。 |
+| `ctx.api.workspace.read(path)`（页面侧 `host.workspace.read({path})`） | 读取文本（最多 128 KiB，超出截断并置 `truncated`）；不存在报 `not_found`。 |
+| `ctx.api.workspace.delete(path)`（页面侧 `host.workspace.delete({path})`） | 删除文件或文件夹（递归）；不存在报 `not_found`。 |
+
+限制：单个文件 ≤ 2 MiB、每个插件最多 500 个文件、专属文件夹总大小 ≤ 32 MiB；超出分别报 `too_large`、`too_many_files`、`quota_exceeded`。卸载插件不会删除已保存到工作区的文件（避免误删用户数据），需要清理时请用户在工作区页面操作。
+
+`file_reference` 可直接拼进命令返回值或消息正文，让聊天渲染文件卡片：
+
+```js
+NekoPlugin.registerCommand("export", async (ctx) => {
+  const result = await ctx.api.workspace.save(
+    "exports/notes.md",
+    "# 我的笔记\n\n由插件生成。"
+  );
+  return `已导出。\n\n[File: ${result.file_reference}]`;
+});
+```
+
+`scope` 为 `session` 时 `file_reference` 形如 `plugins/<插件id>/exports/notes.md`；为 `shared` 时形如 `shared://plugins/<插件id>/exports/notes.md`。页面里也可以按相同规则拼 `[File: ...]` 后交给 `host.chat.messages.append` 或命令返回值。
 
 ### 模板渲染（免权限）
 
@@ -516,9 +548,9 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 - 禁止文件访问、内容提供器访问、DOM Storage、多窗口和页面导航。
 - 禁止 WebView 自行联网；网络只能通过声明了 `network` 权限的受控 HTTPS GET API。
-- 写入类 API（`chat.write`、`memory.write`、`characters.write`）只能追加消息、读写 Agent 记忆、创建/修改角色卡，**没有删除能力**，也没有任意命令执行、相机、麦克风或 Android Intent 等 API。
+- 写入类 API（`chat.write`、`memory.write`、`characters.write`）只能追加消息、读写 Agent 记忆、创建/修改角色卡，**没有删除能力**；`workspace` 的删除只作用于本插件专属文件夹，没有任意命令执行、相机、麦克风或 Android Intent 等 API。
 - 事件钩子（`hooks`）由清单声明后即可运行，不需要额外权限；`message.beforeSend` 只能改写用户正在发送的那条消息，插件卡片会展示已声明钩子，供用户确认。
-- 不能访问其他插件的存储数据，也不能读取会话工作区文件。
+- 不能访问其他插件的存储数据；`workspace` 权限只能读写工作区中本插件的专属文件夹 `plugins/<插件id>/`，无法访问用户与其他插件的文件。
 - 用户安装 ZIP 前必须明确接受第三方插件风险提示。
 
 开发时只申请实际需要的权限，并在 `description` 中解释读取会话或联网的原因。不要直接调用 `NekoAndroid` 等运行时内部对象；它们不是稳定的插件 API。
@@ -607,6 +639,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | `host.characters.create(options)` / `update(options)` | `characters.write` | 创建 / 修改角色卡（无删除） |
 | `host.memory.read()` | `memory.read` | `{content, charCount}`；Agent 长期记忆 |
 | `host.memory.write(content)` / `append(content)` / `edit(oldText, newText)` | `memory.write` | 覆盖 / 追加 / 替换记忆，返回 `{charCount}` |
+| `host.workspace.save({path, content})` / `list({path?})` / `read({path})` / `delete({path})` | `workspace` | 读写插件专属工作区文件夹（有会话时在会话工作区，否则共享工作区），见第 4 章「工作区文件」 |
 | `host.ai.complete(options)` | `ai.call` | 走聊天故障转移队列的单次生成，返回 `{content, model, usage}`；超时 120 秒，限额见第 4 章 |
 | `host.http.get(url)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`（≤ 512 KiB） |
 | `host.progress.update(options)` | `chat.progress` | 由聊天命令（`open_page`）打开时更新该命令消息上的进度卡片；其他入口返回 `false` |
@@ -679,7 +712,7 @@ if (choice) await host.storage.set("style", choice.value);
 用户在会话输入 `/note`（或别名）后：
 
 - 宿主直接打开该页面，不执行 JS 处理器，命令也不会被当作普通消息发给 AI；
-- 页面从会话上下文打开，因此 `host.chat.current()`、`host.progress.update()` 可用；
+- 页面从会话上下文打开，因此 `host.chat.current()`、`host.progress.update()` 可用，`host.workspace.*` 保存到该会话工作区（非命令入口打开时 `sessionId` 为 `null`，保存到共享工作区）；
 - 页面入口同时会出现在桌面小组件「插件页面」的网格里（不带参数）；
 - 命令后面的参数会传给页面，页面通过 `window.__NEKO_LAUNCH__` 读取：
 
@@ -854,7 +887,7 @@ NekoPlugin.registerCommand("note", async (ctx) => {
 | `registerMessageProcessingPlugin` | 暂无对应 → 改为命令/页面 | **降级** |
 | `registerXmlRenderPlugin` / `registerInputMenuTogglePlugin` | 暂无对应 | **不支持** |
 | `registerAppLifecycleHook` | 暂无对应 | **降级** |
-| `Tools.Files.*` | 插件目录内相对资源（只读）；需要跨会话留存时用 `ctx.api.storage.*` / `ctx.api.memoryAppend` | 改写 |
+| `Tools.Files.*` | 插件目录内相对资源（只读）；读写工作区文件用 `ctx.api.workspace.*` / `host.workspace.*`（需 `workspace` 授权），跨会话留存也可用 `ctx.api.storage.*` / `ctx.api.memoryAppend` | 改写 |
 | `Tools.System.*` / `toolCall(...)` / Ubuntu 终端 | 无对应 | **不支持** |
 
 ### 10.5 兼容级别与交付检查清单

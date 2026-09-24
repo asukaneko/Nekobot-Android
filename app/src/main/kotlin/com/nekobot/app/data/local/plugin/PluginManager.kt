@@ -1064,6 +1064,12 @@ class PluginManager(
                   return __api("memory_edit", { oldText: oldText, newText: newText });
                 },
                 progress: function(options) { return __api("progress", options || {}); },
+                workspace: {
+                  save: function(path, content) { return __api("workspace_save", { path: path, content: content }); },
+                  list: function(path) { return __api("workspace_list", { path: path || "" }); },
+                  read: function(path) { return __api("workspace_read", { path: path }); },
+                  delete: function(path) { return __api("workspace_delete", { path: path }); }
+                },
                 storage: {
                   get: function(key) { return __api("storage_get", { key: key }); },
                   set: function(key, value) { return __api("storage_set", { key: key, value: value }); },
