@@ -3,10 +3,13 @@ package com.nekobot.app.data.local.ai
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalFailoverHealthEntity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.coroutines.coroutineContext
 import kotlin.math.min
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -76,9 +79,9 @@ class FailoverCoordinator(
 
             attempts.add(model.id)
 
+            val timeout = model.failoverTimeout.takeIf { it > 0 }?.seconds
+                ?: defaultFailoverTimeout(purpose)
             try {
-                val timeout = model.failoverTimeout.takeIf { it > 0 }?.seconds
-                    ?: defaultFailoverTimeout(purpose)
                 val result = withTimeout(timeout) { block(model) }
 
                 // 成功：重置健康状态
@@ -100,6 +103,20 @@ class FailoverCoordinator(
                     attempts = attempts,
                     failures = failures,
                     actualDurationMs = clock() - now
+                )
+            } catch (e: TimeoutCancellationException) {
+                // 外层主动取消（如用户停止生成）也会以 TimeoutCancellationException 传播进来：
+                // 此时必须原样抛出，只有本次尝试自身的超时才按模型失败处理。
+                coroutineContext.ensureActive()
+                // 单次尝试超时按该模型的失败处理，继续尝试队列中的下一个模型；
+                // 否则长上下文压缩等慢请求会直接中断整个任务，而不是故障转移。
+                recordFailure(model.id, -2, now, today, health)
+                failures.add(
+                    FailoverFailure(
+                        model.id,
+                        -2,
+                        "请求超时（超过 ${timeout.inWholeSeconds} 秒）"
+                    )
                 )
             } catch (e: CancellationException) {
                 // 协程取消不应记录为失败
@@ -194,9 +211,13 @@ class FailoverCoordinator(
  *
  * Agent 工具循环中的每一次模型调用都可能包含较长的 reasoning 输出，因此不能复用普通
  * 聊天的 120 秒上限；工具执行与普通聊天仍各自遵循原有策略。
+ *
+ * `compression` 用于上下文压缩：长历史的分段摘要单次请求可能很大，需要与 Agent 同级的
+ * 长超时，否则长上下文压缩会在总结完成前被判定失败。
  */
 internal fun defaultFailoverTimeout(purpose: String): Duration = when (purpose) {
     "agent" -> 10.minutes
+    "compression" -> 10.minutes
     "chat" -> 120.seconds
     "vision" -> 60.seconds
     "tts" -> 30.seconds

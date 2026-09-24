@@ -14,7 +14,28 @@ class FailoverCoordinatorTest {
     @Test
     fun agentDefaultTimeoutIsIndependentFromChatTimeout() {
         assertEquals(10.minutes, defaultFailoverTimeout("agent"))
+        assertEquals(10.minutes, defaultFailoverTimeout("compression"))
         assertEquals(120.seconds, defaultFailoverTimeout("chat"))
+    }
+
+    @Test
+    fun executeSwitchesToNextModelWhenAttemptTimesOut() = runBlocking {
+        val store = FakeHealthStore()
+        val coordinator = FailoverCoordinator(store, FakeUsageReader())
+        val models = listOf(
+            model("slow", failoverTimeout = 1),
+            model("fast")
+        )
+
+        val execution = coordinator.execute(models, "compression") { current ->
+            if (current.id == "slow") kotlinx.coroutines.delay(5_000)
+            "generated-by-${current.id}"
+        }
+
+        assertEquals("generated-by-fast", execution.value)
+        assertEquals("fast", execution.model.id)
+        assertEquals(listOf("slow", "fast"), execution.attempts)
+        assertEquals(-2, store.values["slow"]?.lastFailureCode)
     }
 
     @Test
@@ -106,7 +127,8 @@ class FailoverCoordinatorTest {
     private fun model(
         id: String,
         tokenLimitDaily: Long = 0,
-        context: Int? = null
+        context: Int? = null,
+        failoverTimeout: Int = 0
     ): LocalAiModelEntity = LocalAiModelEntity(
         id = id,
         name = id,
@@ -117,7 +139,8 @@ class FailoverCoordinatorTest {
         purpose = "chat",
         createdAt = "2026-07-27",
         tokenLimitDaily = tokenLimitDaily,
-        maxContextLength = context
+        maxContextLength = context,
+        failoverTimeout = failoverTimeout
     )
 
     private class FakeHealthStore : FailoverHealthStore {

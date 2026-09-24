@@ -611,11 +611,15 @@ class LocalRepository(
      *
      * 使用 purpose=chat 的完整故障转移队列，而不是单独读取 active 模型。这样角色卡、
      * 世界书、工作流、自动记忆等辅助任务也会遵守冷却、token 限额和超时策略。
+     *
+     * @param failoverPurpose 故障转移超时口径。压缩长历史等慢请求传 `compression`，
+     *   避免沿用普通聊天 120 秒上限导致总结被中途判失败。
      */
     private suspend fun executeChatOnceViaQueue(
         messages: List<Map<String, Any>>,
         extra: Map<String, Any?> = emptyMap(),
-        requestTag: String? = null
+        requestTag: String? = null,
+        failoverPurpose: String = "chat"
     ): FailoverExecution<LocalAiResult> {
         val routingPrompt = messages.joinToString("\n") { it["content"]?.toString().orEmpty() }
         val routePlan = routedChatPlan(
@@ -630,7 +634,7 @@ class LocalRepository(
         val execution = try {
             failoverCoordinator.execute(
                 models = queue,
-                purpose = "chat",
+                purpose = failoverPurpose,
                 requiredContextTokens = estimateLocalMessagesTokens(messages)
             ) { model ->
                 val result = aiClient.chatOnce(model, messages, extra, requestTag)
@@ -6336,8 +6340,13 @@ class LocalRepository(
         val maxContextTokens = activeModel.maxContextLength
             ?.takeIf { it > 0 }
             ?: DEFAULT_AGENT_CONTEXT_TOKENS
+        // 压缩会重写摘要边界：只在普通的新一轮请求前执行。
+        // 续跑要沿用中断检查点、重新生成有自己的历史截断点、持久化关闭的内部轮次不涉及用户历史。
         if (
             session.sessionMode.equals("agent", ignoreCase = true) &&
+            agentRunIdOverride == null &&
+            variantTargetMessageId == null &&
+            persistUserMessage &&
             needsAgentContextCompression(sessionId, maxContextTokens)
         ) {
             emit(RealtimeEvent.ContextCompressionStatus(sessionId, inProgress = true))
@@ -6345,7 +6354,9 @@ class LocalRepository(
                 sessionId = sessionId,
                 keepRecent = 10,
                 maxContextTokens = maxContextTokens,
-                automatic = true
+                automatic = true,
+                // 本轮用户消息刚落库，属于边界之后的新消息，不参与摘要。
+                protectedMessageIds = setOfNotNull(savedUserMessage?.id)
             )
             emit(
                 RealtimeEvent.ContextCompressionStatus(
@@ -7726,7 +7737,10 @@ class LocalRepository(
             mapOf("role" to "user", "content" to dialogText)
         )
 
-        val execution = executeChatOnceViaQueue(reqMessages)
+        val execution = executeChatOnceViaQueue(
+            messages = reqMessages,
+            failoverPurpose = "compression"
+        )
         val result = execution.value
         recordFailoverTokenUsage(
             execution = execution,
@@ -7817,51 +7831,52 @@ class LocalRepository(
             .coerceAtLeast(1)
 
     /**
-     * Agent 会话不创建归档会话，也不删除历史。被压缩的非 system 消息仍留在界面中，
-     * 后续请求仅发送一条 system 摘要和压缩边界后的消息。
+     * Agent 会话全量压缩：把窗口内的历史交给模型总结成一条 system 摘要。
+     *
+     * 与旧实现的区别是不再保留最近窗口——窗口内所有非 system 消息都并入摘要，
+     * 边界随之前移到最后一轮历史。历史消息仍完整保存在会话与界面中，但后续请求
+     * 只发送「系统提示词 + 工具定义 + 摘要 + 边界后的新消息」。
+     *
+     * @param protectedMessageIds 本轮正在处理、不参与摘要的消息（如刚保存的用户消息）
      */
     private suspend fun compressAgentContext(
         sessionId: String,
         keepRecent: Int,
         maxContextTokens: Int,
-        automatic: Boolean
+        automatic: Boolean,
+        protectedMessageIds: Set<String> = emptySet()
     ): ContextCompressionResult {
         val messages = listAiContextMessages(sessionId)
         val currentSummary = messages.asReversed().firstOrNull(LocalMessageEntity::isAgentContextSummary)
         val contextWindow = messages.agentContextWindow()
         val activeNonSystemMessages = contextWindow
             .filterNot { it.role.equals("system", ignoreCase = true) }
+            .filterNot { it.id in protectedMessageIds }
         if (activeNonSystemMessages.isEmpty()) return ContextCompressionResult(compressed = false)
 
         if (automatic && !needsAgentContextCompression(sessionId, maxContextTokens)) {
             return ContextCompressionResult(compressed = false)
         }
 
-        val retainedMessages = if (automatic) {
-            // 保留预算同样按 80% 计算：压缩后要留出模型输出与后续工具结果的余量。
-            retainAgentMessagesWithinLimit(activeNonSystemMessages, agentCompactionBudgetTokens(maxContextTokens))
-        } else {
-            val baseKeep = keepRecent.coerceAtLeast(1)
-            // 占用比例与 Agent 自动压缩、聊天页上下文圆环同一口径：
-            // 统计窗口内非 system 消息与压缩摘要的估算 token。
+        if (!automatic) {
+            // 手动压缩：对话太短且上下文占用不高时不执行，避免把简短对话也换成摘要。
+            // 占用比例与 Agent 自动压缩、聊天页上下文圆环同一口径。
             val usageRatio = contextWindow
                 .filter { !it.role.equals("system", ignoreCase = true) || it.isAgentContextSummary() }
                 .sumOf { it.agentContextTokenCount() }
                 .toFloat() / maxContextTokens.toFloat()
             val keepCount = resolveManualCompressionKeepCount(
                 messageCount = activeNonSystemMessages.size,
-                keepRecent = baseKeep,
+                keepRecent = keepRecent.coerceAtLeast(1),
                 contextUsageRatio = usageRatio,
                 margin = 0
             )
-            // 消息数不足 keepRecent 时，只有占用超阈值才缩小保留窗口继续压缩，
-            // 否则维持原窗口，由下方 toCompress 判定并返回"无需压缩"。
-            activeNonSystemMessages.takeLast(if (keepCount < 0) baseKeep else keepCount)
+            if (keepCount < 0) return ContextCompressionResult(compressed = false)
         }
-        val retainedIds = retainedMessages.mapTo(hashSetOf()) { it.id }
-        val toCompress = activeNonSystemMessages.filterNot { it.id in retainedIds }
-        if (toCompress.isEmpty()) return ContextCompressionResult(compressed = false)
 
+        // 全量压缩：窗口内所有历史消息都并入摘要，不再保留最近窗口；
+        // 原始消息继续留在会话与界面中，只是不再发送给模型。
+        val toCompress = activeNonSystemMessages
         val previousSummary = currentSummary?.content
             ?.removeAgentContextSummaryPrefix()
             ?.trim()
@@ -7898,38 +7913,23 @@ class LocalRepository(
             routingDecisionId = null
         )
 
-        // 只更新摘要边界，完整历史继续保存在当前会话并照常显示。
+        // 只更新摘要边界：完整历史继续保存在当前会话并照常显示，只是不再发送给模型。
         messages
             .filter(LocalMessageEntity::isAgentContextSummary)
             .filterNot { it.id == summaryMessage.id }
             .forEach { messageDao.deleteById(it.id) }
         messageDao.upsert(summaryMessage)
 
+        // 会话列表预览：摘要本身不适合作为预览文本，取最后一条真实消息。
+        val remaining = messageDao.listBySession(sessionId)
         sessionDao.touch(
             id = sessionId,
-            lastMessage = retainedMessages.lastOrNull()?.content?.take(200).orEmpty(),
-            count = messageDao.countBySession(sessionId),
+            lastMessage = remaining.lastOrNull { it.id != summaryMessage.id }
+                ?.content?.take(200).orEmpty(),
+            count = remaining.size,
             updatedAt = now
         )
         return ContextCompressionResult(compressed = true)
-    }
-
-    /** 自动压缩时优先保留最近两条非 system 消息，并尽可能多地保留未超限的后续历史。 */
-    private fun retainAgentMessagesWithinLimit(
-        nonSystemMessages: List<LocalMessageEntity>,
-        maxContextTokens: Int
-    ): List<LocalMessageEntity> {
-        // 已有摘要会被新摘要原地覆盖，因此只为最终的一条摘要预留一次空间。
-        var usedTokens = agentSummaryTokenBudget(maxContextTokens)
-        val minimumToKeep = minOf(2, nonSystemMessages.size)
-        val retained = ArrayDeque<LocalMessageEntity>()
-        for (message in nonSystemMessages.asReversed()) {
-            val messageTokens = message.agentContextTokenCount()
-            if (retained.size >= minimumToKeep && usedTokens + messageTokens > maxContextTokens) break
-            retained.addFirst(message)
-            usedTokens += messageTokens
-        }
-        return retained.toList()
     }
 
     /** 逐段压缩，确保当原始历史已很长时，摘要请求本身也不会越过模型上下文窗口。 */
@@ -7978,15 +7978,25 @@ class LocalRepository(
                 append("需要纳入的新历史：\n")
                 append(chunk)
             }
-            val execution = executeChatOnceViaQueue(
-                listOf(
-                    mapOf(
-                        "role" to "system",
-                        "content" to AGENT_CONTEXT_SUMMARY_PROMPT
+            val execution = try {
+                executeChatOnceViaQueue(
+                    messages = listOf(
+                        mapOf(
+                            "role" to "system",
+                            "content" to AGENT_CONTEXT_SUMMARY_PROMPT
+                        ),
+                        mapOf("role" to "user", "content" to material)
                     ),
-                    mapOf("role" to "user", "content" to material)
+                    // 长历史的分段摘要单次请求可能很大，使用压缩专用的长超时。
+                    failoverPurpose = "compression"
                 )
-            )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 压缩失败不应中断本轮对话：返回 null，由调用方按"未压缩"继续。
+                LocalLogger.w(TAG, "Agent 上下文压缩请求失败（不影响本轮对话）: ${e.message}")
+                return null
+            }
             recordFailoverTokenUsage(
                 execution = execution,
                 source = "agent_context_compression",
