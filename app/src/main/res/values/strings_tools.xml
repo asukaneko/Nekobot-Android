@@ -143,7 +143,7 @@
     <string name="tool_desc_workspace_file_info">查看工作区文件的大小、类型与修改时间。</string>
     <string name="tool_desc_understand_image">调用视觉模型识别并描述图片内容。</string>
     <string name="tool_desc_generate_image">根据文本描述生成图片。</string>
-    <string name="tool_desc_read_image">读取工作区图片并调用视觉模型理解。</string>
+    <string name="tool_desc_read_image">读取工作区图片；对话模型支持视觉时直接注入上下文，否则调用视觉模型理解。</string>
     <string name="tool_desc_agent_memory_read">读取跨会话共享的 Agent 长期记忆。</string>
     <string name="tool_desc_agent_memory_update">经用户授权后编辑 Agent 长期记忆。</string>
     <string name="tool_desc_todo_write">创建或更新当前会话的任务列表。</string>

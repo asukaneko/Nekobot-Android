@@ -143,7 +143,7 @@
     <string name="tool_desc_workspace_file_info">ワークスペースファイルのサイズ・種類・更新日時を確認します。</string>
     <string name="tool_desc_understand_image">視覚モデルで画像の内容を認識・説明します。</string>
     <string name="tool_desc_generate_image">テキストの説明から画像を生成します。</string>
-    <string name="tool_desc_read_image">ワークスペースの画像を読み取り視覚モデルで理解します。</string>
+    <string name="tool_desc_read_image">ワークスペースの画像を読み取ります。視覚対応の対話モデルは画像を直接参照し、それ以外は視覚モデルで理解します。</string>
     <string name="tool_desc_agent_memory_read">セッション間で共有される Agent 長期メモリーを読み取ります。</string>
     <string name="tool_desc_agent_memory_update">ユーザー承認後に Agent 長期メモリーを編集します。</string>
     <string name="tool_desc_todo_write">現在のセッションのタスクリストを作成・更新します。</string>

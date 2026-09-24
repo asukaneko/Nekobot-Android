@@ -334,6 +334,7 @@
     <string name="agent_progress_knowledge_miss">未命中</string>
     <string name="agent_progress_knowledge_done">知识库检索完成</string>
     <string name="agent_progress_done">处理完成</string>
+    <string name="agent_progress_image_injected">图片已注入模型上下文（%1$s，数据已省略）</string>
 
     <!-- ==================== 文件变更 git 摘要卡片 ==================== -->
     <string name="agent_git_step_name">文件变更（git）</string>

@@ -2,9 +2,12 @@ package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import java.util.IdentityHashMap
+import java.util.Locale
 
 /**
  * 聊天页恢复历史时允许解码的单条进度卡 JSON 上限。
@@ -102,11 +105,48 @@ private fun ThinkingStep.toPersistedProgressStep(
     detail = detail?.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS),
     arguments = arguments?.toPersistedArguments(),
     fullResult = fullResult?.let { value ->
-        boundedAgentValuePreview(value, AgentToolLimits.progressPreviewChars())
+        val sanitized = (value as? Map<String, Any>)?.let(::sanitizeAgentToolResultForDisplay) ?: value
+        boundedAgentValuePreview(sanitized, AgentToolLimits.progressPreviewChars())
     },
     thinkingContent = keptReasoning,
     text = keptText
 )
+
+/**
+ * 工具结果进入进度卡片前的展示净化。
+ *
+ * `_image_urls` 里是可能长达数 MB 的 base64 data URI（read_image / android_screenshot /
+ * android_step 在支持视觉的对话模型下注入），原样预览会把卡片刷满 base64。
+ * 模型侧仍通过工具消息看到图片，这里只把每张图替换为「类型 + 大小」的简短说明。
+ */
+internal fun sanitizeAgentToolResultForDisplay(result: Map<String, Any>): Map<String, Any> {
+    val images = (result["_image_urls"] as? List<*>)
+        ?.mapNotNull { it?.toString() }
+        ?.filter { it.isNotBlank() }
+        .orEmpty()
+    if (images.isEmpty()) return result
+    val description = buildString {
+        if (images.size > 1) append("×").append(images.size).append(" ")
+        append(images.joinToString("; ") { describeAgentImageForDisplay(it) })
+    }
+    val placeholder = ServiceContainer.localizedContext
+        ?.getString(R.string.agent_progress_image_injected, description)
+        ?: String.format(Locale.getDefault(), "图片已注入模型上下文（%s，数据已省略）", description)
+    return result + ("_image_urls" to placeholder)
+}
+
+/** data URI 只保留 MIME 与估算大小；普通 URL 保留地址（截断）。 */
+private fun describeAgentImageForDisplay(url: String): String {
+    if (!url.startsWith("data:")) return url.take(120)
+    val mime = url.substringAfter("data:", "").substringBefore(';').ifBlank { "image" }
+    val bytes = url.length * 3L / 4L
+    val size = when {
+        bytes >= 1024 * 1024 -> String.format(Locale.ROOT, "%.1f MB", bytes / 1048576.0)
+        bytes >= 1024 -> String.format(Locale.ROOT, "%.0f KB", bytes / 1024.0)
+        else -> "$bytes B"
+    }
+    return "$mime $size"
+}
 
 /**
  * 参数落库：进度报告器写入的已经是 `{"preview": "<扁平化预览文本>"}` 形态，

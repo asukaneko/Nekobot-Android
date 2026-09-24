@@ -275,9 +275,11 @@ internal class SubagentProgressCollector(
 
     fun onToolResult(toolCall: Map<String, Any>, result: Map<String, Any>) {
         val name = (toolCall["name"] as? String) ?: "tool"
-        val preview = previewResult(result)
+        // 与主 Agent 一致：图片 data URI 不进入预览。
+        val displayResult = sanitizeAgentToolResultForDisplay(result)
+        val preview = previewResult(displayResult)
         // 与主 Agent 共用同一套预览上限：子代理卡片不能因为绕开常量而显示全量结果。
-        val boundedResult = boundedAgentValuePreview(result, AgentToolLimits.progressPreviewChars())
+        val boundedResult = boundedAgentValuePreview(displayResult, AgentToolLimits.progressPreviewChars())
         val index = _steps.indexOfLast { it.type == "tool" && it.name == name && it.status != "done" }
         if (index >= 0) {
             _steps[index] = _steps[index].copy(status = "done", detail = preview, fullResult = boundedResult)

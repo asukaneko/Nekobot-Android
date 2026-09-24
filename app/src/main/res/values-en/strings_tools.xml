@@ -143,7 +143,7 @@
     <string name="tool_desc_workspace_file_info">Show size, type and modified time of a workspace file.</string>
     <string name="tool_desc_understand_image">Use a vision model to recognize and describe an image.</string>
     <string name="tool_desc_generate_image">Generate an image from a text description.</string>
-    <string name="tool_desc_read_image">Read a workspace image and analyze it with a vision model.</string>
+    <string name="tool_desc_read_image">Read a workspace image; vision-capable chat models see it directly, otherwise a vision model analyzes it.</string>
     <string name="tool_desc_agent_memory_read">Read the cross-session Agent long-term memory.</string>
     <string name="tool_desc_agent_memory_update">Edit Agent long-term memory after user authorization.</string>
     <string name="tool_desc_todo_write">Create or update the task list for this session.</string>

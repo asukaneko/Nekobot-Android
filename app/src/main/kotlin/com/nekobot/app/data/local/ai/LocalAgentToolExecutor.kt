@@ -310,9 +310,7 @@ internal class LocalAgentToolExecutor(
                 "file_read" -> readWorkspaceFile(args)
                 "file_write" -> writeLinuxWorkspaceFile(args)
                 "file_edit" -> editLinuxWorkspaceFile(args)
-                "read_image" -> understandImage(
-                    args + ("image_url" to args.workspacePath())
-                )
+                "read_image" -> readImage(args)
                 "download_file" -> downloadFile(args)
                 "send_message" -> sendMessage(args)
                 "get_session_thinking_history" -> thinkingHistory(args)
@@ -1199,6 +1197,43 @@ internal class LocalAgentToolExecutor(
             is Resource.Error -> failure(result.message ?: "图片生成失败")
             is Resource.Loading -> failure("图片生成仍在处理中")
         }
+    }
+
+    /**
+     * read_image：读取工作区图片（也支持 http(s) URL 和 data URI）。
+     *
+     * 对话模型支持视觉时，直接把图片以 data URI 附加到工具结果（_image_urls），
+     * 注入当前会话上下文由本轮模型自己观察，不再调用视觉模型多跑一轮；
+     * 对话模型不支持视觉时，退回 [understandImage] 的视觉模型识别。
+     */
+    private fun readImage(args: Map<String, Any>): Map<String, Any> {
+        val input = args.workspacePath()
+        if (input.isBlank()) return failure("path 不能为空")
+        val question = args.string("question").ifBlank { "请描述这张图片的内容。" }
+        if (!supportsVision) {
+            return understandImage(mapOf("image_url" to input, "question" to question))
+        }
+        val resolvedUrl = resolveImageUrlForVision(input) ?: run {
+            android.util.Log.w("LocalAgentTool", "read_image: 无法解析图片路径: $input")
+            val available = listWorkspaceImages()
+            val hint = if (available.isEmpty()) {
+                "工作区中没有可用图片"
+            } else {
+                "工作区可用图片: ${available.joinToString(", ")}"
+            }
+            return failure("无法解析图片路径: $input（仅支持工作区内文件或 http URL）。$hint")
+        }
+        android.util.Log.i(
+            "LocalAgentTool",
+            "read_image: 图片直接注入上下文 | input=${input.take(100)} | " +
+                "resolved=${if (resolvedUrl.startsWith("data:")) "data:${resolvedUrl.length}字符" else resolvedUrl.take(100)}"
+        )
+        return success(
+            "path" to input,
+            "question" to question,
+            "note" to "图片已注入当前对话上下文，请直接观察图片回答 question，不要声称无法查看图片。",
+            "_image_urls" to listOf(resolvedUrl)
+        )
     }
 
     /**

@@ -177,6 +177,35 @@ class AgentProgressPersistenceTest {
     }
 
     @Test
+    fun imageUrlsAreSummarizedInsteadOfShowingBase64Data() {
+        // read_image / android_screenshot 注入的 data URI 可能数 MB，进度卡片只能显示简短说明。
+        val dataUri = "data:image/png;base64," + "A".repeat(400_000)
+        val result = mapOf(
+            "success" to true,
+            "path" to "photo.png",
+            "_image_urls" to listOf(dataUri)
+        )
+
+        val sanitized = sanitizeAgentToolResultForDisplay(result)
+
+        val placeholder = sanitized["_image_urls"] as? String
+        assertTrue(placeholder?.contains("image/png") == true)
+        assertTrue(placeholder?.contains("数据已省略") == true)
+        val preview = boundedAgentValuePreview(sanitized, AgentToolLimits.progressPreviewChars())
+        assertFalse(preview.contains("AAAA"))
+        assertTrue(preview.contains("photo.png"))
+    }
+
+    @Test
+    fun sanitizeKeepsResultsWithoutImagesUntouched() {
+        val noImageUrls = mapOf<String, Any>("success" to true)
+        assertTrue(sanitizeAgentToolResultForDisplay(noImageUrls) === noImageUrls)
+
+        val emptyImageUrls = mapOf<String, Any>("success" to true, "_image_urls" to emptyList<String>())
+        assertTrue(sanitizeAgentToolResultForDisplay(emptyImageUrls) === emptyImageUrls)
+    }
+
+    @Test
     fun boundedPreviewStopsCyclesAndNeverExceedsBudget() {
         val cyclic = linkedMapOf<String, Any>()
         cyclic["self"] = cyclic

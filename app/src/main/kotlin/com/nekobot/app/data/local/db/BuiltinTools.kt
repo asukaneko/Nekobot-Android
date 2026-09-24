@@ -448,11 +448,11 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "read_image",
             name = "查看 Linux 工作区图片",
-            description = "读取 /workspace 内的图片并调用视觉模型理解内容；也支持 http(s) URL 和 data URI。",
+            description = "读取 /workspace 内的图片，也支持 http(s) URL 和 data URI；对话模型支持视觉时图片直接进入上下文，否则调用视觉模型理解。",
             parametersJson = params(
                 mapOf(
                     "path" to mapOf("type" to "string", "description" to "图片路径或 URL"),
-                    "question" to mapOf("type" to "string", "description" to "希望视觉模型回答的问题")
+                    "question" to mapOf("type" to "string", "description" to "希望模型回答的关于图片的问题")
                 ),
                 listOf("path")
             )

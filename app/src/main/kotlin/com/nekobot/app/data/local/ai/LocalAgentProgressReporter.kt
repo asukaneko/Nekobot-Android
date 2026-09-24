@@ -245,8 +245,10 @@ internal class LocalAgentProgressReporter(
         val durationMs = toolStartNanosStack[toolName]?.removeLastOrNull()?.let { start ->
             ((nowNanos() - start) / 1_000_000L).coerceAtLeast(0L)
         }
+        // 展示净化：图片结果里的 data URI 不进入预览，避免卡片被 base64 刷满。
+        val displayResult = sanitizeAgentToolResultForDisplay(result)
         val resultPreview = boundedAgentValuePreview(
-            result,
+            displayResult,
             AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS
         )
         val resultTruncated = isAgentToolOutputTruncated(result)
@@ -258,7 +260,7 @@ internal class LocalAgentProgressReporter(
                 status = "done",
                 detail = resultPreview,
                 fullResult = boundedAgentValuePreview(
-                    result,
+                    displayResult,
                     AgentToolLimits.progressPreviewChars()
                 ),
                 resultTruncated = resultTruncated,
@@ -272,7 +274,7 @@ internal class LocalAgentProgressReporter(
                     status = "done",
                     detail = resultPreview,
                     fullResult = boundedAgentValuePreview(
-                        result,
+                        displayResult,
                         AgentToolLimits.progressPreviewChars()
                     ),
                     resultTruncated = resultTruncated,
