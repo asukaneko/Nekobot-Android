@@ -81,6 +81,7 @@
     <string name="tokens_purpose_decision">意思決定</string>
     <string name="tokens_purpose_heartbeat">ハートビート</string>
     <string name="tokens_purpose_image_gen">画像生成</string>
+    <string name="tokens_purpose_plugin">プラグイン</string>
     <string name="tokens_purpose_uncategorized">未分類</string>
     <string name="tokens_source_plot">プロット</string>
     <string name="tokens_source_state">状態評価</string>
@@ -92,6 +93,27 @@
     <string name="tokens_source_rule">ルール審査</string>
     <string name="tokens_source_heartbeat">ハートビート</string>
     <string name="tokens_source_life_sim">ライフシミュレーション</string>
+    <string name="tokens_source_chat">メイン会話</string>
+    <string name="tokens_source_fork">ブランチ継承</string>
+    <string name="tokens_source_local">ローカル</string>
+    <string name="tokens_source_agent_memory">長期記憶</string>
+    <string name="tokens_source_session_name">セッション命名</string>
+    <string name="tokens_source_compression">コンテキスト圧縮</string>
+    <string name="tokens_source_agent_context_summary">コンテキスト要約</string>
+    <string name="tokens_source_agent_context_compression">Agent コンテキスト圧縮</string>
+    <string name="tokens_source_tts">音声合成</string>
+    <string name="tokens_source_heartbeat_silent">サイレントハートビート</string>
+    <string name="tokens_source_command">コマンド</string>
+    <string name="tokens_source_utility">ツール呼び出し</string>
+    <string name="tokens_source_decision">意思決定</string>
+    <string name="tokens_source_embedding">埋め込み</string>
+    <string name="tokens_source_react">ReAct ループ</string>
+    <string name="tokens_source_web_agent">Web エージェント</string>
+    <string name="tokens_source_live2d">Live2D</string>
+    <string name="tokens_source_workflow">ワークフロー</string>
+    <string name="tokens_source_qq">QQ</string>
+    <string name="tokens_source_plugin">プラグイン</string>
+    <string name="tokens_source_plugin_named">プラグイン %1$s</string>
 
     <!-- ==================== 世界観帳画面 ==================== -->
     <string name="worldbook_title">世界観帳</string>

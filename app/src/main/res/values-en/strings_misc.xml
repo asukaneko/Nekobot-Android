@@ -82,6 +82,7 @@
     <string name="tokens_purpose_decision">Decision</string>
     <string name="tokens_purpose_heartbeat">Heartbeat</string>
     <string name="tokens_purpose_image_gen">Image generation</string>
+    <string name="tokens_purpose_plugin">Plugin</string>
     <string name="tokens_purpose_uncategorized">Uncategorized</string>
     <string name="tokens_source_plot">Plot</string>
     <string name="tokens_source_state">State evaluation</string>
@@ -93,6 +94,27 @@
     <string name="tokens_source_rule">Rule review</string>
     <string name="tokens_source_heartbeat">Heartbeat</string>
     <string name="tokens_source_life_sim">Life simulation</string>
+    <string name="tokens_source_chat">Main chat</string>
+    <string name="tokens_source_fork">Branch inherited</string>
+    <string name="tokens_source_local">Local</string>
+    <string name="tokens_source_agent_memory">Long-term memory</string>
+    <string name="tokens_source_session_name">Session naming</string>
+    <string name="tokens_source_compression">Context compression</string>
+    <string name="tokens_source_agent_context_summary">Context summary</string>
+    <string name="tokens_source_agent_context_compression">Agent context compression</string>
+    <string name="tokens_source_tts">Text-to-speech</string>
+    <string name="tokens_source_heartbeat_silent">Silent heartbeat</string>
+    <string name="tokens_source_command">Command</string>
+    <string name="tokens_source_utility">Tool call</string>
+    <string name="tokens_source_decision">Decision</string>
+    <string name="tokens_source_embedding">Embedding</string>
+    <string name="tokens_source_react">ReAct loop</string>
+    <string name="tokens_source_web_agent">Web agent</string>
+    <string name="tokens_source_live2d">Live2D</string>
+    <string name="tokens_source_workflow">Workflow</string>
+    <string name="tokens_source_qq">QQ</string>
+    <string name="tokens_source_plugin">Plugin</string>
+    <string name="tokens_source_plugin_named">Plugin %1$s</string>
 
     <!-- ==================== Lorebook screen ==================== -->
     <string name="worldbook_title">Lorebook</string>

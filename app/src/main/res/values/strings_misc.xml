@@ -82,6 +82,7 @@
     <string name="tokens_purpose_decision">决策</string>
     <string name="tokens_purpose_heartbeat">心跳</string>
     <string name="tokens_purpose_image_gen">图片生成</string>
+    <string name="tokens_purpose_plugin">插件</string>
     <string name="tokens_purpose_uncategorized">未分类</string>
     <string name="tokens_source_plot">剧情</string>
     <string name="tokens_source_state">状态评估</string>
@@ -93,6 +94,27 @@
     <string name="tokens_source_rule">规则审查</string>
     <string name="tokens_source_heartbeat">心跳</string>
     <string name="tokens_source_life_sim">生活模拟</string>
+    <string name="tokens_source_chat">主对话</string>
+    <string name="tokens_source_fork">分支继承</string>
+    <string name="tokens_source_local">本地</string>
+    <string name="tokens_source_agent_memory">长期记忆</string>
+    <string name="tokens_source_session_name">会话命名</string>
+    <string name="tokens_source_compression">上下文压缩</string>
+    <string name="tokens_source_agent_context_summary">上下文摘要</string>
+    <string name="tokens_source_agent_context_compression">Agent 上下文压缩</string>
+    <string name="tokens_source_tts">语音合成</string>
+    <string name="tokens_source_heartbeat_silent">静默心跳</string>
+    <string name="tokens_source_command">命令</string>
+    <string name="tokens_source_utility">工具调用</string>
+    <string name="tokens_source_decision">决策</string>
+    <string name="tokens_source_embedding">向量嵌入</string>
+    <string name="tokens_source_react">ReAct 循环</string>
+    <string name="tokens_source_web_agent">网页代理</string>
+    <string name="tokens_source_live2d">Live2D</string>
+    <string name="tokens_source_workflow">工作流</string>
+    <string name="tokens_source_qq">QQ</string>
+    <string name="tokens_source_plugin">插件</string>
+    <string name="tokens_source_plugin_named">插件 %1$s</string>
 
     <!-- ==================== 世界书页 ==================== -->
     <string name="worldbook_title">世界书</string>

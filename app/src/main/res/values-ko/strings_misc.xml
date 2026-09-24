@@ -81,6 +81,7 @@
     <string name="tokens_purpose_decision">의사결정</string>
     <string name="tokens_purpose_heartbeat">하트비트</string>
     <string name="tokens_purpose_image_gen">이미지 생성</string>
+    <string name="tokens_purpose_plugin">플러그인</string>
     <string name="tokens_purpose_uncategorized">미분류</string>
     <string name="tokens_source_plot">플롯</string>
     <string name="tokens_source_state">상태 평가</string>
@@ -92,6 +93,27 @@
     <string name="tokens_source_rule">규칙 검토</string>
     <string name="tokens_source_heartbeat">하트비트</string>
     <string name="tokens_source_life_sim">생활 시뮬레이션</string>
+    <string name="tokens_source_chat">메인 대화</string>
+    <string name="tokens_source_fork">브랜치 상속</string>
+    <string name="tokens_source_local">로컬</string>
+    <string name="tokens_source_agent_memory">장기 기억</string>
+    <string name="tokens_source_session_name">세션 이름 지정</string>
+    <string name="tokens_source_compression">컨텍스트 압축</string>
+    <string name="tokens_source_agent_context_summary">컨텍스트 요약</string>
+    <string name="tokens_source_agent_context_compression">Agent 컨텍스트 압축</string>
+    <string name="tokens_source_tts">음성 합성</string>
+    <string name="tokens_source_heartbeat_silent">무음 하트비트</string>
+    <string name="tokens_source_command">명령</string>
+    <string name="tokens_source_utility">도구 호출</string>
+    <string name="tokens_source_decision">의사결정</string>
+    <string name="tokens_source_embedding">임베딩</string>
+    <string name="tokens_source_react">ReAct 루프</string>
+    <string name="tokens_source_web_agent">웹 에이전트</string>
+    <string name="tokens_source_live2d">Live2D</string>
+    <string name="tokens_source_workflow">워크플로</string>
+    <string name="tokens_source_qq">QQ</string>
+    <string name="tokens_source_plugin">플러그인</string>
+    <string name="tokens_source_plugin_named">플러그인 %1$s</string>
 
     <!-- ==================== 세계관 설정 화면 ==================== -->
     <string name="worldbook_title">세계관 설정</string>

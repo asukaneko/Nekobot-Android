@@ -1662,6 +1662,7 @@ private fun purposeLabel(purpose: String): String = when (purpose.lowercase()) {
     "utility" -> ServiceContainer.getString(R.string.tokens_purpose_utility)
     "decision" -> ServiceContainer.getString(R.string.tokens_purpose_decision)
     "heartbeat" -> ServiceContainer.getString(R.string.tokens_purpose_heartbeat)
+    "plugin" -> ServiceContainer.getString(R.string.tokens_purpose_plugin)
     "react" -> "ReAct"
     "image_gen" -> ServiceContainer.getString(R.string.tokens_purpose_image_gen)
     else -> purpose.ifBlank { ServiceContainer.getString(R.string.tokens_purpose_uncategorized) }
@@ -1680,8 +1681,35 @@ private fun purposeColor(purpose: String): Color = when (purpose.lowercase()) {
     else -> MaterialTheme.colorScheme.primary
 }
 
-/** source 字段中文映射 */
-private fun sourceLabel(source: String): String = when (source.lowercase()) {
+/** source 字段本地化：已知来源映射为本地文案，插件等动态来源按前缀归类。 */
+private fun sourceLabel(source: String): String {
+    val normalized = source.lowercase()
+    return when {
+        normalized.startsWith("plugin:") -> {
+            val pluginId = source.substringAfter(':').trim()
+            if (pluginId.isEmpty()) {
+                ServiceContainer.getString(R.string.tokens_source_plugin)
+            } else {
+                ServiceContainer.localizedContext
+                    ?.getString(R.string.tokens_source_plugin_named, pluginId)
+                    ?: ServiceContainer.getString(R.string.tokens_source_plugin)
+            }
+        }
+        // agent_context_summary / agent_context_summary:<边界ID>
+        normalized == "agent_context_summary" || normalized.startsWith("agent_context_summary:") ->
+            ServiceContainer.getString(R.string.tokens_source_agent_context_summary)
+        else -> sourceLabelFor(normalized, source)
+    }
+}
+
+private fun sourceLabelFor(normalized: String, raw: String): String = when (normalized) {
+    "chat" -> ServiceContainer.getString(R.string.tokens_source_chat)
+    "fork" -> ServiceContainer.getString(R.string.tokens_source_fork)
+    "local" -> ServiceContainer.getString(R.string.tokens_source_local)
+    "agent_memory" -> ServiceContainer.getString(R.string.tokens_source_agent_memory)
+    "session_name" -> ServiceContainer.getString(R.string.tokens_source_session_name)
+    "compression" -> ServiceContainer.getString(R.string.tokens_source_compression)
+    "agent_context_compression" -> ServiceContainer.getString(R.string.tokens_source_agent_context_compression)
     "plot" -> ServiceContainer.getString(R.string.tokens_source_plot)
     "state" -> ServiceContainer.getString(R.string.tokens_source_state)
     "memory" -> ServiceContainer.getString(R.string.tokens_source_memory)
@@ -1689,10 +1717,21 @@ private fun sourceLabel(source: String): String = when (source.lowercase()) {
     "web" -> ServiceContainer.getString(R.string.tokens_source_web)
     "vision" -> ServiceContainer.getString(R.string.tokens_source_vision)
     "stt" -> ServiceContainer.getString(R.string.tokens_source_stt)
+    "tts" -> ServiceContainer.getString(R.string.tokens_source_tts)
     "rule" -> ServiceContainer.getString(R.string.tokens_source_rule)
     "heartbeat" -> ServiceContainer.getString(R.string.tokens_source_heartbeat)
+    "heartbeat_silent" -> ServiceContainer.getString(R.string.tokens_source_heartbeat_silent)
     "life_sim" -> ServiceContainer.getString(R.string.tokens_source_life_sim)
-    else -> source
+    "command" -> ServiceContainer.getString(R.string.tokens_source_command)
+    "utility" -> ServiceContainer.getString(R.string.tokens_source_utility)
+    "decision" -> ServiceContainer.getString(R.string.tokens_source_decision)
+    "embedding" -> ServiceContainer.getString(R.string.tokens_source_embedding)
+    "react" -> ServiceContainer.getString(R.string.tokens_source_react)
+    "web_agent" -> ServiceContainer.getString(R.string.tokens_source_web_agent)
+    "live2d" -> ServiceContainer.getString(R.string.tokens_source_live2d)
+    "workflow" -> ServiceContainer.getString(R.string.tokens_source_workflow)
+    "qq" -> ServiceContainer.getString(R.string.tokens_source_qq)
+    else -> raw
 }
 
 private fun formatDuration(milliseconds: Double): String = when {
