@@ -121,6 +121,7 @@
     <string name="mcp_command_label">Command (command)</string>
     <string name="mcp_args_label">Args (args, space-separated)</string>
     <string name="mcp_env_label">Env (env, KEY=VALUE per line)</string>
+    <string name="mcp_stdio_sandbox_hint">stdio servers run in the local Linux sandbox. Install the runtime in the sandbox terminal first (e.g. apk add nodejs npm).</string>
     <string name="mcp_enabled_label">Enabled</string>
     <string name="mcp_auto_connect_label">Auto connect</string>
 

@@ -102,6 +102,7 @@
     <string name="mcp_command_label">コマンド (command)</string>
     <string name="mcp_args_label">引数 (args、スペース区切り)</string>
     <string name="mcp_env_label">環境変数 (env、KEY=VALUE を1行に1つ)</string>
+    <string name="mcp_stdio_sandbox_hint">stdio はローカル Linux サンドボックスで実行されます。先にサンドボックスターミナルでランタイムをインストールしてください（例: apk add nodejs npm）</string>
     <string name="mcp_enabled_label">有効</string>
     <string name="mcp_auto_connect_label">自動接続</string>
 

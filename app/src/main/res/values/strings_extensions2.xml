@@ -121,6 +121,7 @@
     <string name="mcp_command_label">命令 (command)</string>
     <string name="mcp_args_label">参数 (args，空格分隔)</string>
     <string name="mcp_env_label">环境变量 (env，每行 KEY=VALUE)</string>
+    <string name="mcp_stdio_sandbox_hint">stdio 服务在本地 Linux 沙盒中运行，请先在沙盒终端安装运行时（如 apk add nodejs npm）</string>
     <string name="mcp_enabled_label">启用</string>
     <string name="mcp_auto_connect_label">自动连接</string>
 

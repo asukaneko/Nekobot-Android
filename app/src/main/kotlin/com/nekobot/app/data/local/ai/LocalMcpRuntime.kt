@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local.ai
 
+import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 
+private const val TAG = "LocalMcpRuntime"
 private const val MCP_PROTOCOL_VERSION = "2025-11-25"
 private const val MCP_CLIENT_NAME = "NekoBot Android"
 private const val MCP_CLIENT_VERSION = "0.2.6"
@@ -120,18 +122,17 @@ internal fun parseMcpHttpMessages(payload: String): List<JsonObject> {
  *
  * 与原仓库 MCPBridge 一样，连接时完成 initialize + notifications/initialized + tools/list，
  * 并缓存工具定义供 Agent function calling 使用。
+ *
+ * stdio 服务在本地 Alpine 沙盒（PRoot）内运行；[context] 为空时只能直接运行（Android 上基本不可用）。
  */
 internal class LocalMcpRuntime(
+    private val context: Context? = null,
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 ) : Closeable {
-
-    companion object {
-        private const val TAG = "LocalMcpRuntime"
-    }
 
     private data class Connection(
         val serverId: String,
@@ -324,7 +325,8 @@ internal class LocalMcpRuntime(
                 StdioMcpTransportSession(
                     command = command,
                     args = parseStringList(server.argsJson),
-                    env = parseStringMap(server.envJson)
+                    env = parseStringMap(server.envJson),
+                    sandboxContext = context
                 )
             }
             "streamable-http", "http" -> {
@@ -544,7 +546,7 @@ private class HttpMcpTransportSession(
                     }
                     val shownUrl = redactUrlQuerySecrets(url)
                     LocalLogger.e(
-                        "LocalMcpRuntime",
+                        TAG,
                         "MCP HTTP 请求失败 [$method] $shownUrl -> ${response.code}: $detail$hint"
                     )
                     throw IllegalStateException(
@@ -585,24 +587,31 @@ private class HttpMcpTransportSession(
 }
 
 private class StdioMcpTransportSession(
-    command: String,
-    args: List<String>,
-    env: Map<String, String>
+    private val command: String,
+    private val args: List<String>,
+    private val env: Map<String, String>,
+    private val sandboxContext: Context? = null
 ) : McpTransportSession {
+
+    private data class ProcessLaunch(val process: Process, val sandboxed: Boolean)
 
     private val nextId = AtomicLong(1)
     private val pending = ConcurrentHashMap<String, CompletableFuture<JsonObject>>()
     private val writeLock = Any()
     private val process: Process
     private val writer: BufferedWriter
+    private val sandboxed: Boolean
+    /** 进程退出原因：退出后新请求立即失败，不再干等 90 秒超时。 */
+    @Volatile
+    private var exitReason: String? = null
     @Volatile
     private var closed = false
     override var protocolVersion: String? = null
 
     init {
-        val processBuilder = ProcessBuilder(listOf(command) + args)
-        if (env.isNotEmpty()) processBuilder.environment().putAll(env)
-        process = processBuilder.start()
+        val launch = launchProcess()
+        process = launch.process
+        sandboxed = launch.sandboxed
         writer = BufferedWriter(OutputStreamWriter(process.outputStream, StandardCharsets.UTF_8))
 
         thread(name = "local-mcp-stdio-reader", isDaemon = true) {
@@ -622,9 +631,9 @@ private class StdioMcpTransportSession(
                 if (!closed) completePendingExceptionally(error)
             } finally {
                 if (!closed) {
-                    completePendingExceptionally(
-                        IllegalStateException("MCP stdio 进程已退出，exit=${runCatching { process.exitValue() }.getOrNull()}")
-                    )
+                    val reason = describeExit()
+                    exitReason = reason
+                    completePendingExceptionally(IllegalStateException(reason))
                 }
             }
         }
@@ -640,8 +649,52 @@ private class StdioMcpTransportSession(
         }
     }
 
+    /**
+     * Android 上 npx/node/python 只存在于 Linux 沙盒中，因此优先在沙盒内启动；
+     * 沙盒不可用（非 arm64、PRoot 缺失、rootfs 安装失败）时回退为直接运行，保持旧行为。
+     */
+    private fun launchProcess(): ProcessLaunch {
+        if (sandboxContext != null) {
+            try {
+                return ProcessLaunch(
+                    LocalMcpSandbox.startProcess(sandboxContext, command, args, env),
+                    sandboxed = true
+                )
+            } catch (error: Throwable) {
+                LocalLogger.w(TAG, "MCP stdio 沙盒启动失败，回退直接运行: $command", error)
+                return try {
+                    ProcessLaunch(startHostProcess(), sandboxed = false)
+                } catch (hostError: Throwable) {
+                    throw IllegalStateException(
+                        "MCP stdio 启动失败：沙盒不可用（${error.message}），直接运行也失败（${hostError.message}）",
+                        hostError
+                    )
+                }
+            }
+        }
+        return ProcessLaunch(startHostProcess(), sandboxed = false)
+    }
+
+    private fun startHostProcess(): Process {
+        val processBuilder = ProcessBuilder(listOf(command) + args)
+        if (env.isNotEmpty()) processBuilder.environment().putAll(env)
+        return processBuilder.start()
+    }
+
+    /** 退出原因；沙盒内命令不存在（exit 127）时附带安装运行时的提示。 */
+    private fun describeExit(): String {
+        val exit = runCatching { process.exitValue() }.getOrNull()
+        val hint = if (sandboxed && exit == 127) {
+            "；命令在 Linux 沙盒中不存在，请先在沙盒终端安装运行时（如 apk add nodejs npm）"
+        } else {
+            ""
+        }
+        return "MCP stdio 进程已退出，exit=$exit$hint"
+    }
+
     override fun request(method: String, params: JsonObject?): JsonObject {
         check(!closed) { "MCP stdio 已关闭" }
+        exitReason?.let { throw IllegalStateException(it) }
         val id = nextId.getAndIncrement()
         val future = CompletableFuture<JsonObject>()
         pending[id.toString()] = future

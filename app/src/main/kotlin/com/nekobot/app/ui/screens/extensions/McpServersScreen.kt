@@ -757,7 +757,7 @@ private fun McpServerFormDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = fieldColors(),
-                    placeholder = { Text("-y @modelcontextprotocol/server-filesystem") }
+                    placeholder = { Text("-y @modelcontextprotocol/server-filesystem /shared") }
                 )
                 Spacer(Modifier.height(8.dp))
                 LabeledField(stringResource(R.string.mcp_env_label))
@@ -771,6 +771,12 @@ private fun McpServerFormDialog(
                     shape = RoundedCornerShape(12.dp),
                     colors = fieldColors(),
                     placeholder = { Text("API_KEY=xxx\nDEBUG=true") }
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.mcp_stdio_sandbox_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
             }

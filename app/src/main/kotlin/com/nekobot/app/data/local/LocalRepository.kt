@@ -397,7 +397,8 @@ class LocalRepository(
     /** ask_user_question 提问等待管理器：AI 提问后挂起，UI 回答后 resolve。 */
     private val askUserQuestionManager =
         com.nekobot.app.data.local.ai.LocalAskUserQuestionManager()
-    private val localMcpRuntime = LocalMcpRuntime()
+    /** stdio MCP 在本地 Alpine 沙盒内运行，因此需要 app 上下文。 */
+    private val localMcpRuntime = LocalMcpRuntime(appContext)
     private val mcpAutoConnectRunning = AtomicBoolean(false)
     @Volatile
     private var cachedMcpAgentTools: List<Map<String, Any>> = emptyList()

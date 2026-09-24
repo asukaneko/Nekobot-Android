@@ -102,6 +102,7 @@
     <string name="mcp_command_label">명령(command)</string>
     <string name="mcp_args_label">인자(args, 공백으로 구분)</string>
     <string name="mcp_env_label">환경변수(env, 한 줄에 KEY=VALUE)</string>
+    <string name="mcp_stdio_sandbox_hint">stdio 서버는 로컬 Linux 샌드박스에서 실행됩니다. 샌드박스 터미널에서 런타임을 먼저 설치하세요 (예: apk add nodejs npm).</string>
     <string name="mcp_enabled_label">활성화됨</string>
     <string name="mcp_auto_connect_label">자동 연결</string>
 
