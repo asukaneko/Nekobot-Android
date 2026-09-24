@@ -190,6 +190,7 @@ fun ModernChatScreen(
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
+    val compressing by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
     val plotChoices by viewModel.plotChoices.collectAsStateWithLifecycle()
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -244,6 +245,7 @@ fun ModernChatScreen(
             session = session,
             messages = messages,
             sending = sending,
+            compressing = compressing,
             plotChoices = plotChoices,
             plotChoicesLoading = plotChoicesLoading,
             plotMode = session?.plotMode == true,
@@ -659,6 +661,8 @@ private fun ModernChatComposer(
     session: Session?,
     messages: List<Message>,
     sending: Boolean,
+    /** 上下文压缩进行中：压缩按钮切换为进行中样式。 */
+    compressing: Boolean,
     plotChoices: List<PlotChoice>,
     plotChoicesLoading: Boolean,
     plotMode: Boolean,
@@ -1161,6 +1165,7 @@ private fun ModernChatComposer(
                     agentLiveContext = agentLiveContext,
                     contextBreakdown = contextBreakdown,
                     sending = sending,
+                    compressing = compressing,
                     fileBusy = fileBusy,
                     plotMode = plotMode,
                     plotRealTimeSync = plotRealTimeSync,
@@ -2074,6 +2079,7 @@ private fun ModernChatActionPanel(
     usedTokens: Long,
     maxTokens: Int?,
     sending: Boolean,
+    compressing: Boolean,
     agentLiveContext: AgentLiveContextUsage?,
     contextBreakdown: ContextUsageBreakdown?,
     fileBusy: Boolean,
@@ -2122,6 +2128,7 @@ private fun ModernChatActionPanel(
                     usedTokens = usedTokens,
                     maxTokens = maxTokens,
                     sending = sending,
+                    compressing = compressing,
                     agentLiveContext = agentLiveContext,
                     contextBreakdown = contextBreakdown,
                     onCompress = onCompress,
@@ -2406,6 +2413,7 @@ private fun ModernContextCard(
     usedTokens: Long,
     maxTokens: Int?,
     sending: Boolean,
+    compressing: Boolean,
     agentLiveContext: AgentLiveContextUsage?,
     contextBreakdown: ContextUsageBreakdown?,
     onCompress: () -> Unit,
@@ -2471,10 +2479,22 @@ private fun ModernContextCard(
                         )
                     }
                 }
-                TextButton(onClick = onCompress, enabled = !sending && messageCount > 0) {
-                    Icon(Icons.Filled.Compress, contentDescription = null, modifier = Modifier.size(17.dp))
+                TextButton(onClick = onCompress, enabled = !sending && messageCount > 0 && !compressing) {
+                    if (compressing) {
+                        // 进行中：图标换成进度圈，标签切换为“压缩中”。
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(17.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Filled.Compress, contentDescription = null, modifier = Modifier.size(17.dp))
+                    }
                     Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.chat_compress))
+                    Text(
+                        stringResource(
+                            if (compressing) R.string.chat_compressing else R.string.chat_compress
+                        )
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))

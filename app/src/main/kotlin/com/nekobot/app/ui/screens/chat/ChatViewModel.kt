@@ -2870,29 +2870,37 @@ class ChatViewModel : BaseViewModel() {
             startBackgroundCompression()
             return
         }
-        // 远程模式：压缩由服务端执行，维持原有请求-响应行为。
-        launchResult(
-            block = { unified.compressContext(currentSessionId) },
-            onSuccess = { json ->
-                val compressed = json?.takeIf { it.isJsonObject }
-                    ?.asJsonObject?.get("compressed")?.asBoolean ?: true
-                // 后端返回 archive_session_id，写回当前 session 状态
-                val archiveId = json?.takeIf { it.isJsonObject }
-                    ?.asJsonObject?.get("archive_session_id")?.asString
-                if (archiveId != null) {
-                    _session.value = _session.value?.copy(archiveSessionId = archiveId)
+        // 远程模式：压缩由服务端执行，维持原有请求-响应行为；
+        // 请求期间同样标记为进行中，压缩按钮切换样式。
+        val target = runtime
+        target.agentContextCompressionInProgress.value = true
+        viewModelScope.launch {
+            try {
+                when (val result = unified.compressContext(currentSessionId)) {
+                    is Resource.Success -> {
+                        val json = result.data
+                        val compressed = json?.takeIf { it.isJsonObject }
+                            ?.asJsonObject?.get("compressed")?.asBoolean ?: true
+                        // 后端返回 archive_session_id，写回当前 session 状态
+                        val archiveId = json?.takeIf { it.isJsonObject }
+                            ?.asJsonObject?.get("archive_session_id")?.asString
+                        if (archiveId != null) {
+                            _session.value = _session.value?.copy(archiveSessionId = archiveId)
+                        }
+                        if (compressed) {
+                            showToast(string(R.string.chat_context_compressed))
+                            loadMessages()
+                        } else {
+                            showToast(string(R.string.chat_context_compression_not_needed))
+                        }
+                    }
+                    is Resource.Error -> showError(result.message)
+                    is Resource.Loading -> Unit
                 }
-                if (compressed) {
-                    showToast(string(R.string.chat_context_compressed))
-                    loadMessages()
-                } else {
-                    showToast(string(R.string.chat_context_compression_not_needed))
-                }
-            },
-            onError = { message ->
-                showError(message)
+            } finally {
+                target.agentContextCompressionInProgress.value = false
             }
-        )
+        }
     }
 
     /**

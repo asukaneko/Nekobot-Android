@@ -1022,6 +1022,7 @@ fun ChatScreen(
                     onStop = { viewModel.stop() },
                     onClear = { showClearConfirm = true },
                     onCompress = { viewModel.compressContext() },
+                    compressing = agentContextCompressionInProgress,
                     onSendFile = {
                         filePickMode = "send"
                         pickFile.launch("*/*")
@@ -5938,6 +5939,8 @@ private fun ChatInputBar(
     onStop: () -> Unit,
     onClear: () -> Unit,
     onCompress: () -> Unit,
+    /** 上下文压缩进行中：压缩按钮切换为进行中样式。 */
+    compressing: Boolean = false,
     onSendFile: () -> Unit = {},
     onUploadToWorkspace: () -> Unit = {},
     onOpenWorkspace: () -> Unit = {},
@@ -6051,8 +6054,11 @@ private fun ChatInputBar(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
                             icon = Icons.Filled.Compress,
-                            label = stringResource(R.string.chat_compress_context),
-                            enabled = !sending,
+                            label = stringResource(
+                                if (compressing) R.string.chat_compressing else R.string.chat_compress_context
+                            ),
+                            enabled = !sending && !compressing,
+                            loading = compressing,
                             onClick = onCompress,
                             modifier = Modifier.weight(1f)
                         )
@@ -6194,20 +6200,31 @@ private fun ActionChip(
     label: String,
     enabled: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 进行中：图标换成进度圈并保持常规配色，点击被忽略。 */
+    loading: Boolean = false
 ) {
+    val active = enabled || loading
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .clickable(enabled = enabled, onClick = onClick)
+            .background(if (active) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable(enabled = enabled && !loading, onClick = onClick)
             .padding(vertical = 14.dp, horizontal = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else {
+            Icon(icon, contentDescription = null, tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        }
         Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

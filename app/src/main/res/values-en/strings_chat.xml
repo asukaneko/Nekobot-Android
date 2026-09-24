@@ -394,6 +394,7 @@
     <string name="chat_context_count">%1$d msgs</string>
     <string name="chat_scroll_to_bottom">Scroll to bottom</string>
     <string name="chat_compress_context">Compress context</string>
+    <string name="chat_compressing">Compressing</string>
     <string name="chat_send_file">Send file</string>
     <string name="chat_upload_workspace">Upload to workspace</string>
     <string name="chat_view_workspace">View workspace</string>
