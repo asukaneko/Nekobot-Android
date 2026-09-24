@@ -314,6 +314,13 @@ data class ThinkingStep(
     @SerializedName("full_result") val fullResult: Any? = null,
     @SerializedName("result_truncated") val resultTruncated: Boolean? = null,
     @SerializedName("thinking_content") val thinkingContent: String? = null,
+    /**
+     * Agent 循环中「带工具调用的中间回复」正文（完整内容）。
+     *
+     * 模型每轮可能先输出一段回复再调用工具，这段正文的气泡会在下一轮开始时被清空；
+     * 进度卡片用它完整留档（不带头部、不折叠）供用户回看。仅本地 Agent 模式写入。
+     */
+    val text: String? = null,
     /** 文件变更 git 摘要（仅本地 Agent 模式成功变更 git 追踪文件时产生）；未用 Gson 默认忽略 */
     val gitDiff: GitDiffSummary? = null,
     /**

@@ -3465,9 +3465,23 @@ private fun ProgressCard(
             Spacer(Modifier.height(6.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 card.steps.forEachIndexed { index, step ->
-                    // git_diff 步骤的内容已在卡片头部的摘要区展示，避免重复
-                    if (!step.type.equals("git_diff", ignoreCase = true)) {
-                        ProgressStepRow(
+                    when {
+                        // git_diff 步骤的内容已在卡片头部的摘要区展示，避免重复
+                        step.type.equals("git_diff", ignoreCase = true) -> Unit
+                        // 中间回复：按真实执行顺序穿插在步骤之间，完整正文内联展示；
+                        // 无头部、不截断、不点开详情弹窗
+                        step.type.equals("agent_text", ignoreCase = true) -> {
+                            MarkdownText(
+                                text = step.text.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                chatMode = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // 与步骤行正文对齐（20dp 图标 + 8dp 间距），上下留出呼吸空间
+                                    .padding(start = 28.dp, top = 6.dp, bottom = 6.dp)
+                            )
+                        }
+                        else -> ProgressStepRow(
                             step = step,
                             onOpenDetail = {
                                 onStepClick(

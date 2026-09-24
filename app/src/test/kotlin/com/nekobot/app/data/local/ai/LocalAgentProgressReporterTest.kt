@@ -137,8 +137,59 @@ class LocalAgentProgressReporterTest {
     }
 
     @Test
-    fun roundsWithoutReasoningContentLeaveNoEmptyThinkingSteps() {
+    fun intermediateReplyIsArchivedAsHeaderlessStepInChronologicalOrder() {
         val updates = mutableListOf<ThinkingCard>()
+        var now = 0L
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            nowNanos = { now.also { now += 200_000_000L } },
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "测试")
+        )
+
+        // 思考 → 中间回复 → 工具：中间回复按时间顺序留档，且不带头部
+        reporter.onThinkingStart(context)
+        reporter.onThinkingContent(context, "先看目录。")
+        reporter.onIntermediateContent(context, "我先看一下目录结构。")
+        reporter.onToolStart(context, toolName = "list_dir", arguments = mapOf("path" to "."), thinking = "")
+        reporter.onToolDone(context, toolName = "list_dir", result = mapOf("stdout" to "a.kt"), thinking = "")
+
+        val steps = updates.last().steps
+        assertEquals(listOf("thinking", "agent_text", "tool"), steps.map { it.type })
+        val archived = steps.single { it.type == "agent_text" }
+        assertEquals("我先看一下目录结构。", archived.text)
+        assertEquals("done", archived.status)
+        assertTrue("中间回复不应带名称/头部", archived.name.isNullOrBlank())
+    }
+
+    @Test
+    fun intermediateReplyLeavesNoEmptyThinkingPlaceholder() {
+        val updates = mutableListOf<ThinkingCard>()
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "测试")
+        )
+
+        // 思考强度关闭：模型直接输出中间回复并调用工具，不应留下空的思考占位
+        reporter.onThinkingStart(context)
+        reporter.onIntermediateContent(context, "马上执行。")
+        reporter.onToolStart(context, toolName = "exec_command", arguments = emptyMap(), thinking = "")
+        reporter.onToolDone(context, toolName = "exec_command", result = mapOf("stdout" to "ok"), thinking = "")
+
+        val steps = updates.last().steps
+        assertTrue("没有思考正文时不应留下空气泡", steps.none { it.type == "thinking" })
+        assertEquals(listOf("agent_text", "tool"), steps.map { it.type })
+    }
+
+    @Test
+    fun roundsWithoutReasoningContentLeaveNoEmptyThinkingSteps() {        val updates = mutableListOf<ThinkingCard>()
         val reporter = LocalAgentProgressReporter(
             parentMessageId = "user-1",
             onUpdate = updates::add,

@@ -94,13 +94,15 @@ internal class LocalAgentProgressReporter(
     /**
      * 收尾指定思考步骤：有正文就标记完成，没有正文的占位步骤直接移除。
      * 模型没有输出思考内容时（思考强度关闭 / 该轮未产出思考），卡片里不留空气泡。
+     *
+     * 空占位不承载任何内容，移除不会改变其余步骤的相对顺序；只有保留「非末尾空占位」
+     * 才会在中间回复步骤插入后留下一条无内容的思考行。
      */
     private fun finishThinkingStep(index: Int) {
         val step = steps.getOrNull(index) ?: return
         if (step.status.equals("done", ignoreCase = true)) return
         if (step.thinkingContent.isNullOrBlank()) {
-            // 只移除仍是末尾的占位步骤，避免打乱已经排好的工具步骤顺序
-            if (index == steps.lastIndex) steps.removeAt(index)
+            steps.removeAt(index)
         } else {
             steps[index] = step.copy(status = "done")
         }
@@ -177,6 +179,25 @@ internal class LocalAgentProgressReporter(
         ) {
             emit(progressText(R.string.agent_progress_thinking, "AI 正在思考..."), checkpoint = false)
         }
+    }
+
+    /**
+     * 中间回复正文：模型带工具调用时输出的回复会被下一轮 StreamStart 从气泡清空，
+     * 这里以「无头部、完整正文」的步骤留档到进度卡片，方便用户回看。
+     *
+     * 不在此时收尾思考步骤：思考正文若只在模型响应里返回（未流式下发），
+     * 之后 onToolStart 还会把它补进当前思考步骤，收尾会让顺序倒置。
+     */
+    override fun onIntermediateContent(ctx: PipelineContext, content: String) {
+        val text = content.trim()
+        if (text.isEmpty()) return
+        val bounded = if (text.length > AgentToolLimits.PROGRESS_INTERMEDIATE_CHARS) {
+            text.take(AgentToolLimits.PROGRESS_INTERMEDIATE_CHARS) + "…"
+        } else {
+            text
+        }
+        steps.add(ThinkingStep(type = "agent_text", status = "done", text = bounded))
+        emit(progressText(R.string.agent_progress_processing, "AI 正在处理..."))
     }
 
     override fun onToolStart(

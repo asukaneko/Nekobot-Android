@@ -65,7 +65,9 @@ internal fun ThinkingCard.toPersistedProgressCard(): ThinkingCard {
     }
     // 思考正文按「从最新一轮往前」分配总预算：每轮思考各自成步后，
     // 逐条截断到 20k 会让进度卡 JSON 随轮数线性膨胀，超出历史解码上限时整卡会被折叠。
+    // 中间回复正文同理：长任务每轮都可能留一段，共用一份独立总预算。
     var reasoningBudget = AgentToolLimits.PROGRESS_REASONING_TOTAL_CHARS
+    var intermediateBudget = AgentToolLimits.PROGRESS_INTERMEDIATE_TOTAL_CHARS
     val persistedSteps = arrayOfNulls<ThinkingStep>(selectedSteps.size)
     for (index in selectedSteps.indices.reversed()) {
         val step = selectedSteps[index]
@@ -77,7 +79,14 @@ internal fun ThinkingCard.toPersistedProgressCard(): ThinkingCard {
                 else -> content.takeLast(allowance).also { reasoningBudget -= allowance }
             }
         }
-        persistedSteps[index] = step.toPersistedProgressStep(keptReasoning)
+        val keptText = step.text?.takeIf(String::isNotEmpty)?.let { content ->
+            when {
+                intermediateBudget <= 0 -> null
+                content.length <= intermediateBudget -> content.also { intermediateBudget -= content.length }
+                else -> content.take(intermediateBudget).also { intermediateBudget = 0 }
+            }
+        }
+        persistedSteps[index] = step.toPersistedProgressStep(keptReasoning, keptText)
     }
     return copy(
         content = content.take(AgentToolLimits.PROGRESS_PERSISTED_CONTENT_CHARS),
@@ -85,14 +94,18 @@ internal fun ThinkingCard.toPersistedProgressCard(): ThinkingCard {
     )
 }
 
-private fun ThinkingStep.toPersistedProgressStep(keptReasoning: String?): ThinkingStep = copy(
+private fun ThinkingStep.toPersistedProgressStep(
+    keptReasoning: String?,
+    keptText: String?
+): ThinkingStep = copy(
     name = name?.take(AgentToolLimits.PROGRESS_PERSISTED_NAME_CHARS),
     detail = detail?.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS),
     arguments = arguments?.toPersistedArguments(),
     fullResult = fullResult?.let { value ->
         boundedAgentValuePreview(value, AgentToolLimits.progressPreviewChars())
     },
-    thinkingContent = keptReasoning
+    thinkingContent = keptReasoning,
+    text = keptText
 )
 
 /**

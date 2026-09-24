@@ -132,6 +132,51 @@ class AgentProgressPersistenceTest {
     }
 
     @Test
+    fun persistedCardSharesIntermediateTextBudgetAcrossReplies() {
+        // 中间回复每轮都可能留一段：总预算从最新一段往前分配，预算耗尽的更早回复不再保留。
+        val replies = 8
+        val card = ThinkingCard(
+            id = "card",
+            content = "done",
+            steps = (0 until replies).map { index ->
+                ThinkingStep(
+                    type = "agent_text",
+                    status = "done",
+                    text = "$index".repeat(AgentToolLimits.PROGRESS_INTERMEDIATE_CHARS)
+                )
+            },
+            isAgent = true
+        )
+
+        val persisted = card.toPersistedProgressCard()
+
+        val total = persisted.steps.sumOf { it.text?.length ?: 0 }
+        assertTrue(total <= AgentToolLimits.PROGRESS_INTERMEDIATE_TOTAL_CHARS)
+        assertEquals(
+            AgentToolLimits.PROGRESS_INTERMEDIATE_CHARS,
+            persisted.steps.last().text?.length
+        )
+        assertEquals("最早几段应被预算裁掉正文", null, persisted.steps.first().text)
+    }
+
+    @Test
+    fun intermediateReplyTextSurvivesPersistedJsonRoundTrip() {
+        val card = ThinkingCard(
+            id = "card",
+            content = "done",
+            steps = listOf(
+                ThinkingStep(type = "agent_text", status = "done", text = "我先读取配置。")
+            ),
+            isAgent = true
+        )
+
+        val json = com.google.gson.Gson().toJson(listOf(card.toPersistedProgressCard()))
+        val restored = decodeThinkingCardsForUi("user-1", json)
+
+        assertEquals("我先读取配置。", restored?.single()?.steps?.single()?.text)
+    }
+
+    @Test
     fun boundedPreviewStopsCyclesAndNeverExceedsBudget() {
         val cyclic = linkedMapOf<String, Any>()
         cyclic["self"] = cyclic

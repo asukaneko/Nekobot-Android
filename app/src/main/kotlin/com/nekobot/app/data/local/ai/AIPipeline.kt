@@ -827,6 +827,10 @@ class AIPipeline {
                     lastToolName = lastCompletedAgentToolName(safeHistory)
                 )
             },
+            // 中间回复正文会在下一轮开始时从气泡消失，交给进度卡片完整留档
+            onIntermediateContent = { content ->
+                progress.onIntermediateContent(ctx, content)
+            },
             // 每条工具消息产生的当下就落库：一轮任务可能上百次调用，中断后只有
             // 即时写入的内容能恢复（检查点只保存进度，不含工具正文）。
             onToolMessageAppended = { message ->

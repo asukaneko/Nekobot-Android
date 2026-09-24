@@ -67,6 +67,15 @@ internal object AgentToolLimits {
     /** 进度卡行内实时思考预览的单行宽度（字符）：只保留末尾，最新内容始终可见。 */
     const val PROGRESS_REASONING_LINE_CHARS = 96
 
+    /** 进度卡中间回复正文单条上限：与思考正文同档，避免单条超长正文撑爆进度卡。 */
+    const val PROGRESS_INTERMEDIATE_CHARS = 20_000
+
+    /**
+     * 进度卡中间回复正文的**总**预算：长任务每轮都可能产出一段中间回复，
+     * 落库时从最新一段往前分配，更早的正文只保留开头部分。
+     */
+    const val PROGRESS_INTERMEDIATE_TOTAL_CHARS = 120_000
+
     /** 进度卡落库时单步名称上限。 */
     const val PROGRESS_PERSISTED_NAME_CHARS = 200
 

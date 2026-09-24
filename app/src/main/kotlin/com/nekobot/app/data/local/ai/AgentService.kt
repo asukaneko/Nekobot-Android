@@ -217,6 +217,13 @@ data class ToolLoopHooks(
     /** 一整批 tool_calls 都写入对应 tool 结果后的安全检查点。 */
     val onCheckpoint: ((Int, List<Map<String, Any>>) -> Unit)? = null,
     /**
+     * 本轮模型输出不是最终答复（循环将继续）时回调该轮正文。
+     *
+     * 模型常先输出一段回复再调用工具，这段正文会被下一轮输出覆盖，
+     * 进度报告器借此把它完整留档到进度卡片。
+     */
+    val onIntermediateContent: ((String) -> Unit)? = null,
+    /**
      * 工具循环每向本轮消息列表追加一条 assistant/tool 消息时立即回调。
      *
      * 落库动作必须发生在消息产生的当下，而不是等整轮结束：
@@ -1052,6 +1059,8 @@ suspend fun runToolCallLoop(
                         ?.let { put("reasoning_signature", it) }
                 }
             }.toMutableMap())
+            // 带工具调用的正文属于中间回复：气泡会被下一轮替换，回调给进度卡片留档
+            hooks?.onIntermediateContent?.invoke((response["content"] as? String).orEmpty())
             // 执行每个工具调用：连续的只读工具并行执行（结果顺序与副作用顺序保持不变）
             var loopAbortMessage: String? = null
             var callIndex = 0
@@ -1185,6 +1194,8 @@ suspend fun runToolCallLoop(
 
         // 未停止，继续循环
         appendMessage(mutableMapOf("role" to "assistant", "content" to finalContent))
+        // 无工具调用但循环继续：该正文同样会被下一轮覆盖，回调给进度卡片留档
+        hooks?.onIntermediateContent?.invoke(finalContent)
     }
 
     // 达到最大迭代次数仍未停止

@@ -561,6 +561,7 @@ internal class LocalPipelineCallbacks(
                     val label = when (type) {
                         "thinking", "ai_thinking" -> "思考"
                         "tool", "tool_done" -> "工具调用"
+                        "agent_text" -> "中间回复"
                         "send_message" -> "发送消息"
                         "file" -> "文件"
                         "upload" -> "附件"
@@ -607,6 +608,12 @@ internal class LocalPipelineCallbacks(
                                     .take(AgentToolLimits.PROGRESS_CONTEXT_RESULT_CHARS)
                             )
                         }
+                    }
+                    val text = (step["text"] as? String).orEmpty()
+                    if (text.isNotBlank()) {
+                        appendBounded(
+                            "\n  正文: " + text.take(AgentToolLimits.PROGRESS_CONTEXT_RESULT_CHARS)
+                        )
                     }
                     if (detail.isNotBlank()) {
                         appendBounded(

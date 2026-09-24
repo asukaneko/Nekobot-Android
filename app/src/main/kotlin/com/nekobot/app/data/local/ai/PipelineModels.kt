@@ -139,6 +139,12 @@ open class ProgressReporter {
     open fun onKnowledgeDone(ctx: PipelineContext, retrieved: Boolean) {}
     open fun onThinkingStart(ctx: PipelineContext) {}
     open fun onThinkingContent(ctx: PipelineContext, content: String) {}
+    /**
+     * Agent 循环中「本轮不是最终答复」的中间回复正文。
+     *
+     * 该正文所在的气泡会被下一轮模型输出替换，由进度卡片完整留档展示。
+     */
+    open fun onIntermediateContent(ctx: PipelineContext, content: String) {}
     open fun onToolStart(ctx: PipelineContext, toolName: String, arguments: Map<String, Any>, thinking: String) {}
     open fun onToolDone(ctx: PipelineContext, toolName: String, result: Map<String, Any>, thinking: String) {}
     open fun onToolIteration(ctx: PipelineContext, iteration: Int) {}
