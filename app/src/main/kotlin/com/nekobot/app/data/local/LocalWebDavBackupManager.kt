@@ -12,6 +12,7 @@ import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
+import com.nekobot.app.data.local.db.LocalStickerEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -992,6 +993,24 @@ class LocalWebDavBackupManager(
             )
             records[record.key] = record
         }
+        db.stickerDao().listAll().forEach { entity ->
+            val value = gson.toJsonTree(entity).asJsonObject.apply {
+                // 同步记录使用稳定文件名，恢复端按 file_name 重新拼绝对路径。
+                addProperty("file_path", entity.fileName)
+                val file = stickerFile(entity.fileName)
+                if (file?.isFile == true) {
+                    require(file.length() <= MAX_STICKER_BYTES) { "表情图片过大" }
+                    addProperty("file_base64", Base64.getEncoder().encodeToString(file.readBytes()))
+                }
+            }
+            val record = LocalWebDavIncrementalLogic.record(
+                TYPE_STICKER,
+                entity.id,
+                entity.updatedAt,
+                value
+            )
+            records[record.key] = record
+        }
         db.characterDao().listAll().forEach { entity ->
             val record = LocalWebDavIncrementalLogic.record(
                 TYPE_CHARACTER,
@@ -1052,6 +1071,10 @@ class LocalWebDavBackupManager(
                             db.messageImageDao().getById(record.id)?.filePath?.let(::deleteMessageImageFile)
                             db.messageImageDao().deleteById(record.id)
                         }
+                        TYPE_STICKER -> {
+                            db.stickerDao().getById(record.id)?.fileName?.let(::deleteStickerFile)
+                            db.stickerDao().deleteById(record.id)
+                        }
                         TYPE_CHARACTER -> db.characterDao().deleteById(record.id)
                         TYPE_WORLD_BOOK -> db.worldBookDao().deleteById(record.id)
                         TYPE_WORLD_BOOK_ENTRY -> db.worldBookDao().deleteEntryById(record.id)
@@ -1085,6 +1108,7 @@ class LocalWebDavBackupManager(
                         TYPE_MESSAGE_IMAGE -> db.messageImageDao().upsert(
                             restoreSyncedMessageImage(value)
                         )
+                        TYPE_STICKER -> db.stickerDao().upsert(restoreSyncedSticker(value))
                         TYPE_CHARACTER -> {
                             val entity = gson.fromJson(value, LocalCharacterEntity::class.java)
                             if (db.characterDao().getById(entity.id) == null) {
@@ -1114,6 +1138,16 @@ class LocalWebDavBackupManager(
             return null
         }
         val root = File(appContext.filesDir, "portraits").canonicalFile
+        val target = File(root, fileName).canonicalFile
+        return target.takeIf { it.path.startsWith(root.path + File.separator) }
+    }
+
+    /** 表情图片文件（filesDir/stickers/<file_name>）；越界或非法名返回 null。 */
+    private fun stickerFile(fileName: String?): File? {
+        if (fileName.isNullOrBlank() || !fileName.matches(Regex("[A-Za-z0-9._-]{1,128}"))) {
+            return null
+        }
+        val root = File(appContext.filesDir, "stickers").canonicalFile
         val target = File(root, fileName).canonicalFile
         return target.takeIf { it.path.startsWith(root.path + File.separator) }
     }
@@ -1161,6 +1195,30 @@ class LocalWebDavBackupManager(
     private fun deleteMessageImageFile(reference: String) {
         val fileName = android.net.Uri.parse(reference).path?.let(::File)?.name ?: return
         messageImageFile(fileName)?.let { file -> runCatching { file.delete() } }
+    }
+
+    private fun deleteStickerFile(fileName: String) {
+        stickerFile(fileName)?.let { file -> runCatching { file.delete() } }
+    }
+
+    /** 恢复同步来的表情：写入图片文件并按当前设备路径重建 file_path。 */
+    private fun restoreSyncedSticker(value: JsonObject): LocalStickerEntity {
+        val entity = gson.fromJson(value, LocalStickerEntity::class.java)
+        val fileName = value.get("file_path")?.asString?.takeIf { it.isNotBlank() } ?: entity.fileName
+        val target = stickerFile(fileName)
+        val encoded = value.get("file_base64")?.asString.orEmpty()
+        if (target != null && encoded.isNotBlank()) {
+            val bytes = Base64.getDecoder().decode(encoded)
+            require(bytes.size.toLong() <= MAX_STICKER_BYTES) { "表情图片过大" }
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+        }
+        return entity.copy(
+            fileName = fileName,
+            filePath = target?.takeIf { it.isFile }
+                ?.let { android.net.Uri.fromFile(it).toString() }
+                ?: entity.filePath
+        )
     }
 
     private fun restoreSyncedMessageImage(value: JsonObject): LocalMessageImageEntity {
@@ -1420,9 +1478,21 @@ class LocalWebDavBackupManager(
                     .forEach { file ->
                         val relative = file.relativeTo(coverDir)
                             .invariantSeparatorsPath
-                            .takeIf { isSafeRelativePath(it) }
+                            .takeIf(::isSafeRelativePath)
                             ?: return@forEach
                         putZipEntry(zip, "$ENTRY_WORLD_BOOK_COVERS_PREFIX$relative", file.readBytes())
+                    }
+
+                // 自定义表情包图片
+                val stickerDir = File(appContext.filesDir, "stickers")
+                stickerDir.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { file ->
+                        val relative = file.relativeTo(stickerDir)
+                            .invariantSeparatorsPath
+                            .takeIf(::isSafeRelativePath)
+                            ?: return@forEach
+                        putZipEntry(zip, "$ENTRY_STICKERS_PREFIX$relative", file.readBytes())
                     }
             }
         }
@@ -1553,10 +1623,27 @@ class LocalWebDavBackupManager(
                 }
             }
 
+            // 自定义表情包：按文件名合并恢复，避免覆盖本机已有表情。
+            val stickerEntries = entries.filterKeys { it.startsWith(ENTRY_STICKERS_PREFIX) }
+            if (includePortraits && stickerEntries.isNotEmpty()) {
+                val stickerDir = File(appContext.filesDir, "stickers").canonicalFile
+                stickerEntries.forEach { (path, bytes) ->
+                    val relative = path.removePrefix(ENTRY_STICKERS_PREFIX)
+                    if (!isSafeRelativePath(relative)) return@forEach
+                    val target = runCatching { File(stickerDir, relative).canonicalFile }.getOrNull()
+                        ?: return@forEach
+                    if (target.path.startsWith(stickerDir.path + File.separator)) {
+                        target.parentFile?.mkdirs()
+                        target.writeBytes(bytes)
+                    }
+                }
+            }
+
             ServiceContainer.switchLocalDb(profileName)
             val restoredDb = NekobotDatabase.get(appContext, profileName)
             restoredDb.openHelper.writableDatabase
             normalizeRestoredMessageAudioUrls(restoredDb)
+            normalizeRestoredStickerPaths(restoredDb)
             entries[ENTRY_CREDENTIALS]?.let { raw ->
                 restoreCredentialBundle(restoredDb, raw)
             }
@@ -1586,6 +1673,18 @@ class LocalWebDavBackupManager(
                     audioUrl = normalized,
                     updatedAt = entity.audioUpdatedAt ?: nowIso()
                 )
+            }
+        }
+    }
+
+    /** 恢复后把表情的 file_path 重新指向当前设备的 stickers 目录。 */
+    private suspend fun normalizeRestoredStickerPaths(db: NekobotDatabase) {
+        db.stickerDao().listAll().forEach { entity ->
+            val file = stickerFile(entity.fileName) ?: return@forEach
+            if (!file.isFile) return@forEach
+            val normalized = android.net.Uri.fromFile(file).toString()
+            if (entity.filePath != normalized) {
+                db.stickerDao().upsert(entity.copy(filePath = normalized))
             }
         }
     }
@@ -2025,6 +2124,7 @@ class LocalWebDavBackupManager(
         const val ENTRY_LOCAL_PORTRAITS_PREFIX = "local-portraits/"
         const val ENTRY_WORLD_BOOK_COVERS_PREFIX = "worldbook-covers/"
         const val ENTRY_MESSAGE_AUDIO_PREFIX = "message-audio/"
+        const val ENTRY_STICKERS_PREFIX = "stickers/"
         const val ACHIEVEMENT_PREF_NAME = "nekobot_achievements"
         const val TYPE_SESSION = "session"
         const val TYPE_MESSAGE = "message"
@@ -2032,10 +2132,12 @@ class LocalWebDavBackupManager(
         const val TYPE_CHARACTER = "character"
         const val TYPE_WORLD_BOOK = "world_book"
         const val TYPE_WORLD_BOOK_ENTRY = "world_book_entry"
+        const val TYPE_STICKER = "sticker"
         const val MAX_ARCHIVE_ENTRIES = 5_000
         const val MAX_ARCHIVE_SIZE = 1024L * 1024L * 1024L
         const val MAX_MESSAGE_IMAGE_BYTES = 64L * 1024L * 1024L
         const val MAX_MESSAGE_AUDIO_BYTES = 64L * 1024L * 1024L
+        const val MAX_STICKER_BYTES = 16L * 1024L * 1024L
 
         val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaType()
         val BINARY_MEDIA_TYPE = "application/octet-stream".toMediaType()

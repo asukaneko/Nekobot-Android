@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Custom stickers: management screen -->
+    <string name="sticker_manage_title">Stickers</string>
+    <string name="sticker_manage_hint">Imported images match [name] in chats and are included in data backups. Long-press to multi-select.</string>
+    <string name="sticker_import_images">Import images</string>
+    <string name="sticker_import_zip">Import ZIP</string>
+    <string name="sticker_import_zip_empty">No usable sticker images found in the ZIP</string>
+    <string name="sticker_import_duplicate">Selected files are already in the import list</string>
+    <string name="sticker_import_review_title">Import %1$d stickers</string>
+    <string name="sticker_import_review_hint">Names are used as [name] references in chats and can be edited; same-name stickers overwrite the old image.</string>
+    <string name="sticker_import_confirm">Import</string>
+    <string name="sticker_import_result">%1$d stickers imported</string>
+    <string name="sticker_import_result_with_skipped">%1$d stickers imported, %2$d invalid files skipped</string>
+    <string name="sticker_import_failed">Import failed, please check the selected files</string>
+    <string name="sticker_empty">No stickers yet. Import some images to get started</string>
+    <string name="sticker_count">%1$d total</string>
+    <string name="sticker_search_hint">Search sticker names</string>
+    <string name="sticker_name_hint">Sticker name</string>
+    <string name="sticker_name_required">Sticker name cannot be empty</string>
+    <string name="sticker_rename_save">Save</string>
+    <string name="sticker_rename_success">Sticker renamed</string>
+    <string name="sticker_delete_title">Delete sticker</string>
+    <string name="sticker_delete_message">Delete \"%1$s\"? The sticker will show as plain text in chat history.</string>
+    <string name="sticker_delete_success">Sticker deleted</string>
+    <string name="sticker_selected_count">%1$d selected</string>
+    <string name="sticker_select_all">Select all</string>
+    <string name="sticker_select_none">Deselect all</string>
+    <string name="sticker_batch_delete_action">Delete selected</string>
+    <string name="sticker_batch_delete_message">Delete the %1$d selected stickers? They will show as plain text in chat history.</string>
+    <string name="sticker_batch_delete_success">%1$d stickers deleted</string>
+    <string name="sticker_batch_delete_partial">%1$d deleted, %2$d failed</string>
+
+    <!-- Sticker picker in chat composer -->
+    <string name="sticker_picker_title">Stickers</string>
+    <string name="sticker_picker_manage">Manage</string>
+    <string name="sticker_picker_empty">No stickers yet. Tap Manage to import</string>
+    <string name="sticker_picker_no_match">No matching stickers</string>
+    <string name="chat_sticker_image">Sticker</string>
+</resources>

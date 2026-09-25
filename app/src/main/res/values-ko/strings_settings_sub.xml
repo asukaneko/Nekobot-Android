@@ -176,12 +176,12 @@
     <string name="webdav_backup_upload_title">백업 업로드</string>
     <string name="webdav_backup_upload_subtitle">로컬 설정을 패키징하여 WebDAV에 업로드</string>
     <string name="webdav_encryption_password_optional_override">암호화 비밀번호(선택, 설정 덮어쓰기)</string>
-    <string name="webdav_include_portraits">캐릭터 초상화 포함</string>
-    <string name="webdav_upload_portraits">초상화 이미지 파일도 함께 업로드</string>
+    <string name="webdav_include_portraits">캐릭터 초상화, 스티커, 표지 포함</string>
+    <string name="webdav_upload_portraits">초상화, 스티커, 표지 이미지 파일도 함께 업로드</string>
     <string name="webdav_upload_backup">백업 업로드</string>
     <string name="webdav_sync_pull_title">동기화 풀</string>
     <string name="webdav_sync_pull_subtitle">WebDAV에서 로컬로 설정 복원</string>
-    <string name="webdav_pull_portraits">초상화 이미지 파일도 함께 풀</string>
+    <string name="webdav_pull_portraits">초상화, 스티커, 표지 이미지 파일도 함께 가져오기</string>
     <string name="webdav_sync_pull_button">동기화 풀</string>
     <string name="webdav_sync_confirm_title">WebDAV에서 로컬 데이터 복원</string>
     <string name="webdav_sync_confirm_message">원격 백업이 현재 로컬 데이터베이스, 토큰 사용량 및 업적 기록을 대체합니다. 복원 중에는 임시 롤백 복사본을 유지합니다. 계속할까요?</string>

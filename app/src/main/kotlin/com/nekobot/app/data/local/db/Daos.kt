@@ -1049,3 +1049,34 @@ interface RoutingDecisionLogDao {
     @Query("DELETE FROM routing_decision_logs")
     suspend fun clear()
 }
+
+/** 本地自定义表情包 DAO。名称大小写不敏感查询由仓库层兜底。 */
+@Dao
+interface StickerDao {
+    @Query("SELECT * FROM local_stickers ORDER BY updated_at DESC, name ASC")
+    fun observeAll(): Flow<List<LocalStickerEntity>>
+
+    @Query("SELECT * FROM local_stickers ORDER BY updated_at DESC, name ASC")
+    suspend fun listAll(): List<LocalStickerEntity>
+
+    @Query("SELECT * FROM local_stickers WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): LocalStickerEntity?
+
+    @Query("SELECT * FROM local_stickers WHERE name = :name ORDER BY updated_at DESC")
+    suspend fun listByName(name: String): List<LocalStickerEntity>
+
+    @Query("SELECT COUNT(*) FROM local_stickers")
+    suspend fun count(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(sticker: LocalStickerEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(stickers: List<LocalStickerEntity>)
+
+    @Query("DELETE FROM local_stickers WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM local_stickers WHERE name = :name")
+    suspend fun deleteByName(name: String)
+}

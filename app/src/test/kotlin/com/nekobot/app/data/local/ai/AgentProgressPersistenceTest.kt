@@ -36,8 +36,10 @@ class AgentProgressPersistenceTest {
             persisted.steps.first().thinkingContent?.length
         )
         assertTrue(
-            persisted.steps[1].arguments?.get("preview").toString().length <=
-                AgentToolLimits.progressPreviewChars()
+            persisted.steps[1].arguments
+                .orEmpty()
+                .values
+                .sumOf { it.toString().length } <= AgentToolLimits.progressPreviewChars()
         )
         assertTrue(
             persisted.steps[1].fullResult.toString().length <= AgentToolLimits.progressPreviewChars()
@@ -223,6 +225,57 @@ class AgentProgressPersistenceTest {
         assertTrue(isAgentToolOutputTruncated(mapOf("truncated" to 1)))
         assertFalse(isAgentToolOutputTruncated(mapOf("truncated" to false)))
         assertFalse(isAgentToolOutputTruncated(mapOf("content" to "complete")))
+    }
+
+    @Test
+    fun structuredArgumentsKeepParameterNamesInsteadOfPreviewWrapper() {
+        // 结构化参数（新格式）必须原样保留参数名，详情弹窗才能列出「参数名 → 参数值」，
+        // 不能再被包成 {"preview": "..."}。
+        val card = ThinkingCard(
+            id = "card",
+            content = "done",
+            steps = listOf(
+                ThinkingStep(
+                    type = "tool",
+                    arguments = boundedAgentArguments(mapOf("name" to "生气猫猫", "limit" to 10))
+                )
+            ),
+            isAgent = true
+        )
+
+        val persisted = card.toPersistedProgressCard()
+        val arguments = persisted.steps.single().arguments.orEmpty()
+
+        assertFalse(arguments.containsKey("preview"))
+        assertEquals("生气猫猫", arguments["name"])
+        assertEquals("10", arguments["limit"])
+    }
+
+    @Test
+    fun boundedArgumentsRespectTotalBudgetAndEntryCap() {
+        val arguments = linkedMapOf<String, Any>(
+            "first" to "a".repeat(5_000),
+            "second" to "b".repeat(5_000),
+            "third" to "c".repeat(5_000)
+        )
+
+        val bounded = boundedAgentArguments(arguments, maxEntries = 2, maxTotalChars = 100)
+
+        assertEquals(2, bounded.size)
+        assertTrue(bounded.values.sumOf { it.toString().length } <= 100 + 2)
+    }
+
+    @Test
+    fun jsonStringArgumentsAreNormalizedForProgressCards() {
+        // 部分协议把 arguments 作为 JSON 字符串下发：规范化后才能显示在进度卡片上
+        val args = normalizeAgentToolArguments("""{"name": "生气猫猫", "limit": 3}""")
+
+        assertEquals(2, args.size)
+        assertEquals("生气猫猫", args["name"])
+        assertTrue(args["limit"].toString().startsWith("3"))
+        assertTrue(normalizeAgentToolArguments("").isEmpty())
+        assertTrue(normalizeAgentToolArguments("{not json").isEmpty())
+        assertTrue(normalizeAgentToolArguments(null).isEmpty())
     }
 
     @Test

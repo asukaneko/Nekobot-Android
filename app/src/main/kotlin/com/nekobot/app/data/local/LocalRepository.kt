@@ -104,6 +104,7 @@ import com.nekobot.app.data.local.db.LocalMessageFavoriteEntity
 import com.nekobot.app.data.local.db.LocalMessageVariantEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalSkillEntity
+import com.nekobot.app.data.local.db.LocalStickerEntity
 import com.nekobot.app.data.local.db.LocalTaskEntity
 import com.nekobot.app.data.local.db.LocalToolEntity
 import com.nekobot.app.data.local.db.LocalWorkflowEntity
@@ -167,6 +168,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -343,6 +345,7 @@ class LocalRepository(
     private val messageDao = db.messageDao()
     private val messageVariantDao = db.messageVariantDao()
     private val messageImageDao = db.messageImageDao()
+    private val stickerDao = db.stickerDao()
     private val agentRunDao = db.agentRunDao()
     private val agentToolMessageDao = db.agentToolMessageDao()
     private val characterDao = db.characterDao()
@@ -2520,6 +2523,99 @@ class LocalRepository(
         if (target.path.startsWith(root.path + File.separator)) {
             runCatching { target.delete() }
         }
+    }
+
+    // ==================== 本地自定义表情包 ====================
+
+    /** 观察全部表情包（按最近更新排序）；file_path 每次按当前设备目录解析，避免陈旧路径。 */
+    fun observeStickers(): Flow<List<LocalStickerEntity>> = stickerDao.observeAll().map { stickers ->
+        stickers.map { sticker ->
+            val file = appContext?.let { LocalStickerStorage.resolve(it.filesDir, sticker.fileName) }
+            if (file?.isFile == true) sticker.copy(filePath = LocalStickerStorage.toUri(file)) else sticker
+        }
+    }.flowOn(Dispatchers.IO)
+
+    suspend fun listStickers(): List<LocalStickerEntity> = withContext(Dispatchers.IO) {
+        stickerDao.listAll()
+    }
+
+    /** 按名称精确查找表情；未命中时回退大小写不敏感匹配。 */
+    suspend fun findStickerByName(name: String): LocalStickerEntity? = withContext(Dispatchers.IO) {
+        val normalized = StickerMarkers.sanitizeName(name)
+        if (normalized.isBlank()) return@withContext null
+        stickerDao.listByName(normalized).firstOrNull()
+            ?: stickerDao.listAll().firstOrNull { it.name.equals(normalized, ignoreCase = true) }
+    }
+
+    /**
+     * 批量导入表情图片：同名表情视为更新（旧图片文件同步删除）。
+     *
+     * @return 实际导入数量（名称为空或字节为空的条目会被跳过）。
+     */
+    suspend fun importStickers(items: List<StickerImport>): Int = withContext(Dispatchers.IO) {
+        val context = appContext ?: throw IllegalStateException("应用上下文未初始化，无法导入表情包")
+        var imported = 0
+        val now = nowIso()
+        items.forEach { item ->
+            val name = StickerMarkers.sanitizeName(item.name)
+            if (name.isBlank() || item.bytes.isEmpty()) return@forEach
+            val extension = LocalStickerStorage.extensionFor(item.mimeType, item.sourceName)
+            val file = LocalStickerStorage.write(context.filesDir, extension, item.bytes)
+                ?: return@forEach
+            stickerDao.listByName(name).forEach { existing ->
+                LocalStickerStorage.delete(context.filesDir, existing.fileName)
+                stickerDao.deleteById(existing.id)
+            }
+            stickerDao.upsert(
+                LocalStickerEntity(
+                    id = UUID.randomUUID().toString(),
+                    name = name,
+                    fileName = file.name,
+                    filePath = LocalStickerStorage.toUri(file),
+                    mimeType = item.mimeType ?: mimeForStickerExtension(extension),
+                    sizeBytes = file.length(),
+                    source = item.source,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+            imported++
+        }
+        imported
+    }
+
+    /** 重命名表情；名称冲突时保留当前图片。 */
+    suspend fun renameSticker(id: String, newName: String): Boolean = withContext(Dispatchers.IO) {
+        val sticker = stickerDao.getById(id) ?: return@withContext false
+        val sanitized = StickerMarkers.sanitizeName(newName)
+        if (sanitized.isBlank()) return@withContext false
+        if (sticker.name == sanitized) return@withContext true
+        val context = appContext
+        stickerDao.listByName(sanitized)
+            .filter { it.id != id }
+            .forEach { duplicate ->
+                if (context != null) {
+                    LocalStickerStorage.delete(context.filesDir, duplicate.fileName)
+                }
+                stickerDao.deleteById(duplicate.id)
+            }
+        stickerDao.upsert(sticker.copy(name = sanitized, updatedAt = nowIso()))
+        true
+    }
+
+    /** 删除表情及其图片文件。 */
+    suspend fun deleteSticker(id: String) = withContext(Dispatchers.IO) {
+        val sticker = stickerDao.getById(id) ?: return@withContext
+        appContext?.let { LocalStickerStorage.delete(it.filesDir, sticker.fileName) }
+        stickerDao.deleteById(id)
+    }
+
+    private fun mimeForStickerExtension(extension: String): String = when (extension) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "bmp" -> "image/bmp"
+        else -> "image/png"
     }
 
     /** 未完成的本地 Agent 运行；聊天页结合内存 Job 判断是否需要显示恢复入口。 */

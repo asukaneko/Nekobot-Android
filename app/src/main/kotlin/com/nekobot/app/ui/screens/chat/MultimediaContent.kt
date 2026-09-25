@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -118,7 +119,15 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** 多媒体内容段类型 */
-enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, LINK, HTML, FILE }
+enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, LINK, HTML, FILE, STICKER }
+
+/**
+ * 当前已导入表情包：名称 → 图片地址（file:// URI）。
+ *
+ * 由聊天页在顶层注入；[parseContentSegments] 用它把正文中的 `[名称]` 解析为表情段，
+ * 未命中时保持原文，绝不改写消息内容。
+ */
+val LocalStickerLookup = androidx.compose.runtime.staticCompositionLocalOf<Map<String, String>> { emptyMap() }
 
 /** 内容段：文本或多媒体 URL。HTML 内容（整段为 HTML 时）存于 [text]。 */
 data class ContentSegment(
@@ -197,6 +206,20 @@ internal fun isFullHtmlDocument(content: String): Boolean =
 private val FILE_REF_REGEX = Regex("""\[(?:File|文件):\s*([^\]]+)\]""")
 
 /**
+ * 表情标记正则：与 [com.nekobot.app.data.local.StickerMarkers] 的识别规则保持一致。
+ * 仅在名称能命中已导入表情时才产生表情段。
+ */
+private val STICKER_MARKER_REGEX = Regex(
+    """\[([^\[\]\n]{1,${com.nekobot.app.data.local.StickerMarkers.MAX_NAME_LENGTH}})\]"""
+)
+
+/** 该方括号标记是否属于文件引用等保留语义（不作为表情名匹配）。 */
+private fun isReservedStickerName(name: String): Boolean {
+    val trimmed = name.trim()
+    return trimmed.startsWith("File:", ignoreCase = true) || trimmed.startsWith("文件:")
+}
+
+/**
  * 根据 URL 扩展名判断内容段类型。
  *
  * 只有图片/视频/音频直接内联展示；其余网址（网页、txt、md 等）一律作为可点击链接，
@@ -219,8 +242,14 @@ private fun classifyUrl(url: String): SegmentType {
  * 检测 content 中的 URL，按扩展名分类，剩余文本作为 TEXT 段。
  * 只有当 content 本身是一个完整的 HTML 文档（以 `<html>` 开头）且没有多媒体 URL 时，
  * 才把整个内容作为 HTML 段交给 WebView；夹带零散 HTML 标签的普通回复走 TEXT 段。
+ *
+ * [stickerLookup] 非空时，正文中的 `[名称]` 若能命中已导入表情则解析为 STICKER 段；
+ * 未命中（含 [File: ...] 等保留标记）保持原文。
  */
-fun parseContentSegments(content: String): List<ContentSegment> {
+fun parseContentSegments(
+    content: String,
+    stickerLookup: ((String) -> String?)? = null
+): List<ContentSegment> {
     if (content.isBlank()) return listOf(ContentSegment(type = SegmentType.TEXT, text = content))
 
     // 优先检测 [File: filename] 或 [文件: filename] 引用
@@ -233,8 +262,8 @@ fun parseContentSegments(content: String): List<ContentSegment> {
             if (m.range.first > lastIndex) {
                 val text = content.substring(lastIndex, m.range.first)
                 if (text.isNotBlank()) {
-                    // 递归解析文本中的 URL 等其他多媒体
-                    result.addAll(parseContentSegments(text))
+                    // 递归解析文本中的表情与 URL 等其他多媒体
+                    result.addAll(parseContentSegments(text, stickerLookup))
                 }
             }
             val fileName = m.groupValues[1].trim()
@@ -245,10 +274,46 @@ fun parseContentSegments(content: String): List<ContentSegment> {
         if (lastIndex < content.length) {
             val text = content.substring(lastIndex)
             if (text.isNotBlank()) {
-                result.addAll(parseContentSegments(text))
+                result.addAll(parseContentSegments(text, stickerLookup))
             }
         }
         return result
+    }
+
+    // 表情标记：仅"名称命中已导入表情"的方括号才转成表情段，未命中保持原文。
+    if (stickerLookup != null && '[' in content) {
+        val stickerMatches = STICKER_MARKER_REGEX.findAll(content).filter { match ->
+            val name = match.groupValues[1].trim()
+            name.isNotEmpty() && !isReservedStickerName(name) && stickerLookup(name) != null
+        }.toList()
+        if (stickerMatches.isNotEmpty()) {
+            val result = mutableListOf<ContentSegment>()
+            var lastIndex = 0
+            for (match in stickerMatches) {
+                if (match.range.first > lastIndex) {
+                    val text = content.substring(lastIndex, match.range.first)
+                    if (text.isNotBlank()) {
+                        result.addAll(parseContentSegments(text, stickerLookup))
+                    }
+                }
+                val name = match.groupValues[1].trim()
+                result.add(
+                    ContentSegment(
+                        type = SegmentType.STICKER,
+                        text = name,
+                        url = stickerLookup(name).orEmpty()
+                    )
+                )
+                lastIndex = match.range.last + 1
+            }
+            if (lastIndex < content.length) {
+                val text = content.substring(lastIndex)
+                if (text.isNotBlank()) {
+                    result.addAll(parseContentSegments(text, stickerLookup))
+                }
+            }
+            return result
+        }
     }
 
     val hasHtmlTag = isFullHtmlDocument(content)
@@ -322,6 +387,43 @@ private fun ImageRendererModel(model: Any, modifier: Modifier = Modifier) {
                 AsyncImage(
                     model = model,
                     contentDescription = imageDesc,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 表情渲染器：按原图比例内联显示，限制最大边长，点击全屏查看。
+ *
+ * 表情是"贴在气泡里的图"，不应像普通图片附件一样占满整宽，因此不做 FillWidth。
+ */
+@Composable
+private fun StickerRenderer(url: String, modifier: Modifier = Modifier) {
+    var fullscreen by remember { mutableStateOf(false) }
+    val desc = stringResource(R.string.chat_sticker_image)
+    AsyncImage(
+        model = url,
+        contentDescription = desc,
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+            .sizeIn(maxWidth = 140.dp, maxHeight = 140.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { fullscreen = true }
+    )
+    if (fullscreen) {
+        Dialog(onDismissRequest = { fullscreen = false }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { fullscreen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = desc,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -903,6 +1005,7 @@ fun RenderContentSegments(
                 )
                 SegmentType.HTML -> HtmlRenderer(html = segment.text, url = segment.url)
                 SegmentType.FILE -> FileCardRenderer(fileName = segment.fileName, sessionId = sessionId)
+                SegmentType.STICKER -> StickerRenderer(url = segment.url)
             }
             if (idx != segments.lastIndex) {
                 // 文件卡片自带圆角与描边，相邻时留出明显的间隔，否则多文件会糊成一整块。
@@ -910,6 +1013,7 @@ fun RenderContentSegments(
                 val gap = when {
                     segment.type == SegmentType.FILE && nextType == SegmentType.FILE -> 10.dp
                     segment.type == SegmentType.FILE || nextType == SegmentType.FILE -> 6.dp
+                    segment.type == SegmentType.STICKER || nextType == SegmentType.STICKER -> 6.dp
                     else -> 4.dp
                 }
                 Spacer(Modifier.height(gap))
@@ -1121,9 +1225,10 @@ internal fun isPlainTextWorkspaceFile(fileName: String, mimeType: String = ""): 
         (mimeType.equals("text/plain", ignoreCase = true) ||
             fileExt(fileName) == "txt")
 
-/** 用户图片附件需要脱离文字气泡单独渲染。 */
+/** 用户图片与表情包需要脱离文字气泡单独渲染。 */
 internal fun ContentSegment.isImageContent(): Boolean =
     type == SegmentType.IMAGE ||
+        type == SegmentType.STICKER ||
         (type == SegmentType.FILE && fileExt(fileName) in IMAGE_EXTS)
 
 /** 保持原始顺序，将用户图文消息拆成连续的图片组与非图片组。 */

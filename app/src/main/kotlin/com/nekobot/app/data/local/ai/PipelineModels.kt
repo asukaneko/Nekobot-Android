@@ -79,6 +79,8 @@ class PipelineContext(
     var toolTrace: List<Map<String, Any>> = emptyList()
     /** 本轮 Agent 工具实际发送到聊天中的工作区文件引用。 */
     val sentFileReferences: MutableList<String> = mutableListOf()
+    /** 本轮 Agent 通过 send_sticker 发送的表情名称（最终以 `[名称]` 写入回复正文）。 */
+    val sentStickerNames: MutableList<String> = mutableListOf()
     /** 连续错误计数 */
     var consecutiveErrors: Int = 0
     /** token 用量 */

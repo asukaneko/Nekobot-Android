@@ -223,13 +223,9 @@ internal class LocalAgentProgressReporter(
                 name = toolName,
                 status = "running",
                 detail = argumentPreview,
-                // 进度卡是展示状态，不承载模型续聊数据；完整参数仍保留在 tool_call_history。
-                arguments = mapOf(
-                    "preview" to boundedAgentValuePreview(
-                        arguments,
-                        AgentToolLimits.progressPreviewChars()
-                    )
-                )
+                // 进度卡只做展示：参数按「参数名 → 参数值」结构化留档（逐项限长），
+                // 完整参数仍保留在 tool_call_history，模型续聊不受影响。
+                arguments = boundedAgentArguments(arguments).takeIf { it.isNotEmpty() }
             )
         )
         emit(progressText(R.string.agent_progress_tool_call, "调用工具: %1\$s", toolName))

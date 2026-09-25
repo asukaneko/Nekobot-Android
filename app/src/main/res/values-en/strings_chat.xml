@@ -469,6 +469,28 @@
     <string name="toolset_cat_linux">Linux sandbox</string>
     <string name="toolset_cat_workspace">Workspace</string>
     <string name="toolset_cat_image">Images</string>
+    <string name="toolset_cat_sticker">Stickers</string>
+
+    <!-- Quick action bar below the composer -->
+    <string name="chat_quick_bar_edit">Edit quick actions</string>
+    <string name="chat_quick_bar_collapse">Collapse quick actions</string>
+    <string name="chat_quick_bar_expand">Expand quick actions</string>
+    <string name="chat_quick_bar_editor_title">Edit quick actions</string>
+    <string name="chat_quick_bar_editor_hint">Drag the handle to reorder; you can also remove or add buttons. Tap Reset to restore defaults.</string>
+    <string name="chat_quick_bar_section_shown">Shown</string>
+    <string name="chat_quick_bar_section_available">Available</string>
+    <string name="chat_quick_bar_all_added">All buttons added</string>
+    <string name="chat_quick_bar_reset_default">Reset</string>
+    <string name="chat_quick_bar_drag">Drag to reorder</string>
+    <string name="chat_quick_bar_remove">Remove</string>
+    <string name="chat_quick_bar_empty">Toolbar is empty. Use the button on the right to add.</string>
+    <string name="chat_quick_action_image">Image</string>
+    <string name="chat_quick_action_upload">Upload</string>
+    <string name="chat_quick_action_search">Search</string>
+    <string name="chat_quick_action_context">Context</string>
+    <string name="chat_quick_action_compress">Compress</string>
+    <string name="chat_quick_action_clear">Clear</string>
+    <string name="chat_quick_action_latest">Latest</string>
     <string name="toolset_cat_memory">Memory</string>
     <string name="toolset_cat_task">Tasks &amp; questions</string>
     <string name="toolset_cat_plugin">Plugins &amp; skills</string>

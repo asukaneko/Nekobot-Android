@@ -475,6 +475,28 @@
     <string name="toolset_cat_linux">Linux 沙盒</string>
     <string name="toolset_cat_workspace">工作区</string>
     <string name="toolset_cat_image">图片</string>
+    <string name="toolset_cat_sticker">表情包</string>
+
+    <!-- 输入框下方的快捷工具栏 -->
+    <string name="chat_quick_bar_edit">编辑快捷工具栏</string>
+    <string name="chat_quick_bar_collapse">收起快捷工具栏</string>
+    <string name="chat_quick_bar_expand">展开快捷工具栏</string>
+    <string name="chat_quick_bar_editor_title">编辑快捷工具栏</string>
+    <string name="chat_quick_bar_editor_hint">拖动右侧手柄调整顺序，也可移除或添加按钮；「恢复默认」还原默认配置。</string>
+    <string name="chat_quick_bar_section_shown">已显示</string>
+    <string name="chat_quick_bar_section_available">可添加</string>
+    <string name="chat_quick_bar_all_added">已全部添加</string>
+    <string name="chat_quick_bar_reset_default">恢复默认</string>
+    <string name="chat_quick_bar_drag">拖动调整顺序</string>
+    <string name="chat_quick_bar_remove">移除</string>
+    <string name="chat_quick_bar_empty">工具栏已清空，点击右侧按钮添加</string>
+    <string name="chat_quick_action_image">图片</string>
+    <string name="chat_quick_action_upload">上传工作区</string>
+    <string name="chat_quick_action_search">搜索</string>
+    <string name="chat_quick_action_context">上下文</string>
+    <string name="chat_quick_action_compress">压缩</string>
+    <string name="chat_quick_action_clear">清空</string>
+    <string name="chat_quick_action_latest">最新</string>
     <string name="toolset_cat_memory">记忆</string>
     <string name="toolset_cat_task">任务与提问</string>
     <string name="toolset_cat_plugin">插件与技能</string>

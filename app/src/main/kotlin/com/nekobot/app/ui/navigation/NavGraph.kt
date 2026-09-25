@@ -72,6 +72,7 @@ import com.nekobot.app.ui.screens.settings.DataPortabilityScreen
 import com.nekobot.app.ui.screens.settings.DbProfileScreen
 import com.nekobot.app.ui.screens.settings.DiagnosticCenterScreen
 import com.nekobot.app.ui.screens.settings.FeatureSwitchesScreen
+import com.nekobot.app.ui.screens.stickers.StickerStoreScreen
 import com.nekobot.app.ui.screens.settings.AbTestSettingsScreen
 import com.nekobot.app.ui.screens.settings.AgentSettingsScreen
 import com.nekobot.app.ui.screens.settings.BrowserSettingsScreen
@@ -473,6 +474,7 @@ fun NekobotNavGraph() {
                     onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) },
                     onOpenStoryGraph = { id -> navController.navigate(Routes.storyGraph(id)) },
                     onOpenWenku8Login = { navController.navigate(Routes.WENKU_LOGIN) },
+                    onOpenStickers = { navController.navigate(Routes.STICKERS) },
                     onJumpToLatest = {
                         val route = Routes.chat(sessionId)
                         navController.navigate(route) {
@@ -658,6 +660,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.DATA_PORTABILITY) {
                 DataPortabilityScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.STICKERS) {
+                StickerStoreScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.CONFIG_TRANSFER) {
                 ConfigTransferScreen(onBack = { navController.popBackStack() })

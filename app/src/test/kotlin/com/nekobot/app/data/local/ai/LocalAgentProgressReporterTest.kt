@@ -92,10 +92,10 @@ class LocalAgentProgressReporterTest {
         )
 
         val toolStep = updates.last().steps.single { it.type == "tool" }
-        assertTrue(
-            toolStep.arguments?.get("preview").toString().length <=
-                AgentToolLimits.progressPreviewChars()
-        )
+        // 结构化参数：保留参数名，值按上限截断，且不再出现 preview 包裹层
+        val arguments = toolStep.arguments.orEmpty()
+        assertEquals("path", arguments.keys.singleOrNull())
+        assertTrue(arguments["path"].toString().length <= AgentToolLimits.progressPreviewChars())
         assertTrue(toolStep.fullResult.toString().length <= AgentToolLimits.progressPreviewChars())
         assertTrue(toolStep.resultTruncated == true)
     }

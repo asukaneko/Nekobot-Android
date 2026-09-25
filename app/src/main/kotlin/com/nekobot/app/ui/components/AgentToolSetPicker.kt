@@ -284,6 +284,7 @@ internal fun toolsetCategoryName(categoryId: String): String = when (categoryId)
     "linux" -> stringResource(R.string.toolset_cat_linux)
     "workspace" -> stringResource(R.string.toolset_cat_workspace)
     "image" -> stringResource(R.string.toolset_cat_image)
+    "sticker" -> stringResource(R.string.toolset_cat_sticker)
     "memory" -> stringResource(R.string.toolset_cat_memory)
     "task" -> stringResource(R.string.toolset_cat_task)
     "plugin" -> stringResource(R.string.toolset_cat_plugin)
@@ -412,6 +413,9 @@ internal fun toolNameResId(id: String): Int = when (id) {
     "subagent" -> R.string.tool_name_subagent
     "subagent_list" -> R.string.tool_name_subagent_list
     "subagent_get" -> R.string.tool_name_subagent_get
+    "list_stickers" -> R.string.tool_name_list_stickers
+    "send_sticker" -> R.string.tool_name_send_sticker
+    "view_sticker" -> R.string.tool_name_view_sticker
     else -> 0
 }
 
@@ -489,6 +493,9 @@ internal fun toolDescResId(id: String): Int = when (id) {
     "skill_view" -> R.string.tool_desc_skill_view
     "skill_read" -> R.string.tool_desc_skill_read
     "skill_get_info" -> R.string.tool_desc_skill_get_info
+    "list_stickers" -> R.string.tool_desc_list_stickers
+    "send_sticker" -> R.string.tool_desc_send_sticker
+    "view_sticker" -> R.string.tool_desc_view_sticker
     else -> 0
 }
 

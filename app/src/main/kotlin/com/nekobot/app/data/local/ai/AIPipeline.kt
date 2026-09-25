@@ -266,8 +266,19 @@ class AIPipeline {
         }
 
         // 图片视觉识别：调用 vision 模型获取描述，注入到用户消息
-        val sendImagesDirectly =
-            ctx.imageUrls.isNotEmpty() && callbacks.supportsDirectImageInput(ctx)
+        val directImageInput = callbacks.supportsDirectImageInput(ctx)
+        if (directImageInput) {
+            // 用户消息里引用了表情包（[名称]）时，把表情原图一并附加，让模型真正看到表情画面
+            val stickerImages = resolveUserStickerImages(userContent, ctx.imageUrls)
+            if (stickerImages.isNotEmpty()) {
+                ctx.imageUrls.addAll(stickerImages)
+                com.nekobot.app.data.local.LocalLogger.i(
+                    TAG,
+                    "用户表情包已附加原图 | 数量=${stickerImages.size}"
+                )
+            }
+        }
+        val sendImagesDirectly = ctx.imageUrls.isNotEmpty() && directImageInput
         if (sendImagesDirectly) {
             ctx.metadata["direct_image_input"] = true
             com.nekobot.app.data.local.LocalLogger.i(
@@ -756,12 +767,8 @@ class AIPipeline {
         // 工具执行器
         val toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any> = { toolCall, thinking, iteration, messages ->
             val name = (toolCall["name"] as? String) ?: ""
-            @Suppress("UNCHECKED_CAST")
-            var args = (toolCall["arguments"] as? Map<String, Any>) ?: emptyMap()
-            // arguments 可能是 JSON 字符串
-            if (args.isEmpty() && toolCall["arguments"] is String) {
-                args = parseJsonArgs(toolCall["arguments"] as String)
-            }
+            // arguments 可能是 Map，也可能是 JSON 字符串（部分协议原样下发）
+            val args = normalizeAgentToolArguments(toolCall["arguments"])
 
             val result = callbacks.executeTool(name, args, ctx.toolContext)
 
@@ -793,8 +800,8 @@ class AIPipeline {
             },
             onToolStart = { toolCall, thinking, _, _ ->
                 val name = (toolCall["name"] as? String) ?: ""
-                @Suppress("UNCHECKED_CAST")
-                val args = (toolCall["arguments"] as? Map<String, Any>) ?: emptyMap()
+                // 与工具执行共用同一份参数规范化：JSON 字符串也要能显示在进度卡片上
+                val args = normalizeAgentToolArguments(toolCall["arguments"])
                 progress.onToolStart(ctx, name, args, thinking)
                 callbacks.markAgentToolRunning(ctx, name)
             },
@@ -803,6 +810,11 @@ class AIPipeline {
                 progress.onToolDone(ctx, name, result, thinking)
                 // 处理特殊工具结果
                 (result["_send_message"] as? String)?.let { progress.onSendMessage(ctx, it) }
+                // 表情包：记录名称，结果组装阶段写入 `[名称]` 由聊天 UI 渲染原图
+                (result["_sticker_name"] as? String)
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { ctx.sentStickerNames += it }
                 val filePath = result["_file_path"] as? String
                 val fileName = result["_file_name"] as? String
                 if (filePath != null && fileName != null) {
@@ -1002,6 +1014,8 @@ class AIPipeline {
         // workspace_send_file/download_file 只返回文件元数据，必须将引用写入最终消息。
         // 这一步放在流式/错误/普通消息分支之前，确保所有收尾路径都不会漏掉文件卡片。
         ctx.finalContent = appendAgentFileReferences(ctx.finalContent, ctx.sentFileReferences)
+        // send_sticker 同理：把表情 `[名称]` 追加到正文，聊天界面据此渲染表情原图。
+        ctx.finalContent = appendAgentStickerReferences(ctx.finalContent, ctx.sentStickerNames)
 
         // 流式消息处理
         if (ctx.metadata["streamed"] == true && ctx.streamedMessage != null) {
@@ -1236,17 +1250,6 @@ class AIPipeline {
         val docExt = setOf(".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt")
         val ext = if ("." in attName) "." + attName.substringAfterLast(".").lowercase() else ""
         return ext in docExt
-    }
-
-    /** 解析 JSON 字符串参数 */
-    private fun parseJsonArgs(argsStr: String): Map<String, Any> {
-        if (argsStr.isBlank()) return emptyMap()
-        return try {
-            @Suppress("UNCHECKED_CAST")
-            com.google.gson.Gson().fromJson(argsStr, Map::class.java) as? Map<String, Any> ?: emptyMap()
-        } catch (e: Exception) {
-            emptyMap()
-        }
     }
 }
 

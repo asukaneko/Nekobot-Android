@@ -2488,12 +2488,13 @@ private fun MessageBubble(
             .filter { it.isNotEmpty() }
             .let { if (it.isEmpty() && !isStreamingPlaceholder) listOf(emptyMessageParen) else it }
     }
-    // 解析每段的多媒体内容段
-    val parsedSegments = remember(segments, useSafePlainText) {
+    // 解析每段的多媒体内容段（表情包：命中已导入名称时渲染原图）
+    val stickerLookup = LocalStickerLookup.current
+    val parsedSegments = remember(segments, useSafePlainText, stickerLookup) {
         if (useSafePlainText) {
             segments.map { listOf(ContentSegment(type = SegmentType.TEXT, text = it)) }
         } else {
-            segments.map { parseContentSegments(it) }
+            segments.map { parseContentSegments(it, stickerLookup::get) }
         }
     }
     val hasUserImage = isUser && parsedSegments.any { content ->
@@ -2775,10 +2776,18 @@ private fun MessageBubble(
                             ) {
                                 groupUserMessageContent(contentSegments).forEach { group ->
                                     if (group.firstOrNull()?.isImageContent() == true) {
+                                        // 只含表情的组按内容宽度右对齐（贴在右侧）；含真实图片的组仍占满整宽。
+                                        val groupHasPhoto = group.any { segment ->
+                                            segment.type != SegmentType.STICKER && segment.isImageContent()
+                                        }
                                         RenderContentSegments(
                                             segments = group,
                                             textColor = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = if (groupHasPhoto) {
+                                                Modifier.fillMaxWidth()
+                                            } else {
+                                                Modifier.widthIn(max = 200.dp)
+                                            },
                                             sessionId = sessionId,
                                             chatMode = true,
                                             processParens = !isUser,
@@ -4222,14 +4231,25 @@ private fun StepDetailDialog(
         ?.takeLast(AgentToolLimits.PROGRESS_REASONING_CHARS)
         ?.stripEmoji()
         ?.takeIf(String::isNotBlank)
-    // 参数优先整理成「参数名 → 参数值」列表；整理不出来（如空预览）时回退原始 JSON
+    // 参数优先整理成「参数名 → 参数值」列表；整理不出来（空参数 / 旧式 preview 包裹）时不再
+    // 回退原始 JSON，避免详情弹窗里出现 {"preview": "..."} 这种对用户没有意义的内部结构。
     val argumentRows = remember(step.arguments) { toolArgumentRows(step.arguments) }
     val argumentsJson = if (argumentRows.isEmpty()) {
-        step.arguments?.let { formatJsonForDisplay(it) }
+        step.arguments
+            ?.takeIf { arguments ->
+                arguments.isNotEmpty() &&
+                    !(arguments.size == 1 && arguments.keys.firstOrNull() == "preview")
+            }
+            ?.let { formatJsonForDisplay(it) }
     } else {
         null
     }
-    val fullResultJson = step.fullResult?.let { formatJsonForDisplay(it) }
+    // 结果预览是纯文本（本地 Agent 写入的扁平预览）时直接展示，避免被 JSON 引号与转义包裹
+    val fullResultJson = when (val result = step.fullResult) {
+        null -> null
+        is String -> result.takeIf { it.isNotBlank() }
+        else -> formatJsonForDisplay(result)
+    }
     val toolOutputWasTruncated = step.resultTruncated == true ||
         fullResultIndicatesTruncation(step.fullResult)
     val durationLabel = step.durationMs?.let { formatToolDuration(it) }

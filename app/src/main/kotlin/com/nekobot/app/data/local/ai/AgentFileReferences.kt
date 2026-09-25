@@ -1,5 +1,7 @@
 package com.nekobot.app.data.local.ai
 
+import com.nekobot.app.data.local.StickerMarkers
+
 /**
  * 将 Agent 工具发送的文件补充到最终助手消息中。
  *
@@ -32,4 +34,26 @@ internal fun appendAgentFileReferences(
 
     val markers = missingReferences.joinToString("\n") { reference -> "[File: $reference]" }
     return if (content.isBlank()) markers else "$content\n\n$markers"
+}
+
+/**
+ * 将 Agent 通过 send_sticker 发送的表情名称补进最终助手消息。
+ *
+ * 聊天界面把 `[名称]` 渲染成表情原图；模型已经写出同名标记时不重复追加。
+ */
+internal fun appendAgentStickerReferences(
+    content: String,
+    names: Iterable<String>
+): String {
+    val normalized = names
+        .map { it.trim() }
+        .filter { it.isNotBlank() && '[' !in it && ']' !in it }
+        .distinct()
+    if (normalized.isEmpty()) return content
+
+    val missing = normalized.filterNot { name -> StickerMarkers.containsReference(content, name) }
+    if (missing.isEmpty()) return content
+
+    val markers = missing.joinToString(" ") { name -> "[$name]" }
+    return if (content.isBlank()) markers else "$content\n$markers"
 }

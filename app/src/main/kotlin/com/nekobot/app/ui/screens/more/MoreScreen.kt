@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
@@ -156,6 +157,15 @@ fun MoreScreen(
                     title = stringResource(R.string.more_extensions),
                     desc = if (appMode != AppMode.LOCAL) stringResource(R.string.more_extensions_desc_server) else stringResource(R.string.more_extensions_desc_local),
                     onClick = { onNavigate("extensions") }
+                )
+                Spacer(Modifier.height(4.dp))
+                // 自定义表情包：导入图片后聊天中 `[名称]` 直接显示原图，AI 也能发送
+                MoreRow(
+                    icon = Icons.Filled.EmojiEmotions,
+                    tint = accentWarning(),
+                    title = stringResource(R.string.more_stickers),
+                    desc = stringResource(R.string.more_stickers_desc),
+                    onClick = { onNavigate("stickers") }
                 )
             }
 

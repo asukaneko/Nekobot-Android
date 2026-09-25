@@ -74,6 +74,8 @@ enum class PortableDataCategory(
     CREDENTIALS("credentials", listOf("local_api_keys", "local_oauth_accounts")),
     MEDIA("media"),
     WORKSPACE("workspace"),
+    /** 自定义表情包：名称表 + stickers 目录中的图片文件。 */
+    STICKERS("stickers", listOf("local_stickers")),
     GLOBAL_MEMORY("global_memory");
 
     companion object {
@@ -284,7 +286,8 @@ class PortableDataArchiveManager(private val context: Context) {
                         raw = raw,
                         preserveExistingSecrets = PortableDataCategory.CREDENTIALS !in selected,
                         rewriteMediaReferences = PortableDataCategory.MEDIA in selected ||
-                            PortableDataCategory.WORLD_BOOKS in selected
+                            PortableDataCategory.WORLD_BOOKS in selected ||
+                            PortableDataCategory.STICKERS in selected
                     )
                 }
                 if (PortableDataCategory.CREDENTIALS in selected) {
@@ -445,6 +448,7 @@ class PortableDataArchiveManager(private val context: Context) {
             "local_world_books" -> column == "cover_url"
             "local_message_images" -> column in setOf("file_path", "reference_image_path")
             "local_messages" -> column == "audio_url"
+            "local_stickers" -> column == "file_path"
             else -> false
         }
         if (!supported || value.isJsonNull || !value.isJsonPrimitive) return value
@@ -467,6 +471,10 @@ class PortableDataArchiveManager(private val context: Context) {
             "/files/tts/" in normalized -> {
                 val relative = normalized.substringAfter("/files/tts/")
                 resolvePortablePath(File(appContext.filesDir, "tts"), relative)
+            }
+            "/files/stickers/" in normalized -> {
+                val relative = normalized.substringAfter("/files/stickers/")
+                resolvePortablePath(File(appContext.filesDir, "stickers"), relative)
             }
             else -> null
         } ?: return value
@@ -659,6 +667,7 @@ class PortableDataArchiveManager(private val context: Context) {
         )
         PortableDataCategory.WORKSPACE -> listOf("workspace" to File(appContext.filesDir, "workspace"))
         PortableDataCategory.EXTENSIONS -> listOf("skills" to File(appContext.filesDir, "skills"))
+        PortableDataCategory.STICKERS -> listOf("stickers" to File(appContext.filesDir, "stickers"))
         else -> emptyList()
     }
 

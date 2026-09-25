@@ -41,9 +41,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeDocumentEntity::class,
         LocalKnowledgeChunkEntity::class,
         RoutingDecisionLogEntity::class,
-        LocalMessageVariantEntity::class
+        LocalMessageVariantEntity::class,
+        LocalStickerEntity::class
     ],
-    version = 44,
+    version = 45,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -73,6 +74,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun messageFavoriteDao(): MessageFavoriteDao
     abstract fun knowledgeDao(): KnowledgeDao
     abstract fun routingDecisionLogDao(): RoutingDecisionLogDao
+    abstract fun stickerDao(): StickerDao
 
     /**
      * 当前 db 文件名（含 .db 扩展），用于派生 SharedPreferences 文件名（如 token 用量隔离）。
@@ -912,6 +914,38 @@ abstract class NekobotDatabase : RoomDatabase() {
         }
 
         /**
+         * v44 → v45：新增 local_stickers（本地自定义表情包）。
+         *
+         * 名称 + 图片文件：名称即聊天正文 `[名称]` 的匹配键，文件存于私有 stickers 目录。
+         */
+        val MIGRATION_44_45 = object : Migration(44, 45) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_stickers (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        file_name TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        mime_type TEXT,
+                        size_bytes INTEGER NOT NULL DEFAULT 0,
+                        source TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_stickers_name ON local_stickers(name)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_stickers_updated_at " +
+                        "ON local_stickers(updated_at)"
+                )
+            }
+        }
+
+        /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
          */
@@ -926,7 +960,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
             MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
             MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
-            MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44
+            MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45
         )
 
         fun get(context: Context): NekobotDatabase =

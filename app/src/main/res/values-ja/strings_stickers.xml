@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- カスタムスタンプ：管理画面 -->
+    <string name="sticker_manage_title">スタンプ</string>
+    <string name="sticker_manage_hint">インポートした画像はチャット内の [名前] にマッチし、データバックアップにも含まれます。長押しで複数選択できます。</string>
+    <string name="sticker_import_images">画像をインポート</string>
+    <string name="sticker_import_zip">ZIP をインポート</string>
+    <string name="sticker_import_zip_empty">ZIP に使用可能なスタンプ画像がありません</string>
+    <string name="sticker_import_duplicate">選択したファイルは既にインポート一覧にあります</string>
+    <string name="sticker_import_review_title">%1$d 件のスタンプをインポート</string>
+    <string name="sticker_import_review_hint">名前はチャット内の [名前] 参照に使われ、個別に編集できます。同名は古い画像を上書きします。</string>
+    <string name="sticker_import_confirm">インポート</string>
+    <string name="sticker_import_result">%1$d 件のスタンプをインポートしました</string>
+    <string name="sticker_import_result_with_skipped">%1$d 件をインポート、%2$d 件の無効ファイルをスキップ</string>
+    <string name="sticker_import_failed">インポートに失敗しました。ファイルを確認してください</string>
+    <string name="sticker_empty">スタンプがまだありません。画像をインポートしてください</string>
+    <string name="sticker_count">全 %1$d 件</string>
+    <string name="sticker_search_hint">スタンプ名を検索</string>
+    <string name="sticker_name_hint">スタンプ名</string>
+    <string name="sticker_name_required">スタンプ名を入力してください</string>
+    <string name="sticker_rename_save">保存</string>
+    <string name="sticker_rename_success">スタンプ名を更新しました</string>
+    <string name="sticker_delete_title">スタンプを削除</string>
+    <string name="sticker_delete_message">「%1$s」を削除しますか？チャット履歴ではテキスト表示に戻ります。</string>
+    <string name="sticker_delete_success">スタンプを削除しました</string>
+    <string name="sticker_selected_count">%1$d 件選択中</string>
+    <string name="sticker_select_all">すべて選択</string>
+    <string name="sticker_select_none">すべて解除</string>
+    <string name="sticker_batch_delete_action">一括削除</string>
+    <string name="sticker_batch_delete_message">選択した %1$d 件のスタンプを削除しますか？チャット履歴ではテキスト表示に戻ります。</string>
+    <string name="sticker_batch_delete_success">%1$d 件のスタンプを削除しました</string>
+    <string name="sticker_batch_delete_partial">%1$d 件削除、%2$d 件失敗</string>
+
+    <!-- チャット入力欄のスタンプ選択パネル -->
+    <string name="sticker_picker_title">スタンプ</string>
+    <string name="sticker_picker_manage">管理</string>
+    <string name="sticker_picker_empty">スタンプがありません。「管理」からインポートしてください</string>
+    <string name="sticker_picker_no_match">一致するスタンプがありません</string>
+    <string name="chat_sticker_image">スタンプ</string>
+</resources>

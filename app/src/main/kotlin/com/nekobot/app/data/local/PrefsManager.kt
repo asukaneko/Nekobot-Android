@@ -1138,6 +1138,32 @@ class PrefsManager(context: Context) {
         }.apply()
     }
 
+    // ==================== 聊天快捷工具栏 ====================
+
+    /**
+     * 读取聊天快捷工具栏按钮顺序；null 表示从未自定义（使用默认按钮）。
+     * 空数组是合法配置（用户清空了整排按钮），与 null 区分。
+     */
+    fun getChatQuickActions(): List<String>? {
+        val raw = prefs.getString(KEY_CHAT_QUICK_ACTIONS, null) ?: return null
+        return runCatching {
+            val type = object : TypeToken<List<String>>() {}.type
+            Gson().fromJson<List<String>>(raw, type)
+        }.getOrNull()
+    }
+
+    /** 保存聊天快捷工具栏按钮顺序（空列表会写入空数组，与「未设置」区分）。 */
+    fun setChatQuickActions(ids: List<String>) {
+        prefs.edit().putString(KEY_CHAT_QUICK_ACTIONS, Gson().toJson(ids)).apply()
+    }
+
+    /** 聊天快捷工具栏是否处于折叠状态。 */
+    var chatQuickActionsCollapsed: Boolean
+        get() = prefs.getBoolean(KEY_CHAT_QUICK_ACTIONS_COLLAPSED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_CHAT_QUICK_ACTIONS_COLLAPSED, value).apply()
+        }
+
     /** 获取对应会话类型的全局思考强度；Agent 与角色会话互不影响。 */
     fun getReasoningEffort(isAgentSession: Boolean): com.nekobot.app.data.model.ReasoningEffort =
         com.nekobot.app.data.model.ReasoningEffort.fromValue(
@@ -1209,6 +1235,9 @@ class PrefsManager(context: Context) {
         private const val KEY_DEFAULT_SESSION_TOOLSET_TOUCHED = "default_session_toolset_touched"
         /** 用户自定义的工具集模式（JSON 数组）。 */
         private const val KEY_CUSTOM_TOOLSET_MODES = "custom_toolset_modes"
+        /** 聊天快捷工具栏按钮顺序（JSON 数组）与折叠状态。 */
+        private const val KEY_CHAT_QUICK_ACTIONS = "chat_quick_actions"
+        private const val KEY_CHAT_QUICK_ACTIONS_COLLAPSED = "chat_quick_actions_collapsed"
         private const val KEY_AGENT_TOOL_OUTPUT_CHARS = "agent_tool_output_chars"
         private const val KEY_AGENT_PROGRESS_PREVIEW_CHARS = "agent_progress_preview_chars"
         private const val KEY_SUBAGENT_ENABLED = "subagent_enabled"

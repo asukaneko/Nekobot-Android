@@ -116,6 +116,9 @@
     <string name="tool_name_subagent_kill">Stop background subagent</string>
     <string name="tool_name_subagent_list">Subagent task list</string>
     <string name="tool_name_subagent_get">Query subagent result</string>
+    <string name="tool_name_list_stickers">List stickers</string>
+    <string name="tool_name_send_sticker">Send sticker</string>
+    <string name="tool_name_view_sticker">View sticker image</string>
 
     <!-- ==================== Tool descriptions (Tools settings page) ==================== -->
     <string name="tool_desc_get_weather">Get current weather and forecast for a city.</string>
@@ -185,6 +188,9 @@
     <string name="tool_desc_skill_view">View the file structure and source of a skill.</string>
     <string name="tool_desc_skill_read">Read a text file inside a skill. Read SKILL.md before running the skill.</string>
     <string name="tool_desc_skill_get_info">Get the local skills storage rules and statistics.</string>
+    <string name="tool_desc_list_stickers">List imported custom stickers, optionally filtered by keyword.</string>
+    <string name="tool_desc_send_sticker">Send an imported sticker image in the current chat.</string>
+    <string name="tool_desc_view_sticker">View the image of an imported sticker, useful before sending it.</string>
     <string name="tool_param_required">Required</string>
     <string name="tool_param_desc_path">File or directory path</string>
     <string name="tool_param_desc_url">Target URL</string>

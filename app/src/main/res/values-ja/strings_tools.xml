@@ -116,6 +116,9 @@
     <string name="tool_name_subagent_kill">バックグラウンド子エージェントを停止</string>
     <string name="tool_name_subagent_list">サブエージェントタスク一覧</string>
     <string name="tool_name_subagent_get">サブエージェント結果取得</string>
+    <string name="tool_name_list_stickers">スタンプ一覧</string>
+    <string name="tool_name_send_sticker">スタンプ送信</string>
+    <string name="tool_name_view_sticker">スタンプ画像を表示</string>
 
     <!-- ==================== ツール説明（Tools 設定画面） ==================== -->
     <string name="tool_desc_get_weather">指定した都市の現在の天気と予報を取得します。</string>
@@ -185,6 +188,9 @@
     <string name="tool_desc_skill_view">指定した Skill のファイル構成と取得元を表示します。</string>
     <string name="tool_desc_skill_read">指定した Skill 内のテキストファイルを読み取ります。実行前に SKILL.md を読んでください。</string>
     <string name="tool_desc_skill_get_info">ローカル Skills の保存仕様と統計情報を取得します。</string>
+    <string name="tool_desc_list_stickers">インポート済みスタンプの一覧を取得します（キーワード絞り込み可）。</string>
+    <string name="tool_desc_send_sticker">現在のチャットにインポート済みスタンプの原図を送信します。</string>
+    <string name="tool_desc_view_sticker">インポート済みスタンプの画像を確認します。送信前の確認に便利です。</string>
     <string name="tool_param_required">必須</string>
     <string name="tool_param_desc_path">ファイルまたはディレクトリのパス</string>
     <string name="tool_param_desc_url">対象の URL</string>

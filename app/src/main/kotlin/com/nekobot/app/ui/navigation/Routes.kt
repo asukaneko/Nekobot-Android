@@ -89,6 +89,8 @@ object Routes {
     const val PRIVACY = "privacy"
     /** 本地模式：DB Profile 管理（导入 nbotcfg / 切换 / 删除） */
     const val DB_PROFILE = "db_profile"
+    /** 自定义表情包管理（导入 / 重命名 / 删除） */
+    const val STICKERS = "stickers"
 
     // 扩展功能聚合页 + 12 个模块（仅远程模式）
     const val EXTENSIONS = "extensions"

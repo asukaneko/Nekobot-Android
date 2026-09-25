@@ -469,6 +469,28 @@
     <string name="toolset_cat_linux">Linux 샌드박스</string>
     <string name="toolset_cat_workspace">워크스페이스</string>
     <string name="toolset_cat_image">이미지</string>
+    <string name="toolset_cat_sticker">스티커</string>
+
+    <!-- 입력창 아래 빠른 도구 모음 -->
+    <string name="chat_quick_bar_edit">빠른 도구 모음 편집</string>
+    <string name="chat_quick_bar_collapse">빠른 도구 모음 접기</string>
+    <string name="chat_quick_bar_expand">빠른 도구 모음 펼치기</string>
+    <string name="chat_quick_bar_editor_title">빠른 도구 모음 편집</string>
+    <string name="chat_quick_bar_editor_hint">오른쪽 핸들을 드래그해 순서를 변경하고, 제거하거나 추가할 수 있습니다. 기본값으로 되돌리려면 재설정을 누르세요.</string>
+    <string name="chat_quick_bar_section_shown">표시 중</string>
+    <string name="chat_quick_bar_section_available">추가 가능</string>
+    <string name="chat_quick_bar_all_added">모두 추가됨</string>
+    <string name="chat_quick_bar_reset_default">기본값</string>
+    <string name="chat_quick_bar_drag">드래그하여 정렬</string>
+    <string name="chat_quick_bar_remove">제거</string>
+    <string name="chat_quick_bar_empty">도구 모음이 비었습니다. 오른쪽 버튼으로 추가하세요</string>
+    <string name="chat_quick_action_image">이미지</string>
+    <string name="chat_quick_action_upload">업로드</string>
+    <string name="chat_quick_action_search">검색</string>
+    <string name="chat_quick_action_context">컨텍스트</string>
+    <string name="chat_quick_action_compress">압축</string>
+    <string name="chat_quick_action_clear">지우기</string>
+    <string name="chat_quick_action_latest">최신</string>
     <string name="toolset_cat_memory">메모리</string>
     <string name="toolset_cat_task">작업 및 질문</string>
     <string name="toolset_cat_plugin">플러그인 및 스킬</string>

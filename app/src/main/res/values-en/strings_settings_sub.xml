@@ -176,12 +176,12 @@
     <string name="webdav_backup_upload_title">Backup upload</string>
     <string name="webdav_backup_upload_subtitle">Pack local config and upload to WebDAV</string>
     <string name="webdav_encryption_password_optional_override">Encryption password (optional, overrides config)</string>
-    <string name="webdav_include_portraits">Include character portraits</string>
-    <string name="webdav_upload_portraits">Also upload portrait image files</string>
+    <string name="webdav_include_portraits">Include portraits, stickers and covers</string>
+    <string name="webdav_upload_portraits">Also upload portrait, sticker and cover files</string>
     <string name="webdav_upload_backup">Upload backup</string>
     <string name="webdav_sync_pull_title">Sync pull</string>
     <string name="webdav_sync_pull_subtitle">Restore config from WebDAV to local</string>
-    <string name="webdav_pull_portraits">Also pull portrait image files</string>
+    <string name="webdav_pull_portraits">Also pull portrait, sticker and cover files</string>
     <string name="webdav_sync_pull_button">Sync pull</string>
     <string name="webdav_sync_confirm_title">Restore local data from WebDAV</string>
     <string name="webdav_sync_confirm_message">The remote backup will replace the current local database, token usage, and achievements. A temporary rollback copy will be kept during restoration. Continue?</string>

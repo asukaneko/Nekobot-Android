@@ -43,6 +43,9 @@ internal val localExecutableToolIds = setOf(
     "read_image",
     "download_file",
     "send_message",
+    "list_stickers",
+    "send_sticker",
+    "view_sticker",
     "get_session_thinking_history",
     "understand_image",
     "generate_image",
@@ -266,6 +269,8 @@ internal class LocalAgentToolExecutor(
     private val MAX_TODO_ITEMS = 50
     /** 单条任务内容长度上限 */
     private val MAX_TODO_CONTENT_LENGTH = 200
+    /** list_stickers 单次返回的最大名称数量：避免表情过多时灌满上下文。 */
+    private val MAX_STICKER_LIST_ITEMS = 2000
     private val workspace = workspaceRoot?.canonicalFile
     private val sharedWorkspace = sharedWorkspaceRoot?.canonicalFile
     /**
@@ -313,6 +318,9 @@ internal class LocalAgentToolExecutor(
                 "read_image" -> readImage(args)
                 "download_file" -> downloadFile(args)
                 "send_message" -> sendMessage(args)
+                "list_stickers" -> listStickers(args)
+                "send_sticker" -> sendSticker(args)
+                "view_sticker" -> viewSticker(args)
                 "get_session_thinking_history" -> thinkingHistory(args)
                 "understand_image" -> understandImage(args)
                 "generate_image" -> generateImage(args)
@@ -1152,6 +1160,79 @@ internal class LocalAgentToolExecutor(
         val content = args.string("content")
         if (content.isBlank()) return failure("消息内容不能为空")
         return success("_send_message" to content)
+    }
+
+    /** 列出已导入表情：查询为空时返回全部（有上限），并按关键词过滤。 */
+    private suspend fun listStickers(args: Map<String, Any>): Map<String, Any> {
+        val query = args.string("query").trim()
+        val all = runCatching { ServiceContainer.unified.listStickers() }.getOrDefault(emptyList())
+        if (all.isEmpty()) {
+            return success(
+                "count" to 0,
+                "names" to emptyList<String>(),
+                "instruction" to "当前没有已导入的表情包；如需发送表情，请先让用户在「更多 → 表情包」中导入。"
+            )
+        }
+        val names = all
+            .asSequence()
+            .map { it.name }
+            .filter { query.isBlank() || it.contains(query, ignoreCase = true) }
+            .distinct()
+            .take(MAX_STICKER_LIST_ITEMS)
+            .toList()
+        return if (names.isEmpty()) {
+            success("count" to 0, "names" to emptyList<String>(), "query" to query)
+        } else {
+            success(
+                "count" to names.size,
+                "names" to names,
+                "instruction" to "调用 send_sticker 时必须使用上面列出的名称原文。"
+            )
+        }
+    }
+
+    /**
+     * 发送表情：只做名称校验并回传 `_sticker_name`，由管线把它写入最终回复正文的
+     * `[名称]` 标记，聊天界面据此渲染表情原图。
+     */
+    private suspend fun sendSticker(args: Map<String, Any>): Map<String, Any> {
+        val name = args.string("name").trim()
+        if (name.isBlank()) return failure("表情名称不能为空，可先用 list_stickers 查询")
+        val sticker = runCatching { ServiceContainer.unified.findStickerByName(name) }.getOrNull()
+            ?: return failure("未找到表情「$name」，请先用 list_stickers 查询可用的名称")
+        return success(
+            "_sticker_name" to sticker.name,
+            "sent" to true,
+            "instruction" to "表情已发送，无需在回复里再用文字描述该表情。"
+        )
+    }
+
+    /**
+     * view_sticker：查看一张已导入表情的图片内容。
+     *
+     * 对话模型支持视觉时，把表情原图以 data URI 注入工具结果（_image_urls），
+     * 由本轮模型自己观察；不支持视觉时退回 [understandImage] 的视觉模型识别。
+     */
+    private suspend fun viewSticker(args: Map<String, Any>): Map<String, Any> {
+        val name = args.string("name").trim()
+        if (name.isBlank()) return failure("表情名称不能为空，可先用 list_stickers 查询")
+        val question = args.string("question").ifBlank { "请描述这张表情图片的画面与含义。" }
+        val sticker = runCatching { ServiceContainer.unified.findStickerByName(name) }.getOrNull()
+            ?: return failure("未找到表情「$name」，请先用 list_stickers 查询可用的名称")
+        val file = findStickerFileByName(sticker.name)
+            ?: return failure("表情「${sticker.name}」的图片文件不存在，可能已被清理")
+        val dataUri = stickerFileToDataUri(file)
+            ?: return failure("表情「${sticker.name}」的图片过大或无法读取")
+        if (!supportsVision) {
+            return understandImage(mapOf("image_url" to dataUri, "question" to question))
+        }
+        android.util.Log.i("LocalAgentTool", "view_sticker: 表情原图已注入上下文 | name=${sticker.name}")
+        return success(
+            "name" to sticker.name,
+            "question" to question,
+            "note" to "表情图片已注入当前对话上下文，请直接观察图片回答 question，不要声称无法查看图片。",
+            "_image_urls" to listOf(dataUri)
+        )
     }
 
     private fun thinkingHistory(args: Map<String, Any>): Map<String, Any> {

@@ -77,6 +77,8 @@
     <string name="more_extensions">확장 기능</string>
     <string name="more_extensions_desc_server">훅, 작업, 워크플로, 지식 베이스, MCP, 채널 등 고급 설정</string>
     <string name="more_extensions_desc_local">훅, 작업, 워크플로, Skills, Tools, MCP, API Keys 등 로컬 설정</string>
+    <string name="more_stickers">스티커</string>
+    <string name="more_stickers_desc">사용자 스티커를 가져오면 채팅과 AI가 원본 이미지를 보냅니다</string>
     <string name="more_settings">설정</string>
     <string name="more_settings_desc">서버, 시스템 설정, 로그, 계정</string>
     <string name="more_logout">로그아웃</string>
@@ -282,6 +284,9 @@
     <string name="portability_category_workspace_desc">세션 및 공유 작업 공간의 사용자 파일</string>
     <string name="portability_category_global_memory">전역 Agent 메모리</string>
     <string name="portability_category_global_memory_desc">현재 데이터베이스 내에서 대화 전반에 주입되는 장기 Agent 메모리</string>
+    <string name="portability_category_stickers">사용자 스티커</string>
+    <string name="portability_category_stickers_desc">스티커 이름과 stickers 디렉터리의 이미지 파일</string>
+    <string name="portability_detail_local_stickers">사용자 스티커</string>
     <string name="portability_detail_tts_audio">채팅 생성 음성</string>
 
     <!-- Agent progress card -->

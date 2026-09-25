@@ -26,6 +26,8 @@ import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.ai.ImageGenerationReference
 import com.nekobot.app.data.local.db.LocalSessionEntity
+import com.nekobot.app.data.local.StickerImport
+import com.nekobot.app.data.local.db.LocalStickerEntity
 import com.nekobot.app.data.model.ApiResult
 import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.data.model.ApiKeyRequest
@@ -976,6 +978,39 @@ class UnifiedRepository(
         Resource.Success(Unit)
     } catch (e: Exception) {
         Resource.Error(e.message ?: "无法删除图片生成记录")
+    }
+
+    // ==================== 自定义表情包 ====================
+
+    /** 观察全部表情包；两种模式都读本机数据库，因为表情图片始终保存在设备本地。 */
+    fun observeStickers(): Flow<List<LocalStickerEntity>> = local.observeStickers()
+
+    suspend fun listStickers(): List<LocalStickerEntity> = local.listStickers()
+
+    suspend fun findStickerByName(name: String): LocalStickerEntity? =
+        local.findStickerByName(name)
+
+    suspend fun importStickers(items: List<StickerImport>): Resource<Int> = try {
+        Resource.Success(local.importStickers(items))
+    } catch (e: Exception) {
+        Resource.Error(e.message ?: "导入表情包失败")
+    }
+
+    suspend fun renameSticker(id: String, newName: String): Resource<Unit> = try {
+        if (local.renameSticker(id, newName)) {
+            Resource.Success(Unit)
+        } else {
+            Resource.Error("重命名失败：名称为空或表情不存在")
+        }
+    } catch (e: Exception) {
+        Resource.Error(e.message ?: "重命名失败")
+    }
+
+    suspend fun deleteSticker(id: String): Resource<Unit> = try {
+        local.deleteSticker(id)
+        Resource.Success(Unit)
+    } catch (e: Exception) {
+        Resource.Error(e.message ?: "删除表情失败")
     }
 
     fun observeLocalAgentRun(sessionId: String): Flow<LocalAgentRunEntity?>? =

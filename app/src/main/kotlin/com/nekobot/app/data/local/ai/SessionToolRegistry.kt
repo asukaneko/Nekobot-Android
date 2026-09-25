@@ -83,6 +83,15 @@ object SessionToolCatalog {
                 "read_image"
             )
         ),
+        // 自定义表情包（导入的表情原图发送与查看）
+        Category(
+            id = "sticker",
+            toolIds = listOf(
+                "list_stickers",
+                "send_sticker",
+                "view_sticker"
+            )
+        ),
         // 记忆
         Category(
             id = "memory",

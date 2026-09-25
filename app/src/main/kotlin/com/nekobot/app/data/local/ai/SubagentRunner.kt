@@ -268,7 +268,9 @@ internal class SubagentProgressCollector(
                 name = name,
                 status = "running",
                 detail = pendingToolDetail,
-                arguments = mapOf("preview" to (pendingToolDetail ?: ""))
+                // 与主 Agent 一致：参数按「参数名 → 参数值」结构化留档，详情弹窗可直接阅读
+                arguments = boundedAgentArguments(normalizeAgentToolArguments(toolCall["arguments"]))
+                    .takeIf { it.isNotEmpty() }
             )
         )
     }

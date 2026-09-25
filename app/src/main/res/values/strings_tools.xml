@@ -116,6 +116,9 @@
     <string name="tool_name_subagent_kill">终止后台子代理</string>
     <string name="tool_name_subagent_list">子代理任务列表</string>
     <string name="tool_name_subagent_get">子代理结果查询</string>
+    <string name="tool_name_list_stickers">列出表情包</string>
+    <string name="tool_name_send_sticker">发送表情包</string>
+    <string name="tool_name_view_sticker">查看表情包图片</string>
 
     <!-- ==================== 工具描述（Tools 配置页展示） ==================== -->
     <string name="tool_desc_get_weather">查询指定城市的当前天气与未来预报。</string>
@@ -185,6 +188,9 @@
     <string name="tool_desc_skill_view">查看指定 Skill 的文件结构和来源。</string>
     <string name="tool_desc_skill_read">读取指定 Skill 中的文本文件。执行技能前应先读取 SKILL.md。</string>
     <string name="tool_desc_skill_get_info">获取本地 Skills 存储规范和统计信息。</string>
+    <string name="tool_desc_list_stickers">列出当前已导入的自定义表情包名称，可按关键词过滤。</string>
+    <string name="tool_desc_send_sticker">在当前会话中发送一张已导入表情的原图。</string>
+    <string name="tool_desc_view_sticker">查看一张已导入表情的图片内容，发送表情前可先确认画面。</string>
     <string name="tool_param_required">必填</string>
     <string name="tool_param_desc_path">文件或目录路径</string>
     <string name="tool_param_desc_url">目标 URL</string>

@@ -469,6 +469,28 @@
     <string name="toolset_cat_linux">Linux サンドボックス</string>
     <string name="toolset_cat_workspace">ワークスペース</string>
     <string name="toolset_cat_image">画像</string>
+    <string name="toolset_cat_sticker">スタンプ</string>
+
+    <!-- 入力欄下のクイックツールバー -->
+    <string name="chat_quick_bar_edit">クイックツールバーを編集</string>
+    <string name="chat_quick_bar_collapse">クイックツールバーを閉じる</string>
+    <string name="chat_quick_bar_expand">クイックツールバーを開く</string>
+    <string name="chat_quick_bar_editor_title">クイックツールバーを編集</string>
+    <string name="chat_quick_bar_editor_hint">右側のハンドルをドラッグして並べ替え。削除・追加も可能です。「デフォルトに戻す」で初期状態に戻ります。</string>
+    <string name="chat_quick_bar_section_shown">表示中</string>
+    <string name="chat_quick_bar_section_available">追加できるボタン</string>
+    <string name="chat_quick_bar_all_added">すべて追加済み</string>
+    <string name="chat_quick_bar_reset_default">デフォルトに戻す</string>
+    <string name="chat_quick_bar_drag">ドラッグで並べ替え</string>
+    <string name="chat_quick_bar_remove">削除</string>
+    <string name="chat_quick_bar_empty">ツールバーは空です。右のボタンから追加してください</string>
+    <string name="chat_quick_action_image">画像</string>
+    <string name="chat_quick_action_upload">アップロード</string>
+    <string name="chat_quick_action_search">検索</string>
+    <string name="chat_quick_action_context">コンテキスト</string>
+    <string name="chat_quick_action_compress">圧縮</string>
+    <string name="chat_quick_action_clear">クリア</string>
+    <string name="chat_quick_action_latest">最新</string>
     <string name="toolset_cat_memory">メモリ</string>
     <string name="toolset_cat_task">タスクと質問</string>
     <string name="toolset_cat_plugin">プラグインとスキル</string>

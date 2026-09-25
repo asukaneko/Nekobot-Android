@@ -149,16 +149,73 @@ private fun describeAgentImageForDisplay(url: String): String {
 }
 
 /**
- * 参数落库：进度报告器写入的已经是 `{"preview": "<扁平化预览文本>"}` 形态，
- * 不能再套一层 preview，否则详情弹窗的参数列表只会剩一行 "preview = {...}"。
- * 只有真实参数字典（远程/历史形态）才需要转成预览文本。
+ * 参数落库：结构化参数字典按参数名逐项限长保留（见 [boundedAgentArguments]），
+ * 详情弹窗才能显示「参数名 → 参数值」；旧版本写入的 `{"preview": "<扁平化预览文本>"}`
+ * 原样保留（不能再套一层 preview，否则详情弹窗的参数列表只会剩一行 "preview = {...}"）。
  */
 private fun Map<String, Any>.toPersistedArguments(): Map<String, Any> {
+    if (isEmpty()) return emptyMap()
     val previewText = if (size == 1) get("preview") as? String else null
     if (previewText != null) {
         return mapOf("preview" to previewText.take(AgentToolLimits.progressPreviewChars()))
     }
-    return mapOf("preview" to boundedAgentValuePreview(this, AgentToolLimits.progressPreviewChars()))
+    return boundedAgentArguments(this)
+}
+
+/** 落库的参数字典最多保留的条目数：避免超长参数表把进度卡 JSON 撑大。 */
+private const val MAX_PERSISTED_ARGUMENT_ENTRIES = 24
+
+/**
+ * 结构化参数限长：保留参数名，值逐个截断，总长度不超过 [maxTotalChars]。
+ *
+ * 与 [boundedAgentValuePreview] 的扁平文本不同，这里保留键值结构，让进度卡详情弹窗
+ * 能直接列出参数名与参数值（避免整段参数被 "preview" 包裹后无法阅读）。
+ */
+internal fun boundedAgentArguments(
+    arguments: Map<String, Any>,
+    maxEntries: Int = MAX_PERSISTED_ARGUMENT_ENTRIES,
+    maxTotalChars: Int = AgentToolLimits.progressPreviewChars()
+): Map<String, Any> {
+    if (arguments.isEmpty() || maxEntries <= 0 || maxTotalChars <= 0) return emptyMap()
+    val result = LinkedHashMap<String, Any>(minOf(arguments.size, maxEntries))
+    var remaining = maxTotalChars
+    for ((key, value) in arguments) {
+        if (result.size >= maxEntries) break
+        val name = key.take(64)
+        if (name.isBlank()) continue
+        if (remaining <= 0) {
+            result[name] = "…"
+            continue
+        }
+        val text = boundedAgentValuePreview(value, remaining)
+        result[name] = text
+        remaining -= text.length
+    }
+    return result
+}
+
+/**
+ * 工具调用参数规范化：参数字典直接使用，JSON 字符串解析成参数表，解析失败返回空表。
+ *
+ * 部分协议（Gemini 原生 / Responses 等）下发的 arguments 是 JSON 字符串，
+ * 进度卡片与工具执行共用同一份规范化逻辑，避免「能执行但卡片显示不出参数」。
+ */
+internal fun normalizeAgentToolArguments(raw: Any?): Map<String, Any> {
+    if (raw is Map<*, *>) {
+        return raw.entries
+            .mapNotNull { (key, value) ->
+                val name = key?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                name to (value as Any)
+            }
+            .toMap()
+    }
+    if (raw is String && raw.isNotBlank()) {
+        return runCatching {
+            @Suppress("UNCHECKED_CAST")
+            Gson().fromJson(raw, Map::class.java) as? Map<String, Any>
+        }.getOrNull().orEmpty()
+    }
+    return emptyMap()
 }
 
 /** 不创建完整 toString/JSON 副本地生成嵌套工具参数或结果预览。 */

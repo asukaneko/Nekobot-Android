@@ -175,6 +175,7 @@ import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
+import com.nekobot.app.data.local.db.LocalStickerEntity
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.terminal.LocalTerminalSession
 import com.nekobot.app.data.local.ai.AgentRecoveryState
@@ -510,6 +511,11 @@ class ChatViewModel : BaseViewModel() {
     private val _messageImages = MutableStateFlow<List<LocalMessageImageEntity>>(emptyList())
     val messageImages: StateFlow<List<LocalMessageImageEntity>> = _messageImages.asStateFlow()
     private var messageImagesJob: kotlinx.coroutines.Job? = null
+
+    /** 已导入的自定义表情包；`[名称]` 命中时聊天气泡内联渲染原图。 */
+    private val _stickers = MutableStateFlow<List<LocalStickerEntity>>(emptyList())
+    val stickers: StateFlow<List<LocalStickerEntity>> = _stickers.asStateFlow()
+    private var stickersJob: kotlinx.coroutines.Job? = null
     /** 本地后台手动压缩结果事件订阅（随 VM 生命周期；退出页面后再进入时由 loadMessages 恢复状态）。 */
     private var compressionEventsJob: kotlinx.coroutines.Job? = null
 
@@ -651,6 +657,12 @@ class ChatViewModel : BaseViewModel() {
         messageImagesJob = viewModelScope.launch {
             unified.observeMessageImages(sessionId).collect { images ->
                 if (currentSessionId == sessionId) _messageImages.value = images
+            }
+        }
+        // 表情包是全局数据，与当前会话无关；进入聊天页时订阅一次，导入后即时生效。
+        if (stickersJob == null) {
+            stickersJob = viewModelScope.launch {
+                unified.observeStickers().collect { stickers -> _stickers.value = stickers }
             }
         }
         // 获取（或创建）跨 VM 共享的运行时状态，引用计数 +1

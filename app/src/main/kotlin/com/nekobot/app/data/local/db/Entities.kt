@@ -810,6 +810,33 @@ data class LocalKnowledgeChunkEntity(
     @ColumnInfo(name = "char_end") val charEnd: Int = 0
 )
 
+/**
+ * 本地表情包（用户导入的自定义表情）。
+ *
+ * 名称即聊天中 `[名称]` 的引用键：消息正文里出现 `[名称]` 且能匹配到本表记录时，
+ * UI 直接渲染原图；匹配不到则保持原文，不做任何替换。
+ *
+ * 图片文件存放在应用私有的 stickers 目录，纳入可携带归档与 WebDAV 备份。
+ */
+@Entity(
+    tableName = "local_stickers",
+    indices = [Index("name"), Index("updated_at")]
+)
+data class LocalStickerEntity(
+    @PrimaryKey val id: String,
+    /** 表情名称（导入时的文件名或用户自定义），不含方括号。 */
+    val name: String,
+    @ColumnInfo(name = "file_name") val fileName: String,
+    /** file:// URI；跨设备恢复时由 file_name 重新解析。 */
+    @ColumnInfo(name = "file_path") val filePath: String,
+    @ColumnInfo(name = "mime_type") val mimeType: String? = null,
+    @ColumnInfo(name = "size_bytes", defaultValue = "0") val sizeBytes: Long = 0,
+    /** 来源标记：import / zip / portable / sync 等，便于排查。 */
+    val source: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
 /** 路由决策日志，记录每次模型路由的分项得分、选择原因、费用和延迟。 */
 @Entity(tableName = "routing_decision_logs", indices = [Index("session_id"), Index("created_at"), Index("selected_model_id")])
 data class RoutingDecisionLogEntity(

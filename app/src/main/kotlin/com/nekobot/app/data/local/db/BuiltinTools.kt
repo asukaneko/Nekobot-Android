@@ -613,6 +613,39 @@ object BuiltinTools {
         )
     )
 
+    /** 自定义表情包：让 AI 在聊天中发送用户导入的表情原图。 */
+    private val stickerTools = listOf(
+        BuiltinToolSpec(
+            id = "list_stickers",
+            name = "列出表情包",
+            description = "列出当前已导入的自定义表情包名称。发送表情前先用本工具确认准确名称；query 可按关键词过滤。",
+            parametersJson = params(
+                mapOf("query" to mapOf("type" to "string", "description" to "可选关键词，按名称模糊过滤"))
+            )
+        ),
+        BuiltinToolSpec(
+            id = "send_sticker",
+            name = "发送表情包",
+            description = "在聊天中发送一张已导入的自定义表情（原图）。name 必须来自 list_stickers 返回的名称；发送后不要再用文字重复描述该表情。需要确认表情画面时先用 view_sticker 查看。",
+            parametersJson = params(
+                mapOf("name" to mapOf("type" to "string", "description" to "表情名称，如：生气猫猫")),
+                listOf("name")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "view_sticker",
+            name = "查看表情包图片",
+            description = "查看一张已导入表情的图片内容（发送表情前可用它确认表情画面）。对话模型支持视觉时图片会直接注入上下文，否则由视觉模型返回文字描述。",
+            parametersJson = params(
+                mapOf(
+                    "name" to mapOf("type" to "string", "description" to "表情名称，如：生气猫猫"),
+                    "question" to mapOf("type" to "string", "description" to "可选：希望重点观察的内容，默认描述画面")
+                ),
+                listOf("name")
+            )
+        )
+    )
+
     /** Android 原生能力：只通过公开 Android API 或系统确认页工作，不绕过权限。 */
     private val androidTools = listOf(
         BuiltinToolSpec(
@@ -1004,7 +1037,7 @@ object BuiltinTools {
     )
 
     /** 全部内置工具列表。 */
-    val all: List<BuiltinToolSpec> = standardTools + workspaceTools + agentMemoryTools + androidTools
+    val all: List<BuiltinToolSpec> = standardTools + workspaceTools + agentMemoryTools + stickerTools + androidTools
 
     /** 判断 id 是否为内置工具。 */
     fun isBuiltin(id: String): Boolean = all.any { it.id == id }

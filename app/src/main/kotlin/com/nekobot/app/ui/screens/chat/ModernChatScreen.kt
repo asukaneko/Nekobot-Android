@@ -95,6 +95,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -137,6 +138,7 @@ import com.nekobot.app.data.local.LocalCommandAction
 import com.nekobot.app.data.local.LocalCommandSuggestion
 import com.nekobot.app.data.local.LocalSlashCommands
 import com.nekobot.app.data.local.db.BuiltinTools
+import com.nekobot.app.data.local.db.LocalStickerEntity
 import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
@@ -173,6 +175,8 @@ fun ModernChatScreen(
     onOpenWorkspace: (String) -> Unit = {},
     onOpenStoryGraph: (String) -> Unit = {},
     onOpenWenku8Login: () -> Unit = {},
+    /** 打开表情包管理页（聊天输入区表情面板的「管理」入口）。 */
+    onOpenStickers: () -> Unit = {},
     /**
      * 「跳到最新」处理：null 表示由本页自行滚动到底部。
      *
@@ -196,6 +200,13 @@ fun ModernChatScreen(
     val session by viewModel.session.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val queuedMessages by viewModel.queuedMessages.collectAsStateWithLifecycle()
+    // 已导入表情包：名称 → 图片地址，供消息气泡把 `[名称]` 渲染为原图
+    val stickers by viewModel.stickers.collectAsStateWithLifecycle()
+    val stickerLookup = remember(stickers) {
+        buildMap {
+            stickers.forEach { sticker -> putIfAbsent(sticker.name, sticker.filePath) }
+        }
+    }
     // Agent 任务列表（todo_write 工具写入；输入框上方可折叠面板）
     val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
     // Agent 会话目标/规格任务（/goal、/spec 命令设置，输入框上方横幅展示）
@@ -215,6 +226,7 @@ fun ModernChatScreen(
         if (lastIndex >= 0) composerScope.launch { listState.animateScrollToItem(lastIndex) }
     }
 
+    CompositionLocalProvider(LocalStickerLookup provides stickerLookup) {
     ChatScreen(
     sessionId = sessionId,
     onBack = onBack,
@@ -262,6 +274,8 @@ fun ModernChatScreen(
                 yoloEnabled = enabled
             },
             skillsEnabled = isAgentSession,
+            stickers = stickers,
+            onOpenStickers = onOpenStickers,
             onSend = { text, plotChoiceId, attachments, reasoningEffort ->
                 val command = LocalSlashCommands.parse(text)
                 if (
@@ -290,7 +304,8 @@ fun ModernChatScreen(
         )
         }
     }
-)
+    )
+    }
 }
 
 private enum class ModernComposerAction {
@@ -674,6 +689,9 @@ private fun ModernChatComposer(
     yoloEnabled: Boolean,
     yoloAvailable: Boolean,
     skillsEnabled: Boolean,
+    /** 已导入的表情包（点选后把 `[名称]` 插入输入框）。 */
+    stickers: List<LocalStickerEntity> = emptyList(),
+    onOpenStickers: () -> Unit = {},
     onToggleYolo: () -> Unit,
     onSend: (String, String?, List<Map<String, Any>>, ReasoningEffort) -> Unit,
     onStop: () -> Unit,
@@ -710,6 +728,18 @@ private fun ModernChatComposer(
         ServiceContainer.prefs.setChatInputDraft(sessionId, input)
     }
     var panelExpanded by rememberSaveable(sessionId) { mutableStateOf(false) }
+    // 表情包选择面板开关
+    var stickerPickerOpen by remember { mutableStateOf(false) }
+    // 输入框下方的快捷工具栏：按钮配置与折叠状态全局持久化
+    var quickActions by remember {
+        mutableStateOf(
+            ChatQuickAction.normalize(
+                ServiceContainer.prefs.getChatQuickActions() ?: ChatQuickAction.defaultIds
+            )
+        )
+    }
+    var quickActionsCollapsed by remember { mutableStateOf(ServiceContainer.prefs.chatQuickActionsCollapsed) }
+    var showQuickActionEditor by remember { mutableStateOf(false) }
     var reasoningEffort by remember(sessionId, isAgentSession) {
         mutableStateOf(ServiceContainer.prefs.getReasoningEffort(isAgentSession))
     }
@@ -1000,6 +1030,38 @@ private fun ModernChatComposer(
     }
 
     val closePanel = { panelExpanded = false }
+    // 快捷工具栏动作分发：复用 + 面板与现有回调的同一批行为
+    val handleQuickAction: (String) -> Unit = { id ->
+        when (id) {
+            ChatQuickAction.STICKER -> {
+                closePanel()
+                keyboard?.hide()
+                stickerPickerOpen = true
+            }
+            ChatQuickAction.IMAGE -> {
+                filePickMode = "send"
+                pickFile.launch("image/*")
+            }
+            ChatQuickAction.FILE -> {
+                filePickMode = "send"
+                pickFile.launch("*/*")
+            }
+            ChatQuickAction.UPLOAD -> {
+                filePickMode = "upload"
+                pickFile.launch("*/*")
+            }
+            ChatQuickAction.WORKSPACE -> onOpenWorkspace()
+            ChatQuickAction.SEARCH -> showSearch = true
+            ChatQuickAction.FAVORITES -> showFavorites = true
+            ChatQuickAction.MY_MESSAGES -> showMyMessages = true
+            ChatQuickAction.CONTEXT -> onOpenContextAnalysis()
+            ChatQuickAction.COMPRESS -> {
+                if (!compressing) onCompress()
+            }
+            ChatQuickAction.CLEAR -> showClearConfirm = true
+            ChatQuickAction.LATEST -> onJumpToLatest()
+        }
+    }
     val messageCount = messages.count { !it.isThinkingCard }
     val charCount = input.length
     val tokenEstimate = estimateModernChatDraftTokens(input)
@@ -1372,6 +1434,16 @@ private fun ModernChatComposer(
                                 )
                             }
 
+                            // 快捷工具栏折叠时：在操作行内提供展开入口（不占额外纵向空间）
+                            if (quickActionsCollapsed) {
+                                ChatQuickActionExpandButton(
+                                    onExpand = {
+                                        quickActionsCollapsed = false
+                                        ServiceContainer.prefs.chatQuickActionsCollapsed = false
+                                    }
+                                )
+                            }
+
                             // 主操作按钮：背景和图标同步过渡，避免语音/发送/停止状态生硬跳变
                             // Agent 会话生成中：已输入内容时切换为发送（消息进入排队队列），否则保持停止
                             val hasDraft = input.isNotBlank() || pendingImageAttachments.isNotEmpty()
@@ -1459,6 +1531,23 @@ private fun ModernChatComposer(
                             }
                         }
                     }
+
+                    // 输入框下方的快捷工具栏：折叠时整条移除、不占用空间（输入框随之下移）
+                    AnimatedVisibility(
+                        visible = !quickActionsCollapsed,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        ChatQuickActionBar(
+                            actions = quickActions,
+                            onCollapse = {
+                                quickActionsCollapsed = true
+                                ServiceContainer.prefs.chatQuickActionsCollapsed = true
+                            },
+                            onEdit = { showQuickActionEditor = true },
+                            onAction = handleQuickAction
+                        )
+                    }
                 }
             }
         }
@@ -1521,6 +1610,37 @@ private fun ModernChatComposer(
             sessionId = sessionId,
             onDismiss = { showToolSetDialog = false },
             onChanged = { toolSetRevision++ }
+        )
+    }
+
+    if (showQuickActionEditor) {
+        ChatQuickActionEditorDialog(
+            actions = quickActions,
+            onActionsChange = { updated ->
+                val normalized = ChatQuickAction.normalize(updated)
+                quickActions = normalized
+                ServiceContainer.prefs.setChatQuickActions(normalized)
+            },
+            onDismiss = { showQuickActionEditor = false }
+        )
+    }
+
+    if (stickerPickerOpen) {
+        StickerPickerSheet(
+            stickers = stickers,
+            onPick = { sticker ->
+                // 插入 `[名称]` 到输入框：命中已导入表情时气泡渲染原图，用户仍可补充文字。
+                val insertion = "[${sticker.name}]"
+                val text = input
+                val separator = if (text.isNotEmpty() && !text.last().isWhitespace()) " " else ""
+                updateInput(text + separator + insertion)
+                stickerPickerOpen = false
+            },
+            onManage = {
+                stickerPickerOpen = false
+                onOpenStickers()
+            },
+            onDismiss = { stickerPickerOpen = false }
         )
     }
 

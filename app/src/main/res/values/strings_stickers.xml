@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 自定义表情包：管理页 -->
+    <string name="sticker_manage_title">表情包</string>
+    <string name="sticker_manage_hint">导入的图片会按名称匹配聊天中的 [名称]，并随数据备份一起迁移；长按可批量选择。</string>
+    <string name="sticker_import_images">导入图片</string>
+    <string name="sticker_import_zip">导入压缩包</string>
+    <string name="sticker_import_zip_empty">压缩包中没有可用的表情图片</string>
+    <string name="sticker_import_duplicate">所选文件已在导入列表中</string>
+    <string name="sticker_import_review_title">确认导入 %1$d 张表情</string>
+    <string name="sticker_import_review_hint">名称用于聊天中的 [名称] 引用，可逐条修改；同名表情会覆盖旧图。</string>
+    <string name="sticker_import_confirm">导入</string>
+    <string name="sticker_import_result">已导入 %1$d 张表情</string>
+    <string name="sticker_import_result_with_skipped">已导入 %1$d 张表情，跳过 %2$d 个无效文件</string>
+    <string name="sticker_import_failed">导入失败，请检查所选文件</string>
+    <string name="sticker_empty">还没有表情包，先导入一批图片吧</string>
+    <string name="sticker_count">共 %1$d 张</string>
+    <string name="sticker_search_hint">搜索表情名称</string>
+    <string name="sticker_name_hint">表情名称</string>
+    <string name="sticker_name_required">表情名称不能为空</string>
+    <string name="sticker_rename_save">保存</string>
+    <string name="sticker_rename_success">已更新表情名称</string>
+    <string name="sticker_delete_title">删除表情</string>
+    <string name="sticker_delete_message">确定删除「%1$s」吗？聊天记录中的该表情将恢复为文字显示。</string>
+    <string name="sticker_delete_success">已删除表情</string>
+    <string name="sticker_selected_count">已选 %1$d 个</string>
+    <string name="sticker_select_all">全选</string>
+    <string name="sticker_select_none">取消全选</string>
+    <string name="sticker_batch_delete_action">批量删除</string>
+    <string name="sticker_batch_delete_message">确定删除选中的 %1$d 个表情吗？聊天记录中的这些表情将恢复为文字显示。</string>
+    <string name="sticker_batch_delete_success">已删除 %1$d 个表情</string>
+    <string name="sticker_batch_delete_partial">已删除 %1$d 个，%2$d 个失败</string>
+
+    <!-- 聊天输入区表情选择面板 -->
+    <string name="sticker_picker_title">表情包</string>
+    <string name="sticker_picker_manage">管理</string>
+    <string name="sticker_picker_empty">还没有表情包，点击「管理」导入</string>
+    <string name="sticker_picker_no_match">没有匹配的表情</string>
+    <string name="chat_sticker_image">表情</string>
+</resources>

@@ -116,6 +116,9 @@
     <string name="tool_name_subagent_kill">백그라운드 하위 에이전트 중지</string>
     <string name="tool_name_subagent_list">서브에이전트 작업 목록</string>
     <string name="tool_name_subagent_get">서브에이전트 결과 조회</string>
+    <string name="tool_name_list_stickers">스티커 목록</string>
+    <string name="tool_name_send_sticker">스티커 보내기</string>
+    <string name="tool_name_view_sticker">스티커 이미지 보기</string>
 
     <!-- ==================== 도구 설명(Tools 설정 화면) ==================== -->
     <string name="tool_desc_get_weather">지정한 도시의 현재 날씨와 예보를 조회합니다.</string>
@@ -185,6 +188,9 @@
     <string name="tool_desc_skill_view">지정한 Skill의 파일 구조와 출처를 확인합니다.</string>
     <string name="tool_desc_skill_read">지정한 Skill 안의 텍스트 파일을 읽습니다. 실행 전에 SKILL.md를 먼저 읽으세요.</string>
     <string name="tool_desc_skill_get_info">로컬 Skills 저장 규칙과 통계 정보를 가져옵니다.</string>
+    <string name="tool_desc_list_stickers">가져온 사용자 스티커 목록을 반환합니다(키워드 필터 가능).</string>
+    <string name="tool_desc_send_sticker">현재 채팅에 가져온 스티커 원본 이미지를 보냅니다.</string>
+    <string name="tool_desc_view_sticker">가져온 스티커의 이미지를 확인합니다. 보내기 전 확인에 유용합니다.</string>
     <string name="tool_param_required">필수</string>
     <string name="tool_param_desc_path">파일 또는 디렉터리 경로</string>
     <string name="tool_param_desc_url">대상 URL</string>

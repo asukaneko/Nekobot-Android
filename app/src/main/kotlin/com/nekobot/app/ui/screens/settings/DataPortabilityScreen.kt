@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
@@ -206,6 +207,7 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
                 PortableDataCategory.MEMORIES.id,
                 PortableDataCategory.AI_CONFIG.id,
                 PortableDataCategory.APP_SETTINGS.id,
+                PortableDataCategory.STICKERS.id,
                 PortableDataCategory.GLOBAL_MEMORY.id
             )
         )
@@ -658,6 +660,7 @@ private fun categoryIcon(category: PortableDataCategory): ImageVector = when (ca
     PortableDataCategory.CREDENTIALS -> Icons.Filled.Key
     PortableDataCategory.MEDIA -> Icons.Filled.Image
     PortableDataCategory.WORKSPACE -> Icons.Filled.Folder
+    PortableDataCategory.STICKERS -> Icons.Filled.EmojiEmotions
     PortableDataCategory.GLOBAL_MEMORY -> Icons.Filled.Psychology
 }
 
@@ -676,6 +679,7 @@ private fun categoryLabel(category: PortableDataCategory): String = stringResour
         PortableDataCategory.CREDENTIALS -> R.string.portability_category_credentials
         PortableDataCategory.MEDIA -> R.string.portability_category_media
         PortableDataCategory.WORKSPACE -> R.string.portability_category_workspace
+        PortableDataCategory.STICKERS -> R.string.portability_category_stickers
         PortableDataCategory.GLOBAL_MEMORY -> R.string.portability_category_global_memory
     }
 )
@@ -695,6 +699,7 @@ private fun categoryDescription(category: PortableDataCategory): String = string
         PortableDataCategory.CREDENTIALS -> R.string.portability_category_credentials_desc
         PortableDataCategory.MEDIA -> R.string.portability_category_media_desc
         PortableDataCategory.WORKSPACE -> R.string.portability_category_workspace_desc
+        PortableDataCategory.STICKERS -> R.string.portability_category_stickers_desc
         PortableDataCategory.GLOBAL_MEMORY -> R.string.portability_category_global_memory_desc
     }
 )
@@ -723,6 +728,7 @@ private fun portableDetailLabel(detail: PortableCategoryDetail): String {
         "local_skills" -> R.string.portability_detail_local_skills
         "local_tools" -> R.string.portability_detail_local_tools
         "local_mcp_servers" -> R.string.portability_detail_local_mcp_servers
+        "local_stickers" -> R.string.portability_detail_local_stickers
         "local_knowledge_documents" -> R.string.portability_detail_local_knowledge_documents
         "local_knowledge_chunks" -> R.string.portability_detail_local_knowledge_chunks
         "routing_decision_logs" -> R.string.portability_detail_routing_decision_logs
@@ -733,6 +739,7 @@ private fun portableDetailLabel(detail: PortableCategoryDetail): String {
         "chat_backgrounds" -> R.string.portability_detail_chat_backgrounds
         "fonts" -> R.string.portability_detail_fonts
         "workspace" -> R.string.portability_detail_workspace
+        "stickers" -> R.string.portability_detail_local_stickers
         "global_memory" -> R.string.portability_detail_global_memory
         "app_settings" -> R.string.portability_detail_app_settings
         "credentials_bundle" -> R.string.portability_detail_credentials_bundle
