@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -40,23 +41,28 @@ private val FONT_AWESOME_ICON_PATTERN = Regex("fas[a-z]+-[a-z-]+")
 
 /**
  * 玻璃拟态卡片：半透明 + 渐变描边 + 柔和光晕。
+ *
+ * @param cornerRadius 统一圆角半径（未显式传入 [shape] 时生效）
+ * @param shape 自定义形状，用于多张卡片拼接成组时只保留整组首尾圆角
  */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
     cornerRadius: Int = 20,
+    shape: Shape? = null,
     containerColor: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
     borderWidth: Int = 0,
     borderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
     contentPadding: PaddingValues = PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val resolvedShape = shape ?: RoundedCornerShape(cornerRadius.dp)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(cornerRadius.dp))
+            .clip(resolvedShape)
             .background(
                 color = containerColor,
-                shape = RoundedCornerShape(cornerRadius.dp)
+                shape = resolvedShape
             )
             .border(
                 width = borderWidth.dp,
@@ -66,7 +72,7 @@ fun GlassCard(
                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
                     )
                 ),
-                shape = RoundedCornerShape(cornerRadius.dp)
+                shape = resolvedShape
             )
     ) {
         Column(

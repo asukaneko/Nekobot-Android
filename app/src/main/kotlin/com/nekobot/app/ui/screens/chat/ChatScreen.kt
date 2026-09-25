@@ -164,6 +164,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1304,7 +1305,8 @@ fun ChatScreen(
                                 !msg.thinkingCards.isNullOrEmpty()
                             ) {
                                 Spacer(Modifier.height(6.dp))
-                                msg.thinkingCards.forEach { card ->
+                                val thinkingCards = msg.thinkingCards.orEmpty()
+                                thinkingCards.forEachIndexed { cardIndex, card ->
                                     androidx.compose.runtime.key(card.id) {
                                         ProgressCard(
                                             card = card,
@@ -1319,6 +1321,10 @@ fun ChatScreen(
                                             // 与角色会话的视觉身份保持一致。
                                             showCharacterBadge = inheritsCharacter,
                                             portraitUrl = session?.portraitUrl,
+                                            // 多张卡片相邻时在外观上合并成一张圆角矩形卡片
+                                            shape = resolveProgressCardShape(cardIndex, thinkingCards.size),
+                                            showBottomDivider = thinkingCards.size > 1 &&
+                                                cardIndex != thinkingCards.lastIndex,
                                             onExpandedChange = { expanded ->
                                                 progressCardExpansionOverrides[card.id] = expanded
                                             },
@@ -3328,6 +3334,8 @@ private fun IconActionButton(
  * - 步骤列表：每项显示图标 + 名称 + 状态色 + 详情摘要（折叠/展开）
  *
  * @param card 进度卡片数据（含头部文本、步骤列表、完成状态）
+ * @param shape 卡片外形；多张卡片相邻组成一组时，仅整组首尾保留圆角
+ * @param showBottomDivider 组内非末张卡片在底部画分隔线，区分相邻卡片
  */
 @Composable
 private fun ProgressCard(
@@ -3338,6 +3346,8 @@ private fun ProgressCard(
     // 继承完整角色能力的 Agent 会话：头部用角色头像替代通用旋转图标
     showCharacterBadge: Boolean = false,
     portraitUrl: String? = null,
+    shape: Shape = RoundedCornerShape(14.dp),
+    showBottomDivider: Boolean = false,
     onExpandedChange: (Boolean) -> Unit,
     onStepClick: (StepDetailTarget) -> Unit = {}
 ) {
@@ -3352,6 +3362,7 @@ private fun ProgressCard(
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 14,
+        shape = shape,
         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         borderWidth = 0,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp)
@@ -3499,6 +3510,29 @@ private fun ProgressCard(
                 }
             }
         }
+
+        // 合并卡片组内：非末张卡片底部画分隔线，明确相邻卡片的边界
+        if (showBottomDivider) {
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                thickness = 0.5.dp
+            )
+        }
+    }
+}
+
+/**
+ * 相邻进度卡片合并成一张圆角矩形：只有整组首尾保留圆角，中间卡片用直角，
+ * 避免上下两张各自圆角的卡片直接拼接出现“掐腰”。
+ */
+internal fun resolveProgressCardShape(index: Int, total: Int): RoundedCornerShape {
+    val radius = 14.dp
+    return when {
+        total <= 1 -> RoundedCornerShape(radius)
+        index == 0 -> RoundedCornerShape(topStart = radius, topEnd = radius)
+        index == total - 1 -> RoundedCornerShape(bottomStart = radius, bottomEnd = radius)
+        else -> RoundedCornerShape(0.dp)
     }
 }
 

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.chat
 
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.ui.unit.dp
 import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.ThinkingCard
@@ -411,4 +413,47 @@ class ThinkingCardMessagesTest {
 
         assertEquals(null, resolveStepDetailTarget(emptyList(), target))
     }
+
+    @Test
+    fun singleProgressCardKeepsAllFourRoundedCorners() {
+        val shape = resolveProgressCardShape(index = 0, total = 1)
+
+        assertEquals(corner(14), shape.topStart)
+        assertEquals(corner(14), shape.topEnd)
+        assertEquals(corner(14), shape.bottomStart)
+        assertEquals(corner(14), shape.bottomEnd)
+    }
+
+    @Test
+    fun stackedProgressCardsOnlyRoundTheOuterCorners() {
+        // 两张相邻：首张只圆上边，末张只圆下边，拼接处为直角
+        val first = resolveProgressCardShape(index = 0, total = 2)
+        assertEquals(corner(14), first.topStart)
+        assertEquals(corner(14), first.topEnd)
+        assertEquals(corner(0), first.bottomStart)
+        assertEquals(corner(0), first.bottomEnd)
+
+        val last = resolveProgressCardShape(index = 1, total = 2)
+        assertEquals(corner(0), last.topStart)
+        assertEquals(corner(0), last.topEnd)
+        assertEquals(corner(14), last.bottomStart)
+        assertEquals(corner(14), last.bottomEnd)
+    }
+
+    @Test
+    fun middleProgressCardInAGroupIsFullySquare() {
+        val middle = resolveProgressCardShape(index = 1, total = 3)
+
+        assertEquals(corner(0), middle.topStart)
+        assertEquals(corner(0), middle.topEnd)
+        assertEquals(corner(0), middle.bottomStart)
+        assertEquals(corner(0), middle.bottomEnd)
+
+        // 三张中的末张仍然只圆下边
+        val last = resolveProgressCardShape(index = 2, total = 3)
+        assertEquals(corner(0), last.topStart)
+        assertEquals(corner(14), last.bottomStart)
+    }
+
+    private fun corner(dp: Int): CornerSize = CornerSize(dp.dp)
 }
