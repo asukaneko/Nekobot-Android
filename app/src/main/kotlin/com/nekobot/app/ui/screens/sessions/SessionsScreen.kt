@@ -33,8 +33,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -246,7 +246,7 @@ private fun TwoPaneSessionsWrapper(
         val availableWidth = (maxWidth - TwoPaneHandleWidth).coerceAtLeast(0.dp)
         val availablePx = with(LocalDensity.current) { availableWidth.toPx() }
         Row(modifier = Modifier.fillMaxSize()) {
-            // 左列：会话列表（收起到 0 宽时不再组合内容，滚动位置由外部 rememberLazyListState 保留）
+            // 左列：会话列表（收起到 0 宽时不再组合内容，滚动位置由 ViewModel 的 LazyListState 保留）
             Box(
                 modifier = Modifier
                     .width(availableWidth * fraction)
@@ -439,14 +439,16 @@ fun SessionsScreen(
     }
 
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
-    val sessionListState = rememberLazyListState()
+    // 滚动状态由 ViewModel 持有：进入聊天/详情再返回时仍停在原位置；
+    // LazyListState 会按会话 key 记住首个可见项，列表因聊天更新排序后也不会跳回顶部。
+    val sessionListState = viewModel.listScrollState
     val dashboardVisible = pagerState.currentPage == 0
 
     // 模式切换时自动刷新会话列表
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsStateWithLifecycle()
     LaunchedEffect(appMode, dataSourceRevision) {
-        viewModel.reloadForDataSource()
+        viewModel.onDataSourceChanged(appMode, dataSourceRevision)
     }
 
     // 角色卡立绘/头像变更后自动刷新会话列表，使会话头像跟随角色卡更新
@@ -2062,6 +2064,15 @@ private fun SessionItem(
  */
 class SessionsViewModel : BaseViewModel() {
 
+    /**
+     * 会话列表滚动状态。
+     *
+     * 挂在 ViewModel 上而不是 Composable 的 rememberSaveable：rememberSaveable 只保存
+     * index/offset，从聊天返回时按重新排序后的同一 index 定位会错位；LazyListState 自身
+     * 按 item key 跟踪首个可见项，跨页面存活才能在列表重排后依然停在进入会话前的位置。
+     */
+    val listScrollState = LazyListState()
+
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
     private val _dashboardTokenStats = MutableStateFlow<TokenStats?>(null)
     private val _dashboardRankings = MutableStateFlow<TokenRankings?>(null)
@@ -2262,9 +2273,28 @@ class SessionsViewModel : BaseViewModel() {
         loadCharacters(version)
     }
 
+    private var lastDataSourceKey: Pair<AppMode, Long>? = null
+
+    /**
+     * 数据源（运行模式 / 数据库档案）真正变化时才清空重建列表；
+     * 仅从聊天等页面返回时只做静默刷新，不清空列表，避免列表闪空、滚动位置跳变。
+     */
+    fun onDataSourceChanged(mode: AppMode, revision: Long) {
+        val key = mode to revision
+        if (lastDataSourceKey == key) {
+            loadAll()
+            loadDashboardMetrics()
+            return
+        }
+        lastDataSourceKey = key
+        reloadForDataSource()
+    }
+
     /** 数据库 Profile / 运行模式切换时先清空旧快照，再从新数据源完整加载。 */
     fun reloadForDataSource() {
         val version = ++dataSourceVersion
+        // 数据源已切换，旧的滚动锚点不再适用，回到列表顶部
+        listScrollState.requestScrollToItem(0)
         _sessions.value = emptyList()
         _characters.value = emptyList()
         _dashboardTokenStats.value = null
