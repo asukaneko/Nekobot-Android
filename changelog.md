@@ -2,6 +2,29 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.7.7 - 2026-09-25
+
+### 新增
+
+- 本地 MCP 支持在 Alpine 沙盒中运行 stdio 服务：通过 PRoot 在本地 rootfs 内启动 node / npx / python 等运行时，command 与 args 做 POSIX 引号转义防注入，并保护沙盒内部环境变量不被用户 env 覆盖；沙盒不可用时回退为直接运行，沙盒内缺少运行时会提示安装运行时；进程退出原因被记录，退出后新请求立即失败而非空等超时。
+- Skill 支持 AI 通过数据库工具直接落盘文件：`db_create_skill` / `db_update_skill` 新增 `skill_md`、`reference_md` 与 `files` 附加文件参数，可按相对路径写入 SKILL.md 同级文件（拦截越界路径与 config.json），兼容对象、JSON 字符串与 `{path, content}` 数组三种入参；创建时校验名称并检测目录冲突，更新支持重命名并同步目录，删除同步清理目录，元数据返回附带文件清单。
+- read_image 支持视觉对话模型直接注入图片：对话模型支持视觉时将图片以 data URI 直接注入上下文，不再额外调用视觉模型；不支持视觉时回退到 understand_image；工具结果中的 base64 图片在进度卡片与持久化中统一净化展示。
+- Agent 循环中间回复留档：进度卡片按时间顺序记录每轮中间回复正文（单条 20k、总预算受限，按最新优先分配），聊天页内联完整展示（Markdown、不截断、不进详情弹窗）；技能沉淀轨迹与上下文摘要保留中间回复、丢弃思考内容。
+- 插件新增 `workspace` 危险权限：有会话时读写会话工作区 `plugins/<插件id>/`，无会话时读写共享工作区；提供 save / list / read / delete 宿主 API（命令侧与页面侧均可用），返回 `file_reference` 可直接用于文件卡片；含 canonical 越界校验与配额限制（单文件 ≤2 MiB、≤500 个文件、总量 ≤32 MiB）。
+- 上下文压缩按钮在压缩期间显示进度圈与「压缩中」文案并禁用点击，远程与本地模式一致。
+
+### 修复
+
+- 修复上下文压缩超时中断：单次尝试超时按模型失败处理并继续故障转移，压缩改用与 Agent 同级的 10 分钟超时；上下文压缩改为全量并入摘要且仅在新一轮请求前触发，本轮用户消息不参与摘要；压缩失败时记录日志并按未压缩继续，不中断本轮对话；会话列表预览改取最后一条真实消息。
+- 修复插件页面小组件点击无响应：点击模板的 PendingIntent 由广播改为 Activity 并配 FLAG_MUTABLE，避免 Android 12+ 丢弃 extras 导致参数为空。
+- 修复低版本 Android 兼容性：着色器 uniform 设置限定 Android 13 及以上，避免低版本崩溃；Skill 导出 ZIP 在 Android 9 及以下直接返回失败，规避 Scoped Storage 限制。
+
+### 优化
+
+- 相邻思考卡片合并为整组圆角卡片：组内首张仅上圆角、末张仅下圆角、中间为直角，非末张底部添加分隔线，单张仍保留四角圆角。
+- 技能沉淀轨迹注入上限由 6000 提升至 16000 字符，超长时保留头尾并插入省略标记；工具参数、工具结果与中间回复分别设置预览上限。
+- 完善代币来源与用途的本地化文案：新增 plugin 用途与 agent_context_summary 归类，补全 chat / fork / local / agent_memory / session_name / compression / tts / heartbeat_silent / command / utility / decision / embedding / react / web_agent / live2d / workflow / qq 等来源映射，未匹配来源回退原始值。
+
 ## v0.7.6 - 2026-09-21
 
 ### 新增
