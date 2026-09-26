@@ -300,7 +300,21 @@ class PluginAssetServer(
                   },
                   delete: function (name) { return callHost("files.delete", { name: name }); }
                 },
-                http: { get: function (url) { return callHost("http.get", { url: url }); } },
+                http: {
+                  get: function (url, options) {
+                    return callHost("http.get", {
+                      url: url,
+                      headers: options && options.headers
+                    });
+                  },
+                  post: function (url, options) {
+                    return callHost("http.post", {
+                      url: url,
+                      headers: options && options.headers,
+                      body: options && options.body
+                    });
+                  }
+                },
                 ai: {
                   complete: function (options) { return callHost("ai.complete", options || {}); }
                 },

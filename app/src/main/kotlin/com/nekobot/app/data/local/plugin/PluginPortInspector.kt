@@ -206,7 +206,7 @@ object PluginPortInspector {
         if (Regex("generateRaw|generateQuietPrompt|ai\\.complete|callAI").containsMatchIn(source)) {
             permissions += "ai.call"
         }
-        if (Regex("fetch\\(|XMLHttpRequest|\\$\\.ajax|\\$\\.get\\(|httpGet|http\\.get").containsMatchIn(source)) {
+        if (Regex("fetch\\(|XMLHttpRequest|\\$\\.ajax|\\$\\.get\\(|httpGet|httpPost|http\\.(get|post)").containsMatchIn(source)) {
             permissions += "network"
         }
         if (Regex("Tools\\.Files|workspace\\.(save|list|read|delete)|workspace_(save|list|read|delete)").containsMatchIn(source)) {
@@ -294,6 +294,7 @@ object PluginPortInspector {
                     "getMessages" -> "get_messages"
                     "notify" -> "notify"
                     "httpGet" -> "http_get"
+                    "httpPost" -> "http_post"
                     "progress" -> "progress"
                     "aiComplete" -> "ai_complete"
                     "appendMessage" -> "append_message"
@@ -344,7 +345,7 @@ object PluginPortInspector {
                         "workspace.save", "workspace.list", "workspace.read", "workspace.delete"
                     )
                     "files" -> name in setOf("files.list", "files.read", "files.delete")
-                    "http" -> name == "http.get"
+                    "http" -> name in setOf("http.get", "http.post")
                     "progress" -> name == "progress.update"
                     "ai" -> name == "ai.complete"
                     else -> false

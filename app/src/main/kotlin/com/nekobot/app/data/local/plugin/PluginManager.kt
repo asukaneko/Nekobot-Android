@@ -1069,7 +1069,19 @@ class PluginManager(
                 promptStack: function(options) { return __api("chat.prompt.stack", options || {}); },
                 toolCalls: function(options) { return __api("chat.tool.calls", options || {}); },
                 notify: function(message) { return __api("notify", { message: message }); },
-                httpGet: function(url) { return __api("http_get", { url: url }); },
+                httpGet: function(url, options) {
+                  return __api("http_get", {
+                    url: url,
+                    headers: options && options.headers
+                  });
+                },
+                httpPost: function(url, options) {
+                  return __api("http_post", {
+                    url: url,
+                    headers: options && options.headers,
+                    body: options && options.body
+                  });
+                },
                 aiComplete: function(options) { return __api("ai_complete", options || {}); },
                 appendMessage: function(options) { return __api("append_message", options || {}); },
                 sendMessage: function(options) { return __api("chat_send", options || {}); },

@@ -24,8 +24,10 @@ import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.model.WorldBook
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -455,18 +457,8 @@ internal class PluginApiDispatcher(
                     )
                 )
             }
-            "http.get" -> {
-                requireNetworkAllowed()
-                val url = payload.string("url").trim()
-                requirePublicHttpsUrl(url, "插件网络请求")
-                val request = Request.Builder().url(url).get().build()
-                httpClient.newCall(request).execute().use { response ->
-                    val body = response.body?.byteStream()?.use { input ->
-                        readLimitedText(input, MAX_HTTP_BYTES)
-                    }.orEmpty()
-                    mapOf("status" to response.code, "body" to body)
-                }
-            }
+            "http.get" -> performHttpRequest(payload, isPost = false)
+            "http.post" -> performHttpRequest(payload, isPost = true)
             "workspace.save" -> pluginWorkspaceSave(context, payload)
             "workspace.list" -> pluginWorkspaceList(context, payload)
             "workspace.read" -> pluginWorkspaceRead(context, payload)
@@ -794,6 +786,7 @@ internal class PluginApiDispatcher(
         "get_messages" -> "chat.messages.list"
         "notify" -> "ui.toast"
         "http_get" -> "http.get"
+        "http_post" -> "http.post"
         "progress" -> "progress.update"
         "storage_get" -> "storage.get"
         "storage_set" -> "storage.set"
@@ -838,7 +831,7 @@ internal class PluginApiDispatcher(
         "memory.write", "memory.append", "memory.edit" -> "memory.write"
         "workspace.save", "workspace.list", "workspace.read", "workspace.delete" -> "workspace"
         "files.list", "files.read", "files.delete" -> "files"
-        "http.get" -> "network"
+        "http.get", "http.post" -> "network"
         "progress.update" -> "chat.progress"
         else -> null
     }
@@ -1185,6 +1178,74 @@ internal class PluginApiDispatcher(
 
     // ---- 网络边界：与插件安装共用同一套总开关与公网 HTTPS 校验 ----
 
+    /**
+     * 插件网络请求（GET / POST）。
+     *
+     * 只允许公网 HTTPS；`headers` 可选，受数量/长度上限与禁用头部约束。
+     * POST 的 `body` 为字符串，未显式给出 `Content-Type` 时按 application/json 发送。
+     */
+    private fun performHttpRequest(payload: JsonObject, isPost: Boolean): Map<String, Any?> {
+        requireNetworkAllowed()
+        val url = payload.string("url").trim()
+        requirePublicHttpsUrl(url, "插件网络请求")
+        val headers = parseHttpHeaders(
+            payload.get("headers")?.let {
+                if (it.isJsonObject) it.asJsonObject
+                else throw PluginApiException("headers 必须是对象", "invalid_argument")
+            }
+        )
+        val builder = Request.Builder().url(url)
+        if (isPost) {
+            val bodyBytes = payload.string("body").toByteArray(Charsets.UTF_8)
+            if (bodyBytes.size > MAX_HTTP_BODY_BYTES) {
+                throw PluginApiException("请求体超过大小限制", "request_too_large")
+            }
+            val contentType = headers
+                .firstOrNull { it.first.equals("Content-Type", ignoreCase = true) }
+                ?.second
+                ?: HTTP_DEFAULT_CONTENT_TYPE
+            builder.post(bodyBytes.toRequestBody(contentType.toMediaTypeOrNull()))
+        } else {
+            builder.get()
+        }
+        headers.forEach { (name, value) -> builder.header(name, value) }
+        httpClient.newCall(builder.build()).execute().use { response ->
+            val body = response.body?.byteStream()?.use { input ->
+                readLimitedText(input, MAX_HTTP_BYTES)
+            }.orEmpty()
+            return mapOf("status" to response.code, "body" to body)
+        }
+    }
+
+    /** 解析并校验 `headers` 对象：名称/值必须为可见 ASCII，且不能覆盖宿主接管的头部。 */
+    private fun parseHttpHeaders(raw: JsonObject?): List<Pair<String, String>> {
+        if (raw == null || raw.size() == 0) return emptyList()
+        if (raw.size() > MAX_HTTP_HEADERS) {
+            throw PluginApiException("请求头最多 $MAX_HTTP_HEADERS 项", "invalid_argument")
+        }
+        return raw.entrySet().map { (rawName, element) ->
+            val name = rawName.trim()
+            if (name.isEmpty() || name.length > MAX_HTTP_HEADER_NAME_CHARS ||
+                !name.all { it.code in HTTP_HEADER_CHAR_RANGE }
+            ) {
+                throw PluginApiException("请求头名称无效：$rawName", "invalid_argument")
+            }
+            if (name.lowercase(Locale.ROOT) in HTTP_FORBIDDEN_HEADERS) {
+                throw PluginApiException("不允许设置请求头：$name", "invalid_argument")
+            }
+            val value = element
+                .takeIf { it.isJsonPrimitive }
+                ?.let { runCatching { it.asString }.getOrNull() }
+                .orEmpty()
+            if (value.length > MAX_HTTP_HEADER_VALUE_CHARS ||
+                !value.all { it == '\t' || it.code in HTTP_HEADER_CHAR_RANGE }
+            ) {
+                throw PluginApiException("请求头 $name 的值无效", "invalid_argument")
+            }
+            name to value
+        }
+    }
+
     private fun requireNetworkAllowed() {
         if (!networkAllowed()) {
             throw PluginApiException(
@@ -1493,7 +1554,7 @@ internal class PluginApiDispatcher(
 
         /** 命令侧 API 名（`ctx.api.*`）。 */
         val LEGACY_API_NAMES: Set<String> = setOf(
-            "get_session", "get_messages", "notify", "http_get", "progress",
+            "get_session", "get_messages", "notify", "http_get", "http_post", "progress",
             "storage_get", "storage_set", "storage_remove", "storage_list",
             "ai_complete", "ui_render", "append_message",
             "chat_send", "create_session", "switch_session",
@@ -1516,7 +1577,7 @@ internal class PluginApiDispatcher(
             "memory.read", "memory.write", "memory.append", "memory.edit",
             "workspace.save", "workspace.list", "workspace.read", "workspace.delete",
             "files.list", "files.read", "files.delete",
-            "http.get", "progress.update", "ai.complete",
+            "http.get", "http.post", "progress.update", "ai.complete",
             "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
 
@@ -1589,6 +1650,18 @@ internal class PluginApiDispatcher(
         const val MAX_CHARACTER_GREETINGS = 16
         const val MAX_CHARACTER_RULES = 32
         const val MAX_HTTP_BYTES = 512L * 1024
+
+        /** 插件网络请求：请求体、请求头上限与宿主接管的头部。 */
+        const val MAX_HTTP_BODY_BYTES = 512L * 1024
+        const val MAX_HTTP_HEADERS = 32
+        const val MAX_HTTP_HEADER_NAME_CHARS = 128
+        const val MAX_HTTP_HEADER_VALUE_CHARS = 4_096
+        const val HTTP_DEFAULT_CONTENT_TYPE = "application/json; charset=utf-8"
+        private val HTTP_HEADER_CHAR_RANGE = 0x21..0x7E
+        val HTTP_FORBIDDEN_HEADERS: Set<String> = setOf(
+            "host", "content-length", "connection", "transfer-encoding",
+            "upgrade", "expect", "te", "trailer", "proxy-connection", "keep-alive"
+        )
         const val MAX_LOG_CHARS = 500
         const val MAX_TOAST_CHARS = 500
         const val MAX_STORAGE_KEY_CHARS = 128

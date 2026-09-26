@@ -594,7 +594,7 @@ internal class LocalPluginTool(
             - entry: 入口文件，默认 "main.js"，必须是安全的 .js 相对路径
             - permissions: 权限数组。基础/读取：storage、notify、chat.progress、files、chat.read、characters.read、worldbooks.read、memory.read；危险权限（network、chat.write、memory.write、characters.write、ai.call、workspace）需用户在插件页手动授权，AI 创建时不会自动授予。ai.call 开放 aiComplete（走聊天故障转移队列，每插件每分钟 10 次、每小时 20 万 token 上限）；chat.write 开放 appendMessage/sendMessage/createSession/switchSession；characters.write 开放 createCharacter/updateCharacter（无删除）；workspace 开放 workspace.save/list/read/delete（工作区 plugins/<插件id>/ 专属文件夹，有会话时在会话工作区，否则共享工作区；单文件 ≤2 MiB、≤500 个文件、总量 ≤32 MiB，返回的 file_reference 可用于 [File: ...] 卡片）；files 开放页面文件上传（`<input type="file">`，副本存插件私有目录）与 files.list/read/delete（单文件 ≤16 MiB、≤100 个文件、总量 ≤64 MiB）。
             - hooks: 事件钩子数组（≤4，可省略）：message.beforeSend（发送前改写用户消息）、app.lifecycle（app.start/chat.open/chat.close）。声明后用 NekoPlugin.on(name, handler) 注册；声明 hooks 时 commands 可以为空。
-            - pages: 页面数组（≤8 个），每项 {"id": "小写id", "title": "标题", "title_i18n": {...}, "entry": "pages/x.html", "styles": [...], "scripts": [...], "order": 100}；entry 必须是以 .html 结尾的安全相对路径且文件真实存在。页面用 host.* API（host.storage.*、host.chat.*（含 chat.messages.append/send、chat.sessions.create/switch、chat.context/sessionConfig/promptStack/toolCalls）、host.characters.*（含 create/update）、host.worldbooks.*、host.memory.read/write/append/edit、host.workspace.save/list/read/delete、host.ui.render、host.http.get、host.ui.toast、host.system.info）；页面内可用相对链接或 host.ui.openPage(pageId, args) 在同插件目录的多个 HTML 之间切换（返回键逐页回退，外部跳转仍被拦截）；原生弹窗：window.alert/confirm/prompt 与 host.ui.alert/confirm/prompt/select（select 传 {options: [...]}，取消返回 null），与 ctx.api 共用权限与存储。
+            - pages: 页面数组（≤8 个），每项 {"id": "小写id", "title": "标题", "title_i18n": {...}, "entry": "pages/x.html", "styles": [...], "scripts": [...], "order": 100}；entry 必须是以 .html 结尾的安全相对路径且文件真实存在。页面用 host.* API（host.storage.*、host.chat.*（含 chat.messages.append/send、chat.sessions.create/switch、chat.context/sessionConfig/promptStack/toolCalls）、host.characters.*（含 create/update）、host.worldbooks.*、host.memory.read/write/append/edit、host.workspace.save/list/read/delete、host.ui.render、host.http.get/post、host.ui.toast、host.system.info）；页面内可用相对链接或 host.ui.openPage(pageId, args) 在同插件目录的多个 HTML 之间切换（返回键逐页回退，外部跳转仍被拦截）；原生弹窗：window.alert/confirm/prompt 与 host.ui.alert/confirm/prompt/select（select 传 {options: [...]}，取消返回 null），与 ctx.api 共用权限与存储。
 
             二、入口 JS 运行时
             - 用 NekoPlugin.registerCommand(name, handler) 或 NekoPlugin.register({commands: {name: handler}}) 注册命令
@@ -609,7 +609,8 @@ internal class LocalPluginTool(
               await ctx.api.toolCalls({sessionId, limit})    // 工具调用记录：{records:[{callId, name, arguments, result, status, messageId}]}（chat.read）
               await ctx.api.notify(message)         // Toast 提示（notify）
               await ctx.api.progress(options)       // 更新进度卡片（chat.progress），耗时命令用
-              await ctx.api.httpGet(url)            // 仅 https://，返回 {status, body}，body 上限 512KB（network）
+              await ctx.api.httpGet(url, {headers})   // 仅 https://，返回 {status, body}，body 上限 512KB（network）
+              await ctx.api.httpPost(url, {headers, body})  // POST，body 为字符串（默认 application/json），上限 512KB（network）
               await ctx.api.storage.get(key)        // 读存储，返回 JSON 值或 null（storage）
               await ctx.api.storage.set(key, value) // 写存储（storage）
               await ctx.api.storage.remove(key)     // 删除键（storage）

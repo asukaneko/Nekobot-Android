@@ -147,7 +147,8 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | `storage` | `ctx.api.storage.list()` | 返回当前插件全部键值组成的对象。 |
 | `notify` | `ctx.api.notify(message)` | 显示短 Toast，消息最多 500 个字符，返回 `true`。 |
 | `chat.progress` | `ctx.api.progress(options)` | 更新当前命令的进度卡片，见下文「进度卡片」。 |
-| `network` | `ctx.api.httpGet(url)` | 仅允许 `https://` 的 GET 请求，返回 `{ status, body }`；响应正文最多 512 KiB。 |
+| `network` | `ctx.api.httpGet(url, options?)` | 仅允许 `https://` 公网地址的 GET 请求，返回 `{ status, body }`；`options.headers` 可选自定义请求头；响应正文最多 512 KiB。 |
+| `network` | `ctx.api.httpPost(url, options?)` | 仅允许 `https://` 公网地址的 POST 请求；`options.body` 为字符串请求体（≤ 512 KiB，未指定 `Content-Type` 时按 `application/json` 发送），`options.headers` 可选；返回 `{ status, body }`。 |
 | `ai.call` | `ctx.api.aiComplete(options)` | 走聊天故障转移队列的单次生成，返回 `{ content, model, usage }`；见下文「AI 调用」。 |
 | `chat.write` | `ctx.api.appendMessage(options)` | 往会话追加一条消息（默认当前会话），返回 `{ id, sessionId, role, createdAt }`。 |
 | `chat.write` | `ctx.api.sendMessage(options)` | 发送用户消息并触发一次完整回复（后台生成），返回 `{ messageId, sessionId, replyPending }`。 |
@@ -175,7 +176,7 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 
 存储按插件 ID 隔离。键不能为空、最多 128 个字符，且不能包含换行。卸载插件会删除它自己的存储数据。
 
-网络能力必须通过 `ctx.api.httpGet()` 使用。运行时禁止直接使用 `fetch`、XHR、WebSocket、图片加载或页面导航访问网络，因此这些方式不是可用的网络接口。
+网络能力必须通过 `ctx.api.httpGet()` / `ctx.api.httpPost()` 使用。运行时禁止直接使用 `fetch`、XHR、WebSocket、图片加载或页面导航访问网络，因此这些方式不是可用的网络接口。
 
 下面是一个需要 `network` 权限的示例：
 
@@ -627,7 +628,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 页面运行在虚拟源 `https://appassets.androidplatform.net/plugin/<插件id>/<entry>`，`entry` 同目录的 CSS/JS/图片等相对引用会自动解析到插件目录内的对应文件。
 
-- 页面内 `fetch`、XHR、WebSocket 与图片外链被禁止；网络只能走 `host.http.get`。插件目录与 `@files/` 私有文件中的图片/音频可直接用相对路径或 `url` 引用展示（由宿主直接提供，不经过网络）。
+- 页面内 `fetch`、XHR、WebSocket 与图片外链被禁止；网络只能走 `host.http.get` / `host.http.post`。插件目录与 `@files/` 私有文件中的图片/音频可直接用相对路径或 `url` 引用展示（由宿主直接提供，不经过网络）。
 - 页面跳转仅允许插件目录内的资源（相对链接、`location.href`、`host.ui.openPage`），外部地址、`target=_blank` 与自定义 scheme 一律拦截；用法见 9.4。
 - 不使用 `localStorage`：页面存储必须走 `host.storage.*`，这样卸载插件时数据能一次清干净。
 - 页面主题：宿主会在 HTML 的 `<head>` 起始处注入 CSS 变量与桥接脚本，可用变量（浅色/深色自动跟随 App）：
@@ -670,7 +671,8 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | `host.workspace.save({path, content})` / `list({path?})` / `read({path})` / `delete({path})` | `workspace` | 读写插件专属工作区文件夹（有会话时在会话工作区，否则共享工作区），见第 4 章「工作区文件」 |
 | `host.files.list()` / `read(name, encoding?)` / `delete(name)` | `files` | 插件私有文件：列出 / 读取（`text`/`base64`，≤128 KiB）/ 删除；上传与 URL 用法见 9.9 |
 | `host.ai.complete(options)` | `ai.call` | 走聊天故障转移队列的单次生成，返回 `{content, model, usage}`；超时 120 秒，限额见第 4 章 |
-| `host.http.get(url)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`（≤ 512 KiB） |
+| `host.http.get(url, options?)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`（≤ 512 KiB）；`options.headers` 可选自定义请求头 |
+| `host.http.post(url, options?)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`；`options.body` 为字符串请求体，`options.headers` 可选自定义请求头 |
 | `host.progress.update(options)` | `chat.progress` | 由聊天命令（`open_page`）打开时更新该命令消息上的进度卡片；其他入口返回 `false` |
 
 ### 9.4 多页面与页内切换

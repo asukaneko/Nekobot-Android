@@ -127,6 +127,23 @@ class PluginApiDispatcherTest {
     }
 
     @Test
+    fun pluginNetworkApisSupportGetAndPostWithHeaders() {
+        assertTrue("http_get" in PluginApiDispatcher.LEGACY_API_NAMES)
+        assertTrue("http_post" in PluginApiDispatcher.LEGACY_API_NAMES)
+        assertTrue("http.get" in PluginApiDispatcher.PAGE_API_NAMES)
+        assertTrue("http.post" in PluginApiDispatcher.PAGE_API_NAMES)
+        assertTrue("network" in PluginApiDispatcher.CAPABILITIES)
+        assertTrue(PluginApiDispatcher.MAX_HTTP_BODY_BYTES > 0)
+        assertTrue(PluginApiDispatcher.MAX_HTTP_HEADERS > 0)
+        assertTrue(
+            PluginApiDispatcher.MAX_HTTP_HEADER_VALUE_CHARS >
+                PluginApiDispatcher.MAX_HTTP_HEADER_NAME_CHARS
+        )
+        assertTrue("host" in PluginApiDispatcher.HTTP_FORBIDDEN_HEADERS)
+        assertTrue("content-length" in PluginApiDispatcher.HTTP_FORBIDDEN_HEADERS)
+    }
+
+    @Test
     fun limitIsClampedToRange() {
         val payload = JsonObject()
         assertEquals(50, PluginApiDispatcher.resolveLimit(payload, 50, 200))
