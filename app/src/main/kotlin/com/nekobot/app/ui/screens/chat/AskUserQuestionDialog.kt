@@ -71,7 +71,10 @@ fun AskUserQuestionDialog(
         },
         cancelText = stringResource(R.string.chat_ask_question_skip),
         onCancel = onSkip,
-        contentScrollable = true
+        contentScrollable = true,
+        // 等待回答期间点击遮罩不关闭：从通知进入时可能带出一次落在遮罩上的点击，
+        // 误关会让 AI 直接收到“用户跳过”，只能由「跳过」按钮或关闭图标显式跳过。
+        dismissOnClickOutside = false
     ) {
         request.questions.forEachIndexed { index, item ->
             if (index > 0) Spacer(Modifier.height(16.dp))

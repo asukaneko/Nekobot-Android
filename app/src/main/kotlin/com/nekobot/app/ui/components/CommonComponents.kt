@@ -253,11 +253,21 @@ fun NekoDialog(
     borderWidth: Int = 0,
     /** 标题最大行数，超出省略；null 表示不限制。 */
     maxTitleLines: Int? = null,
+    /**
+     * 点击弹窗外部（遮罩）是否关闭。
+     *
+     * 等待用户处理的弹窗（如 AI 提问）应传 false：从通知进入应用时手指可能带出
+     * 一次落在遮罩上的点击，误关会把待处理事项直接当作“跳过”。
+     */
+    dismissOnClickOutside: Boolean = true,
     content: @Composable (ColumnScope.() -> Unit)? = null
 ) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = dismissOnClickOutside
+        )
     ) {
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize(),

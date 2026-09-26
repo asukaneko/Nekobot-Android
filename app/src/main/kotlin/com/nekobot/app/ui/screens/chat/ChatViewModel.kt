@@ -613,6 +613,9 @@ class ChatViewModel : BaseViewModel() {
     /** 标记聊天界面可见性（由 ChatScreen 的 onResume/onPause 调用） */
     fun setChatVisible(visible: Boolean) {
         isChatVisible = visible
+        // 回到聊天界面时补一次等待项恢复：从通知点进来、后台期间事件未送达等
+        // 情况下，重新进入会话即可看到授权/提问弹窗，而不是一直等到超时。
+        if (visible) restorePendingAttention(currentSessionId)
         // 全局登记当前可见会话：等待中心据此判断授权/提问是否需要发系统通知
         com.nekobot.app.ServiceContainer.setActiveChatSession(
             if (visible) currentSessionId.takeIf { it.isNotBlank() } else null
