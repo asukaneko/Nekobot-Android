@@ -400,6 +400,13 @@ class LocalRepository(
     /** ask_user_question 提问等待管理器：AI 提问后挂起，UI 回答后 resolve。 */
     private val askUserQuestionManager =
         com.nekobot.app.data.local.ai.LocalAskUserQuestionManager()
+    /**
+     * 第三方插件安装确认等待管理器：Agent 通过 plugin_use install_zip 安装工作区
+     * ZIP 插件时在此挂起，用户在第三方插件同意弹窗中勾选权限并确认后才继续。
+     * 与命令授权不同：不可记忆、不受 YOLO 影响。
+     */
+    private val pluginInstallConfirmationManager =
+        com.nekobot.app.data.local.ai.LocalPluginInstallConfirmationManager()
     /** stdio MCP 在本地 Alpine 沙盒内运行，因此需要 app 上下文。 */
     private val localMcpRuntime = LocalMcpRuntime(appContext)
     private val mcpAutoConnectRunning = AtomicBoolean(false)
@@ -998,6 +1005,18 @@ class LocalRepository(
         _askUserQuestionEvents
 
     /**
+     * 第三方插件安装确认请求流：Agent 的 plugin_use install_zip 挂起等待，
+     * 由 ChatViewModel 收集并在会话界面弹出第三方插件同意弹窗（协议 + 权限勾选）；
+     * 用户确认/拒绝后经 [respondToPluginInstallConfirmation] 解除挂起。
+     */
+    private val _pluginInstallConfirmationEvents =
+        kotlinx.coroutines.flow.MutableSharedFlow<com.nekobot.app.data.local.ai.PluginInstallConfirmationRequest>(
+            extraBufferCapacity = 16
+        )
+    val pluginInstallConfirmationEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.local.ai.PluginInstallConfirmationRequest> =
+        _pluginInstallConfirmationEvents
+
+    /**
      * 发出命令授权请求：转发给 UI 弹窗，并登记到 [com.nekobot.app.data.local.ai.AgentAttentionCenter]。
      *
      * 用户不在该会话（含应用在后台）时由等待中心发系统通知，并在会话列表显示提示；
@@ -1016,6 +1035,14 @@ class LocalRepository(
     ) {
         _askUserQuestionEvents.tryEmit(request)
         com.nekobot.app.data.local.ai.AgentAttentionCenter.registerQuestion(request)
+    }
+
+    /** 发出插件安装确认请求：转发给 UI 弹窗，并登记到等待中心（不在该会话时通知提醒）。 */
+    private fun emitPluginInstallConfirmation(
+        request: com.nekobot.app.data.local.ai.PluginInstallConfirmationRequest
+    ) {
+        _pluginInstallConfirmationEvents.tryEmit(request)
+        com.nekobot.app.data.local.ai.AgentAttentionCenter.registerPluginInstall(request)
     }
 
     /**
@@ -5966,6 +5993,7 @@ class LocalRepository(
             LocalLinuxSandboxCoordinator.stopSession(id)
             localExecAuthorizationManager.cancelSession(id)
             askUserQuestionManager.cancelSession(id)
+            pluginInstallConfirmationManager.cancelSession(id)
             aiClient.cancelRequests(id)
             localMcpRuntime.cancelActiveToolCall(id)
             // 等待已被取消，撤掉提醒通知与会话列表标记
@@ -6175,6 +6203,10 @@ class LocalRepository(
             askUserQuestionManager = askUserQuestionManager,
             onAskUserQuestionRequired = { request ->
                 emitAskUserQuestion(request)
+            },
+            pluginInstallConfirmationManager = pluginInstallConfirmationManager,
+            onPluginInstallConfirmationRequired = { request ->
+                emitPluginInstallConfirmation(request)
             },
             thinkingHistoryProvider = { limit ->
                 kotlinx.coroutines.runBlocking(Dispatchers.IO) {
@@ -6671,6 +6703,8 @@ class LocalRepository(
             execConfirmationEmitter = { request -> emitExecConfirmation(request) },
             askUserQuestionManager = askUserQuestionManager,
             askUserQuestionEmitter = { request -> emitAskUserQuestion(request) },
+            pluginInstallConfirmationManager = pluginInstallConfirmationManager,
+            pluginInstallConfirmationEmitter = { request -> emitPluginInstallConfirmation(request) },
             mcpToolDefinitions = prepareMcpAgentTools(),
             sessionToolFilter = { definitions -> filterDefinitionsForSession(sessionId, definitions) }
         )
@@ -7256,6 +7290,8 @@ class LocalRepository(
                 execConfirmationEmitter = { request -> emitExecConfirmation(request) },
                 askUserQuestionManager = askUserQuestionManager,
                 askUserQuestionEmitter = { request -> emitAskUserQuestion(request) },
+                pluginInstallConfirmationManager = pluginInstallConfirmationManager,
+                pluginInstallConfirmationEmitter = { request -> emitPluginInstallConfirmation(request) },
                 sessionToolFilter = { definitions -> filterDefinitionsForSession(session.id, definitions) }
             )
 
@@ -7616,6 +7652,29 @@ class LocalRepository(
         )
         if (resolved) {
             com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveExecAuthorization(sessionId)
+        }
+        return resolved
+    }
+
+    /**
+     * 提交第三方插件安装确认；grantedPermissions 为 null 表示用户拒绝。
+     * requestId 失效或会话不匹配时返回 false。
+     */
+    fun respondToPluginInstallConfirmation(
+        requestId: String,
+        sessionId: String,
+        grantedPermissions: Set<String>?
+    ): Boolean {
+        val resolved = pluginInstallConfirmationManager.resolve(
+            requestId = requestId,
+            sessionId = sessionId,
+            decision = com.nekobot.app.data.local.ai.PluginInstallDecision(
+                approved = grantedPermissions != null,
+                grantedPermissions = grantedPermissions.orEmpty()
+            )
+        )
+        if (resolved) {
+            com.nekobot.app.data.local.ai.AgentAttentionCenter.resolvePluginInstall(sessionId)
         }
         return resolved
     }

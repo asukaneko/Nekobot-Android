@@ -207,14 +207,14 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "plugin_use",
             name = "插件管理",
-            description = "管理本地插件，与 browser_use 一样通过 action 驱动不同行为。可以列出和查看已安装插件（list/view），按 plugin.json + main.js 规范直接创建并安装新插件（create），从 https 地址安装插件 ZIP（install_url，需用户确认），修改已安装插件的清单或源码（update），启用/停用（enable/disable）、卸载（uninstall，需用户确认）插件，在沙盒中测试运行插件命令（execute），以及移植前的安全解压与静态自检（inspect/check）。插件通过注册斜杠命令扩展会话功能，运行在无网络、无文件访问的 WebView 沙盒中，只能使用清单声明且用户已授权的权限 API（workspace 权限可读写工作区中插件的专属文件夹 plugins/<插件id>/；files 权限可让插件页面通过系统文件选择器上传文件到插件私有目录，并用 files API 读取）。首次使用必须先执行 action=help 阅读完整插件开发文档（含清单规范、权限 API、运行时限制、大小限制和推荐流程），再按文档编写插件。",
+            description = "管理本地插件，与 browser_use 一样通过 action 驱动不同行为。可以列出和查看已安装插件（list/view），按 plugin.json + main.js 规范直接创建并安装新插件（create），从 https 地址安装插件 ZIP（install_url）或从会话工作区内的 ZIP 插件包安装（install_zip），两者都会弹出第三方插件同意弹窗，用户勾选协议与启用权限后才安装（该确认不可记忆、YOLO 也不能跳过），修改已安装插件的清单或源码（update），启用/停用（enable/disable）、卸载（uninstall，需用户确认）插件，在沙盒中测试运行插件命令（execute），以及移植前的安全解压与静态自检（inspect/check）。插件通过注册斜杠命令扩展会话功能，运行在无网络、无文件访问的 WebView 沙盒中，只能使用清单声明且用户已授权的权限 API（workspace 权限可读写工作区中插件的专属文件夹 plugins/<插件id>/；files 权限可让插件页面通过系统文件选择器上传文件到插件私有目录，并用 files API 读取）。首次使用必须先执行 action=help 阅读完整插件开发文档（含清单规范、权限 API、运行时限制、大小限制和推荐流程），再按文档编写插件。",
             parametersJson = """
                 {
                   "type": "object",
                   "properties": {
                     "action": {
                       "type": "string",
-                      "description": "动作：list、view、help、create、install_url、update、enable、disable、uninstall、execute、inspect、check"
+                      "description": "动作：list、view、help、create、install_url、install_zip、update、enable、disable、uninstall、execute、inspect、check"
                     },
                     "plugin_id": {
                       "type": "string",
@@ -235,6 +235,10 @@ object BuiltinTools {
                     "url": {
                       "type": "string",
                       "description": "install_url 的插件 ZIP 下载地址，仅支持 https"
+                    },
+                    "path": {
+                      "type": "string",
+                      "description": "会话工作区内的相对路径：install_zip 指向 .zip 插件包，inspect 指向 .zip 或目录"
                     },
                     "command": {
                       "type": "string",

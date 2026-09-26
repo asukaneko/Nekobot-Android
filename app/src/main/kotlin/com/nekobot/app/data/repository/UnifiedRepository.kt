@@ -626,6 +626,20 @@ class UnifiedRepository(
         authorization = authorization
     )
 
+    /**
+     * 第三方插件安装确认提交；grantedPermissions 为 null 表示拒绝安装。
+     * 仅本地模式有效（Agent 安装工作区 ZIP 的路径）。
+     */
+    fun respondToLocalPluginInstallConfirmation(
+        requestId: String,
+        sessionId: String,
+        grantedPermissions: Set<String>?
+    ): Boolean = isLocal && local.respondToPluginInstallConfirmation(
+        requestId = requestId,
+        sessionId = sessionId,
+        grantedPermissions = grantedPermissions
+    )
+
     /** ask_user_question 用户回答提交；仅本地模式有效。 */
     fun respondToAskUserQuestion(
         requestId: String,

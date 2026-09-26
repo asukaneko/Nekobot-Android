@@ -429,6 +429,12 @@
     <string name="agent_attention_auth_title">AI requests command authorization</string>
     <string name="agent_attention_question_title">AI is waiting for your answer</string>
     <string name="agent_attention_question_more">%1$d more question(s)</string>
+    <string name="agent_attention_plugin_install_title">AI requests to install a plugin</string>
+    <string name="agent_attention_plugin_install_text">Install plugin: %1$s</string>
+    <string name="chat_plugin_install_request">The local agent requests to install a plugin package from the session workspace. Please confirm the agreement and permissions.</string>
+    <string name="chat_plugin_install_approved">Plugin installation authorized</string>
+    <string name="chat_plugin_install_rejected">Plugin installation rejected</string>
+    <string name="chat_plugin_install_expired">Installation confirmation expired; ask the AI to retry</string>
 
     <!-- ==================== Modern chat (ModernChatScreen) ==================== -->
     <string name="chat_close_action_menu">Close action menu</string>

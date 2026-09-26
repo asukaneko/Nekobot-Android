@@ -429,6 +429,12 @@
     <string name="agent_attention_auth_title">AI がコマンド許可を求めています</string>
     <string name="agent_attention_question_title">AI が回答を待っています</string>
     <string name="agent_attention_question_more">他に %1$d 件の質問</string>
+    <string name="agent_attention_plugin_install_title">AI がプラグインのインストールを要求しています</string>
+    <string name="agent_attention_plugin_install_text">プラグインをインストール: %1$s</string>
+    <string name="chat_plugin_install_request">ローカル Agent がセッションワークスペース内のプラグインパッケージのインストールを要求しています。規約と有効にする権限を確認してください。</string>
+    <string name="chat_plugin_install_approved">プラグインのインストールを承認しました</string>
+    <string name="chat_plugin_install_rejected">プラグインのインストールを拒否しました</string>
+    <string name="chat_plugin_install_expired">インストール確認の有効期限が切れました。AI に再試行させてください</string>
 
     <!-- ==================== モダンチャット (ModernChatScreen) ==================== -->
     <string name="chat_close_action_menu">アクションメニューを閉じる</string>

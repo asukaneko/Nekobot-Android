@@ -122,6 +122,17 @@ internal class LocalPipelineCallbacks(
      */
     private val askUserQuestionEmitter: ((AskUserQuestionRequest) -> Unit)? = null,
     /**
+     * 第三方插件安装确认管理器：非空时 Agent 的 plugin_use install_zip 会挂起，
+     * 等待用户在第三方插件同意弹窗中勾选协议与权限（YOLO 不可跳过）。
+     */
+    private val pluginInstallConfirmationManager: LocalPluginInstallConfirmationManager? = null,
+    /**
+     * 安装确认请求桥接 emitter：把请求路由到 LocalRepository 的
+     * pluginInstallConfirmationEvents SharedFlow（由 ChatViewModel 收集弹窗）。
+     * 为空时降级到 eventChannel。
+     */
+    private val pluginInstallConfirmationEmitter: ((PluginInstallConfirmationRequest) -> Unit)? = null,
+    /**
      * 子代理复用的 MCP 工具定义清单（与主会话一致）。为空时子代理只获得本地/Skill/数据库工具。
      */
     private val mcpToolDefinitions: List<Map<String, Any>> = emptyList(),
@@ -203,6 +214,16 @@ internal class LocalPipelineCallbacks(
                     ?: run {
                         AgentAttentionCenter.registerQuestion(request)
                         emitEvent(RealtimeEvent.AskUserQuestionRequired(request))
+                    }
+            },
+            pluginInstallConfirmationManager = pluginInstallConfirmationManager,
+            onPluginInstallConfirmationRequired = { request ->
+                // 第三方插件安装确认：优先走 SharedFlow，确保用户始终能看到同意弹窗，
+                // 且此路径不经过 YOLO 判断——安装第三方代码必须逐次显式确认。
+                pluginInstallConfirmationEmitter?.invoke(request)
+                    ?: run {
+                        AgentAttentionCenter.registerPluginInstall(request)
+                        emitEvent(RealtimeEvent.PluginInstallConfirmationRequired(request))
                     }
             },
             onTodosUpdated = { todos ->

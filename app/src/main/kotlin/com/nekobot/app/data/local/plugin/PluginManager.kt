@@ -184,14 +184,51 @@ class PluginManager(
         }
     }
 
-    /** 从 HTTPS 地址下载插件 ZIP 并安装；调用方负责第三方免责协议确认。 */
-    suspend fun installFromUrl(url: String, acceptedThirdPartyAgreement: Boolean): InstalledPlugin =
+    /**
+     * 从 HTTPS 地址下载插件 ZIP 到缓存目录（含网络总开关与公开 https 校验）。
+     *
+     * 供 Agent 的 plugin_use install_url 使用：先下载并读取清单，由用户在第三方插件
+     * 同意弹窗中勾选权限后，再调用 [installZipFile] 落盘安装。调用方负责删除返回文件。
+     */
+    suspend fun downloadFromUrl(url: String): File = withContext(Dispatchers.IO) {
+        requireNetworkAccessAllowed()
+        val trimmed = url.trim()
+        requirePublicHttpsUrl(trimmed, "插件安装")
+        val tempZip = File.createTempFile("nekobot-plugin-", ".zip", appContext.cacheDir)
+        try {
+            val request = Request.Builder().url(trimmed).get().build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw PluginInstallException("插件下载失败：HTTP ${response.code}")
+                val body = response.body ?: throw PluginInstallException("插件下载失败：响应为空")
+                body.byteStream().use { input ->
+                    tempZip.outputStream().use { output ->
+                        copyLimited(input, output, MAX_ARCHIVE_BYTES, 0L)
+                    }
+                }
+            }
+            tempZip
+        } catch (error: Exception) {
+            tempZip.delete()
+            throw error
+        }
+    }
+
+    /**
+     * 安装本地插件 ZIP 文件（会话工作区内的 ZIP 或 [downloadFromUrl] 的缓存文件）。
+     *
+     * @param grantedPermissions 用户在同意弹窗中勾选的授权集合；null 表示调用方
+     *   未收集授权（按非危险权限默认授予）。
+     */
+    suspend fun installZipFile(zip: File, grantedPermissions: Set<String>? = null): InstalledPlugin =
         installMutex.withLock {
             withContext(Dispatchers.IO) {
-                if (!acceptedThirdPartyAgreement) {
-                    throw PluginInstallException("安装第三方插件前必须同意免责协议")
+                val tempZip = File.createTempFile("nekobot-plugin-", ".zip", appContext.cacheDir)
+                try {
+                    zip.copyTo(tempZip, overwrite = true)
+                    installZipBlocking(tempZip, grantedPermissions)
+                } finally {
+                    tempZip.delete()
                 }
-                installFromUrlBlocking(url)
             }
         }
 
@@ -477,29 +514,6 @@ class PluginManager(
             return installStaging(staging, null)
         } finally {
             if (staging.exists()) staging.deleteRecursively()
-        }
-    }
-
-    private fun installFromUrlBlocking(url: String): InstalledPlugin {
-        requireNetworkAccessAllowed()
-        val trimmed = url.trim()
-        requirePublicHttpsUrl(trimmed, "插件安装")
-        val tempZip = File.createTempFile("nekobot-plugin-", ".zip", appContext.cacheDir)
-        try {
-            val request = Request.Builder().url(trimmed).get().build()
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw PluginInstallException("插件下载失败：HTTP ${response.code}")
-                val body = response.body ?: throw PluginInstallException("插件下载失败：响应为空")
-                body.byteStream().use { input ->
-                    tempZip.outputStream().use { output ->
-                        copyLimited(input, output, MAX_ARCHIVE_BYTES, 0L)
-                    }
-                }
-            }
-            // Agent 安装的第三方 ZIP 与 create 同路径：只默认授予非危险权限。
-            return installZipBlocking(tempZip, null)
-        } finally {
-            tempZip.delete()
         }
     }
 

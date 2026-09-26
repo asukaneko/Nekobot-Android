@@ -435,6 +435,12 @@
     <string name="agent_attention_auth_title">AI 请求命令授权</string>
     <string name="agent_attention_question_title">AI 等待你的回答</string>
     <string name="agent_attention_question_more">另有 %1$d 个问题</string>
+    <string name="agent_attention_plugin_install_title">AI 请求安装插件</string>
+    <string name="agent_attention_plugin_install_text">安装插件：%1$s</string>
+    <string name="chat_plugin_install_request">本地 Agent 请求安装会话工作区中的插件包，请确认协议与启用权限。</string>
+    <string name="chat_plugin_install_approved">已授权安装插件</string>
+    <string name="chat_plugin_install_rejected">已拒绝安装插件</string>
+    <string name="chat_plugin_install_expired">安装确认已失效，请让 AI 重新发起</string>
 
     <!-- ==================== 现代聊天页 (ModernChatScreen) ==================== -->
     <string name="chat_close_action_menu">关闭操作菜单</string>

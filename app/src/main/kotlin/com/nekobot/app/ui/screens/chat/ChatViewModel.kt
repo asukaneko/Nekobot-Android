@@ -386,6 +386,17 @@ class ChatViewModel : BaseViewModel() {
     private val _askUserQuestion: MutableStateFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest?>
         get() = runtime.askUserQuestion
 
+    /** 第三方插件安装确认请求；非空时会话界面展示第三方插件同意弹窗（协议 + 权限勾选）。 */
+    val pluginInstallConfirmation: StateFlow<com.nekobot.app.data.local.ai.PluginInstallConfirmationRequest?> =
+        _runtime
+            .map { it.pluginInstallConfirmation }
+            .distinctUntilChanged()
+            .flatMapLatest { it }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _pluginInstallConfirmation:
+        MutableStateFlow<com.nekobot.app.data.local.ai.PluginInstallConfirmationRequest?>
+        get() = runtime.pluginInstallConfirmation
+
     private val _agentRecovery = MutableStateFlow<AgentRecoveryState?>(null)
     val agentRecovery: StateFlow<AgentRecoveryState?> = _agentRecovery.asStateFlow()
     private var agentRecoveryJob: kotlinx.coroutines.Job? = null
@@ -646,6 +657,13 @@ class ChatViewModel : BaseViewModel() {
             ?.let { request ->
                 if (runtime.askUserQuestion.value == null) runtime.askUserQuestion.value = request
             }
+        com.nekobot.app.data.local.ai.AgentAttentionCenter
+            .pendingPluginInstall(sessionId)
+            ?.let { request ->
+                if (runtime.pluginInstallConfirmation.value == null) {
+                    runtime.pluginInstallConfirmation.value = request
+                }
+            }
     }
 
     /** 初始化：加载会话信息与消息列表；服务器模式额外连接 Socket.IO。 */
@@ -725,6 +743,8 @@ class ChatViewModel : BaseViewModel() {
             .map { request -> RealtimeEvent.ExecConfirmationRequired(request) }
         val askQuestionEvents = com.nekobot.app.ServiceContainer.localRepository.askUserQuestionEvents
             .map { request -> RealtimeEvent.AskUserQuestionRequired(request) }
+        val pluginInstallEvents = com.nekobot.app.ServiceContainer.localRepository.pluginInstallConfirmationEvents
+            .map { request -> RealtimeEvent.PluginInstallConfirmationRequired(request) }
         // 4. localRepository.autoSkillEvents → 自动技能沉淀状态
         //    以"上下文压缩提示"同形态的内联提示展示（消息列表末尾），不再走 Hook 弹窗。
         val autoSkillEvents = com.nekobot.app.ServiceContainer.localRepository.autoSkillEvents
@@ -732,19 +752,21 @@ class ChatViewModel : BaseViewModel() {
         // 5. localRepository.autoMemoryEvents → 自动长期记忆状态
         val autoMemoryEvents = com.nekobot.app.ServiceContainer.localRepository.autoMemoryEvents
             .map { notice -> RealtimeEvent.AutoMemoryStatus(notice) }
-        // 同时收集五路：
+        // 同时收集六路：
         // 1. hookExecutor.events → HookNotificationEvent
         // 2. localRepository.execConfirmationEvents → 高风险工具（删除角色卡等）的确认请求
         //    修复"删除角色卡卡住"：原实现把确认事件 emit 到 LocalPipelineCallbacks.eventChannel
         //    但 eventChannel 没人 collect，导致 requestAuthorization 的 runBlocking 永远等待。
         // 3. localRepository.askUserQuestionEvents → ask_user_question 提问请求（挂起等待用户回答）
-        // 4. localRepository.autoSkillEvents → 自动沉淀 Skill 的进行中/完成提示
-        // 5. localRepository.autoMemoryEvents → 自动长期记忆的进行中/完成提示
+        // 4. localRepository.pluginInstallConfirmationEvents → Agent 安装工作区 ZIP 的第三方插件同意弹窗
+        // 5. localRepository.autoSkillEvents → 自动沉淀 Skill 的进行中/完成提示
+        // 6. localRepository.autoMemoryEvents → 自动长期记忆的进行中/完成提示
         eventsJob = ServiceContainer.applicationScope.launch {
             kotlinx.coroutines.flow.merge(
                 hookEvents,
                 confirmationEvents,
                 askQuestionEvents,
+                pluginInstallEvents,
                 autoSkillEvents,
                 autoMemoryEvents
             ).collect { event ->
@@ -778,6 +800,14 @@ class ChatViewModel : BaseViewModel() {
                         val request = event.request
                         if (request.sessionId.isBlank() || request.sessionId == targetSessionId) {
                             target.askUserQuestion.value = request.copy(
+                                sessionId = request.sessionId.ifBlank { targetSessionId }
+                            )
+                        }
+                    }
+                    is RealtimeEvent.PluginInstallConfirmationRequired -> {
+                        val request = event.request
+                        if (request.sessionId.isBlank() || request.sessionId == targetSessionId) {
+                            target.pluginInstallConfirmation.value = request.copy(
                                 sessionId = request.sessionId.ifBlank { targetSessionId }
                             )
                         }
@@ -1050,6 +1080,15 @@ class ChatViewModel : BaseViewModel() {
                     )
                 }
             }
+            is RealtimeEvent.PluginInstallConfirmationRequired -> {
+                // 本地第三方插件安装确认：AI 安装工作区 ZIP 后弹同意弹窗（协议 + 权限勾选）
+                val request = event.request
+                if (request.sessionId.isBlank() || request.sessionId == currentSessionId) {
+                    _pluginInstallConfirmation.value = request.copy(
+                        sessionId = request.sessionId.ifBlank { currentSessionId }
+                    )
+                }
+            }
             is RealtimeEvent.ExecConfirmationResolved -> {
                 if (event.sessionId.isNullOrBlank() || event.sessionId == currentSessionId) {
                     if (!isLocalMode) _sending.value = false
@@ -1207,6 +1246,37 @@ class ChatViewModel : BaseViewModel() {
         } else {
             // requestId 已失效（超时/停止后残留），提示后关闭弹窗即可
             showError(string(R.string.chat_ask_question_expired))
+        }
+    }
+
+    /**
+     * 提交第三方插件安装确认，解除 Agent 工具循环的挂起等待。
+     *
+     * @param grantedPermissions 用户勾选并授权的权限集合；null 表示拒绝安装。
+     */
+    fun respondToPluginInstallConfirmation(grantedPermissions: Set<String>?) {
+        val request = _pluginInstallConfirmation.value ?: return
+        val sessionId = request.sessionId.ifBlank { currentSessionId }
+        val submitted = unified.respondToLocalPluginInstallConfirmation(
+            requestId = request.requestId,
+            sessionId = sessionId,
+            grantedPermissions = grantedPermissions
+        )
+        _pluginInstallConfirmation.value = null
+        if (submitted) {
+            _sending.value = true
+            showToast(
+                string(
+                    if (grantedPermissions != null) {
+                        R.string.chat_plugin_install_approved
+                    } else {
+                        R.string.chat_plugin_install_rejected
+                    }
+                )
+            )
+        } else {
+            // requestId 已失效（超时/停止后残留），提示后关闭弹窗即可
+            showError(string(R.string.chat_plugin_install_expired))
         }
     }
 
@@ -2152,6 +2222,8 @@ class ChatViewModel : BaseViewModel() {
         if (_execConfirmation.value != null) return
         // AI 正在等待用户回答提问时，不自动发送排队消息
         if (_askUserQuestion.value != null) return
+        // AI 正在等待插件安装确认时，不自动发送排队消息
+        if (_pluginInstallConfirmation.value != null) return
         if (_agentRecovery.value != null) return
         val queue = _queuedMessages.value
         if (queue.isEmpty()) return
@@ -2170,8 +2242,9 @@ class ChatViewModel : BaseViewModel() {
                     state.sending,
                     state.queuedMessages,
                     state.execConfirmation,
-                    state.askUserQuestion
-                ) { sending, queue, _, ask -> sending to (queue to ask) }
+                    state.askUserQuestion,
+                    state.pluginInstallConfirmation
+                ) { sending, queue, _, ask, _ -> sending to (queue to ask) }
             }.collect {
                 kotlinx.coroutines.delay(200)
                 maybeAutoSendQueuedMessage()
@@ -2736,6 +2809,17 @@ class ChatViewModel : BaseViewModel() {
             }
         }
         _askUserQuestion.value = null
+        // 停止生成同时拒绝待确认的插件安装，解除 AI 工具循环中的挂起等待
+        _pluginInstallConfirmation.value?.let { request ->
+            if (isLocalMode) {
+                unified.respondToLocalPluginInstallConfirmation(
+                    requestId = request.requestId,
+                    sessionId = request.sessionId.ifBlank { sessionId },
+                    grantedPermissions = null
+                )
+            }
+        }
+        _pluginInstallConfirmation.value = null
         _sending.value = false
         _plotChoicesLoading.value = false
         streamingContent.setLength(0)

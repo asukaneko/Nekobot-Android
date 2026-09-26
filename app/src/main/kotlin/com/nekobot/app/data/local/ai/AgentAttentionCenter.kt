@@ -14,7 +14,8 @@ import java.util.concurrent.ConcurrentHashMap
 /** 等待用户处理的 Agent 事件类型。 */
 enum class AgentAttentionKind {
     ExecAuthorization,
-    Question
+    Question,
+    PluginInstall
 }
 
 /** 会话列表/通知用的一条等待事项摘要。 */
@@ -42,6 +43,7 @@ object AgentAttentionCenter {
     private sealed interface Payload {
         data class Exec(val request: ExecConfirmationRequest) : Payload
         data class Question(val request: AskUserQuestionRequest) : Payload
+        data class PluginInstall(val request: PluginInstallConfirmationRequest) : Payload
     }
 
     private class Entry(
@@ -91,6 +93,17 @@ object AgentAttentionCenter {
         )
     }
 
+    /** 第三方插件安装确认（Agent 安装工作区 ZIP 时挂起等待用户勾选权限）。 */
+    fun registerPluginInstall(request: PluginInstallConfirmationRequest) {
+        val text = localizedString(R.string.agent_attention_plugin_install_text, request.pluginName)
+            ?: request.pluginName
+        register(
+            sessionId = request.sessionId,
+            item = AgentAttentionItem(AgentAttentionKind.PluginInstall, text),
+            payload = Payload.PluginInstall(request)
+        )
+    }
+
     private fun register(sessionId: String, item: AgentAttentionItem, payload: Payload) {
         if (sessionId.isBlank() || item.text.isBlank()) return
         val entry = Entry(
@@ -121,6 +134,13 @@ object AgentAttentionCenter {
                 ?.takeIf { entry.sessionId == sessionId }
         }
 
+    fun pendingPluginInstall(sessionId: String): PluginInstallConfirmationRequest? =
+        entries.values.firstNotNullOfOrNull { entry ->
+            (entry.payload as? Payload.PluginInstall)
+                ?.request
+                ?.takeIf { entry.sessionId == sessionId }
+        }
+
     // ==================== 处理完成 ====================
 
     fun resolveExecAuthorization(sessionId: String) {
@@ -131,6 +151,10 @@ object AgentAttentionCenter {
         remove(sessionId, AgentAttentionKind.Question)
     }
 
+    fun resolvePluginInstall(sessionId: String) {
+        remove(sessionId, AgentAttentionKind.PluginInstall)
+    }
+
     /** 停止生成/会话关闭：清掉该会话全部等待项与通知。 */
     fun clearSession(sessionId: String) {
         val targets = entries.values.filter { it.sessionId == sessionId }
@@ -139,6 +163,7 @@ object AgentAttentionCenter {
         publish()
         cancelNotification(sessionId, AgentAttentionKind.ExecAuthorization)
         cancelNotification(sessionId, AgentAttentionKind.Question)
+        cancelNotification(sessionId, AgentAttentionKind.PluginInstall)
     }
 
     private fun remove(sessionId: String, kind: AgentAttentionKind) {
@@ -166,6 +191,7 @@ object AgentAttentionCenter {
         entries.values.filter { it.sessionId == sessionId }.forEach { it.notified = false }
         cancelNotification(sessionId, AgentAttentionKind.ExecAuthorization)
         cancelNotification(sessionId, AgentAttentionKind.Question)
+        cancelNotification(sessionId, AgentAttentionKind.PluginInstall)
     }
 
     /**
@@ -199,6 +225,11 @@ object AgentAttentionCenter {
             sessionId = entry.sessionId,
             questionText = entry.item.text
         )
+        AgentAttentionKind.PluginInstall -> AgentAttentionNotifier.notifyPluginInstall(
+            context = context,
+            sessionId = entry.sessionId,
+            pluginText = entry.item.text
+        )
     }
 
     private fun cancelNotification(sessionId: String, kind: AgentAttentionKind) {
@@ -209,6 +240,8 @@ object AgentAttentionCenter {
                     AgentAttentionNotifier.cancelExecAuthorization(context, sessionId)
                 AgentAttentionKind.Question ->
                     AgentAttentionNotifier.cancelQuestion(context, sessionId)
+                AgentAttentionKind.PluginInstall ->
+                    AgentAttentionNotifier.cancelPluginInstall(context, sessionId)
             }
         }
     }

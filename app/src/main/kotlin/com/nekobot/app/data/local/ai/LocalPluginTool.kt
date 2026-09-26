@@ -18,17 +18,22 @@ import java.util.Locale
  * plugin_use：Agent 的插件管理工具。
  *
  * 与 browser_use 类似，通过 action 驱动不同行为：查看（list/view/help）、
- * 创建安装（create/install_url）、修改（update）、启停/卸载（enable/disable/uninstall）
+ * 创建安装（create/install_url/install_zip）、修改（update）、启停/卸载（enable/disable/uninstall）
  * 以及沙盒测试（execute）。
  *
- * 高风险动作（install_url 安装第三方代码、uninstall 删除插件）复用
- * [LocalExecAuthorizationManager] 的用户确认流程；其余操作在插件
- * WebView 沙盒和清单权限体系内保持可逆，直接执行。
+ * 高风险动作（install_url / install_zip 安装第三方代码）必须经过
+ * [LocalPluginInstallConfirmationManager] 弹出第三方插件同意弹窗（协议 + 权限勾选），
+ * 不受 YOLO 影响；uninstall 删除插件复用 [LocalExecAuthorizationManager] 的用户确认流程；
+ * 其余操作在插件 WebView 沙盒和清单权限体系内保持可逆，直接执行。
  */
 internal class LocalPluginTool(
     private val sessionId: String,
     private val authorizationManager: LocalExecAuthorizationManager,
-    private val onConfirmationRequired: (ExecConfirmationRequest) -> Unit
+    private val onConfirmationRequired: (ExecConfirmationRequest) -> Unit,
+    /** 安装确认管理器：install_zip 时挂起等待用户勾选协议与权限。 */
+    private val installConfirmationManager: LocalPluginInstallConfirmationManager? = null,
+    /** 安装确认请求回调：转发到会话界面第三方插件同意弹窗。 */
+    private val onInstallConfirmationRequired: (PluginInstallConfirmationRequest) -> Unit = {}
 ) {
     private val gson = Gson()
 
@@ -44,6 +49,7 @@ internal class LocalPluginTool(
                 "help" -> help()
                 "create" -> createPlugin(pluginManager, args)
                 "install_url" -> installFromUrl(pluginManager, args)
+                "install_zip" -> installWorkspaceZip(pluginManager, args)
                 "update" -> updatePlugin(pluginManager, args)
                 "enable", "disable" -> setPluginEnabled(pluginManager, action == "enable", args)
                 "uninstall" -> uninstallPlugin(pluginManager, args)
@@ -51,7 +57,7 @@ internal class LocalPluginTool(
                 "inspect" -> inspectPortSource(args)
                 "check" -> checkPlugin(pluginManager, args)
                 else -> failure(
-                    "未知 action：$action（支持 list、view、help、create、install_url、" +
+                    "未知 action：$action（支持 list、view、help、create、install_url、install_zip、" +
                         "update、enable、disable、uninstall、execute、inspect、check）"
                 )
             }
@@ -154,6 +160,10 @@ internal class LocalPluginTool(
         )
     }
 
+    /**
+     * 从 HTTPS 地址安装插件：先下载 ZIP 并读取清单，再弹出第三方插件同意弹窗，
+     * 用户勾选协议与启用权限后才安装；不可记忆、不受 YOLO 影响。
+     */
     private suspend fun installFromUrl(
         pluginManager: PluginManager,
         args: Map<String, Any>
@@ -163,19 +173,99 @@ internal class LocalPluginTool(
         if (!url.startsWith("https://", ignoreCase = true)) {
             return failure("install_url 只支持 https:// 地址")
         }
-        val authorization = authorizationManager.requestAuthorization(
-            sessionId = sessionId,
-            command = "plugin_use install_url: $url",
-            mainCommand = "plugin_use",
-            onRequest = onConfirmationRequired
-        )
-        if (authorization == ExecAuthorization.Reject) {
-            return failure("用户拒绝安装第三方插件", "rejected" to true)
+        val confirmationManager = installConfirmationManager
+            ?: return failure("插件安装确认不可用（当前链路不支持用户确认）")
+        val zip = runCatching { pluginManager.downloadFromUrl(url) }
+            .getOrElse { return failure("插件下载失败：${it.message ?: "未知错误"}") }
+        try {
+            val manifest = pluginManager.peekManifest(android.net.Uri.fromFile(zip))
+                ?: return failure("无法读取插件清单（ZIP 根目录需要有效的 plugin.json）")
+            if (manifest.id.isBlank() || manifest.name.isBlank()) {
+                return failure("插件清单无效：缺少 id 或 name")
+            }
+            val decision = confirmationManager.requestConfirmation(
+                sessionId = sessionId,
+                sourceLabel = url,
+                manifest = manifest,
+                onRequest = onInstallConfirmationRequired
+            )
+            if (!decision.approved) {
+                return failure(
+                    "用户拒绝或未确认安装第三方插件（安装必须由用户在同意弹窗中确认）",
+                    "rejected" to true
+                )
+            }
+            val plugin = pluginManager.installZipFile(zip, decision.grantedPermissions)
+            applyCompat(plugin.id, args)
+            return success(
+                "message" to "插件已安装：${plugin.name}（${plugin.id}）",
+                "plugin" to pluginSummary(pluginManager.installed.value.firstOrNull { it.id == plugin.id } ?: plugin),
+                "granted_permissions" to decision.grantedPermissions.sorted(),
+                "note" to "仅用户勾选的权限被授予，其余权限调用会被拒绝；" +
+                    "危险权限是否勾选由用户在弹窗中自行决定"
+            )
+        } finally {
+            zip.delete()
         }
-        val plugin = pluginManager.installFromUrl(url, acceptedThirdPartyAgreement = true)
+    }
+
+    /**
+     * 安装会话工作区内的插件 ZIP。
+     *
+     * 与 install_url 不同：先读取 ZIP 内清单，弹出现有的第三方插件同意弹窗，
+     * 由用户勾选协议与启用权限后才落盘安装。此确认不可记忆、不受 YOLO 影响，
+     * 用户拒绝或超时则放弃安装。
+     */
+    private suspend fun installWorkspaceZip(
+        pluginManager: PluginManager,
+        args: Map<String, Any>
+    ): Map<String, Any> {
+        val raw = args.string("path").trim()
+        if (raw.isBlank()) return failure("install_zip 需要 path（会话工作区内的 .zip 插件包）")
+        if (!raw.endsWith(".zip", ignoreCase = true)) {
+            return failure("install_zip 只支持 .zip 文件：$raw")
+        }
+        val appContext = runCatching { ServiceContainer.appContext }.getOrNull()
+            ?: return failure("应用上下文不可用")
+        val workspace = com.nekobot.app.data.local.LocalWorkspaceStorage
+            .resolve(appContext.filesDir, sessionId)
+            ?: return failure("会话工作区不可用")
+        val zip = resolveWorkspacePath(workspace, raw)
+            ?: return failure("路径无效或不在会话工作区内：$raw")
+        if (!zip.isFile) return failure("文件不存在：$raw")
+        val manifest = pluginManager.peekManifest(android.net.Uri.fromFile(zip))
+            ?: return failure("无法读取插件清单（ZIP 根目录需要有效的 plugin.json）")
+        if (manifest.id.isBlank() || manifest.name.isBlank()) {
+            return failure("插件清单无效：缺少 id 或 name")
+        }
+        val confirmationManager = installConfirmationManager
+            ?: return failure("插件安装确认不可用（当前链路不支持用户确认）")
+        val decision = confirmationManager.requestConfirmation(
+            sessionId = sessionId,
+            sourceLabel = runCatching {
+                zip.relativeTo(workspace).path.replace('\\', '/')
+            }.getOrDefault(zip.name),
+            manifest = manifest,
+            onRequest = onInstallConfirmationRequired
+        )
+        if (!decision.approved) {
+            return failure(
+                "用户拒绝或未确认安装第三方插件（安装必须由用户在同意弹窗中确认）",
+                "rejected" to true
+            )
+        }
+        val plugin = pluginManager.install(
+            uri = android.net.Uri.fromFile(zip),
+            acceptedThirdPartyAgreement = true,
+            grantedPermissions = decision.grantedPermissions
+        )
+        applyCompat(plugin.id, args)
         return success(
-            "message" to "插件已下载并安装：${plugin.name}（${plugin.id}）",
-            "plugin" to pluginSummary(plugin)
+            "message" to "插件已安装：${plugin.name}（${plugin.id}）",
+            "plugin" to pluginSummary(pluginManager.installed.value.firstOrNull { it.id == plugin.id } ?: plugin),
+            "granted_permissions" to decision.grantedPermissions.sorted(),
+            "note" to "仅用户勾选的权限被授予，其余权限调用会被拒绝；" +
+                "危险权限是否勾选由用户在弹窗中自行决定"
         )
     }
 
@@ -466,12 +556,18 @@ internal class LocalPluginTool(
             1. 通读本文档，理解清单规范、权限与运行时限制
             2. list 查看已安装插件，避免 id 与命令名冲突（内置 builtin.jm、builtin.light-novel 不可占用）
             3. 移植别家插件：inspect（path 指向会话工作区内的 .zip 或目录）→ 确定性解压 + 生态识别 + 文件清单
+            3.1 工作区里已有现成的插件 ZIP（无需改写）时用 install_zip（path 指向会话工作区内的 .zip）直接安装：
+                会弹出第三方插件同意弹窗，用户勾选协议与权限后才安装；该确认不可记忆、YOLO 也不能跳过，
+                用户拒绝后不要反复重试，改为告知用户拒绝结果
+            3.2 install_url（https 地址）同样会先下载并弹出第三方插件同意弹窗，用户拒绝时不要反复重试
             4. create 编写完整 manifest_json + main_js 并安装（多文件用 extra_files_json，遵守第 7 节大小限制；页面文件也放 extra_files_json）
             5. check 静态自检（清单 / 页面入口 / API 名称 / 大小），修复到 ready=true
             6. execute 逐条测试命令（用 args 模拟用户输入）
             7. 出错时 view 读取实际落盘源码，update 修复后复测
             8. create/update 可带 compat（native/ported-full/ported-partial/unsupported）与 compat_note 记录移植差异
-            9. enable/disable/uninstall 管理生命周期；install_url 安装第三方 ZIP 与 uninstall 均需用户确认
+            9. enable/disable/uninstall 管理生命周期；uninstall 需用户确认；
+                安装第三方代码（install_url / install_zip）必须经过第三方插件同意弹窗（协议 + 权限勾选），
+                YOLO 也不能放行
             10. 交付时告知用户：插件 id、可用命令、页面入口、权限申请清单、与原插件的行为差异
 
             注意：插件命令只在本地模式执行；命令运行时只加载 entry 指定的一个 JS 文件，页面运行时可加载插件目录内的相对资源；不要调用 NekoAndroid 等运行时内部对象，它们不是稳定的插件 API。危险权限（network/chat.write/memory.write/characters.write/ai.call/workspace）需要用户在插件页手动授权，未授权调用会被拒绝。workspace 权限可把插件生成的内容保存到工作区（有会话时为会话工作区，否则共享工作区）的 plugins/<插件id>/ 专属文件夹，返回值里的 file_reference 可直接用于 [File: ...] 文件卡片。files 权限（基础，默认勾选）让插件页面用 <input type="file"> 上传文件到插件私有目录，插件可用 files.list/read/delete 访问，私有文件 URL 形如 /plugin/<插件id>/@files/<文件名>。

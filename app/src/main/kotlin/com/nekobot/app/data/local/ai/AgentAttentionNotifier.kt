@@ -26,6 +26,7 @@ object AgentAttentionNotifier {
     /** 通知 id 以会话 hashCode 为基准；回复提醒占 0、失败提醒占 +1，这里错开。 */
     private const val EXEC_AUTH_OFFSET = 2
     private const val ASK_QUESTION_OFFSET = 3
+    private const val PLUGIN_INSTALL_OFFSET = 4
 
     /** 命令授权提醒；返回是否成功发出（权限未授予时返回 false，交给上层重试）。 */
     fun notifyExecAuthorization(context: Context, sessionId: String, command: String): Boolean =
@@ -47,6 +48,16 @@ object AgentAttentionNotifier {
             sessionId = sessionId
         )
 
+    /** 第三方插件安装确认提醒；返回是否成功发出。 */
+    fun notifyPluginInstall(context: Context, sessionId: String, pluginText: String): Boolean =
+        show(
+            context = context,
+            notificationId = sessionId.hashCode() + PLUGIN_INSTALL_OFFSET,
+            title = strings(context).getString(R.string.agent_attention_plugin_install_title),
+            content = pluginText.trim(),
+            sessionId = sessionId
+        )
+
     /** 授权已处理/等待已结束：取消对应通知。 */
     fun cancelExecAuthorization(context: Context, sessionId: String) {
         cancel(context, sessionId.hashCode() + EXEC_AUTH_OFFSET)
@@ -55,6 +66,11 @@ object AgentAttentionNotifier {
     /** 提问已回答/已跳过/已取消：取消对应通知。 */
     fun cancelQuestion(context: Context, sessionId: String) {
         cancel(context, sessionId.hashCode() + ASK_QUESTION_OFFSET)
+    }
+
+    /** 插件安装确认已处理或已取消：取消对应通知。 */
+    fun cancelPluginInstall(context: Context, sessionId: String) {
+        cancel(context, sessionId.hashCode() + PLUGIN_INSTALL_OFFSET)
     }
 
     private fun cancel(context: Context, notificationId: Int) {

@@ -245,6 +245,7 @@ import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.ThirdPartyPluginConsentContent
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.components.localToolDefinitionDescription
 import com.nekobot.app.ui.components.toolDescResId
@@ -305,6 +306,7 @@ fun ChatScreen(
     val selectedIds by viewModel.selectedMessageIds.collectAsStateWithLifecycle()
     val execConfirmation by viewModel.execConfirmation.collectAsStateWithLifecycle()
     val askUserQuestion by viewModel.askUserQuestion.collectAsStateWithLifecycle()
+    val pluginInstallConfirmation by viewModel.pluginInstallConfirmation.collectAsStateWithLifecycle()
     val hookNotifications by viewModel.hookNotifications.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
@@ -1726,6 +1728,69 @@ fun ChatScreen(
             onAnswer = { answers -> viewModel.respondToAskUserQuestion(answers) },
             onSkip = { viewModel.skipAskUserQuestion() }
         )
+    }
+
+    // 第三方插件安装确认：Agent 安装会话工作区内的插件 ZIP 时必须由用户
+    // 在同意弹窗中勾选协议与启用权限后才安装（不可记忆、YOLO 也不能跳过）
+    pluginInstallConfirmation?.let { request ->
+        var agreementChecked by remember(request.requestId) { mutableStateOf(false) }
+        var checkedPermissions by remember(request.requestId) {
+            mutableStateOf(request.defaultGrantedPermissions)
+        }
+        NekoDialog(
+            onDismiss = { viewModel.respondToPluginInstallConfirmation(null) },
+            title = stringResource(R.string.plugins_install_title),
+            message = stringResource(R.string.plugins_install_file, request.sourceLabel),
+            confirmText = stringResource(R.string.plugins_install),
+            confirmEnabled = agreementChecked,
+            onConfirm = { viewModel.respondToPluginInstallConfirmation(checkedPermissions) },
+            cancelText = stringResource(R.string.common_cancel),
+            onCancel = { viewModel.respondToPluginInstallConfirmation(null) },
+            contentScrollable = true,
+            dismissOnClickOutside = false
+        ) {
+            ThirdPartyPluginConsentContent(
+                declaredPermissions = request.declaredPermissions,
+                checkedPermissions = checkedPermissions,
+                onPermissionsChange = { checkedPermissions = it },
+                agreementChecked = agreementChecked,
+                onAgreementCheckedChange = { agreementChecked = it },
+                header = {
+                    Text(
+                        text = stringResource(R.string.chat_plugin_install_request),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = request.pluginName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.plugins_version_author,
+                            request.version,
+                            request.author.ifBlank { "—" }
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (request.description.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = request.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+            )
+        }
     }
 
     // 删除消息确认

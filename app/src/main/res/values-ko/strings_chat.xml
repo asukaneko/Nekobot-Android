@@ -429,6 +429,12 @@
     <string name="agent_attention_auth_title">AI가 명령 권한을 요청해요</string>
     <string name="agent_attention_question_title">AI가 답변을 기다리고 있어요</string>
     <string name="agent_attention_question_more">추가 질문 %1$d개</string>
+    <string name="agent_attention_plugin_install_title">AI가 플러그인 설치를 요청해요</string>
+    <string name="agent_attention_plugin_install_text">플러그인 설치: %1$s</string>
+    <string name="chat_plugin_install_request">로컬 에이전트가 세션 워크스페이스의 플러그인 패키지 설치를 요청했어요. 약관과 사용할 권한을 확인하세요.</string>
+    <string name="chat_plugin_install_approved">플러그인 설치를 승인했어요</string>
+    <string name="chat_plugin_install_rejected">플러그인 설치를 거부했어요</string>
+    <string name="chat_plugin_install_expired">설치 확인이 만료되었어요. AI에게 다시 요청하세요</string>
 
     <!-- ==================== 모던 채팅 (ModernChatScreen) ==================== -->
     <string name="chat_close_action_menu">동작 메뉴 닫기</string>

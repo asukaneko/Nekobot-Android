@@ -304,6 +304,15 @@ sealed class RealtimeEvent {
         val request: com.nekobot.app.data.local.ai.AskUserQuestionRequest
     ) : RealtimeEvent()
     /**
+     * 第三方插件安装确认请求（仅本地 Agent 管线发出）。
+     * Agent 通过 plugin_use install_zip 安装工作区插件时挂起等待，UI 弹出现有的
+     * 第三方插件同意弹窗（协议 + 权限勾选），用户确认后经
+     * LocalRepository.respondToPluginInstallConfirmation 回填结果；YOLO 不能跳过。
+     */
+    data class PluginInstallConfirmationRequired(
+        val request: com.nekobot.app.data.local.ai.PluginInstallConfirmationRequest
+    ) : RealtimeEvent()
+    /**
      * 自动技能沉淀状态（仅本地 Agent 管线发出）。
      * UI 在消息列表末尾渲染与"上下文压缩"同形态的内联提示：
      * RUNNING 显示"正在总结技能"，DONE 显示刚落库的技能名并持久保留。
@@ -344,6 +353,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.AgentGoalUpdated -> sessionId
     is RealtimeEvent.AgentSpecUpdated -> sessionId
     is RealtimeEvent.AskUserQuestionRequired -> request.sessionId
+    is RealtimeEvent.PluginInstallConfirmationRequired -> request.sessionId
     is RealtimeEvent.AutoSkillDistillStatus -> notice.sessionId
     is RealtimeEvent.AutoMemoryStatus -> notice.sessionId
     is RealtimeEvent.Usage -> null

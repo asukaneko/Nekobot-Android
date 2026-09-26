@@ -136,6 +136,12 @@ class ChatSessionState(
     /** ask_user_question 提问请求（AI 调用提问工具后挂起等待用户回答）。 */
     val askUserQuestion =
         MutableStateFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest?>(null)
+    /**
+     * 第三方插件安装确认请求（Agent 安装工作区 ZIP 时挂起等待）。
+     * 非空时会话界面展示第三方插件同意弹窗（协议 + 权限勾选），YOLO 不能跳过。
+     */
+    val pluginInstallConfirmation =
+        MutableStateFlow<com.nekobot.app.data.local.ai.PluginInstallConfirmationRequest?>(null)
     val plotChoices = MutableStateFlow<List<PlotChoice>>(emptyList())
     val plotChoicesLoading = MutableStateFlow(false)
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())

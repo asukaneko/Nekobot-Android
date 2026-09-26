@@ -903,13 +903,18 @@ NekoPlugin.registerCommand("note", async (ctx) => {
 
 `check` 的 `ready=true` 只代表静态检查通过，不代表行为与原插件一致；不要向用户声称「完全兼容」。
 
+若用户提供的插件包本身就是 Nekobot 原生格式且无需改写，可直接用
+`plugin_use action=install_zip, path=/workspace/xxx.zip` 安装：App 会弹出第三方插件同意
+弹窗，由用户勾选协议与启用权限后才会安装；该确认不可记忆、YOLO 也不能跳过，用户拒绝时
+不要反复重试，改为告知用户拒绝结果。
+
 ### 10.2 生态识别规则
 
 | 命中条件 | 判定 | 移植策略 |
 | --- | --- | --- |
 | 清单含 `toolpkg_id` 或 `schema_version` | Operit ToolPkg | 仅 WebView UI 型可移植；Compose DSL 改为 HTML；`Tools.*` 改为 `host.*` 或删除该功能 |
 | 清单含 `display_name`（或 `js` + `i18n`） | SillyTavern 扩展 | 命令/事件/存储/生成钩子 → `commands[]` + `ctx.api`；模板面板 → 独立页面 |
-| 清单含 `api_version` + `id` + `commands` | Nekobot 原生 | 直接 `create` 或 `install_url` |
+| 清单含 `api_version` + `id` + `commands` | Nekobot 原生 | 直接安装：`install_zip`（会话工作区内的 ZIP，需用户在同意弹窗勾选权限）或 `install_url`（https 地址）；需要改写时用 `create` |
 | 含 `package.json` 且出现 `cordis` / `deepseek-harness` / `dsh` | DeepSeek Harness | **终止移植**，引导用户走 MCP 接入 |
 | 其他 | 未知 | 询问用户用途，必要时按功能重写为原生插件 |
 

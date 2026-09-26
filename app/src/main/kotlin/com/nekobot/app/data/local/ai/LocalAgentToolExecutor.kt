@@ -258,6 +258,13 @@ internal class LocalAgentToolExecutor(
     private val askUserQuestionManager: LocalAskUserQuestionManager? = null,
     /** 提问请求回调：把 AskUserQuestionRequest 转发到会话界面弹窗。 */
     private val onAskUserQuestionRequired: (AskUserQuestionRequest) -> Unit = {},
+    /**
+     * 第三方插件安装确认管理器：plugin_use install_zip 在此挂起，
+     * 等待用户在第三方插件同意弹窗中勾选协议与权限（不受 YOLO 影响）。
+     */
+    private val pluginInstallConfirmationManager: LocalPluginInstallConfirmationManager? = null,
+    /** 安装确认请求回调：把 PluginInstallConfirmationRequest 转发到会话界面弹窗。 */
+    private val onPluginInstallConfirmationRequired: (PluginInstallConfirmationRequest) -> Unit = {},
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -291,7 +298,9 @@ internal class LocalAgentToolExecutor(
         LocalPluginTool(
             sessionId = sessionId,
             authorizationManager = authorizationManager,
-            onConfirmationRequired = onConfirmationRequired
+            onConfirmationRequired = onConfirmationRequired,
+            installConfirmationManager = pluginInstallConfirmationManager,
+            onInstallConfirmationRequired = onPluginInstallConfirmationRequired
         )
     }
 
