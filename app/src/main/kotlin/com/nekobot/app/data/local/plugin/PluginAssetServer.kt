@@ -44,6 +44,8 @@ data class PluginThemeTokens(
  */
 class PluginAssetServer(
     private val pluginDirectoryProvider: (String) -> File?,
+    /** 插件私有文件目录（plugin_files/<插件id>）；用于页面内 `@files/` 资源访问。 */
+    private val pluginFilesProvider: (String) -> File? = { null },
     private val themeProvider: () -> PluginThemeTokens = { PluginThemeTokens() }
 ) {
     private val gson = Gson()
@@ -88,6 +90,10 @@ class PluginAssetServer(
         if (!PluginManifestValidator.isSafeRelativePath(relative)) {
             return errorResponse(403, "Forbidden")
         }
+        // 插件私有文件（页面上传）：/plugin/<id>/@files/<文件名>
+        if (relative.startsWith(FILES_URL_PREFIX)) {
+            return interceptPrivateFile(pluginId, relative.removePrefix(FILES_URL_PREFIX))
+        }
         val root = pluginDirectoryProvider(pluginId) ?: return errorResponse(404, "Not Found")
         val target = File(root, relative).canonicalFile
         val rootPath = root.canonicalFile.path
@@ -107,6 +113,24 @@ class PluginAssetServer(
             } else {
                 response(mime, charsetFor(mime), 200, "OK", FileInputStream(target))
             }
+        } catch (_: Exception) {
+            errorResponse(500, "Internal Error")
+        }
+    }
+
+    /** 拦截插件私有文件请求；文件名必须是单段安全名称，越界或不存在返回 404。 */
+    private fun interceptPrivateFile(pluginId: String, rawName: String): WebResourceResponse {
+        val name = rawName.trim()
+        if (!PluginFileStore.isSafeFileName(name)) return errorResponse(403, "Forbidden")
+        val root = pluginFilesProvider(pluginId) ?: return errorResponse(404, "Not Found")
+        val target = File(root, name).canonicalFile
+        val rootPath = root.canonicalFile.path
+        if (!target.path.startsWith(rootPath + File.separator) || !target.isFile) {
+            return errorResponse(404, "Not Found")
+        }
+        val mime = mimeTypeFor(name)
+        return try {
+            response(mime, charsetFor(mime), 200, "OK", FileInputStream(target))
         } catch (_: Exception) {
             errorResponse(500, "Internal Error")
         }
@@ -267,6 +291,15 @@ class PluginAssetServer(
                   read: function (options) { return callHost("workspace.read", options || {}); },
                   delete: function (options) { return callHost("workspace.delete", options || {}); }
                 },
+                files: {
+                  list: function () { return callHost("files.list", {}); },
+                  read: function (name, encoding) {
+                    var payload = { name: name };
+                    if (encoding) payload.encoding = String(encoding);
+                    return callHost("files.read", payload);
+                  },
+                  delete: function (name) { return callHost("files.delete", { name: name }); }
+                },
                 http: { get: function (url) { return callHost("http.get", { url: url }); } },
                 ai: {
                   complete: function (options) { return callHost("ai.complete", options || {}); }
@@ -397,6 +430,9 @@ class PluginAssetServer(
         const val VIRTUAL_HOST = "appassets.androidplatform.net"
         const val MAX_HTML_BYTES = 2L * 1024 * 1024
 
+        /** 私有文件在虚拟源内的预留前缀；插件包内同名目录不可用。 */
+        const val FILES_URL_PREFIX = "@files/"
+
         private val TEXT_MIME_TYPES = setOf(
             "application/javascript",
             "application/json",
@@ -439,6 +475,11 @@ class PluginAssetServer(
             val extension = path.substringAfterLast('.', "").lowercase(Locale.ROOT)
             return MIME_BY_EXTENSION[extension] ?: "application/octet-stream"
         }
+
+        /** 插件私有文件的虚拟资源地址：/plugin/<插件id>/@files/<文件名>。 */
+        fun virtualFileUrl(pluginId: String, name: String): String =
+            "https://$VIRTUAL_HOST/plugin/$pluginId/$FILES_URL_PREFIX" +
+                android.net.Uri.encode(name)
 
         /**
          * 把注入内容插到 HTML 的最前面。

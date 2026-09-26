@@ -151,6 +151,7 @@
     <string name="plugin_perm_storage">キー値ストレージ</string>
     <string name="plugin_perm_notify">通知の表示</string>
     <string name="plugin_perm_chat_progress">進捗カード</string>
+    <string name="plugin_perm_files">プラグイン専用ファイル（アップロード/読み取り）</string>
     <string name="plugin_perm_chat_read">チャットとメッセージの読み取り</string>
     <string name="plugin_perm_characters_read">キャラクターカードの読み取り</string>
     <string name="plugin_perm_worldbooks_read">ワールドブックの読み取り</string>

@@ -2,6 +2,8 @@ package com.nekobot.app.ui.screens.extensions
 
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -109,6 +111,7 @@ fun PluginPageScreen(
             context = context,
             resolved = resolved,
             dispatcher = ServiceContainer.pluginManager.apiDispatcher,
+            files = ServiceContainer.pluginManager.pluginFiles,
             sessionId = sessionId,
             launchArgs = launchArgs,
             progressParentMessageId = progressParentId,
@@ -121,6 +124,22 @@ fun PluginPageScreen(
     val revision by host.revision.collectAsStateWithLifecycle()
     val pageTitle by host.pageTitle.collectAsStateWithLifecycle()
     val dialogRequest by host.dialog.collectAsStateWithLifecycle()
+    // 页面 <input type="file">：单选/多选分别用系统选择器，结果复制到插件私有目录
+    val pickSingleFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        host.deliverFileChooserResult(listOfNotNull(uri))
+    }
+    val pickMultipleFiles = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        host.deliverFileChooserResult(uris)
+    }
+    LaunchedEffect(host) {
+        host.filePicker = { mimeTypes, allowMultiple ->
+            runCatching {
+                if (allowMultiple) pickMultipleFiles.launch(mimeTypes) else pickSingleFile.launch(mimeTypes)
+            }.onFailure { host.deliverFileChooserResult(null) }
+        }
+    }
     LaunchedEffect(tokens) { host.updateTheme(tokens) }
     DisposableEffect(host) {
         onDispose { host.destroy() }

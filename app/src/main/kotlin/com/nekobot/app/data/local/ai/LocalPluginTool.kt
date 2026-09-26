@@ -474,7 +474,7 @@ internal class LocalPluginTool(
             9. enable/disable/uninstall 管理生命周期；install_url 安装第三方 ZIP 与 uninstall 均需用户确认
             10. 交付时告知用户：插件 id、可用命令、页面入口、权限申请清单、与原插件的行为差异
 
-            注意：插件命令只在本地模式执行；命令运行时只加载 entry 指定的一个 JS 文件，页面运行时可加载插件目录内的相对资源；不要调用 NekoAndroid 等运行时内部对象，它们不是稳定的插件 API。危险权限（network/chat.write/memory.write/characters.write/ai.call/workspace）需要用户在插件页手动授权，未授权调用会被拒绝。workspace 权限可把插件生成的内容保存到工作区（有会话时为会话工作区，否则共享工作区）的 plugins/<插件id>/ 专属文件夹，返回值里的 file_reference 可直接用于 [File: ...] 文件卡片。
+            注意：插件命令只在本地模式执行；命令运行时只加载 entry 指定的一个 JS 文件，页面运行时可加载插件目录内的相对资源；不要调用 NekoAndroid 等运行时内部对象，它们不是稳定的插件 API。危险权限（network/chat.write/memory.write/characters.write/ai.call/workspace）需要用户在插件页手动授权，未授权调用会被拒绝。workspace 权限可把插件生成的内容保存到工作区（有会话时为会话工作区，否则共享工作区）的 plugins/<插件id>/ 专属文件夹，返回值里的 file_reference 可直接用于 [File: ...] 文件卡片。files 权限（基础，默认勾选）让插件页面用 <input type="file"> 上传文件到插件私有目录，插件可用 files.list/read/delete 访问，私有文件 URL 形如 /plugin/<插件id>/@files/<文件名>。
         """.trimIndent()
 
         /** 插件开发指南回退版本；仅在 assets 文档读取失败时使用。 */
@@ -496,7 +496,7 @@ internal class LocalPluginTool(
             可选字段：
             - author、description
             - entry: 入口文件，默认 "main.js"，必须是安全的 .js 相对路径
-            - permissions: 权限数组。基础/读取：storage、notify、chat.progress、chat.read、characters.read、worldbooks.read、memory.read；危险权限（network、chat.write、memory.write、characters.write、ai.call、workspace）需用户在插件页手动授权，AI 创建时不会自动授予。ai.call 开放 aiComplete（走聊天故障转移队列，每插件每分钟 10 次、每小时 20 万 token 上限）；chat.write 开放 appendMessage/sendMessage/createSession/switchSession；characters.write 开放 createCharacter/updateCharacter（无删除）；workspace 开放 workspace.save/list/read/delete（工作区 plugins/<插件id>/ 专属文件夹，有会话时在会话工作区，否则共享工作区；单文件 ≤2 MiB、≤500 个文件、总量 ≤32 MiB，返回的 file_reference 可用于 [File: ...] 卡片）。
+            - permissions: 权限数组。基础/读取：storage、notify、chat.progress、files、chat.read、characters.read、worldbooks.read、memory.read；危险权限（network、chat.write、memory.write、characters.write、ai.call、workspace）需用户在插件页手动授权，AI 创建时不会自动授予。ai.call 开放 aiComplete（走聊天故障转移队列，每插件每分钟 10 次、每小时 20 万 token 上限）；chat.write 开放 appendMessage/sendMessage/createSession/switchSession；characters.write 开放 createCharacter/updateCharacter（无删除）；workspace 开放 workspace.save/list/read/delete（工作区 plugins/<插件id>/ 专属文件夹，有会话时在会话工作区，否则共享工作区；单文件 ≤2 MiB、≤500 个文件、总量 ≤32 MiB，返回的 file_reference 可用于 [File: ...] 卡片）；files 开放页面文件上传（`<input type="file">`，副本存插件私有目录）与 files.list/read/delete（单文件 ≤16 MiB、≤100 个文件、总量 ≤64 MiB）。
             - hooks: 事件钩子数组（≤4，可省略）：message.beforeSend（发送前改写用户消息）、app.lifecycle（app.start/chat.open/chat.close）。声明后用 NekoPlugin.on(name, handler) 注册；声明 hooks 时 commands 可以为空。
             - pages: 页面数组（≤8 个），每项 {"id": "小写id", "title": "标题", "title_i18n": {...}, "entry": "pages/x.html", "styles": [...], "scripts": [...], "order": 100}；entry 必须是以 .html 结尾的安全相对路径且文件真实存在。页面用 host.* API（host.storage.*、host.chat.*（含 chat.messages.append/send、chat.sessions.create/switch、chat.context/sessionConfig/promptStack/toolCalls）、host.characters.*（含 create/update）、host.worldbooks.*、host.memory.read/write/append/edit、host.workspace.save/list/read/delete、host.ui.render、host.http.get、host.ui.toast、host.system.info）；页面内可用相对链接或 host.ui.openPage(pageId, args) 在同插件目录的多个 HTML 之间切换（返回键逐页回退，外部跳转仍被拦截）；原生弹窗：window.alert/confirm/prompt 与 host.ui.alert/confirm/prompt/select（select 传 {options: [...]}，取消返回 null），与 ctx.api 共用权限与存储。
 
@@ -523,6 +523,8 @@ internal class LocalPluginTool(
               await ctx.api.memoryRead()            // 读 Agent 长期记忆，返回 {content, charCount}（memory.read）
               await ctx.api.memoryAppend("要记住的事")  // 追加记忆（memory.write）；也有 memoryWrite(content) 覆盖、memoryEdit(oldText, newText) 替换
               await ctx.api.workspace.save("notes/a.md", "内容")  // 保存文本到插件专属工作区文件夹（workspace），返回 {scope, path, file_reference}；也有 workspace.list/read/delete
+              await ctx.api.files.list()            // 插件私有文件（页面上传，files）：{count, total_bytes, files:[{name,size,mime_type,updated_at,url}]}
+              await ctx.api.files.read("a.png", "base64")  // 读私有文件（text 默认 / base64，≤128 KiB）；也有 files.delete(name)
               await ctx.api.sendMessage({content: "文本"})   // 发消息并触发后台回复（chat.write）
               await ctx.api.createCharacter({name: "角色名", personality: "..."})  // 创建角色卡（characters.write，无删除）
               await ctx.api.render("{{#each this}}{{name}}{{/each}}", list)        // 模板渲染（免权限）

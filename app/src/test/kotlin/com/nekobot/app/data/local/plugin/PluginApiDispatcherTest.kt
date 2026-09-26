@@ -112,6 +112,21 @@ class PluginApiDispatcherTest {
     }
 
     @Test
+    fun pluginPrivateFileApisAreRegisteredForBothRuntimes() {
+        listOf("files_list", "files_read", "files_delete").forEach { api ->
+            assertTrue("$api 需要命令运行时可用", api in PluginApiDispatcher.LEGACY_API_NAMES)
+        }
+        listOf("files.list", "files.read", "files.delete").forEach { api ->
+            assertTrue("$api 需要页面运行时可用", api in PluginApiDispatcher.PAGE_API_NAMES)
+        }
+        assertTrue("files" in PluginApiDispatcher.CAPABILITIES)
+        assertTrue(PluginApiDispatcher.MAX_FILES_READ_BYTES > 0)
+        assertEquals(setOf("text", "base64"), PluginApiDispatcher.FILE_READ_ENCODINGS)
+        assertTrue("files" in PluginManifestValidator.supportedPermissions)
+        assertTrue("files" in PluginManifestValidator.defaultGrantedPermissions(listOf("files")))
+    }
+
+    @Test
     fun limitIsClampedToRange() {
         val payload = JsonObject()
         assertEquals(50, PluginApiDispatcher.resolveLimit(payload, 50, 200))

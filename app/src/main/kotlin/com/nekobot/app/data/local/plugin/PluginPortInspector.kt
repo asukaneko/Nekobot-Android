@@ -212,6 +212,12 @@ object PluginPortInspector {
         if (Regex("Tools\\.Files|workspace\\.(save|list|read|delete)|workspace_(save|list|read|delete)").containsMatchIn(source)) {
             permissions += "workspace"
         }
+        if (Regex(
+                "type\\s*=\\s*[\"']file[\"']|files\\.(list|read|delete)|files_(list|read|delete)"
+            ).containsMatchIn(source)
+        ) {
+            permissions += "files"
+        }
         if (ecosystem == Ecosystem.OPERIT_TOOLPKG) permissions += "storage"
         return permissions.toList()
     }
@@ -307,6 +313,7 @@ object PluginPortInspector {
                     "toolCalls" -> "chat.tool.calls"
                     "storage" -> null
                     "workspace" -> null
+                    "files" -> null
                     else -> name
                 }
                 if (candidate != null && candidate !in PluginApiDispatcher.LEGACY_API_NAMES) {
@@ -336,6 +343,7 @@ object PluginPortInspector {
                     "workspace" -> name in setOf(
                         "workspace.save", "workspace.list", "workspace.read", "workspace.delete"
                     )
+                    "files" -> name in setOf("files.list", "files.read", "files.delete")
                     "http" -> name == "http.get"
                     "progress" -> name == "progress.update"
                     "ai" -> name == "ai.complete"
@@ -354,6 +362,6 @@ object PluginPortInspector {
     private const val WARN_TOTAL_BYTES = 16L * 1024 * 1024
     private const val WARN_SINGLE_FILE_BYTES = 1L * 1024 * 1024
     private const val MAX_SCAN_FILES = 64
-    private const val MAX_JS_BYTES = 512L * 1024
+    private const val MAX_JS_BYTES = 1024L * 1024
     private const val MAX_HTML_FILE_BYTES = 2L * 1024 * 1024
 }

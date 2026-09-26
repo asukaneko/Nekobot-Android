@@ -10,4 +10,6 @@
       分享的 filesDir 文件全部来自工作区，因此收窄到 workspace/。
     -->
     <files-path name="workspace" path="workspace/" />
+    <!-- 插件私有文件（plugin_files/<插件id>/），页面 <input type="file"> 上传后由 WebView 读取私有副本 -->
+    <files-path name="plugin_files" path="plugin_files/" />
 </paths>

@@ -131,7 +131,7 @@ class PluginPortInspectorTest {
             """
             const a = await ctx.api.getSession();
             const b = await ctx.api.magicFeature();
-            const c = await host.files.read("notes.md");
+            const c = await host.files.write({ name: "notes.md" });
             """.trimIndent()
         )
         val manifest = """
@@ -148,7 +148,7 @@ class PluginPortInspectorTest {
         val result = PluginPortInspector.check(dir, manifest)
         assertFalse(result.ok)
         assertTrue(result.unsupportedApis.any { it.contains("magicFeature") })
-        assertTrue(result.unsupportedApis.any { it.contains("host.files.read") })
+        assertTrue(result.unsupportedApis.any { it.contains("host.files.write") })
         assertTrue(result.unsupportedApis.none { it.contains("getSession") })
     }
 
@@ -190,14 +190,28 @@ class PluginPortInspectorTest {
             await host.workspace.list({});
             await host.workspace.read({path: "a.md"});
             await host.workspace.delete({path: "a.md"});
+            await ctx.api.files.list();
+            await ctx.api.files.read("a.png");
+            await ctx.api.files.delete("a.png");
+            await host.files.list();
+            await host.files.read("a.png", "base64");
+            await host.files.delete("a.png");
             """.trimIndent()
         )
         assertTrue(supported.isEmpty())
     }
 
     @Test
-    fun checkPassesForHealthyPlugin() {
-        val dir = temp.newFolder("plugin3")
+    fun suggestsFilesPermissionForUploadInput() {
+        val source = """<input type="file" id="upload">"""
+        assertTrue(
+            PluginPortInspector.suggestPermissions(source, PluginPortInspector.Ecosystem.NEKOBOT)
+                .contains("files")
+        )
+    }
+
+    @Test
+    fun checkPassesForHealthyPlugin() {        val dir = temp.newFolder("plugin3")
         File(dir, "main.js").writeText("NekoPlugin.registerCommand('ping', async () => 'pong');")
         File(dir, "pages").mkdirs()
         File(dir, "pages/notes.html").writeText("<!DOCTYPE html><html><head></head><body>ok</body></html>")

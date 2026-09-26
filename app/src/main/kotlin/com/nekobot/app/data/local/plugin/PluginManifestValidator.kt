@@ -12,6 +12,7 @@ object PluginManifestValidator {
 
     val supportedPermissions: Set<String> = setOf(
         "storage",
+        "files",
         "chat.read",
         "notify",
         "network",
@@ -44,7 +45,7 @@ object PluginManifestValidator {
 
     /** 权限分组：授权界面按「基础 / 读取 / 网络 / 写入 / AI」渲染。 */
     val permissionGroups: List<Pair<String, List<String>>> = listOf(
-        "basic" to listOf("storage", "notify", "chat.progress"),
+        "basic" to listOf("storage", "notify", "chat.progress", "files"),
         "read" to listOf("chat.read", "characters.read", "worldbooks.read", "memory.read"),
         "network" to listOf("network"),
         "write" to listOf("chat.write", "memory.write", "characters.write", "workspace"),

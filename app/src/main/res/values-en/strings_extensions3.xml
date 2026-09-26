@@ -151,6 +151,7 @@
     <string name="plugin_perm_storage">Key-value storage</string>
     <string name="plugin_perm_notify">Show notifications</string>
     <string name="plugin_perm_chat_progress">Progress card</string>
+    <string name="plugin_perm_files">Plugin private files (upload/read)</string>
     <string name="plugin_perm_chat_read">Read chats and messages</string>
     <string name="plugin_perm_characters_read">Read character cards</string>
     <string name="plugin_perm_worldbooks_read">Read world books</string>

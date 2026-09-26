@@ -65,6 +65,10 @@ class PluginManager(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val installMutex = Mutex()
     private val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 插件私有文件目录；页面文件上传与 files.* API 共用。 */
+    internal val pluginFiles: PluginFileStore = PluginFileStore(appContext)
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -99,7 +103,8 @@ class PluginManager(
         },
         appVersion = runCatching {
             appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
-        }.getOrNull().orEmpty()
+        }.getOrNull().orEmpty(),
+        fileStore = pluginFiles
     )
 
     private val _installed = MutableStateFlow<List<InstalledPlugin>>(emptyList())
@@ -250,6 +255,7 @@ class PluginManager(
                 }
                 val directory = pluginDirectory(pluginId) ?: return@withContext
                 if (directory.exists()) directory.deleteRecursively()
+                pluginFiles.clear(pluginId)
                 removePluginStorage(pluginId)
                 grants?.clear(pluginId)
                 metaStore?.clear(pluginId)
@@ -867,8 +873,9 @@ class PluginManager(
         val webView = WebView(appContext)
         webView.settings.javaScriptEnabled = true
         // 第三方脚本不能使用 fetch、XHR、图片或导航绕过 Bridge 的 network 权限。
+        // blockNetworkLoads 已在网络层拦截外部请求；不要开启 blockNetworkImage，
+        // 那会让 Blink 直接丢弃全部图片资源（页面宿主展示虚拟源图片时会被误伤）。
         webView.settings.blockNetworkLoads = true
-        webView.settings.blockNetworkImage = true
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
         webView.settings.domStorageEnabled = false
@@ -1070,6 +1077,13 @@ class PluginManager(
                   read: function(path) { return __api("workspace_read", { path: path }); },
                   delete: function(path) { return __api("workspace_delete", { path: path }); }
                 },
+                files: {
+                  list: function() { return __api("files_list", {}); },
+                  read: function(name, encoding) {
+                    return __api("files_read", { name: name, encoding: encoding });
+                  },
+                  delete: function(name) { return __api("files_delete", { name: name }); }
+                },
                 storage: {
                   get: function(key) { return __api("storage_get", { key: key }); },
                   set: function(key, value) { return __api("storage_set", { key: key, value: value }); },
@@ -1270,10 +1284,12 @@ class PluginManager(
         const val MAX_ARCHIVE_BYTES = 16L * 1024 * 1024
         const val MAX_UNCOMPRESSED_BYTES = 32L * 1024 * 1024
         const val MAX_MANIFEST_BYTES = 128L * 1024
-        const val MAX_SCRIPT_BYTES = 512L * 1024
+
+        /** 单个 JavaScript 文件与入口脚本的运行上限（1 MiB）。 */
+        const val MAX_SCRIPT_BYTES = 1024L * 1024
         const val MAX_RESOURCE_BYTES = 4L * 1024 * 1024
         const val MAX_REPLY_CHARS = 20_000
-        const val MAX_SCRIPT_CHARS = MAX_SCRIPT_BYTES / 2
+        const val MAX_SCRIPT_CHARS = 1024 * 1024
         const val RUNTIME_TIMEOUT_MS = 20_000L
         /** 声明 ai.call 的插件命令需要等待模型生成，放宽总超时。 */
         const val RUNTIME_TIMEOUT_WITH_AI_MS = 120_000L

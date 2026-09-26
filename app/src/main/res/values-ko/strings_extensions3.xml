@@ -151,6 +151,7 @@
     <string name="plugin_perm_storage">키-값 저장소</string>
     <string name="plugin_perm_notify">알림 표시</string>
     <string name="plugin_perm_chat_progress">진행 카드</string>
+    <string name="plugin_perm_files">플러그인 전용 파일(업로드/읽기)</string>
     <string name="plugin_perm_chat_read">채팅과 메시지 읽기</string>
     <string name="plugin_perm_characters_read">캐릭터 카드 읽기</string>
     <string name="plugin_perm_worldbooks_read">월드북 읽기</string>

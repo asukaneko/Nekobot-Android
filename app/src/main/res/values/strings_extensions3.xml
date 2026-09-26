@@ -151,6 +151,7 @@
     <string name="plugin_perm_storage">键值存储</string>
     <string name="plugin_perm_notify">显示通知</string>
     <string name="plugin_perm_chat_progress">进度卡片</string>
+    <string name="plugin_perm_files">插件私有文件（上传/读取）</string>
     <string name="plugin_perm_chat_read">读取会话与消息</string>
     <string name="plugin_perm_characters_read">读取角色卡</string>
     <string name="plugin_perm_worldbooks_read">读取世界书</string>

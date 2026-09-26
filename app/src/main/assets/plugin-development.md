@@ -76,7 +76,7 @@ weather-plugin.zip
     └── weather.js
 ```
 
-命令运行时只加载 `entry` 指定的 JavaScript 文件；插件页面运行时（第 9 章）会加载页面 HTML 及其相对引用的资源。插件不能读取本地文件系统；声明 `workspace` 权限后只能读写工作区中本插件的专属文件夹（见第 4 章「工作区文件」），静态数据应写入插件包内或在构建时合并。
+命令运行时只加载 `entry` 指定的 JavaScript 文件；插件页面运行时（第 9 章）会加载页面 HTML 及其相对引用的资源。插件不能读取本地文件系统；声明 `workspace` 权限后只能读写工作区中本插件的专属文件夹（见第 4 章「工作区文件」），声明 `files` 权限后只能访问本插件私有目录中用户通过文件选择器上传的文件（见第 4 章「插件私有文件」），静态数据应写入插件包内或在构建时合并。
 
 ## 3. plugin.json
 
@@ -156,13 +156,14 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | `memory.write` | `ctx.api.memoryWrite/append/edit(...)` | 覆盖/追加/替换 Agent 长期记忆，返回 `{ charCount }`。 |
 | `memory.read` | `ctx.api.memoryRead()` | 读取 Agent 长期记忆，返回 `{ content, charCount }`。 |
 | `workspace` | `ctx.api.workspace.save/list/read/delete(...)` | 读写工作区中本插件的专属文件夹，见下文「工作区文件」。 |
+| `files` | `ctx.api.files.list/read/delete(...)` | 访问本插件私有目录中用户上传的文件，见下文「插件私有文件」。 |
 | 免 | `ctx.api.render(template, data)` | 内置模板渲染（Handlebars 子集），返回 HTML 字符串。 |
 
 ### 权限分级与用户授权
 
 | 分组 | 权限 | 默认 |
 | --- | --- | --- |
-| 基础 | `storage`、`notify`、`chat.progress` | 安装时默认勾选 |
+| 基础 | `storage`、`notify`、`chat.progress`、`files` | 安装时默认勾选 |
 | 读取 | `chat.read`、`characters.read`、`worldbooks.read`、`memory.read` | 安装时默认勾选 |
 | 网络 | `network` | **需用户手动授权** |
 | 写入 | `chat.write`、`memory.write`、`characters.write`、`workspace` | **需用户手动授权** |
@@ -318,6 +319,34 @@ NekoPlugin.registerCommand("export", async (ctx) => {
 ```
 
 `scope` 为 `session` 时 `file_reference` 形如 `plugins/<插件id>/exports/notes.md`；为 `shared` 时形如 `shared://plugins/<插件id>/exports/notes.md`。页面里也可以按相同规则拼 `[File: ...]` 后交给 `host.chat.messages.append` 或命令返回值。
+
+### 插件私有文件（`files`）
+
+插件页面可以用标准文件输入框让用户选择文件；文件会复制到插件私有目录（与插件包分离，更新插件不会丢失），命令运行时也可以读取：
+
+```html
+<input type="file" accept="image/*" multiple id="uploader">
+<script>
+  document.getElementById("uploader").onchange = async (event) => {
+    const files = Array.from(event.target.files);
+    await host.ui.toast("已上传 " + files.length + " 个文件");
+    const { files: saved } = await host.files.list();
+    if (saved[0]) document.getElementById("preview").src = saved[0].url;
+  };
+</script>
+```
+
+- 上传需要清单声明 `files` 权限（基础组，安装默认勾选）；未声明或未授权时宿主会拒绝并提示。
+- `accept` 与 `multiple` 会传给系统选择器；选择的文件立即可以按标准 `File` API 使用（`FileReader`、`URL.createObjectURL`）。
+- 持久化访问用下表 API；`list`/`read` 返回的 `url` 指向 `/plugin/<插件id>/@files/<文件名>`，可直接放进 `<img>`、`<audio>`、`<video>` 等标签。
+
+| API | 说明 |
+| --- | --- |
+| `host.files.list()`（命令侧 `ctx.api.files.list()`） | 返回 `{count, total_bytes, files: [{name, size, mime_type, updated_at, url}]}`。 |
+| `host.files.read(name, encoding?)`（命令侧 `ctx.api.files.read(name, encoding?)`） | 读取内容；`encoding` 为 `text`（默认）或 `base64`；最多 128 KiB，超出截断并置 `truncated`。 |
+| `host.files.delete(name)`（命令侧 `ctx.api.files.delete(name)`） | 删除文件；不存在报 `not_found`。 |
+
+限制：单个文件 ≤ 16 MiB、每个插件最多 100 个文件、总量 ≤ 64 MiB；超出分别报 `too_large`、`too_many_files`、`quota_exceeded`。文件名取选择器显示的原始名（去掉路径与危险字符），同名自动追加序号；卸载插件会删除私有文件，工作区文件不受影响。
 
 ### 模板渲染（免权限）
 
@@ -545,11 +574,11 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 第三方插件代码被视为不可信代码。运行时具有以下边界：
 
-- 禁止文件访问、内容提供器访问、DOM Storage、多窗口和页面导航。
+- 禁止直接文件访问、内容提供器访问、DOM Storage、多窗口和页面导航；文件上传只能由用户通过系统文件选择器发起（`files` 权限），副本存入插件私有目录。
 - 禁止 WebView 自行联网；网络只能通过声明了 `network` 权限的受控 HTTPS GET API。
 - 写入类 API（`chat.write`、`memory.write`、`characters.write`）只能追加消息、读写 Agent 记忆、创建/修改角色卡，**没有删除能力**；`workspace` 的删除只作用于本插件专属文件夹，没有任意命令执行、相机、麦克风或 Android Intent 等 API。
 - 事件钩子（`hooks`）由清单声明后即可运行，不需要额外权限；`message.beforeSend` 只能改写用户正在发送的那条消息，插件卡片会展示已声明钩子，供用户确认。
-- 不能访问其他插件的存储数据；`workspace` 权限只能读写工作区中本插件的专属文件夹 `plugins/<插件id>/`，无法访问用户与其他插件的文件。
+- 不能访问其他插件的存储数据；`workspace` 权限只能读写工作区中本插件的专属文件夹 `plugins/<插件id>/`，`files` 权限只能访问本插件私有目录中用户上传的文件，无法访问用户与其他插件的文件。
 - 用户安装 ZIP 前必须明确接受第三方插件风险提示。
 
 开发时只申请实际需要的权限，并在 `description` 中解释读取会话或联网的原因。不要直接调用 `NekoAndroid` 等运行时内部对象；它们不是稳定的插件 API。
@@ -564,8 +593,8 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | 解压后总大小 | 32 MiB |
 | ZIP 条目数 | 128 |
 | `plugin.json` | 128 KiB |
-| 单个 JavaScript 文件 | 512 KiB |
-| 入口脚本文本 | 262,144 个字符 |
+| 单个 JavaScript 文件 | 1 MiB |
+| 入口脚本文本 | 1,048,576 个字符 |
 | 单个其他资源 | 4 MiB |
 | 页面数量 | 每个插件最多 8 个 |
 | 页面 styles / scripts | 各最多 8 项 |
@@ -598,7 +627,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 页面运行在虚拟源 `https://appassets.androidplatform.net/plugin/<插件id>/<entry>`，`entry` 同目录的 CSS/JS/图片等相对引用会自动解析到插件目录内的对应文件。
 
-- 页面内 `fetch`、XHR、WebSocket 与图片外链被禁止；网络只能走 `host.http.get`。
+- 页面内 `fetch`、XHR、WebSocket 与图片外链被禁止；网络只能走 `host.http.get`。插件目录与 `@files/` 私有文件中的图片/音频可直接用相对路径或 `url` 引用展示（由宿主直接提供，不经过网络）。
 - 页面跳转仅允许插件目录内的资源（相对链接、`location.href`、`host.ui.openPage`），外部地址、`target=_blank` 与自定义 scheme 一律拦截；用法见 9.4。
 - 不使用 `localStorage`：页面存储必须走 `host.storage.*`，这样卸载插件时数据能一次清干净。
 - 页面主题：宿主会在 HTML 的 `<head>` 起始处注入 CSS 变量与桥接脚本，可用变量（浅色/深色自动跟随 App）：
@@ -639,6 +668,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | `host.memory.read()` | `memory.read` | `{content, charCount}`；Agent 长期记忆 |
 | `host.memory.write(content)` / `append(content)` / `edit(oldText, newText)` | `memory.write` | 覆盖 / 追加 / 替换记忆，返回 `{charCount}` |
 | `host.workspace.save({path, content})` / `list({path?})` / `read({path})` / `delete({path})` | `workspace` | 读写插件专属工作区文件夹（有会话时在会话工作区，否则共享工作区），见第 4 章「工作区文件」 |
+| `host.files.list()` / `read(name, encoding?)` / `delete(name)` | `files` | 插件私有文件：列出 / 读取（`text`/`base64`，≤128 KiB）/ 删除；上传与 URL 用法见 9.9 |
 | `host.ai.complete(options)` | `ai.call` | 走聊天故障转移队列的单次生成，返回 `{content, model, usage}`；超时 120 秒，限额见第 4 章 |
 | `host.http.get(url)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`（≤ 512 KiB） |
 | `host.progress.update(options)` | `chat.progress` | 由聊天命令（`open_page`）打开时更新该命令消息上的进度卡片；其他入口返回 `false` |
@@ -825,6 +855,32 @@ NekoPlugin.registerCommand("note", async (ctx) => {
   return "已保存。可在插件页面查看全部笔记。";
 });
 ```
+
+### 9.9 文件上传（`files`）
+
+页面可以直接使用标准文件输入框；用户选择后文件被复制到插件私有目录，页面与命令运行时都能读取：
+
+```html
+<input type="file" id="uploader" accept="image/*,text/*" multiple>
+<button id="pick">选择文件</button>
+<pre id="result"></pre>
+<script>
+  document.getElementById("pick").onclick = () => document.getElementById("uploader").click();
+  document.getElementById("uploader").onchange = async (event) => {
+    const files = Array.from(event.target.files);
+    const { files: saved } = await host.files.list();
+    document.getElementById("result").textContent =
+      "本次选择 " + files.length + " 个，私有目录共 " + saved.length + " 个";
+    if (saved[0]) document.getElementById("preview").src = saved[0].url;
+  };
+</script>
+```
+
+- 需要清单声明 `files` 权限；未声明或未授权时宿主会拒绝选择并提示。
+- `accept` 的 MIME/扩展名会传给系统选择器（无法识别的项按 `*/*` 处理）；`multiple` 决定是否允许多选。
+- 选择的文件可立即按标准 `File` API 使用（`FileReader`、`URL.createObjectURL`）；持久化访问走 `host.files.*`，详见第 4 章「插件私有文件」。
+- 私有文件也可作为页面资源直接引用：`list`/`read` 返回的 `url` 指向 `/plugin/<插件id>/@files/<文件名>`，可用于 `<img>`、`<audio>`、`<video>` 等标签。
+- 命令运行时（`ctx.api.files.*`）只能列出、读取或删除已上传的文件，不能发起文件选择。
 
 ## 10. 从其他生态移植
 

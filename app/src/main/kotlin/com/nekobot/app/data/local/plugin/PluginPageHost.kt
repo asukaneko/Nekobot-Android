@@ -13,12 +13,15 @@ import android.webkit.JavascriptInterface
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.nekobot.app.data.local.LocalCommandProgressReporter
 import kotlinx.coroutines.CancellationException
@@ -40,6 +43,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.Collections
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
 /** 已解析的插件页面：插件、页面声明与插件目录。 */
@@ -77,6 +81,8 @@ internal class PluginPageHost(
     context: Context,
     private val resolved: ResolvedPluginPage,
     private val dispatcher: PluginApiDispatcher,
+    /** 插件私有文件目录：`<input type="file">` 选择的文件复制到这里。 */
+    private val files: PluginFileStore,
     private val sessionId: String?,
     /** 命令触发时携带的参数原文；页面通过 `__NEKO_LAUNCH__.argsText` 读取。 */
     private val launchArgs: String? = null,
@@ -100,13 +106,15 @@ internal class PluginPageHost(
      * 取不到 Activity 时回退到传入上下文，保证预览等无 Activity 场景仍可创建。
      */
     private val webViewContext: Context = context.findActivityContext() ?: context
+    private val appContext: Context = context.applicationContext
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val callLimiter = Semaphore(MAX_CONCURRENT_CALLS)
 
     private val assetServer = PluginAssetServer(
-        pluginDirectoryProvider = { if (it == resolved.plugin.id) resolved.directory else null }
+        pluginDirectoryProvider = { if (it == resolved.plugin.id) resolved.directory else null },
+        pluginFilesProvider = { if (it == resolved.plugin.id) files.directory(it) else null }
     ).also { it.theme = initialTheme }
 
     private val _state = MutableStateFlow<State>(State.Loading)
@@ -132,6 +140,16 @@ internal class PluginPageHost(
     private var pendingDialog: CompletableDeferred<PluginPageDialogResult>? = null
 
     private val pendingJsResults: MutableSet<JsResult> = Collections.synchronizedSet(mutableSetOf())
+
+    /**
+     * Compose 侧注册的系统文件选择器（`<input type="file">` 触发）；
+     * 未注册时文件上传不可用。参数为 MIME 类型与是否允许多选。
+     */
+    @Volatile
+    var filePicker: ((mimeTypes: Array<String>, allowMultiple: Boolean) -> Unit)? = null
+
+    private val fileChooserLock = Any()
+    private var pendingFileChooser: ValueCallback<Array<Uri>>? = null
 
     /** 命令触发时把进度卡片写回该命令所在的用户消息；非命令入口为 null。 */
     private val progressReporter: LocalCommandProgressReporter? = progressParentMessageId
@@ -180,8 +198,9 @@ internal class PluginPageHost(
         if (destroyed) return
         val old = webView
         webView = null
-        // 旧 WebView 上的弹窗立即作废，避免重载后仍停留在屏幕上
+        // 旧 WebView 上的弹窗与文件选择立即作废，避免重载后仍停留在屏幕上
         pendingDialog?.complete(PluginPageDialogResult.CANCELLED)
+        cancelPendingFileChooser()
         old?.let(::destroyWebView)
         loadFailed = false
         _state.value = State.Loading
@@ -196,6 +215,7 @@ internal class PluginPageHost(
         pendingDialog = null
         _dialog.value = null
         cancelPendingJsResults()
+        cancelPendingFileChooser()
         old?.let(::destroyWebView)
         scope.cancel()
     }
@@ -261,6 +281,70 @@ internal class PluginPageHost(
         pendingDialog?.complete(result)
     }
 
+    /**
+     * 系统文件选择器返回：把所选文件复制到插件私有目录，再把私有副本的
+     * content URI 交给 WebView（`<input type="file">` 的 File 对象即读自副本）。
+     * 取消或全部失败时回传 null。
+     */
+    fun deliverFileChooserResult(uris: List<Uri>?) {
+        val callback = synchronized(fileChooserLock) {
+            pendingFileChooser.also { pendingFileChooser = null }
+        } ?: return
+        if (destroyed || uris.isNullOrEmpty()) {
+            callback.onReceiveValue(null)
+            return
+        }
+        scope.launch {
+            val imported = mutableListOf<Uri>()
+            val failures = mutableListOf<String>()
+            uris.forEach { uri ->
+                try {
+                    val entry = files.importFromUri(resolved.plugin.id, uri)
+                    val file = files.resolve(resolved.plugin.id, entry.name)
+                    if (file == null) {
+                        failures += "保存文件失败"
+                    } else {
+                        imported += FileProvider.getUriForFile(
+                            appContext,
+                            "${appContext.packageName}.fileprovider",
+                            file
+                        )
+                    }
+                } catch (error: PluginApiException) {
+                    failures += error.message ?: "文件上传失败"
+                } catch (error: Exception) {
+                    failures += error.message ?: "文件上传失败"
+                }
+            }
+            mainHandler.post {
+                if (destroyed) {
+                    callback.onReceiveValue(null)
+                    return@post
+                }
+                if (imported.isEmpty()) {
+                    toast(failures.firstOrNull() ?: "文件上传失败")
+                    callback.onReceiveValue(null)
+                } else {
+                    failures.firstOrNull()?.let(::toast)
+                    callback.onReceiveValue(imported.toTypedArray())
+                }
+            }
+        }
+    }
+
+    /** 取消尚未完成的文件选择（重载/销毁时调用），避免 WebView 一直等待。 */
+    private fun cancelPendingFileChooser() {
+        val callback = synchronized(fileChooserLock) {
+            pendingFileChooser.also { pendingFileChooser = null }
+        }
+        callback?.onReceiveValue(null)
+    }
+
+    private fun toast(message: String) {
+        if (message.isBlank()) return
+        mainHandler.post { runCatching { Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() } }
+    }
+
     /** 串行化弹窗：同一时间只展示一个，等待期间新的请求排队（JS 弹窗天然串行）。 */
     private suspend fun requestDialog(request: PluginPageDialog): PluginPageDialogResult? {
         if (destroyed) return null
@@ -290,8 +374,10 @@ internal class PluginPageHost(
         with(view.settings) {
             javaScriptEnabled = true
             // 第三方脚本不能使用 fetch、XHR、图片或导航绕过 Bridge 的网络权限。
+            // blockNetworkLoads 已在网络层拦截所有外部请求，虚拟源资源由
+            // shouldInterceptRequest 直接提供；注意不要开启 blockNetworkImage，
+            // 它会让 Blink 在发起请求前丢弃全部图片（含虚拟源图片与 data: 图片）。
             blockNetworkLoads = true
-            blockNetworkImage = true
             allowFileAccess = false
             allowContentAccess = false
             domStorageEnabled = false
@@ -403,6 +489,59 @@ internal class PluginPageHost(
             defaultValue: String?,
             result: JsPromptResult?
         ): Boolean = handleJsDialog(PluginPageDialog.Kind.PROMPT, message, result, defaultValue.orEmpty())
+
+        /**
+         * 页面 `<input type="file">` 触发系统选择器；需要 `files` 权限。
+         * 选择的文件由 [deliverFileChooserResult] 复制到插件私有目录后再回传。
+         */
+        override fun onShowFileChooser(
+            webView: WebView?,
+            filePathCallback: ValueCallback<Array<Uri>>?,
+            fileChooserParams: WebChromeClient.FileChooserParams?
+        ): Boolean {
+            val callback = filePathCallback ?: return false
+            if (destroyed) {
+                callback.onReceiveValue(null)
+                return true
+            }
+            try {
+                dispatcher.requirePermission(resolved.plugin, FILE_PERMISSION)
+            } catch (error: PluginApiException) {
+                toast(error.message ?: "插件没有文件上传权限")
+                callback.onReceiveValue(null)
+                return true
+            }
+            val picker = filePicker
+            if (picker == null) {
+                toast("当前环境不支持文件上传")
+                callback.onReceiveValue(null)
+                return true
+            }
+            synchronized(fileChooserLock) {
+                pendingFileChooser?.onReceiveValue(null)
+                pendingFileChooser = callback
+            }
+            val mimeTypes = fileChooserParams?.acceptTypes
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?.map { value ->
+                    if (value.contains('/')) {
+                        value
+                    } else {
+                        android.webkit.MimeTypeMap.getSingleton()
+                            .getMimeTypeFromExtension(value.removePrefix(".").lowercase(Locale.ROOT))
+                            ?: "*/*"
+                    }
+                }
+                ?.distinct()
+                ?.takeIf { it.isNotEmpty() }
+                ?.toTypedArray()
+                ?: arrayOf("*/*")
+            val allowMultiple = fileChooserParams?.mode ==
+                WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+            picker(mimeTypes, allowMultiple)
+            return true
+        }
 
         private fun handleJsDialog(
             kind: PluginPageDialog.Kind,
@@ -531,6 +670,9 @@ internal class PluginPageHost(
     companion object {
         const val BRIDGE_NAME = "NekoHost"
         const val API_TIMEOUT_MS = 10_000L
+
+        /** 页面上传文件所需的权限名。 */
+        const val FILE_PERMISSION = "files"
 
         /** AI 调用需要等待模型生成。 */
         const val AI_TIMEOUT_MS = 120_000L

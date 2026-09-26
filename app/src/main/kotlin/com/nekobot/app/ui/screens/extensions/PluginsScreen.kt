@@ -421,6 +421,7 @@ private fun permissionNameRes(permission: String): Int = when (permission) {
     "storage" -> R.string.plugin_perm_storage
     "notify" -> R.string.plugin_perm_notify
     "chat.progress" -> R.string.plugin_perm_chat_progress
+    "files" -> R.string.plugin_perm_files
     "chat.read" -> R.string.plugin_perm_chat_read
     "characters.read" -> R.string.plugin_perm_characters_read
     "worldbooks.read" -> R.string.plugin_perm_worldbooks_read

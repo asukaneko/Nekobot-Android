@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.plugin
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import android.net.Uri
 import android.widget.Toast
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -26,8 +27,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
+import java.util.Base64
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -102,7 +105,9 @@ internal class PluginApiDispatcher(
     private val memoryWriter: (String, Boolean, String?) -> Int,
     private val networkAllowed: () -> Boolean,
     private val appVersion: String,
-    private val apiVersion: Int = PluginManifestValidator.CURRENT_API_VERSION
+    private val apiVersion: Int = PluginManifestValidator.CURRENT_API_VERSION,
+    /** 插件私有文件目录；页面文件上传与 files.* API 共用同一实例。 */
+    private val fileStore: PluginFileStore = PluginFileStore(appContext)
 ) {
     private val gson = Gson()
     private val aiQuota = PluginAiQuota()
@@ -466,6 +471,9 @@ internal class PluginApiDispatcher(
             "workspace.list" -> pluginWorkspaceList(context, payload)
             "workspace.read" -> pluginWorkspaceRead(context, payload)
             "workspace.delete" -> pluginWorkspaceDelete(context, payload)
+            "files.list" -> pluginFilesList(context)
+            "files.read" -> pluginFilesRead(context, payload)
+            "files.delete" -> pluginFilesDelete(context, payload)
             "progress.update" -> {
                 // 没有关联的用户消息时（如 plugin_use 的 execute 测试、无会话上下文的页面）
                 // 静默忽略：这是宿主环境的差异，不该让插件调用本身失败。
@@ -680,6 +688,90 @@ internal class PluginApiDispatcher(
         return if (scope == "shared") "shared://$path" else path
     }
 
+    // ---- 插件私有文件：页面上传（<input type="file">）后的 files.* 访问 ----
+
+    /**
+     * 校验插件对指定权限的声明与授权，供非 API 路径（如页面文件上传）复用同一套规则。
+     *
+     * @throws PluginApiException 未声明或未授权时抛出。
+     */
+    fun requirePermission(plugin: InstalledPlugin, permission: String) {
+        checkPluginPermission(plugin, permission, grants?.granted(plugin.id))
+    }
+
+    private fun pluginFilesList(context: CallContext): Map<String, Any?> {
+        val entries = fileStore.list(context.plugin.id)
+        return mapOf(
+            "count" to entries.size,
+            "total_bytes" to entries.sumOf { it.size },
+            "files" to entries.map { pluginFileEntry(context.plugin.id, it) }
+        )
+    }
+
+    private fun pluginFilesRead(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val name = payload.string("name").ifBlank { payload.string("path") }.trim()
+        if (name.isBlank()) throw PluginApiException("files.read 需要 name", "invalid_argument")
+        val encoding = payload.string("encoding").trim().lowercase(Locale.ROOT).ifBlank { "text" }
+        if (encoding !in FILE_READ_ENCODINGS) {
+            throw PluginApiException("encoding 只支持 text / base64", "invalid_argument")
+        }
+        val file = fileStore.resolve(context.plugin.id, name)
+            ?: throw PluginApiException("文件不存在：$name", "not_found")
+        val bytes = try {
+            readFileBytes(file, MAX_FILES_READ_BYTES.toInt())
+        } catch (error: Exception) {
+            throw PluginApiException("读取文件失败：${error.message ?: "未知错误"}", "io_error")
+        }
+        val content = if (encoding == "base64") {
+            Base64.getEncoder().encodeToString(bytes)
+        } else {
+            String(bytes, Charsets.UTF_8)
+        }
+        return mapOf(
+            "name" to file.name,
+            "size" to file.length(),
+            "mime_type" to PluginAssetServer.mimeTypeFor(file.name),
+            "encoding" to encoding,
+            "truncated" to (file.length() > MAX_FILES_READ_BYTES),
+            "content" to content,
+            "url" to pluginFileUrl(context.plugin.id, file.name)
+        )
+    }
+
+    private fun pluginFilesDelete(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val name = payload.string("name").ifBlank { payload.string("path") }.trim()
+        if (name.isBlank()) throw PluginApiException("files.delete 需要 name", "invalid_argument")
+        if (!fileStore.delete(context.plugin.id, name)) {
+            throw PluginApiException("文件不存在：$name", "not_found")
+        }
+        return mapOf("name" to name, "deleted" to true)
+    }
+
+    private fun pluginFileEntry(pluginId: String, entry: PluginFileStore.Entry): Map<String, Any?> = mapOf(
+        "name" to entry.name,
+        "size" to entry.size,
+        "mime_type" to PluginAssetServer.mimeTypeFor(entry.name),
+        "updated_at" to entry.updatedAt,
+        "url" to pluginFileUrl(pluginId, entry.name)
+    )
+
+    /** 私有文件的虚拟资源地址；页面可直接用于 `<img>`/`<audio>` 等标签。 */
+    private fun pluginFileUrl(pluginId: String, name: String): String =
+        PluginAssetServer.virtualFileUrl(pluginId, name)
+
+    private fun readFileBytes(file: File, limit: Int): ByteArray {
+        val output = ByteArrayOutputStream()
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (output.size() < limit) {
+                val count = input.read(buffer, 0, minOf(buffer.size, limit - output.size()))
+                if (count < 0) break
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toByteArray()
+    }
+
     private fun systemInfo(): Map<String, Any> {
         val configuration = appContext.resources.configuration
         val night = (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -723,6 +815,9 @@ internal class PluginApiDispatcher(
         "workspace_list" -> "workspace.list"
         "workspace_read" -> "workspace.read"
         "workspace_delete" -> "workspace.delete"
+        "files_list" -> "files.list"
+        "files_read" -> "files.read"
+        "files_delete" -> "files.delete"
         else -> raw
     }
 
@@ -742,6 +837,7 @@ internal class PluginApiDispatcher(
         "memory.read" -> "memory.read"
         "memory.write", "memory.append", "memory.edit" -> "memory.write"
         "workspace.save", "workspace.list", "workspace.read", "workspace.delete" -> "workspace"
+        "files.list", "files.read", "files.delete" -> "files"
         "http.get" -> "network"
         "progress.update" -> "chat.progress"
         else -> null
@@ -1387,6 +1483,7 @@ internal class PluginApiDispatcher(
             "network",
             "progress",
             "workspace",
+            "files",
             "ai.call",
             "chat.context",
             "chat.session.config",
@@ -1403,6 +1500,7 @@ internal class PluginApiDispatcher(
             "memory_read", "memory_write", "memory_append", "memory_edit",
             "create_character", "update_character",
             "workspace_save", "workspace_list", "workspace_read", "workspace_delete",
+            "files_list", "files_read", "files_delete",
             "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
 
@@ -1417,6 +1515,7 @@ internal class PluginApiDispatcher(
             "worldbooks.list", "worldbooks.get",
             "memory.read", "memory.write", "memory.append", "memory.edit",
             "workspace.save", "workspace.list", "workspace.read", "workspace.delete",
+            "files.list", "files.read", "files.delete",
             "http.get", "progress.update", "ai.complete",
             "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
@@ -1471,6 +1570,10 @@ internal class PluginApiDispatcher(
         const val MAX_WORKSPACE_PATH_CHARS = 200
         const val MAX_WORKSPACE_SAVE_CHARS = 2_000_000
         const val MAX_WORKSPACE_READ_BYTES = 128L * 1024
+
+        /** 插件私有文件 API：单次读取上限与支持的编码。 */
+        const val MAX_FILES_READ_BYTES = 128L * 1024
+        val FILE_READ_ENCODINGS: Set<String> = setOf("text", "base64")
 
         /** `host.ui.openPage` 启动参数与原生弹窗的字段上限。 */
         const val MAX_LAUNCH_ARGS_CHARS = 1_000
