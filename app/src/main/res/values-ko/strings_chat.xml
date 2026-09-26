@@ -395,6 +395,7 @@
     <string name="chat_scroll_to_bottom">맨 아래로 스크롤</string>
     <string name="chat_compress_context">컨텍스트 압축</string>
     <string name="chat_compressing">압축 중</string>
+    <string name="chat_compress_agent_running">실행 중에는 컨텍스트를 압축할 수 없습니다</string>
     <string name="chat_send_file">파일 전송</string>
     <string name="chat_upload_workspace">워크스페이스에 업로드</string>
     <string name="chat_view_workspace">워크스페이스 보기</string>

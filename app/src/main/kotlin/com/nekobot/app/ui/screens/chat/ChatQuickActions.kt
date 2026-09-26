@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -153,6 +154,11 @@ internal fun ChatQuickActionBar(
     actions: List<String>,
     onCollapse: () -> Unit,
     onEdit: () -> Unit,
+    /**
+     * 各操作当前是否可用；不可用时渲染为半透明且点击无效
+     * （如 AI 持续 loop 期间禁用「压缩」）。
+     */
+    isActionEnabled: (String) -> Boolean = { true },
     onAction: (String) -> Unit
 ) {
     Row(
@@ -187,7 +193,11 @@ internal fun ChatQuickActionBar(
                 )
             } else {
                 actions.forEach { id ->
-                    ChatQuickActionChip(id = id, onClick = { onAction(id) })
+                    ChatQuickActionChip(
+                        id = id,
+                        enabled = isActionEnabled(id),
+                        onClick = { onAction(id) }
+                    )
                 }
             }
         }
@@ -224,17 +234,19 @@ internal fun ChatQuickActionExpandButton(
     }
 }
 
-/** 单个快捷操作：图标 + 名称的胶囊按钮。 */
+/** 单个快捷操作：图标 + 名称的胶囊按钮；[enabled] 为 false 时半透明且不可点击。 */
 @Composable
 private fun ChatQuickActionChip(
     id: String,
+    enabled: Boolean,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
-            .clickable(onClick = onClick)
+            .alpha(if (enabled) 1f else 0.4f)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

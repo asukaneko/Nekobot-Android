@@ -395,6 +395,7 @@
     <string name="chat_scroll_to_bottom">最下部へスクロール</string>
     <string name="chat_compress_context">コンテキストを圧縮</string>
     <string name="chat_compressing">圧縮中</string>
+    <string name="chat_compress_agent_running">実行中はコンテキストを圧縮できません</string>
     <string name="chat_send_file">ファイルを送信</string>
     <string name="chat_upload_workspace">ワークスペースにアップロード</string>
     <string name="chat_view_workspace">ワークスペースを表示</string>

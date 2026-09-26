@@ -2880,6 +2880,12 @@ class ChatViewModel : BaseViewModel() {
     /** 压缩上下文：将早期消息摘要化以节省 token。 */
     fun compressContext() {
         if (currentSessionId.isBlank()) return
+        // AI 持续 loop 期间禁止手动压缩上下文（UI 层禁用）：压缩会重写历史边界，
+        // 正在执行的 Agent 任务会因此丢失工作记忆；达到阈值后的自动压缩不受影响。
+        if (_sending.value || runtime.hasBlockingLocalChatJob()) {
+            showToast(string(R.string.chat_compress_agent_running))
+            return
+        }
         // 本地模式：压缩挂到应用级作用域后台执行，退出会话页面后仍继续，直到完成或应用退出。
         if (isLocalMode) {
             startBackgroundCompression()

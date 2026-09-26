@@ -1056,7 +1056,8 @@ private fun ModernChatComposer(
             ChatQuickAction.MY_MESSAGES -> showMyMessages = true
             ChatQuickAction.CONTEXT -> onOpenContextAnalysis()
             ChatQuickAction.COMPRESS -> {
-                if (!compressing) onCompress()
+                // AI 持续 loop 期间禁用（按钮已置灰，这里兜底防御）
+                if (!compressing && !sending) onCompress()
             }
             ChatQuickAction.CLEAR -> showClearConfirm = true
             ChatQuickAction.LATEST -> onJumpToLatest()
@@ -1545,6 +1546,11 @@ private fun ModernChatComposer(
                                 ServiceContainer.prefs.chatQuickActionsCollapsed = true
                             },
                             onEdit = { showQuickActionEditor = true },
+                            // AI 执行中禁用「压缩上下文」：压缩会重写历史边界，
+                            // 正在运行的任务会丢失工作记忆；达到阈值的自动压缩不受影响。
+                            isActionEnabled = { id ->
+                                id != ChatQuickAction.COMPRESS || (!sending && !compressing)
+                            },
                             onAction = handleQuickAction
                         )
                     }

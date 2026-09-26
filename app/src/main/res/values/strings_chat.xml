@@ -401,6 +401,7 @@
     <string name="chat_scroll_to_bottom">滚到底部</string>
     <string name="chat_compress_context">压缩上下文</string>
     <string name="chat_compressing">压缩中</string>
+    <string name="chat_compress_agent_running">AI 执行中，无法压缩上下文</string>
     <string name="chat_send_file">发送文件</string>
     <string name="chat_upload_workspace">上传工作区</string>
     <string name="chat_view_workspace">查看工作区</string>
