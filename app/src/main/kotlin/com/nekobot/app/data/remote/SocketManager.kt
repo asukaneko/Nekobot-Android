@@ -250,11 +250,17 @@ sealed class RealtimeEvent {
         val card: com.nekobot.app.data.model.ThinkingCard,
         val sessionId: String? = null
     ) : RealtimeEvent()
-    /** Agent 会话上下文压缩状态，仅本地管线发出。 */
+    /**
+     * Agent 会话上下文压缩状态，仅本地管线发出。
+     *
+     * [anchorContent] 是触发压缩的消息正文（前缀）：界面把"正在压缩"提示锚定到
+     * 那条消息下方，而不是固定贴在列表末尾。
+     */
     data class ContextCompressionStatus(
         val sessionId: String,
         val inProgress: Boolean,
-        val compressed: Boolean = false
+        val compressed: Boolean = false,
+        val anchorContent: String = ""
     ) : RealtimeEvent()
     /**
      * Hook 触发通知（成就式弹窗）。
@@ -314,7 +320,7 @@ sealed class RealtimeEvent {
     ) : RealtimeEvent()
     /**
      * 自动技能沉淀状态（仅本地 Agent 管线发出）。
-     * UI 在消息列表末尾渲染与"上下文压缩"同形态的内联提示：
+     * UI 渲染与"上下文压缩"同形态的内联提示并锚定到触发它的回复下方：
      * RUNNING 显示"正在总结技能"，DONE 显示刚落库的技能名并持久保留。
      */
     data class AutoSkillDistillStatus(

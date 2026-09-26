@@ -1211,12 +1211,14 @@ class LocalRepository(
         // 达到阈值（或用户明确要求）：重置计数，避免短时间内连续审查。
         ServiceContainer.prefs.setAgentSkillReviewProgress(sessionId, 0)
         // 先通知界面"正在总结技能"（与上下文压缩提示同一形态），再后台跑审查。
+        // 带 anchorContent：界面据此把提示锚定到触发它的那条回复，而不是一直贴在列表末尾。
         _autoSkillEvents.tryEmit(
             com.nekobot.app.data.local.ai.AgentSkillNotice(
                 sessionId = sessionId,
                 skillName = "",
                 created = false,
-                phase = com.nekobot.app.data.local.ai.AgentSkillPhase.RUNNING
+                phase = com.nekobot.app.data.local.ai.AgentSkillPhase.RUNNING,
+                anchorContent = assistantMessage
             )
         )
         ServiceContainer.applicationScope.launch(Dispatchers.IO) {
@@ -1229,17 +1231,25 @@ class LocalRepository(
                     explicit = explicit
                 )
                 // 沉淀结果写进设置：聊天界面的提示需要持久显示（不自动消失、重启后仍在）。
+                // 同时记下触发它的回复，让提示重新进入会话时仍锚定在同一条消息下。
                 notice?.let {
-                    ServiceContainer.prefs.setAgentSkillNotice(sessionId, it.skillName, it.created)
+                    ServiceContainer.prefs.setAgentSkillNotice(
+                        sessionId = sessionId,
+                        skillName = it.skillName,
+                        created = it.created,
+                        anchorContent = assistantMessage
+                    )
                 }
                 // 审查结束必须回一个 DONE：没有沉淀任何技能时也要让界面收起"正在总结"提示。
                 _autoSkillEvents.tryEmit(
-                    notice ?: com.nekobot.app.data.local.ai.AgentSkillNotice(
-                        sessionId = sessionId,
-                        skillName = "",
-                        created = false,
-                        phase = com.nekobot.app.data.local.ai.AgentSkillPhase.DONE
-                    )
+                    notice?.copy(anchorContent = assistantMessage)
+                        ?: com.nekobot.app.data.local.ai.AgentSkillNotice(
+                            sessionId = sessionId,
+                            skillName = "",
+                            created = false,
+                            phase = com.nekobot.app.data.local.ai.AgentSkillPhase.DONE,
+                            anchorContent = assistantMessage
+                        )
                 )
             }.onFailure {
                 LocalLogger.w(TAG, "Agent 技能沉淀失败（不影响主流程）: ${it.message}")
@@ -1248,7 +1258,8 @@ class LocalRepository(
                         sessionId = sessionId,
                         skillName = "",
                         created = false,
-                        phase = com.nekobot.app.data.local.ai.AgentSkillPhase.DONE
+                        phase = com.nekobot.app.data.local.ai.AgentSkillPhase.DONE,
+                        anchorContent = assistantMessage
                     )
                 )
             }
@@ -6479,7 +6490,14 @@ class LocalRepository(
             persistUserMessage &&
             needsAgentContextCompression(sessionId, maxContextTokens)
         ) {
-            emit(RealtimeEvent.ContextCompressionStatus(sessionId, inProgress = true))
+            emit(
+                RealtimeEvent.ContextCompressionStatus(
+                    sessionId = sessionId,
+                    inProgress = true,
+                    // 锚点：自动压缩由刚发送的用户消息触发，提示跟随该气泡。
+                    anchorContent = savedUserMessage?.content ?: effectiveUserMessage
+                )
+            )
             val compression = compressAgentContext(
                 sessionId = sessionId,
                 keepRecent = 10,

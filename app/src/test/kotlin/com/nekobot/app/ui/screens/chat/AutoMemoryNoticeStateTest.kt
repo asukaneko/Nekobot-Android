@@ -11,6 +11,9 @@ import org.junit.Test
  *
  * 与 [AutoSkillNoticeStateTest] 同构：写入结果由 PrefsManager 持久化
  * （见 LocalRepository 写入），这里通过注入的读取器验证"持久显示"的界面语义。
+ *
+ * 提示与压缩/技能沉淀共用统一的内联提示列表（[ChatSessionState.inlineNotices]），
+ * 并通过 [resolveInlineNoticeAnchorIndex] 锚定到触发它的回复下方。
  */
 class AutoMemoryNoticeStateTest {
 
@@ -22,7 +25,7 @@ class AutoMemoryNoticeStateTest {
             AgentMemoryNotice("session", changedItems = 0, phase = AgentMemoryPhase.RUNNING)
         )
 
-        assertEquals(AutoMemoryUiState(running = true), state.autoMemoryNotice.value)
+        assertEquals(AutoMemoryUiState(running = true), state.inlineNoticeOrNull<AutoMemoryUiState>())
     }
 
     @Test
@@ -33,12 +36,12 @@ class AutoMemoryNoticeStateTest {
 
         assertEquals(
             AutoMemoryUiState(changedItems = 3, running = false),
-            state.autoMemoryNotice.value
+            state.inlineNoticeOrNull<AutoMemoryUiState>()
         )
         // 提示是持久显示的：不会随时间自动消失（状态里没有过期逻辑）。
         assertEquals(
             AutoMemoryUiState(changedItems = 3, running = false),
-            state.autoMemoryNotice.value
+            state.inlineNoticeOrNull<AutoMemoryUiState>()
         )
     }
 
@@ -50,7 +53,10 @@ class AutoMemoryNoticeStateTest {
             AgentMemoryNotice("session", changedItems = 2, anchorContent = "这是触发记忆的回复")
         )
 
-        assertEquals("这是触发记忆的回复", state.autoMemoryNotice.value?.anchorContent)
+        assertEquals(
+            "这是触发记忆的回复",
+            state.inlineNoticeOrNull<AutoMemoryUiState>()?.anchorContent
+        )
     }
 
     /**
@@ -67,7 +73,9 @@ class AutoMemoryNoticeStateTest {
             message(id = "m2", content = "第二条回复", isUser = false)
         )
 
-        assertEquals("m2", state.resolveAutoMemoryAnchorMessageId(messages))
+        val notice = state.inlineNoticeOrNull<AutoMemoryUiState>()!!
+
+        assertEquals(1, resolveInlineNoticeAnchorIndex(notice, messages))
     }
 
     @Test
@@ -79,7 +87,9 @@ class AutoMemoryNoticeStateTest {
         )
         val messages = listOf(message(id = "m1", content = "前缀内容后面还有很多字", isUser = false))
 
-        assertEquals("m1", state.resolveAutoMemoryAnchorMessageId(messages))
+        val notice = state.inlineNoticeOrNull<AutoMemoryUiState>()!!
+
+        assertEquals(0, resolveInlineNoticeAnchorIndex(notice, messages))
     }
 
     @Test
@@ -90,8 +100,10 @@ class AutoMemoryNoticeStateTest {
         )
         val messages = listOf(message(id = "m1", content = "别的回复", isUser = false))
 
+        val notice = state.inlineNoticeOrNull<AutoMemoryUiState>()!!
+
         // 找不到锚点消息时返回 null，界面据此回退到列表末尾，而不是让提示消失。
-        assertNull(state.resolveAutoMemoryAnchorMessageId(messages))
+        assertNull(resolveInlineNoticeAnchorIndex(notice, messages))
     }
 
     @Test
@@ -102,7 +114,12 @@ class AutoMemoryNoticeStateTest {
         )
         val messages = listOf(message(id = "u1", content = "同样的文字", isUser = true))
 
-        assertNull("记忆锚点是回复，不应匹配到用户消息", state.resolveAutoMemoryAnchorMessageId(messages))
+        val notice = state.inlineNoticeOrNull<AutoMemoryUiState>()!!
+
+        assertNull(
+            "记忆锚点是回复，不应匹配到用户消息",
+            resolveInlineNoticeAnchorIndex(notice, messages)
+        )
     }
 
     @Test
@@ -117,7 +134,7 @@ class AutoMemoryNoticeStateTest {
         // 收起"正在整理"，回退显示上一次的写入结果（而不是把提示清空）。
         assertEquals(
             AutoMemoryUiState(changedItems = 5, running = false),
-            state.autoMemoryNotice.value
+            state.inlineNoticeOrNull<AutoMemoryUiState>()
         )
     }
 
@@ -130,7 +147,7 @@ class AutoMemoryNoticeStateTest {
 
         state.applyAutoMemoryNotice(AgentMemoryNotice("session", changedItems = 0))
 
-        assertNull(state.autoMemoryNotice.value)
+        assertNull(state.inlineNoticeOrNull<AutoMemoryUiState>())
     }
 
     @Test
@@ -139,7 +156,7 @@ class AutoMemoryNoticeStateTest {
 
         state.restoreAutoMemoryNotice()
 
-        assertNull("没有真正写入过内容时不应显示提示", state.autoMemoryNotice.value)
+        assertNull("没有真正写入过内容时不应显示提示", state.inlineNoticeOrNull<AutoMemoryUiState>())
     }
 
     @Test
@@ -150,7 +167,7 @@ class AutoMemoryNoticeStateTest {
 
         assertEquals(
             AutoMemoryUiState(changedItems = 2, running = false),
-            state.autoMemoryNotice.value
+            state.inlineNoticeOrNull<AutoMemoryUiState>()
         )
     }
 
@@ -163,7 +180,7 @@ class AutoMemoryNoticeStateTest {
 
         state.restoreAutoMemoryNotice()
 
-        assertEquals(AutoMemoryUiState(running = true), state.autoMemoryNotice.value)
+        assertEquals(AutoMemoryUiState(running = true), state.inlineNoticeOrNull<AutoMemoryUiState>())
     }
 
     @Test
@@ -178,7 +195,7 @@ class AutoMemoryNoticeStateTest {
 
         assertEquals(
             AutoMemoryUiState(changedItems = 4, running = false, anchorContent = "上次触发记忆的回复"),
-            state.autoMemoryNotice.value
+            state.inlineNoticeOrNull<AutoMemoryUiState>()
         )
     }
 

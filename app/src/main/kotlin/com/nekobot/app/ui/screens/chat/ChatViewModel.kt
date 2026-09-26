@@ -296,47 +296,23 @@ class ChatViewModel : BaseViewModel() {
     private val _sending: MutableStateFlow<Boolean> get() = runtime.sending
     private val _editingMessage = MutableStateFlow(false)
 
-    val agentContextCompressionInProgress: StateFlow<Boolean> = _runtime
-        .map { it.agentContextCompressionInProgress }
-        .distinctUntilChanged()
-        .flatMapLatest { it }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    private val _agentContextCompressionInProgress: MutableStateFlow<Boolean>
-        get() = runtime.agentContextCompressionInProgress
-
     /**
-     * 自动技能沉淀提示（进行中 / 已完成）。
-     * 与上下文压缩提示同形态：渲染在消息列表末尾；完成后持久保留（不自动消失，
-     * 退出页面或重启应用后重新进入会话仍可见）。
-     */
-    val autoSkillNotice: StateFlow<AutoSkillUiState?> = _runtime
-        .map { it.autoSkillNotice }
-        .distinctUntilChanged()
-        .flatMapLatest { it }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-
-    /**
-     * 自动长期记忆提示（进行中 / 已完成）。
-     * 与自动技能沉淀提示同形态：渲染在消息列表末尾；完成后持久保留。
-     */
-    val autoMemoryNotice: StateFlow<AutoMemoryUiState?> = _runtime
-        .map { it.autoMemoryNotice }
-        .distinctUntilChanged()
-        .flatMapLatest { it }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-
-    /**
-     * 记忆提示应当渲染在哪条消息之后的消息 id。
+     * 所有会话内联提示（上下文压缩 / 技能沉淀 / 长期记忆，以及后续新增类型）。
      *
-     * 由锚点（触发抽取的回复正文）反查得出；为 null 时界面回退到贴在列表末尾。
-     * 消息列表变化时会重新计算，因此压缩归档、删除消息后也不会把提示留在错误位置。
+     * 统一由 [ChatSessionState.inlineNotices] 持有；聊天界面按每条提示自己的锚点
+     * 渲染在**触发它的消息下方**，而不是固定贴在列表末尾。
      */
-    val autoMemoryAnchorMessageId: StateFlow<String?> = kotlinx.coroutines.flow.combine(
-        autoMemoryNotice,
-        messages
-    ) { notice, list ->
-        if (notice == null) null else runtime.resolveAutoMemoryAnchorMessageId(list)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val inlineNotices: StateFlow<List<ChatInlineNotice>> = _runtime
+        .map { it.inlineNotices }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** 上下文压缩进行中：压缩按钮切换为进行中样式（由统一提示列表派生）。 */
+    val agentContextCompressionInProgress: StateFlow<Boolean> = inlineNotices
+        .map { notices -> notices.any { it is ContextCompressionUiState } }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
      * Agent 任务列表（todo_write 工具写入，会话级持久化）。
@@ -761,7 +737,7 @@ class ChatViewModel : BaseViewModel() {
         val pluginInstallEvents = com.nekobot.app.ServiceContainer.localRepository.pluginInstallConfirmationEvents
             .map { request -> RealtimeEvent.PluginInstallConfirmationRequired(request) }
         // 4. localRepository.autoSkillEvents → 自动技能沉淀状态
-        //    以"上下文压缩提示"同形态的内联提示展示（消息列表末尾），不再走 Hook 弹窗。
+        //    统一内联提示并锚定到触发它的回复下方，不再走 Hook 弹窗。
         val autoSkillEvents = com.nekobot.app.ServiceContainer.localRepository.autoSkillEvents
             .map { notice -> RealtimeEvent.AutoSkillDistillStatus(notice) }
         // 5. localRepository.autoMemoryEvents → 自动长期记忆状态
@@ -1127,7 +1103,10 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.ContextCompressionStatus -> {
                 if (event.sessionId == currentSessionId) {
-                    _agentContextCompressionInProgress.value = event.inProgress
+                    runtime.applyContextCompressionNotice(
+                        inProgress = event.inProgress,
+                        anchorContent = event.anchorContent
+                    )
                     if (!event.inProgress && event.compressed) loadMessages()
                 }
             }
@@ -2993,7 +2972,7 @@ class ChatViewModel : BaseViewModel() {
         // 远程模式：压缩由服务端执行，维持原有请求-响应行为；
         // 请求期间同样标记为进行中，压缩按钮切换样式。
         val target = runtime
-        target.agentContextCompressionInProgress.value = true
+        target.applyContextCompressionNotice(inProgress = true, anchorContent = latestNoticeAnchor())
         viewModelScope.launch {
             try {
                 when (val result = unified.compressContext(currentSessionId)) {
@@ -3018,10 +2997,21 @@ class ChatViewModel : BaseViewModel() {
                     is Resource.Loading -> Unit
                 }
             } finally {
-                target.agentContextCompressionInProgress.value = false
+                target.applyContextCompressionNotice(inProgress = false)
             }
         }
     }
+
+    /**
+     * 手动压缩没有单独的"触发消息"：以触发时刻的最后一条可见消息作为锚点，
+     * 让"正在压缩"提示跟随在当前对话位置，而不是贴在列表末尾。
+     */
+    private fun latestNoticeAnchor(): String =
+        _messages.value.asReversed().firstOrNull { message ->
+            message.id != streamingId &&
+                !message.isThinkingCard &&
+                !message.content.isNullOrBlank()
+        }?.content.orEmpty()
 
     /**
      * 本地模式：在 [ServiceContainer.applicationScope] 中执行手动上下文压缩。
@@ -3033,11 +3023,12 @@ class ChatViewModel : BaseViewModel() {
     private fun startBackgroundCompression() {
         val target = runtime
         val sessionId = currentSessionId
+        val anchor = latestNoticeAnchor()
         // LAZY 启动：先安装再 start，与 startLocalChatCollection 相同的防重复/防竞态模式。
         val job = ServiceContainer.applicationScope.launch(
             start = kotlinx.coroutines.CoroutineStart.LAZY
         ) {
-            target.agentContextCompressionInProgress.value = true
+            target.applyContextCompressionNotice(inProgress = true, anchorContent = anchor)
             try {
                 val result = unified.compressContext(sessionId)
                 when (result) {
@@ -3065,7 +3056,7 @@ class ChatViewModel : BaseViewModel() {
                     is Resource.Loading -> Unit
                 }
             } finally {
-                target.agentContextCompressionInProgress.value = false
+                target.applyContextCompressionNotice(inProgress = false)
             }
         }
         if (!target.installCompressionJob(job)) {
@@ -3075,7 +3066,7 @@ class ChatViewModel : BaseViewModel() {
         }
         job.invokeOnCompletion {
             if (target.clearCompressionJob(job)) {
-                target.agentContextCompressionInProgress.value = false
+                target.applyContextCompressionNotice(inProgress = false)
             }
             ChatSessionManager.pruneIfIdle(target.sessionId)
         }

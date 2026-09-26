@@ -44,17 +44,61 @@ data class ContextCompressionEvent(
 )
 
 /**
+ * 会话内联状态提示的统一模型。
+ *
+ * 上下文压缩、自动技能沉淀、自动长期记忆以及后续新增的会话内状态提示都实现本接口，
+ * 由 [ChatSessionState.inlineNotices] 统一持有；聊天界面按 [anchorContent]
+ * 把提示**渲染在触发它的那条消息气泡下方**，而不是固定贴在消息列表末尾。
+ *
+ * 新增一种提示的统一动作：
+ * 1. 实现本接口（给出 [anchorContent] / [running]，必要时覆写 [anchorMatchesUserMessages] 与 [order]）；
+ * 2. 在 [ChatSessionState] 提供 apply 方法写入 [ChatSessionState.inlineNotices]；
+ * 3. 在 ChatScreen 的 `ChatInlineNoticeDivider` 中补一个渲染分支（sealed when 会强制补齐）。
+ */
+sealed interface ChatInlineNotice {
+    /** 触发提示的消息正文前缀；空串表示无法锚定，界面回退到列表末尾。 */
+    val anchorContent: String
+
+    /** 进行中：渲染转圈动画；完成后渲染静态图标。 */
+    val running: Boolean
+
+    /** 锚点是否允许匹配用户消息（压缩由用户消息触发；技能/记忆锚定在 AI 回复上）。 */
+    val anchorMatchesUserMessages: Boolean get() = false
+
+    /** 同一条消息上多个提示的渲染顺序（小者在前），保证顺序稳定。 */
+    val order: Int get() = 0
+}
+
+/**
+ * 上下文压缩进度提示：[running] 为 true 时显示"正在压缩上下文"。
+ *
+ * 压缩结束（成功或失败）后提示即移除：已完成状态由摘要边界分隔线接管。
+ * 锚点可以是用户消息（自动压缩由刚发送的消息触发）或任意最后一条消息（手动压缩）。
+ */
+data class ContextCompressionUiState(
+    override val anchorContent: String = "",
+    override val running: Boolean = true
+) : ChatInlineNotice {
+    override val anchorMatchesUserMessages: Boolean get() = true
+}
+
+/**
  * 自动技能沉淀的内联提示状态。
  *
  * 形态对齐上下文压缩提示：[running] 为 true 时显示"正在总结技能"；
  * 完成后显示"已自动沉淀/更新技能「X」"并**持久保留**（写进设置，
  * 退出页面或重启应用后重新进入会话仍然可见），直到本会话下一次沉淀结果覆盖它。
+ *
+ * [anchorContent] 是触发本次审查的回复正文（前缀）：提示渲染在**那条消息下面**。
  */
 data class AutoSkillUiState(
     val skillName: String = "",
     val created: Boolean = false,
-    val running: Boolean = true
-)
+    override val running: Boolean = true,
+    override val anchorContent: String = ""
+) : ChatInlineNotice {
+    override val order: Int get() = 1
+}
 
 /**
  * 自动长期记忆的内联提示状态。
@@ -68,12 +112,39 @@ data class AutoSkillUiState(
  */
 data class AutoMemoryUiState(
     val changedItems: Int = 0,
-    val running: Boolean = true,
-    val anchorContent: String = ""
-)
+    override val running: Boolean = true,
+    override val anchorContent: String = ""
+) : ChatInlineNotice {
+    override val order: Int get() = 2
+}
 
-/** 记忆提示锚点保留的回复正文长度上限（与 PrefsManager 的持久化长度保持一致）。 */
-private const val AGENT_MEMORY_ANCHOR_CHARS = 200
+/** 内联提示锚点保留的消息正文长度上限（与 PrefsManager 的持久化长度保持一致）。 */
+private const val AGENT_NOTICE_ANCHOR_CHARS = 200
+
+/** 截取消息正文前缀作为内联提示锚点。 */
+internal fun noticeAnchor(content: String?): String =
+    content.orEmpty().trim().take(AGENT_NOTICE_ANCHOR_CHARS)
+
+/**
+ * 把内联提示解析到应渲染在哪条消息之后（返回消息下标）。
+ *
+ * 锚点是触发提示的消息正文前缀：取最后一条匹配的消息（同文本时以最新一条为准）。
+ * 找不到（消息被删、被压缩归档、或锚点为空）时返回 null，
+ * 由界面回退到贴列表末尾，避免提示整个消失。
+ */
+internal fun resolveInlineNoticeAnchorIndex(
+    notice: ChatInlineNotice,
+    messages: List<Message>
+): Int? {
+    val anchor = notice.anchorContent.trim()
+    if (anchor.isEmpty()) return null
+    for (index in messages.indices.reversed()) {
+        val message = messages[index]
+        if (!notice.anchorMatchesUserMessages && message.isUser) continue
+        if (message.content?.trim()?.startsWith(anchor) == true) return index
+    }
+    return null
+}
 
 /**
  * Agent 会话在 AI 生成期间排队的待发送消息。
@@ -114,6 +185,10 @@ class ChatSessionState(
     private val loadSkillNotice: (String) -> Pair<String, Boolean>? = { id ->
         runCatching { ServiceContainer.prefs.getAgentSkillNotice(id) }.getOrNull()
     },
+    /** 读取触发上次技能沉淀的回复正文锚点（前缀）；没有记录时返回空串。 */
+    private val loadSkillAnchor: (String) -> String = { id ->
+        runCatching { ServiceContainer.prefs.getAgentSkillNoticeAnchor(id) }.getOrDefault("")
+    },
     /**
      * 读取本会话最近一次自动长期记忆的改动条数。
      *
@@ -146,22 +221,53 @@ class ChatSessionState(
     val plotChoicesLoading = MutableStateFlow(false)
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())
     val ttsStates = MutableStateFlow<Map<String, MessageTtsUiState>>(emptyMap())
-    val agentContextCompressionInProgress = MutableStateFlow(false)
+    /**
+     * 所有会话内联提示（上下文压缩 / 技能沉淀 / 长期记忆，以及后续新增类型）。
+     *
+     * 统一持有并统一锚定：界面据 [ChatInlineNotice.anchorContent] 把提示渲染在触发它的
+     * 消息下方，`anchorContent` 为空或锚点失效时才回退到列表末尾。
+     */
+    val inlineNotices = MutableStateFlow<List<ChatInlineNotice>>(emptyList())
     /** Agent 任务列表（todo_write 工具更新；输入框上方可折叠面板展示）。 */
     val agentTodos = MutableStateFlow<List<com.nekobot.app.data.model.AgentTodo>>(emptyList())
     /** Agent 会话目标（/goal 命令更新；输入框上方横幅展示）。 */
     val agentGoal = MutableStateFlow<String?>(null)
     /** Agent 规格任务（/spec 命令更新；输入框上方横幅展示）。 */
     val agentSpec = MutableStateFlow<com.nekobot.app.data.model.AgentSessionSpec?>(null)
-    /** 自动技能沉淀提示（后台审查进行中 / 刚刚沉淀完成）。 */
-    val autoSkillNotice = MutableStateFlow<AutoSkillUiState?>(null)
-    /** 自动长期记忆提示（后台整理进行中 / 刚刚写入）。 */
-    val autoMemoryNotice = MutableStateFlow<AutoMemoryUiState?>(null)
+
+    /** 某类内联提示的当前值；没有时返回 null。 */
+    inline fun <reified T : ChatInlineNotice> inlineNoticeOrNull(): T? =
+        inlineNotices.value.filterIsInstance<T>().firstOrNull()
+
+    /**
+     * 覆盖写入某一类内联提示；传 null 表示收起该类提示。
+     *
+     * 同一类型同时只保留最新一条；按 [ChatInlineNotice.order] 排序，
+     * 保证多个提示锚定同一条消息时渲染顺序稳定。
+     */
+    inline fun <reified T : ChatInlineNotice> setInlineNotice(notice: T?) {
+        val next = inlineNotices.value.filterNot { it is T }.toMutableList()
+        if (notice != null) next += notice
+        inlineNotices.value = next.sortedBy { it.order }
+    }
+
+    /**
+     * 应用一次上下文压缩状态：进行中显示内联提示，结束后移除。
+     *
+     * [anchorContent] 是触发压缩的消息正文（自动压缩为刚发送的用户消息，
+     * 手动压缩为触发时刻的最后一条消息）。
+     */
+    fun applyContextCompressionNotice(inProgress: Boolean, anchorContent: String = "") {
+        setInlineNotice(
+            if (inProgress) ContextCompressionUiState(anchorContent = noticeAnchor(anchorContent))
+            else null
+        )
+    }
 
     /**
      * 应用一次自动技能沉淀通知。
      *
-     * - RUNNING：显示"正在总结技能"；
+     * - RUNNING：显示"正在总结技能"（锚定到触发它的那条回复）；
      * - DONE 且带技能名：显示结果，并**持久保留**（不自动消失）；
      * - DONE 但没有沉淀任何技能：收起进行中的提示，回退显示上一次已持久化的沉淀结果。
      *
@@ -169,33 +275,42 @@ class ChatSessionState(
      * 不能捕获已经退出的 ViewModel。
      */
     fun applyAutoSkillNotice(notice: com.nekobot.app.data.local.ai.AgentSkillNotice) {
+        val anchor = noticeAnchor(notice.anchorContent)
         if (notice.phase == com.nekobot.app.data.local.ai.AgentSkillPhase.RUNNING) {
-            autoSkillNotice.value = AutoSkillUiState(running = true)
+            setInlineNotice(AutoSkillUiState(running = true, anchorContent = anchor))
             return
         }
         if (notice.skillName.isBlank()) {
-            autoSkillNotice.value = loadPersistedSkillNotice(sessionId)
+            setInlineNotice(loadPersistedSkillNotice(sessionId))
             return
         }
-        autoSkillNotice.value = AutoSkillUiState(
-            skillName = notice.skillName,
-            created = notice.created,
-            running = false
+        setInlineNotice(
+            AutoSkillUiState(
+                skillName = notice.skillName,
+                created = notice.created,
+                running = false,
+                anchorContent = anchor
+            )
         )
     }
 
     /** 从上次沉淀结果恢复内联提示（进入会话时也用它恢复持久显示）。 */
     fun restoreAutoSkillNotice() {
-        if (autoSkillNotice.value?.running == true) return
-        autoSkillNotice.value = loadPersistedSkillNotice(sessionId)
+        if (inlineNoticeOrNull<AutoSkillUiState>()?.running == true) return
+        setInlineNotice(loadPersistedSkillNotice(sessionId))
     }
 
-    /** 读取持久化的沉淀结果并转成界面状态；没有记录时返回 null（不显示提示）。 */
+    /** 读取持久化的沉淀结果（技能名 + 新建标记 + 锚点）并转成界面状态；没有记录时返回 null。 */
     private fun loadPersistedSkillNotice(id: String): AutoSkillUiState? =
         loadSkillNotice(id)
             ?.takeIf { (name, _) -> name.isNotBlank() }
             ?.let { (name, created) ->
-                AutoSkillUiState(skillName = name, created = created, running = false)
+                AutoSkillUiState(
+                    skillName = name,
+                    created = created,
+                    running = false,
+                    anchorContent = noticeAnchor(loadSkillAnchor(id))
+                )
             }
 
     /**
@@ -206,26 +321,28 @@ class ChatSessionState(
      * - DONE 但没有改动：收起进行中的提示，回退显示上一次已持久化的结果。
      */
     fun applyAutoMemoryNotice(notice: com.nekobot.app.data.local.ai.AgentMemoryNotice) {
-        val anchor = notice.anchorContent.trim().take(AGENT_MEMORY_ANCHOR_CHARS)
+        val anchor = noticeAnchor(notice.anchorContent)
         if (notice.phase == com.nekobot.app.data.local.ai.AgentMemoryPhase.RUNNING) {
-            autoMemoryNotice.value = AutoMemoryUiState(running = true, anchorContent = anchor)
+            setInlineNotice(AutoMemoryUiState(running = true, anchorContent = anchor))
             return
         }
         if (notice.changedItems <= 0) {
-            autoMemoryNotice.value = loadPersistedMemoryNotice(sessionId)
+            setInlineNotice(loadPersistedMemoryNotice(sessionId))
             return
         }
-        autoMemoryNotice.value = AutoMemoryUiState(
-            changedItems = notice.changedItems,
-            running = false,
-            anchorContent = anchor
+        setInlineNotice(
+            AutoMemoryUiState(
+                changedItems = notice.changedItems,
+                running = false,
+                anchorContent = anchor
+            )
         )
     }
 
     /** 从上次记忆写入结果恢复内联提示（进入会话时也用它恢复持久显示）。 */
     fun restoreAutoMemoryNotice() {
-        if (autoMemoryNotice.value?.running == true) return
-        autoMemoryNotice.value = loadPersistedMemoryNotice(sessionId)
+        if (inlineNoticeOrNull<AutoMemoryUiState>()?.running == true) return
+        setInlineNotice(loadPersistedMemoryNotice(sessionId))
     }
 
     /** 读取持久化的记忆改动条数与锚点并转成界面状态；没有记录时返回 null（不显示提示）。 */
@@ -236,27 +353,9 @@ class ChatSessionState(
                 AutoMemoryUiState(
                     changedItems = it,
                     running = false,
-                    anchorContent = loadMemoryAnchor(id).trim().take(AGENT_MEMORY_ANCHOR_CHARS)
+                    anchorContent = noticeAnchor(loadMemoryAnchor(id))
                 )
             }
-
-    /**
-     * 把记忆提示的锚点解析成"应当渲染在哪条消息之后"。
-     *
-     * 锚点是触发抽取的那条回复正文前缀，靠它反查消息 id：
-     * 找不到（消息被删、被压缩归档、或锚点为空）时返回 null，
-     * 由调用方回退到贴列表末尾，避免提示整个消失。
-     */
-    fun resolveAutoMemoryAnchorMessageId(
-        messages: List<com.nekobot.app.data.model.Message>
-    ): String? {
-        val anchor = autoMemoryNotice.value?.anchorContent.orEmpty()
-        if (anchor.isBlank()) return null
-        val match = messages.lastOrNull { message ->
-            !message.isUser && message.content?.trim()?.startsWith(anchor) == true
-        }
-        return match?.id
-    }
 
     // ============ Agent 会话消息排队 ============
     /**

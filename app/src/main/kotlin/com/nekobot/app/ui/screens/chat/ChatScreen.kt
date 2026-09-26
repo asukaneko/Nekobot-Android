@@ -310,9 +310,8 @@ fun ChatScreen(
     val hookNotifications by viewModel.hookNotifications.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
-    val autoSkillNotice by viewModel.autoSkillNotice.collectAsStateWithLifecycle()
-    val autoMemoryNotice by viewModel.autoMemoryNotice.collectAsStateWithLifecycle()
-    val autoMemoryAnchorMessageId by viewModel.autoMemoryAnchorMessageId.collectAsStateWithLifecycle()
+    // 所有会话内联提示（压缩 / 技能沉淀 / 长期记忆）：统一锚定到触发它的消息下方渲染。
+    val inlineNotices by viewModel.inlineNotices.collectAsStateWithLifecycle()
     val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
     // Agent 会话目标/规格任务（/goal、/spec 命令设置，输入框上方横幅展示）
     val agentGoal by viewModel.agentGoal.collectAsStateWithLifecycle()
@@ -330,6 +329,18 @@ fun ChatScreen(
             urgentBubblesAfter.getOrPut(renderMessages.lastIndex) { mutableListOf() }.add(m)
         } else {
             renderMessages.add(m)
+        }
+    }
+    // 统一内联提示的锚点：下标 → 提示列表；锚点失效（消息被删/归档或没有锚点）的提示
+    // 回退到列表末尾渲染，避免提示整个消失。
+    val inlineNoticesByAnchorIndex = LinkedHashMap<Int, MutableList<ChatInlineNotice>>()
+    val fallbackInlineNotices = ArrayList<ChatInlineNotice>()
+    inlineNotices.forEach { notice ->
+        val anchorIndex = resolveInlineNoticeAnchorIndex(notice, renderMessages)
+        if (anchorIndex != null) {
+            inlineNoticesByAnchorIndex.getOrPut(anchorIndex) { mutableListOf() }.add(notice)
+        } else {
+            fallbackInlineNotices.add(notice)
         }
     }
     // 进度卡片挂在父用户消息上、本轮“思考中”占位气泡是紧随其后的独立 item，
@@ -1270,35 +1281,15 @@ fun ChatScreen(
                                 Spacer(Modifier.height(4.dp))
                                 AgentContextCompressionDivider(inProgress = false)
                             }
-                            // 远程模式只有 Agent 会话显示进度卡片；本地模式还需要支持角色/群聊的耗时命令。
-                            if (
-                                index == renderMessages.lastIndex &&
-                                agentContextCompressionInProgress &&
-                                // 本地模式手动压缩已改为后台执行，普通会话也需要可见的压缩进度反馈。
-                                (session?.sessionMode.equals("agent", ignoreCase = true) ||
-                                    ServiceContainer.prefs.isLocalMode)
-                            ) {
+                            // 统一内联提示：锚定到触发它的气泡下方；锚点失效时回退到列表末尾。
+                            inlineNoticesByAnchorIndex[index]?.forEach { notice ->
                                 Spacer(Modifier.height(4.dp))
-                                AgentContextCompressionDivider(inProgress = true)
+                                ChatInlineNoticeDivider(notice)
                             }
-                            // 自动技能沉淀提示：与上下文压缩提示同一形态，渲染在列表末尾。
-                            autoSkillNotice?.let { notice ->
-                                if (index == renderMessages.lastIndex) {
+                            if (index == renderMessages.lastIndex) {
+                                fallbackInlineNotices.forEach { notice ->
                                     Spacer(Modifier.height(4.dp))
-                                    AutoSkillDistillDivider(state = notice)
-                                }
-                            }
-                            // 自动长期记忆提示：渲染在**触发它的那条回复下面**（锚点）。
-                            // 锚点消息找不到时（被删除/归档）回退到列表末尾，避免提示消失。
-                            autoMemoryNotice?.let { notice ->
-                                val anchored = autoMemoryAnchorMessageId != null &&
-                                    msg.id != null &&
-                                    msg.id == autoMemoryAnchorMessageId
-                                val fallback = autoMemoryAnchorMessageId == null &&
-                                    index == renderMessages.lastIndex
-                                if (anchored || fallback) {
-                                    Spacer(Modifier.height(4.dp))
-                                    AutoMemoryDivider(state = notice)
+                                    ChatInlineNoticeDivider(notice)
                                 }
                             }
                             if (
@@ -5063,144 +5054,90 @@ private fun deepenColor(color: Color, factor: Float = 0.78f): Color {
 /** 日期分隔条：居中胶囊样式，在跨天消息之间插入。 */
 @Composable
 private fun AgentContextCompressionDivider(inProgress: Boolean) {
-    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = color.copy(alpha = 0.38f)
-        )
-        Spacer(Modifier.width(10.dp))
-        if (inProgress) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
-                strokeWidth = 1.5.dp,
-                color = color
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Filled.Compress,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = color
-            )
-        }
-        Spacer(Modifier.width(6.dp))
-        Text(
+    InlineNoticeDivider(
+        text = stringResource(
+            if (inProgress) R.string.chat_agent_context_compressing
+            else R.string.chat_agent_context_compressed
+        ),
+        icon = Icons.Filled.Compress,
+        running = inProgress
+    )
+}
+
+/**
+ * 会话内联提示的统一渲染：居中胶囊分隔条（图标/转圈 + 文案）。
+ *
+ * 新增提示类型时在此补一个 `when` 分支即可（sealed 约束会强制补齐），
+ * 锚定位置与外观自动与其他提示保持一致。
+ */
+@Composable
+private fun ChatInlineNoticeDivider(notice: ChatInlineNotice) {
+    when (notice) {
+        is ContextCompressionUiState -> InlineNoticeDivider(
             text = stringResource(
-                if (inProgress) R.string.chat_agent_context_compressing
+                if (notice.running) R.string.chat_agent_context_compressing
                 else R.string.chat_agent_context_compressed
             ),
-            style = MaterialTheme.typography.labelSmall,
-            color = color
+            icon = Icons.Filled.Compress,
+            running = notice.running
         )
-        Spacer(Modifier.width(10.dp))
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = color.copy(alpha = 0.38f)
-        )
-    }
-}
-
-/**
- * 自动技能沉淀提示条：与 [AgentContextCompressionDivider] 同形态（居中胶囊分隔条）。
- *
- * - 审查进行中：转圈 + "正在总结技能"；
- * - 已完成：图标 + "已自动沉淀/更新技能「X」"，持久保留直到本会话下一次沉淀结果覆盖。
- */
-@Composable
-private fun AutoSkillDistillDivider(state: AutoSkillUiState) {
-    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = color.copy(alpha = 0.38f)
-        )
-        Spacer(Modifier.width(10.dp))
-        if (state.running) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
-                strokeWidth = 1.5.dp,
-                color = color
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Filled.AutoAwesome,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = color
-            )
-        }
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = if (state.running) {
-                stringResource(R.string.chat_auto_skill_running)
-            } else if (state.created) {
-                stringResource(R.string.chat_auto_skill_created, state.skillName)
-            } else {
-                stringResource(R.string.chat_auto_skill_updated, state.skillName)
+        is AutoSkillUiState -> InlineNoticeDivider(
+            text = when {
+                notice.running -> stringResource(R.string.chat_auto_skill_running)
+                notice.created -> stringResource(R.string.chat_auto_skill_created, notice.skillName)
+                else -> stringResource(R.string.chat_auto_skill_updated, notice.skillName)
             },
-            style = MaterialTheme.typography.labelSmall,
-            color = color
+            icon = Icons.Filled.AutoAwesome,
+            running = notice.running
         )
-        Spacer(Modifier.width(10.dp))
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = color.copy(alpha = 0.38f)
-        )
-    }
-}
-
-/**
- * 自动长期记忆提示条：与 [AutoSkillDistillDivider] 同形态（居中胶囊分隔条）。
- *
- * - 整理进行中：转圈 + "正在整理长期记忆"；
- * - 已完成：图标 + "已自动记忆 N 条"，持久保留直到本会话下一次写入结果覆盖。
- */
-@Composable
-private fun AutoMemoryDivider(state: AutoMemoryUiState) {
-    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = color.copy(alpha = 0.38f)
-        )
-        Spacer(Modifier.width(10.dp))
-        if (state.running) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
-                strokeWidth = 1.5.dp,
-                color = color
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Filled.Psychology,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = color
-            )
-        }
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = if (state.running) {
+        is AutoMemoryUiState -> InlineNoticeDivider(
+            text = if (notice.running) {
                 stringResource(R.string.chat_auto_memory_running)
             } else {
-                stringResource(R.string.chat_auto_memory_done, state.changedItems)
+                stringResource(R.string.chat_auto_memory_done, notice.changedItems)
             },
+            icon = Icons.Filled.Psychology,
+            running = notice.running
+        )
+    }
+}
+
+/** 内联提示条的统一外观：左右分隔线 + 图标/转圈 + 简短文案。 */
+@Composable
+private fun InlineNoticeDivider(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    running: Boolean = false
+) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = color.copy(alpha = 0.38f)
+        )
+        Spacer(Modifier.width(10.dp))
+        if (running) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 1.5.dp,
+                color = color
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = color
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = text,
             style = MaterialTheme.typography.labelSmall,
             color = color
         )

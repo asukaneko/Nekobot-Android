@@ -537,12 +537,18 @@ internal data class AgentSkillDraft(
  */
 enum class AgentSkillPhase { RUNNING, DONE }
 
-/** 沉淀结果通知：界面据此提示"正在总结 / 已自动新建（更新）Skill"。 */
+/**
+ * 沉淀结果通知：界面据此提示"正在总结 / 已自动新建（更新）Skill"。
+ *
+ * [anchorContent] 是触发本次审查的那条回复正文（前缀）：界面用它把提示**锚定到
+ * 对应的那条消息**下，而不是固定贴在消息列表末尾——沉淀是针对某一轮发生的。
+ */
 data class AgentSkillNotice(
     val sessionId: String,
     val skillName: String,
     val created: Boolean,
-    val phase: AgentSkillPhase = AgentSkillPhase.DONE
+    val phase: AgentSkillPhase = AgentSkillPhase.DONE,
+    val anchorContent: String = ""
 )
 
 /**

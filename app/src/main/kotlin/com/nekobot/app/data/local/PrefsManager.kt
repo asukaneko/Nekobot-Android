@@ -401,7 +401,7 @@ class PrefsManager(context: Context) {
      */
     fun setAgentMemoryNoticeAnchor(sessionId: String, assistantContent: String) {
         if (sessionId.isBlank()) return
-        val anchor = assistantContent.trim().take(AGENT_MEMORY_ANCHOR_CHARS)
+        val anchor = assistantContent.trim().take(AGENT_NOTICE_ANCHOR_CHARS)
         prefs.edit().putString("agent_auto_memory_anchor_$sessionId", anchor).apply()
     }
 
@@ -483,18 +483,35 @@ class PrefsManager(context: Context) {
         return raw.substring(0, separator) to raw.substring(separator + 1).toBoolean()
     }
 
-    /** 保存自动沉淀结果，供聊天界面持久显示。 */
-    fun setAgentSkillNotice(sessionId: String, skillName: String, created: Boolean) {
+    /**
+     * 保存自动沉淀结果，供聊天界面持久显示。
+     *
+     * [anchorContent] 是触发本次沉淀的回复正文（前缀）：提示要停在"发生沉淀的那条消息"
+     * 下面，重新进入会话、消息列表重新加载后靠它把提示放回原处。
+     */
+    fun setAgentSkillNotice(
+        sessionId: String,
+        skillName: String,
+        created: Boolean,
+        anchorContent: String = ""
+    ) {
         if (skillName.isBlank()) return
+        val anchor = anchorContent.trim().take(AGENT_NOTICE_ANCHOR_CHARS)
         prefs.edit()
             .putString("agent_skill_notice_$sessionId", "$skillName\u0000$created")
+            .putString("agent_skill_anchor_$sessionId", anchor)
             .apply()
     }
+
+    /** 读取触发本次技能沉淀的回复正文锚点；没有记录时返回空串。 */
+    fun getAgentSkillNoticeAnchor(sessionId: String): String =
+        prefs.getString("agent_skill_anchor_$sessionId", "").orEmpty()
 
     /** 清除某会话的自动沉淀提示（删除会话时调用，避免残留无用键）。 */
     fun clearAgentSkillNotice(sessionId: String) {
         prefs.edit()
             .remove("agent_skill_notice_$sessionId")
+            .remove("agent_skill_anchor_$sessionId")
             .remove("agent_skill_review_progress_$sessionId")
             .apply()
     }
@@ -1276,8 +1293,8 @@ class PrefsManager(context: Context) {
         /** 默认间隔（轮）：与 [AgentMemoryExtractor.MEMORY_TURN_INTERVAL] 的取值保持一致。 */
         const val DEFAULT_AGENT_MEMORY_INTERVAL = 3
 
-        /** 记忆提示锚点保存的回复正文长度上限。 */
-        private const val AGENT_MEMORY_ANCHOR_CHARS = 200
+        /** 内联提示锚点保存的消息正文长度上限（记忆 / 技能沉淀共用）。 */
+        private const val AGENT_NOTICE_ANCHOR_CHARS = 200
         private const val KEY_AGENT_MEMORY_MIGRATION_ASKED = "agent_memory_migration_asked"
         private const val KEY_AGENT_AUTO_SKILL = "agent_auto_skill_enabled"
         private const val KEY_BROWSER_USER_AGENT_MODE = "browser_user_agent_mode"
