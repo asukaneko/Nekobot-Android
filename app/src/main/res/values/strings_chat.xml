@@ -338,6 +338,8 @@
     <string name="chat_turns">轮数</string>
     <string name="chat_archive_session">归档会话：%1$s</string>
     <string name="chat_loading_dots">加载中...</string>
+    <string name="chat_loading_older_messages">正在加载更早的消息</string>
+    <string name="chat_load_older_messages">加载更早的消息</string>
     <string name="chat_no_archive_messages">暂无归档消息</string>
     <string name="chat_me">我</string>
     <string name="chat_my_messages_title">我的消息 (%1$d)</string>

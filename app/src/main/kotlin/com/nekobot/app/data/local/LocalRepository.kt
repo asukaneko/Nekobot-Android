@@ -125,6 +125,7 @@ import com.nekobot.app.data.model.HookRequest
 import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.MessagePage
 import com.nekobot.app.data.model.KnowledgeDocument
 import com.nekobot.app.data.model.KnowledgeDocumentRequest
 import com.nekobot.app.data.model.KnowledgeSearchRequest
@@ -2408,6 +2409,42 @@ class LocalRepository(
 
     suspend fun listMessages(sessionId: String): List<Message> = withContext(Dispatchers.IO) {
         messageDao.listBySession(sessionId).map { it.toMessage() }
+    }
+
+    /**
+     * 聊天界面分页：取会话最近的一页消息（升序返回），[MessagePage.hasMore] 表示还有更早历史。
+     *
+     * 与 [listMessages] 的分工：UI 首屏只加载最近一页，避免超大会话（数万条）打开时
+     * 一次性查询并渲染全部消息；AI 上下文、导出、统计等路径仍使用 [listMessages] 全量查询。
+     */
+    suspend fun listRecentMessages(sessionId: String, limit: Int): MessagePage = withContext(Dispatchers.IO) {
+        val pageSize = limit.coerceAtLeast(1)
+        // 多取一条用于判断是否还有更早历史，避免额外的 COUNT 查询
+        val rows = messageDao.listRecentRows(sessionId, pageSize + 1)
+        MessagePage(
+            messages = rows.take(pageSize).asReversed().map { it.message.toMessage() },
+            hasMore = rows.size > pageSize
+        )
+    }
+
+    /**
+     * 聊天界面分页：取 [beforeMessageId] 之前（更早）的一页消息（升序返回）。
+     *
+     * 游标由该消息的 `(created_at, rowid)` 解析，保证同一秒内的消息也不会丢条或重复。
+     * 游标消息已被删除（软删除仍保留行）或不存在时返回空页，界面停止继续加载。
+     */
+    suspend fun listMessagesBefore(
+        sessionId: String,
+        beforeMessageId: String,
+        limit: Int
+    ): MessagePage = withContext(Dispatchers.IO) {
+        val cursor = messageDao.cursorOf(beforeMessageId) ?: return@withContext MessagePage()
+        val pageSize = limit.coerceAtLeast(1)
+        val rows = messageDao.listRowsBefore(sessionId, cursor.createdAt, cursor.rowId, pageSize + 1)
+        MessagePage(
+            messages = rows.take(pageSize).asReversed().map { it.message.toMessage() },
+            hasMore = rows.size > pageSize
+        )
     }
 
     /** 全局搜索使用的本地消息全文匹配；限制结果数，避免把完整历史载入 UI。 */

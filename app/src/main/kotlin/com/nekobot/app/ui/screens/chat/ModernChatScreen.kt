@@ -1063,7 +1063,8 @@ private fun ModernChatComposer(
             ChatQuickAction.LATEST -> onJumpToLatest()
         }
     }
-    val messageCount = messages.count { !it.isThinkingCard }
+    // 分页后 messages 只含已加载窗口；消息总数优先取会话计数（由写入路径维护），保证面板展示完整总数
+    val messageCount = maxOf(messages.count { !it.isThinkingCard }, session?.messageCount ?: 0)
     val charCount = input.length
     val tokenEstimate = estimateModernChatDraftTokens(input)
     // 压缩不会改变可见消息数量，只会更新隐藏摘要的边界 source。

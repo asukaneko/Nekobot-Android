@@ -332,6 +332,8 @@
     <string name="chat_turns">ターン</string>
     <string name="chat_archive_session">アーカイブ済みチャット: %1$s</string>
     <string name="chat_loading_dots">読み込み中...</string>
+    <string name="chat_loading_older_messages">過去のメッセージを読み込み中</string>
+    <string name="chat_load_older_messages">過去のメッセージを読み込む</string>
     <string name="chat_no_archive_messages">アーカイブされたメッセージはありません</string>
     <string name="chat_me">自分</string>
     <string name="chat_my_messages_title">自分のメッセージ (%1$d)</string>

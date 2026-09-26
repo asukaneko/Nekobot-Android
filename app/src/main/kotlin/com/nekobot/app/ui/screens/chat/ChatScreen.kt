@@ -145,6 +145,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -287,6 +288,9 @@ fun ChatScreen(
 ) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
+    // 历史分页：是否还有更早消息 / 是否正在加载更早的一页
+    val hasOlderMessages by viewModel.hasOlderMessages.collectAsStateWithLifecycle()
+    val loadingOlderMessages by viewModel.loadingOlderMessages.collectAsStateWithLifecycle()
     val messageImages by viewModel.messageImages.collectAsStateWithLifecycle()
     val ttsStates by viewModel.ttsStates.collectAsStateWithLifecycle()
     val liveStreamingSubtitle by viewModel.streamingContentPreview.collectAsStateWithLifecycle()
@@ -319,7 +323,10 @@ fun ChatScreen(
     // 摘要可能先于会话元数据加载完成；直接以消息自身的压缩边界驱动分隔线。
     val agentCompressionBoundaryIds = messages.mapNotNull { it.agentContextSummaryBoundaryId() }.toSet()
     // 摘要本身仅供请求上下文使用，聊天列表仍展示完整原始历史。
-    val visibleMessages = messages.filterNot { it.isAgentContextSummary() }
+    // 同一消息 id 可能在页面状态合并时短暂出现两份，渲染前统一去重（保证 Compose key 稳定唯一）。
+    val visibleMessages = deduplicateMessagesById(messages).filterNot { it.isAgentContextSummary() }
+    // 消息总数：分页后 messages 只含已加载窗口，取会话计数（由写入路径维护）展示完整总数
+    val totalMessageCount = maxOf(visibleMessages.size, session?.messageCount ?: 0)
     // 排队“立即发送”的乐观气泡渲染在宿主（前一条用户消息）item 内、进度卡片之前，
     // 而不是作为独立 item 追加在卡片之后：让插队消息位于旧消息下方、进度卡片上方。
     val renderMessages = ArrayList<Message>(visibleMessages.size)
@@ -692,9 +699,21 @@ fun ChatScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用动画滚动
+    // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用动画滚动。
+    // 向上分页会在头部插入更早历史，此时首条消息与列表长度同时变化——
+    // 这种"前插"必须保持用户当前位置（LazyColumn 依稳定 key 会自然锚定），不能滚到底部。
+    var firstRenderedMessageId by remember(sessionId) { mutableStateOf<String?>(null) }
+    var renderedMessageCount by remember(sessionId) { mutableIntStateOf(0) }
     LaunchedEffect(visibleMessages.size) {
         if (visibleMessages.isNotEmpty()) {
+            val currentFirstId = renderMessages.firstOrNull()?.id
+            val prepended = firstRenderedMessageId != null &&
+                currentFirstId != null &&
+                currentFirstId != firstRenderedMessageId &&
+                visibleMessages.size > renderedMessageCount
+            firstRenderedMessageId = currentFirstId
+            renderedMessageCount = visibleMessages.size
+            if (prepended) return@LaunchedEffect
             if (initialLoad) {
                 // 首次加载：直接跳到底部，无动画
                 listState.scrollToItem(renderMessages.lastIndex)
@@ -702,7 +721,25 @@ fun ChatScreen(
             } else {
                 listState.animateScrollToItem(renderMessages.lastIndex)
             }
+        } else {
+            firstRenderedMessageId = null
+            renderedMessageCount = 0
         }
+    }
+
+    // 向上分页：滚动到顶部附近时加载更早的一页历史。
+    // 首次加载完成（initialLoad=false）后才启用，避免进入会话时抢占初始滚动。
+    // 需要同时观察 isScrollInProgress：用户停在最顶部（索引 0）后继续上滑时索引不再变化，
+    // 只靠索引变化无法再次触发，会把"继续上滑"误判为没有更多历史。
+    LaunchedEffect(listState, hasOlderMessages) {
+        if (!hasOlderMessages) return@LaunchedEffect
+        snapshotFlow {
+            !initialLoad &&
+                listState.firstVisibleItemIndex <= 2 &&
+                listState.isScrollInProgress
+        }
+            .distinctUntilChanged()
+            .collect { shouldLoad -> if (shouldLoad) viewModel.loadOlderMessages() }
     }
 
     // 文件选择器：选取本地文件
@@ -873,7 +910,7 @@ fun ChatScreen(
                                     // 副标题：生成中显示“正在输入…”，否则显示消息总数
                                     Text(
                                         text = if (sending) typingLabel
-                                        else stringResource(R.string.chat_message_count, messages.count { !it.isThinkingCard }),
+                                        else stringResource(R.string.chat_message_count, totalMessageCount),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (sending) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -999,7 +1036,7 @@ fun ChatScreen(
                     input = input,
                     onInputChange = { input = it },
                     sending = sending,
-                    messageCount = messages.size,
+                    messageCount = totalMessageCount,
                     plotChoices = plotChoices,
                     plotChoicesLoading = plotChoicesLoading,
                     pendingPlotChoiceId = pendingPlotChoiceId,
@@ -1168,6 +1205,49 @@ fun ChatScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // 向上分页入口：还有更早历史时常驻在列表顶部，可直接点击加载；
+                    // 加载中显示进度，避免"分页不可见"——滚动到顶部也能自动加载（见上方效果）。
+                    if (hasOlderMessages || loadingOlderMessages) {
+                        item(key = "load_older_messages", contentType = "load_older_messages") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable(enabled = !loadingOlderMessages) {
+                                        viewModel.loadOlderMessages()
+                                    }
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (loadingOlderMessages) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.chat_loading_older_messages),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.KeyboardArrowUp,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.chat_load_older_messages),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
                     // Agent 模式不显示背景设定卡片（agent 会话不继承角色卡配置）；
                     // 开启「继承完整角色能力」的 Agent 会话按角色会话显示。
                     if (session?.sessionMode != "agent" || inheritsCharacter) {
@@ -6429,12 +6509,15 @@ internal fun attachThinkingCardToMessages(
 
 /**
  * 聊天列表 key 不得调用整条 Message.hashCode()：Agent 用户消息会携带完整思考卡和工具结果，
- * 递归计算嵌套对象既昂贵，也可能在退出重进时触发异常。持久化消息使用数据库 ID；
+ * 递归计算嵌套对象既昂贵，也可能在退出重进时触发异常。
+ *
+ * 持久化消息只使用数据库 ID（不含下标）：向上分页会在列表头部插入更早消息，
+ * key 必须稳定，LazyColumn 才能把滚动位置锚定在用户当前阅读的消息上而不是跳到新页开头。
+ * 页面内重复 ID 由渲染前的 [deduplicateMessagesById] 保证不会出现；
  * 尚未落库的乐观消息只使用轻量字段和当前位置生成页面内唯一 key。
  */
 internal fun chatMessageItemKey(index: Int, message: Message): String {
-    // index 是最后一道防线：即使旧状态或并发合并意外产生重复数据库 ID，Compose 也不能崩溃。
-    message.id?.takeIf(String::isNotBlank)?.let { return "message:$it:$index" }
+    message.id?.takeIf(String::isNotBlank)?.let { return "message:$it" }
     return buildString {
         append("pending:")
         append(index)

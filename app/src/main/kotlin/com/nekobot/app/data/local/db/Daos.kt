@@ -197,6 +197,34 @@ interface MessageDao {
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt AND deleted = 0 ORDER BY created_at ASC")
     suspend fun listBefore(sessionId: String, createdAt: String): List<LocalMessageEntity>
 
+    // ===== 聊天历史分页 =====
+
+    /**
+     * 取会话最近 limit 条消息（时间倒序，上层反转成升序）。
+     *
+     * 排序以 rowid 兜底：导入历史常出现同一秒的多条消息，仅按 created_at 排序时
+     * 分页边界不稳定（丢条/重复），rowid 即插入顺序，同秒内稳定且与列表顺序一致。
+     */
+    @Query(
+        "SELECT *, rowid AS row_id FROM local_messages " +
+            "WHERE session_id = :sessionId AND deleted = 0 " +
+            "ORDER BY created_at DESC, rowid DESC LIMIT :limit"
+    )
+    suspend fun listRecentRows(sessionId: String, limit: Int): List<LocalMessageRow>
+
+    /** 取严格早于游标 `(createdAt, rowId)` 的最近 limit 条消息（时间倒序，上层反转成升序）。 */
+    @Query(
+        "SELECT *, rowid AS row_id FROM local_messages " +
+            "WHERE session_id = :sessionId AND deleted = 0 " +
+            "AND (created_at < :createdAt OR (created_at = :createdAt AND rowid < :rowId)) " +
+            "ORDER BY created_at DESC, rowid DESC LIMIT :limit"
+    )
+    suspend fun listRowsBefore(sessionId: String, createdAt: String, rowId: Long, limit: Int): List<LocalMessageRow>
+
+    /** 解析某条消息的分页游标 `(created_at, rowid)`。 */
+    @Query("SELECT created_at, rowid AS row_id FROM local_messages WHERE id = :id LIMIT 1")
+    suspend fun cursorOf(id: String): LocalMessageCursor?
+
     // ===== Token 用量统计 =====
 
     /** 今日 assistant 消息的 token 用量（input/output/total）。 */

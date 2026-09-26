@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.db
 
 import androidx.room.ColumnInfo
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -154,6 +155,25 @@ data class LocalMessageEntity(
     @ColumnInfo(name = "variant_index", defaultValue = "0") val variantIndex: Int = 0,
     /** swipes 候选总数；0 或 1 表示该消息只有一份内容，界面不展示切换器。 */
     @ColumnInfo(name = "variant_count", defaultValue = "0") val variantCount: Int = 0
+)
+
+/**
+ * 带 rowid 的消息行，仅用于聊天历史分页查询。
+ *
+ * 分页游标用 `(created_at, rowid)` 定位：`created_at` 是秒级字符串，同一秒内的多条消息
+ * （批量导入的历史几乎必然出现）只靠时间戳比较会丢条或重复，rowid（插入顺序）提供稳定兜底。
+ */
+data class LocalMessageRow(
+    @Embedded val message: LocalMessageEntity,
+    @ColumnInfo(name = "row_id") val rowId: Long
+)
+
+/**
+ * 消息分页游标：`(created_at, rowid)`。
+ */
+data class LocalMessageCursor(
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "row_id") val rowId: Long
 )
 
 /**

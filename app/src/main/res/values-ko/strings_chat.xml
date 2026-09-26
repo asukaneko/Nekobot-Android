@@ -332,6 +332,8 @@
     <string name="chat_turns">턴</string>
     <string name="chat_archive_session">보관된 대화: %1$s</string>
     <string name="chat_loading_dots">불러오는 중...</string>
+    <string name="chat_loading_older_messages">이전 메시지 불러오는 중</string>
+    <string name="chat_load_older_messages">이전 메시지 불러오기</string>
     <string name="chat_no_archive_messages">보관된 메시지가 없어요</string>
     <string name="chat_me">나</string>
     <string name="chat_my_messages_title">내 메시지 (%1$d)</string>

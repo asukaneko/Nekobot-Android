@@ -55,6 +55,7 @@ import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
+import com.nekobot.app.data.model.MessagePage
 import com.nekobot.app.data.model.MessageFilterConfig
 import com.nekobot.app.data.model.MessageFilterRule
 import com.nekobot.app.data.model.MessageFilterRuleRequest
@@ -318,6 +319,25 @@ class UnifiedRepository(
     suspend fun listMessages(id: String): Resource<List<Message>> =
         if (isLocal) Resource.Success(local.listMessages(id)) else remote.listMessages(id)
 
+    /**
+     * 聊天界面分页：取最近的一页消息（升序）。
+     *
+     * 本地模式走 Room 游标分页，超大会话（数万条导入历史）不会一次性载入全集；
+     * 服务器模式接口暂不支持分页参数，客户端在全量拉取后只保留最近一页，避免界面渲染全量。
+     */
+    suspend fun listRecentMessages(id: String, limit: Int): Resource<MessagePage> =
+        if (isLocal) Resource.Success(local.listRecentMessages(id, limit))
+        else remote.listRecentMessages(id, limit)
+
+    /** 聊天界面分页：取 [beforeMessageId] 之前（更早）的一页消息（向上滚动加载）。 */
+    suspend fun listMessagesBefore(
+        id: String,
+        beforeMessageId: String,
+        limit: Int
+    ): Resource<MessagePage> =
+        if (isLocal) Resource.Success(local.listMessagesBefore(id, beforeMessageId, limit))
+        else remote.listMessagesBefore(id, beforeMessageId, limit)
+
     suspend fun addMessage(id: String, content: String): Resource<Message> =
         if (isLocal) Resource.Success(local.addMessage(id, "user", content)) else remote.addMessage(id, content)
 
@@ -386,7 +406,9 @@ class UnifiedRepository(
     }
 
     suspend fun clearMessages(id: String): Resource<Unit> =
-        if (isLocal) { local.clearMessages(id); Resource.Success(Unit) } else remote.clearMessages(id)
+        if (isLocal) { local.clearMessages(id); Resource.Success(Unit) } else {
+            remote.clearMessages(id).also { if (it is Resource.Success) remote.invalidateMessageCache(id) }
+        }
 
     /**
      * 本地模式：返回 Flow<RealtimeEvent>（流式聊天）；

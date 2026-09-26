@@ -207,6 +207,20 @@ class ChatSessionState(
     // ============ 跨 VM 共享的 UI 状态 ============
     val messages = MutableStateFlow<List<Message>>(emptyList())
     val sending = MutableStateFlow(false)
+
+    // ============ 聊天历史分页 ============
+    /**
+     * 是否还有更早的历史消息未加载。
+     *
+     * 进入会话只加载最近一页（[com.nekobot.app.ui.screens.chat.ChatViewModel.MESSAGE_PAGE_SIZE]），
+     * 界面滚动到顶部时据此触发加载更早的一页。分页状态放在 runtime 而不是 VM：
+     * 同一会话被多个界面（如平板双栏）订阅时共享同一份游标结论。
+     */
+    val hasOlderMessages = MutableStateFlow(false)
+
+    /** 是否正在加载更早的历史消息：界面顶部展示加载指示，同时防止并发重复请求。 */
+    val loadingOlderMessages = MutableStateFlow(false)
+
     val execConfirmation = MutableStateFlow<ExecConfirmationRequest?>(null)
     /** ask_user_question 提问请求（AI 调用提问工具后挂起等待用户回答）。 */
     val askUserQuestion =

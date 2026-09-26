@@ -332,6 +332,8 @@
     <string name="chat_turns">Turns</string>
     <string name="chat_archive_session">Archived chat: %1$s</string>
     <string name="chat_loading_dots">Loading...</string>
+    <string name="chat_loading_older_messages">Loading earlier messages</string>
+    <string name="chat_load_older_messages">Load earlier messages</string>
     <string name="chat_no_archive_messages">No archived messages</string>
     <string name="chat_me">Me</string>
     <string name="chat_my_messages_title">My messages (%1$d)</string>

@@ -301,6 +301,20 @@ data class Message(
 }
 
 /**
+ * 聊天消息分页结果。
+ *
+ * [messages] 始终按时间升序（与聊天列表渲染顺序一致），[hasMore] 表示请求方向上
+ * 是否还有更多消息：取最近一页时指"还有更早的历史"，取更早一页时指"还有更更早的"。
+ *
+ * 引入原因：超大会话（例如导入的历史会话有数万条消息）一次性加载全部消息会阻塞
+ * 界面，聊天页改为首屏只取最近一页、向上滚动时按页补更早的历史。
+ */
+data class MessagePage(
+    val messages: List<Message> = emptyList(),
+    val hasMore: Boolean = false
+)
+
+/**
  * 进度卡片单步：对应原仓库 progress_card.py 的 step 结构。
  * 字段对齐 Web 端 thinking-step 渲染所需信息。
  */

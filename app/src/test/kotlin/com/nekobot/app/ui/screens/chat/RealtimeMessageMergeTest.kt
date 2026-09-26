@@ -38,14 +38,16 @@ class RealtimeMessageMergeTest {
     }
 
     @Test
-    fun duplicatePersistedMessageIdsStillReceiveUniqueComposeKeys() {
+    fun persistedMessageKeysStayStableAcrossListInsertions() {
         val message = Message(id = "same-id", role = "assistant", content = "reply")
 
         val first = chatMessageItemKey(0, message)
         val second = chatMessageItemKey(1, message)
 
-        assertNotEquals(first, second)
-        assertTrue(first.startsWith("message:same-id:"))
+        // 向上分页会在列表头部插入更早消息：持久化消息的 key 必须只由数据库 ID 决定，
+        // 否则 LazyColumn 无法把滚动位置锚定在用户正在阅读的消息上。
+        assertEquals("message:same-id", first)
+        assertEquals(first, second)
     }
 
     @Test

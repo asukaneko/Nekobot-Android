@@ -236,6 +236,14 @@ class ChatViewModel : BaseViewModel() {
         const val STREAM_FALLBACK_PREFIX = "_stream_fallback_"
         /** 排队消息“立即发送”乐观气泡的 id 前缀（本地注入/服务器直发期间显示）。 */
         const val URGENT_BUBBLE_PREFIX = "_queued_urgent_"
+
+        /**
+         * 聊天界面单页消息条数：进入会话只加载最近一页，向上滚动时按页补更早历史。
+         *
+         * 超大会话（数万条导入历史）一次性加载全集会阻塞界面，分页后 UI 只持有已加载窗口；
+         * AI 上下文/导出等路径不受影响，仍读取完整历史。
+         */
+        const val MESSAGE_PAGE_SIZE = 80
     }
 
     private val socket = ServiceContainer.socket
@@ -259,6 +267,20 @@ class ChatViewModel : BaseViewModel() {
         .flatMapLatest { it }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val _messages: MutableStateFlow<List<Message>> get() = runtime.messages
+
+    /** 是否还有更早的历史消息未加载（聊天界面滚动到顶部时据此触发分页加载）。 */
+    val hasOlderMessages: StateFlow<Boolean> = _runtime
+        .map { it.hasOlderMessages }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** 是否正在加载更早的历史消息（界面顶部展示加载指示，并防并发重复请求）。 */
+    val loadingOlderMessages: StateFlow<Boolean> = _runtime
+        .map { it.loadingOlderMessages }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** 当前流式气泡独立订阅，正文分片不再触发整份消息列表和进度卡片重组。 */
     val streamingContentPreview: StateFlow<String> = _runtime
@@ -1335,17 +1357,23 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
-    /** 加载消息列表。 */
+    /**
+     * 加载消息列表。
+     *
+     * 只拉取最近一页（[MESSAGE_PAGE_SIZE]），已通过向上翻页加载的更早历史前缀
+     * 会被保留并参与合并；AI 上下文等完整历史读取不经过这里。
+     */
     fun loadMessages() {
         if (currentSessionId.isBlank()) return
         val requestedSessionId = currentSessionId
         val target = runtime
         launchResult(
-            block = { unified.listMessages(requestedSessionId) },
-            onSuccess = { fresh ->
+            block = { unified.listRecentMessages(requestedSessionId, MESSAGE_PAGE_SIZE) },
+            onSuccess = { page ->
                 if (currentSessionId == requestedSessionId && runtime === target) {
+                val fresh = page.messages
                 // tool_call_history 只供模型恢复上下文，聊天 UI 不读取也不持有这份大对象。
-                val uiFresh = fresh.orEmpty().map { message ->
+                val uiFresh = fresh.map { message ->
                     if (message.toolCallHistory != null) message.copy(toolCallHistory = null) else message
                 }
                 val hasAgentCards = uiFresh.any { message ->
@@ -1409,6 +1437,15 @@ class ChatViewModel : BaseViewModel() {
                     } else mergedAudio
                 }
 
+                // 分页：refresh 只返回最近一页，必须保留此前向上翻页加载的更早历史前缀，
+                // 否则用户翻过的历史会被整段丢掉；hasOlder 只在没有前缀时用本页结论刷新。
+                val olderPrefix = olderMessagesPrefixOf(current, uiFresh)
+                if (olderPrefix.isEmpty()) {
+                    target.hasOlderMessages.value = page.hasMore
+                }
+                val prefixIds = olderPrefix.mapNotNullTo(HashSet()) { it.id?.takeIf(String::isNotBlank) }
+                val mergedIds = merged.mapNotNullTo(HashSet()) { it.id?.takeIf(String::isNotBlank) }
+
                 // 保留 current 中 fresh 没有的 assistant 消息（刚生成的回复可能因 Room 异步竞态未被 fresh 包含）
                 val freshAssistantKeys = merged
                     .filter { !it.isUser && !it.content.isNullOrBlank() }
@@ -1418,7 +1455,8 @@ class ChatViewModel : BaseViewModel() {
                     .filter { !it.isUser && !it.content.isNullOrBlank() }
                     .mapTo(mutableSetOf()) { it.content }
                 val orphanAssistants = currentAssistantByContent.values.filter { msg ->
-                    val idAlreadyLoaded = !msg.id.isNullOrBlank() && merged.any { it.id == msg.id }
+                    // 已加载的更早历史前缀不算孤儿（合并时会原样保留在前缀中）
+                    val idAlreadyLoaded = msg.id?.let { it in mergedIds || it in prefixIds } == true
                     // 用户已删除的消息不算孤儿，禁止被兜底逻辑重新加回列表
                     val userDeleted = msg.id?.let(runtime.deletedMessageIds::contains) == true
                     !idAlreadyLoaded && !userDeleted &&
@@ -1428,7 +1466,7 @@ class ChatViewModel : BaseViewModel() {
                 }
 
                 val nextMessages = deduplicateMessagesById(
-                    if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants
+                    olderPrefix + if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants
                 )
                 _messages.value = nextMessages
                 val nextTtsStates = _ttsStates.value.toMutableMap()
@@ -1442,6 +1480,46 @@ class ChatViewModel : BaseViewModel() {
                 }
             }
         )
+    }
+
+    /**
+     * 向上分页：加载比当前已加载窗口更早的一页历史消息，插入到列表头部。
+     *
+     * 游标取当前最早一条已加载消息（本地模式由 Room 以 `(created_at, rowid)` 精确解析），
+     * 只补"更早"区间、不重复；失败保留"还有更早历史"状态，用户再次滚到顶部可重试。
+     */
+    fun loadOlderMessages() {
+        val requestedSessionId = currentSessionId
+        if (requestedSessionId.isBlank()) return
+        val target = runtime
+        if (!target.hasOlderMessages.value || target.loadingOlderMessages.value) return
+        val oldestMessageId = _messages.value.firstOrNull { !it.id.isNullOrBlank() }?.id ?: return
+        target.loadingOlderMessages.value = true
+        viewModelScope.launch {
+            try {
+                val res = unified.listMessagesBefore(requestedSessionId, oldestMessageId, MESSAGE_PAGE_SIZE)
+                when (res) {
+                    is Resource.Success -> {
+                        if (currentSessionId == requestedSessionId && runtime === target) {
+                            val older = res.data.messages
+                            if (older.isNotEmpty()) {
+                                _messages.value = deduplicateMessagesById(older + _messages.value)
+                            }
+                            // 空页说明游标已失效（例如历史被清空），直接结束分页避免死循环重试
+                            target.hasOlderMessages.value = res.data.hasMore && older.isNotEmpty()
+                        }
+                    }
+                    is Resource.Error -> showToast(res.message)
+                    is Resource.Loading -> Unit
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showToast(e.message ?: string(R.string.common_unknown_error))
+            } finally {
+                target.loadingOlderMessages.value = false
+            }
+        }
     }
 
     private data class ActiveTtsConfig(
@@ -3507,6 +3585,11 @@ class ChatViewModel : BaseViewModel() {
             onSuccess = {
                 showToast(string(R.string.chat_messages_cleared))
                 _messages.value = emptyList()
+                // 历史已清空：分页状态一并复位，避免界面继续触发向上加载
+                if (sessionId == currentSessionId) {
+                    runtime.hasOlderMessages.value = false
+                    runtime.loadingOlderMessages.value = false
+                }
                 onSuccess()
             }
         )
@@ -3667,3 +3750,16 @@ class ChatViewModel : BaseViewModel() {
 }
 
 /** 剧情选项数据类。 */
+
+/**
+ * 计算刷新结果 [fresh] 之前已加载的更早消息前缀。
+ *
+ * [fresh] 只是最近一页消息；通过向上翻页加载过的更早历史不在其中。刷新合并时
+ * 需要按"fresh 首条消息在当前列表中的位置"把前缀保留下来，否则用户翻过的历史会被整段丢掉。
+ * 找不到锚点（会话刚被清空、换库等）时返回空列表，退化为只展示 fresh。
+ */
+internal fun olderMessagesPrefixOf(current: List<Message>, fresh: List<Message>): List<Message> {
+    val anchorId = fresh.firstOrNull()?.id?.takeIf(String::isNotBlank) ?: return emptyList()
+    val anchorIndex = current.indexOfFirst { it.id == anchorId }
+    return if (anchorIndex > 0) current.subList(0, anchorIndex).toList() else emptyList()
+}
