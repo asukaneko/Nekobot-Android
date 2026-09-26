@@ -385,6 +385,13 @@ class LocalExecAuthorizationManager(
         command: String,
         mainCommand: String,
         memorizable: Boolean = true,
+        /**
+         * true 表示连 YOLO 也不能跳过。
+         *
+         * 默认与 [memorizable] 一致（不可记忆的请求也不可 YOLO），保持既有语义；
+         * Android 系列工具显式传 false，让 YOLO 可以放行读取界面树/截图这类操作。
+         */
+        yoloExempt: Boolean = !memorizable,
         onRequest: (ExecConfirmationRequest) -> Unit
     ): ExecAuthorization = awaitDecision(
         sessionId = sessionId,
@@ -396,7 +403,7 @@ class LocalExecAuthorizationManager(
         memorizable = memorizable && isMemorizableCommand(command),
         // 解释器、安装类命令只是不能「始终允许」；YOLO 是用户在本会话的显式选择，仍按 YOLO 放行。
         // 只有调用方明确要求逐次确认的工具（读取界面树、截图）才连 YOLO 也不能跳过。
-        yoloExempt = !memorizable,
+        yoloExempt = yoloExempt,
         onRequest = onRequest
     )
 

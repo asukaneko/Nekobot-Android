@@ -259,6 +259,10 @@
     <string name="agent_settings_group_runtime">실행 제한</string>
     <string name="agent_settings_max_tool_calls">최대 도구 호출 횟수</string>
     <string name="agent_settings_max_tool_calls_desc">단일 Agent 턴에서 허용되는 최대 도구 호출 횟수(1–1000, 기본 %1$d)</string>
+    <string name="agent_settings_overlay">Agent 오버레이</string>
+    <string name="agent_settings_overlay_desc">Android 도구 사용 중 다른 앱 위에 AI 사고와 도구 이름 표시(스크린샷에 포함되지 않음)</string>
+    <string name="agent_settings_overlay_permission_desc">Android 도구 사용 중 AI 사고와 도구 이름을 표시하려면 오버레이 권한이 필요합니다</string>
+    <string name="agent_settings_overlay_grant">권한 부여</string>
     <string name="agent_settings_group_subagent">서브에이전트 (Subagent)</string>
     <string name="agent_settings_group_tools">도구 및 네트워크</string>
     <string name="agent_settings_subagent_enable">Subagent 활성화</string>

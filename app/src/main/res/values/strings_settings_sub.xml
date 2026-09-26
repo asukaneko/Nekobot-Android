@@ -272,6 +272,10 @@
     <string name="agent_settings_group_runtime">运行限制</string>
     <string name="agent_settings_max_tool_calls">最大工具调用次数</string>
     <string name="agent_settings_max_tool_calls_desc">单个 Agent 回合内允许的最大工具调用次数（1–1000，默认 %1$d）</string>
+    <string name="agent_settings_overlay">Agent 悬浮窗</string>
+    <string name="agent_settings_overlay_desc">使用安卓工具时在其他应用上方显示 AI 思考与工具名（不会被截图捕获）</string>
+    <string name="agent_settings_overlay_permission_desc">使用安卓工具时显示 AI 思考与工具名，需要悬浮窗权限</string>
+    <string name="agent_settings_overlay_grant">去授权</string>
     <string name="agent_settings_group_subagent">子代理（Subagent）</string>
     <string name="agent_settings_group_tools">工具与网络</string>
     <string name="agent_settings_subagent_enable">启用 Subagent</string>

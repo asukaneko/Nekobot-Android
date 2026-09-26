@@ -309,6 +309,22 @@ class PrefsManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_AGENT_NETWORK_ACCESS, value).apply()
 
     /**
+     * Agent 悬浮窗，默认开启。
+     *
+     * 开启后，Agent 使用 Android 工具时会在其他应用上方显示 AI 思考与工具名；
+     * 悬浮窗带 FLAG_SECURE，不会被截图（含 Agent 自己的 android_screenshot）捕获。
+     * 需要系统悬浮窗权限，未授权时设置页提供授权入口。
+     */
+    var agentOverlayEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AGENT_OVERLAY_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_AGENT_OVERLAY_ENABLED, value).apply()
+
+    /** 悬浮窗位置与折叠状态，编码为 "x,y,collapsed(0/1)"；空串表示使用默认位置。 */
+    var agentOverlayPlacement: String
+        get() = prefs.getString(KEY_AGENT_OVERLAY_PLACEMENT, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_AGENT_OVERLAY_PLACEMENT, value).apply()
+
+    /**
      * 无障碍排除的应用包名集合，默认空（不排除任何应用）。
      *
      * Agent 在这些应用处于前台时会被直接拒绝读取界面树、截图、点击与输入，
@@ -1248,6 +1264,8 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_ACCESSIBILITY_EXCLUDED = "agent_accessibility_excluded_packages"
         private const val KEY_AGENT_AUTO_MEMORY = "agent_auto_memory_enabled"
         private const val KEY_AGENT_MEMORY_INTERVAL = "agent_auto_memory_interval"
+        private const val KEY_AGENT_OVERLAY_ENABLED = "agent_overlay_enabled"
+        private const val KEY_AGENT_OVERLAY_PLACEMENT = "agent_overlay_placement"
 
         /**
          * 自动长期记忆间隔的可选值（轮）。首轮始终抽取，这里的数值决定之后的间隔：

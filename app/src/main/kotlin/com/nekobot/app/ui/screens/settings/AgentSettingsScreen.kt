@@ -1,6 +1,8 @@
 package com.nekobot.app.ui.screens.settings
 
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Shield
@@ -53,6 +56,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,9 +72,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.PrefsManager
+import com.nekobot.app.data.local.ai.AgentOverlayBus
 import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.SessionToolCatalog
 import com.nekobot.app.ui.components.AgentToolSetPickerDialog
@@ -111,6 +119,20 @@ fun AgentSettingsScreen(
     var editingCustomModeId by remember { mutableStateOf<String?>(null) }
     var toolSetRevision by remember { mutableStateOf(0) }
     val toolSetStat = remember(toolSetRevision) { loadToolSetStat() }
+    // Agent 悬浮窗：使用 Android 工具时在其他应用上方展示思考与工具名
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var overlayEnabled by remember { mutableStateOf(ServiceContainer.prefs.agentOverlayEnabled) }
+    var overlayPermitted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                overlayPermitted = Settings.canDrawOverlays(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     // 无障碍排除的应用：命中后 Agent 无法读取界面/截图/操作该应用
     var showExcludedAppsDialog by remember { mutableStateOf(false) }
     var excludedAppsRevision by remember { mutableStateOf(0) }
@@ -211,6 +233,41 @@ fun AgentSettingsScreen(
                     desc = stringResource(R.string.agent_settings_max_tool_calls_desc, MAX_TOOL_CALLS_DEFAULT),
                     trailing = {
                         ToolCallsInput()
+                    }
+                )
+                AgentSettingRow(
+                    icon = Icons.Filled.PictureInPictureAlt,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    title = stringResource(R.string.agent_settings_overlay),
+                    desc = if (overlayPermitted) {
+                        stringResource(R.string.agent_settings_overlay_desc)
+                    } else {
+                        stringResource(R.string.agent_settings_overlay_permission_desc)
+                    },
+                    trailing = {
+                        if (overlayPermitted) {
+                            Switch(
+                                checked = overlayEnabled,
+                                onCheckedChange = {
+                                    overlayEnabled = it
+                                    ServiceContainer.prefs.agentOverlayEnabled = it
+                                    AgentOverlayBus.refresh()
+                                }
+                            )
+                        } else {
+                            TextButton(onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                            Uri.parse("package:${context.packageName}")
+                                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            }) {
+                                Text(stringResource(R.string.agent_settings_overlay_grant))
+                            }
+                        }
                     }
                 )
             }

@@ -94,11 +94,11 @@ internal class LocalAndroidToolExecutor(
                 "android_accessibility_status" -> accessibilityStatus(appContext)
                 "android_help" -> help(args)
                 "android_ui_tree" -> uiTree(args)
-                "android_ui_click" -> uiClick(args)
+                "android_ui_click" -> withOverlayTouchDisabled { uiClick(args) }
                 "android_ui_set_text" -> uiSetText(args)
                 "android_ui_scroll" -> uiScroll(args)
-                "android_ui_tap" -> uiTap(args)
-                "android_ui_swipe" -> uiSwipe(args)
+                "android_ui_tap" -> withOverlayTouchDisabled { uiTap(args) }
+                "android_ui_swipe" -> withOverlayTouchDisabled { uiSwipe(args) }
                 "android_ui_ime_action" -> uiImeAction(args)
                 "android_ui_paste" -> uiPaste(args)
                 "android_wait_for_idle" -> waitForIdle(args)
@@ -673,7 +673,7 @@ internal class LocalAndroidToolExecutor(
         val relativePath = "screenshots/android-${System.currentTimeMillis()}.png"
         val output = File(root, relativePath).canonicalFile
         if (!output.path.startsWith(root.path + File.separator)) return failure("截图输出路径无效")
-        val result = service.captureScreenshot(output)
+        val result = hidingOverlayForCapture { service.captureScreenshot(output) }
         return actionResult(
             result.success,
             result.message,
@@ -719,6 +719,38 @@ internal class LocalAndroidToolExecutor(
 
     private fun accessibilityService(): NekobotAccessibilityService? = NekobotAccessibilityService.instance
 
+    /**
+     * 截图期间临时隐藏 Agent 悬浮窗。
+     *
+     * 悬浮窗带 FLAG_SECURE，不会被截进图里，但系统会在其位置涂黑；
+     * 先移除视图可得到完整界面，截图结束后再恢复显示。
+     */
+    private fun <T> hidingOverlayForCapture(block: () -> T): T {
+        val overlay = com.nekobot.app.service.AgentOverlayRegistry.current() ?: return block()
+        overlay.hideForCaptureBlocking()
+        return try {
+            block()
+        } finally {
+            overlay.restoreAfterCapture()
+        }
+    }
+
+    /**
+     * 坐标手势期间临时取消悬浮窗触摸。
+     *
+     * 悬浮窗可被用户拖动，可能停留在待点击的位置；取消触摸可保证 Agent 的
+     * 点击/滑动不被悬浮窗拦截，手势结束立即恢复交互。
+     */
+    private inline fun <T> withOverlayTouchDisabled(block: () -> T): T {
+        val overlay = com.nekobot.app.service.AgentOverlayRegistry.current() ?: return block()
+        overlay.setTouchable(false)
+        return try {
+            block()
+        } finally {
+            overlay.setTouchable(true)
+        }
+    }
+
     private fun notificationService(): NekobotNotificationListenerService? = NekobotNotificationListenerService.instance
 
     private fun accessibilityUnavailable(): Map<String, Any> =
@@ -751,6 +783,9 @@ internal class LocalAndroidToolExecutor(
             command = "$mainCommand: $details",
             mainCommand = mainCommand,
             memorizable = memorizable,
+            // Android 系列工具全部允许被 YOLO 放行（仍保留不可「始终允许」的工具，
+            // 避免一次授权等于无限期放行读取界面/截图）。
+            yoloExempt = false,
             onRequest = onConfirmationRequired
         ) != ExecAuthorization.Reject
 

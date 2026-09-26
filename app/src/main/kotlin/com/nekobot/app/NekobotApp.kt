@@ -57,6 +57,16 @@ object ServiceContainer {
     var isAppForeground: Boolean = false
         internal set
 
+    /** 应用前后台状态流：与 [isAppForeground] 同步，供悬浮窗等后台组件观察。 */
+    private val _appForegroundFlow = MutableStateFlow(false)
+    val appForegroundFlow: StateFlow<Boolean> = _appForegroundFlow.asStateFlow()
+
+    /** 由 Activity 生命周期回调更新前后台状态。 */
+    internal fun updateAppForeground(foreground: Boolean) {
+        isAppForeground = foreground
+        _appForegroundFlow.value = foreground
+    }
+
     /** 当前可见的聊天会话 id（聊天界面在前台且处于 resumed 状态）；null 表示不在任何会话内。 */
     @Volatile
     var activeChatSessionId: String? = null
@@ -458,7 +468,7 @@ class NekobotApp : Application(), coil.ImageLoaderFactory {
                 override fun onActivityStarted(activity: Activity) {
                     startedActivities += 1
                     if (startedActivities == 1) {
-                        ServiceContainer.isAppForeground = true
+                        ServiceContainer.updateAppForeground(true)
                         com.nekobot.app.data.local.ai.AgentAttentionCenter.recheck()
                     }
                 }
@@ -466,7 +476,7 @@ class NekobotApp : Application(), coil.ImageLoaderFactory {
                 override fun onActivityStopped(activity: Activity) {
                     startedActivities = (startedActivities - 1).coerceAtLeast(0)
                     if (startedActivities == 0) {
-                        ServiceContainer.isAppForeground = false
+                        ServiceContainer.updateAppForeground(false)
                         com.nekobot.app.data.local.ai.AgentAttentionCenter.recheck()
                     }
                 }

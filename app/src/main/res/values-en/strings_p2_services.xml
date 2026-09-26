@@ -52,6 +52,15 @@
     <string name="agent_foreground_task_count">Running %1$d session tasks</string>
     <string name="agent_foreground_stop_task">Stop this task</string>
     <string name="agent_foreground_stop_all">Stop all</string>
+    <string name="agent_overlay_title">Neko Agent</string>
+    <string name="agent_overlay_thinking">AI is thinking…</string>
+    <string name="agent_overlay_tool_running">Using: %1$s</string>
+    <string name="agent_overlay_tool_done">Done: %1$s</string>
+    <string name="agent_overlay_collapse">Collapse overlay</string>
+    <string name="agent_overlay_confirm_title">Agent needs authorization</string>
+    <string name="agent_overlay_confirm_reject">Deny</string>
+    <string name="agent_overlay_confirm_once">Once</string>
+    <string name="agent_overlay_confirm_always">Always allow</string>
     <string name="shortcut_open_session">Open session: %1$s</string>
     <string name="incoming_share_too_large">Shared attachment exceeds 25 MB</string>
 </resources>

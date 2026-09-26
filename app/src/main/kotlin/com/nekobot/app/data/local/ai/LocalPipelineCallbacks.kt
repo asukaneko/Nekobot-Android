@@ -1205,7 +1205,8 @@ internal class LocalPipelineCallbacks(
         return LocalAgentProgressReporter(
             parentMessageId = parentMessageId,
             onUpdate = { card -> emitEvent(RealtimeEvent.ThinkingCardUpdate(card)) },
-            onCheckpoint = { card -> onThinkingCardUpdate?.invoke(card) }
+            onCheckpoint = { card -> onThinkingCardUpdate?.invoke(card) },
+            sessionId = session.id
         ).also { activeAgentProgressReporter = it }
     }
 

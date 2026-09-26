@@ -18,6 +18,7 @@ internal class LocalAgentProgressReporter(
     private val parentMessageId: String?,
     private val onUpdate: (ThinkingCard) -> Unit,
     private val onCheckpoint: (ThinkingCard) -> Unit = {},
+    private val sessionId: String = "",
     private val nowNanos: () -> Long = System::nanoTime,
     private val streamIntervalNanos: Long = 120_000_000L,
     private val streamCharBatch: Int = 96,
@@ -167,6 +168,7 @@ internal class LocalAgentProgressReporter(
 
     override fun onThinkingContent(ctx: PipelineContext, content: String) {
         if (content.isEmpty()) return
+        AgentOverlayBus.onThinking(sessionId, content)
         ensureThinkingStep()
         reasoningContent.append(content)
         val now = nowNanos()
@@ -197,6 +199,7 @@ internal class LocalAgentProgressReporter(
             text
         }
         steps.add(ThinkingStep(type = "agent_text", status = "done", text = bounded))
+        AgentOverlayBus.onIntermediateContent(sessionId, bounded)
         emit(progressText(R.string.agent_progress_processing, "AI 正在处理..."))
     }
 
@@ -208,6 +211,7 @@ internal class LocalAgentProgressReporter(
     ) {
         // 记录开始时间；onToolDone 时弹出并计算耗时。
         toolStartNanosStack.getOrPut(toolName) { mutableListOf() }.add(nowNanos())
+        AgentOverlayBus.onToolStart(sessionId, toolName)
         if (thinking.isNotBlank() && ctx.metadata["agent_reasoning_streamed"] != true) {
             onThinkingContent(ctx, thinking)
         }
@@ -241,6 +245,7 @@ internal class LocalAgentProgressReporter(
         val durationMs = toolStartNanosStack[toolName]?.removeLastOrNull()?.let { start ->
             ((nowNanos() - start) / 1_000_000L).coerceAtLeast(0L)
         }
+        AgentOverlayBus.onToolDone(sessionId, toolName)
         // 展示净化：图片结果里的 data URI 不进入预览，避免卡片被 base64 刷满。
         val displayResult = sanitizeAgentToolResultForDisplay(result)
         val resultPreview = boundedAgentValuePreview(
@@ -368,6 +373,7 @@ internal class LocalAgentProgressReporter(
     override fun onDone(ctx: PipelineContext) {
         // 清理被中断工具（onToolStart 后未配对 onToolDone）残留的开始时间戳。
         toolStartNanosStack.clear()
+        AgentOverlayBus.onRunFinished(sessionId)
         for (index in steps.indices) {
             val step = steps[index]
             if (step.status == "running" || step.status == "active") {

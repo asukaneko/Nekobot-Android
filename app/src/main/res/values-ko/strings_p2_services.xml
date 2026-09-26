@@ -52,6 +52,15 @@
     <string name="agent_foreground_task_count">대화 작업 %1$d개 실행 중</string>
     <string name="agent_foreground_stop_task">이 작업 중지</string>
     <string name="agent_foreground_stop_all">모두 중지</string>
+    <string name="agent_overlay_title">Neko Agent</string>
+    <string name="agent_overlay_thinking">AI가 생각 중…</string>
+    <string name="agent_overlay_tool_running">사용 중: %1$s</string>
+    <string name="agent_overlay_tool_done">완료: %1$s</string>
+    <string name="agent_overlay_collapse">오버레이 접기</string>
+    <string name="agent_overlay_confirm_title">Agent 권한 승인 필요</string>
+    <string name="agent_overlay_confirm_reject">거부</string>
+    <string name="agent_overlay_confirm_once">이번만</string>
+    <string name="agent_overlay_confirm_always">항상 허용</string>
     <string name="shortcut_open_session">대화 열기: %1$s</string>
     <string name="incoming_share_too_large">공유 첨부 파일이 25 MB를 초과합니다</string>
 </resources>

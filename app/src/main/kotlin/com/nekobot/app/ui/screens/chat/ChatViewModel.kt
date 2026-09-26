@@ -530,6 +530,9 @@ class ChatViewModel : BaseViewModel() {
     /** 本地后台手动压缩结果事件订阅（随 VM 生命周期；退出页面后再进入时由 loadMessages 恢复状态）。 */
     private var compressionEventsJob: kotlinx.coroutines.Job? = null
 
+    /** 等待中心同步：授权项被悬浮窗/通知等其它入口处理后，收起本页的授权弹窗。 */
+    private var attentionSyncJob: kotlinx.coroutines.Job? = null
+
     private var currentSessionId: String = ""
     private var realtimeLiveJob: kotlinx.coroutines.Job? = null
     private val realtimeVoiceClient = RealtimeVoiceClient()
@@ -695,6 +698,18 @@ class ChatViewModel : BaseViewModel() {
         runtime.restoreAutoMemoryNotice()
         // 该会话仍有等待处理的授权/提问时恢复弹窗（例如从通知点进会话）
         restorePendingAttention(sessionId)
+        // 授权项被悬浮窗/通知处理完成后，同步收起本页弹窗，避免出现已失效的确认框
+        if (attentionSyncJob?.isActive != true) {
+            attentionSyncJob = viewModelScope.launch {
+                com.nekobot.app.data.local.ai.AgentAttentionCenter.pendingBySession.collect { pending ->
+                    val request = _execConfirmation.value ?: return@collect
+                    val stillPending = pending[request.sessionId].orEmpty().any {
+                        it.kind == com.nekobot.app.data.local.ai.AgentAttentionKind.ExecAuthorization
+                    }
+                    if (!stillPending) _execConfirmation.value = null
+                }
+            }
+        }
         if (isChatVisible) ServiceContainer.setActiveChatSession(sessionId)
         startQueuedAutoSendWatcher()
         // 订阅本地后台压缩结果：仅通知当前存活界面（退出期间完成的压缩由 loadMessages 恢复）。

@@ -54,6 +54,15 @@
     <string name="agent_foreground_task_count">正在执行 %1$d 个会话任务</string>
     <string name="agent_foreground_stop_task">停止此任务</string>
     <string name="agent_foreground_stop_all">停止全部</string>
+    <string name="agent_overlay_title">Neko Agent</string>
+    <string name="agent_overlay_thinking">AI 正在思考…</string>
+    <string name="agent_overlay_tool_running">正在使用：%1$s</string>
+    <string name="agent_overlay_tool_done">已完成：%1$s</string>
+    <string name="agent_overlay_collapse">收起悬浮窗</string>
+    <string name="agent_overlay_confirm_title">Agent 需要授权</string>
+    <string name="agent_overlay_confirm_reject">拒绝</string>
+    <string name="agent_overlay_confirm_once">仅本次</string>
+    <string name="agent_overlay_confirm_always">始终允许</string>
     <string name="shortcut_open_session">打开会话：%1$s</string>
     <string name="incoming_share_too_large">分享附件超过 25 MB</string>
 </resources>

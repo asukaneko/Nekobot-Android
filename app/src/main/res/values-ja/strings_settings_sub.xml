@@ -259,6 +259,10 @@
     <string name="agent_settings_group_runtime">実行制限</string>
     <string name="agent_settings_max_tool_calls">最大ツール呼び出し回数</string>
     <string name="agent_settings_max_tool_calls_desc">1 つの Agent ターンで許可される最大ツール呼び出し回数（1～1000、既定 %1$d）</string>
+    <string name="agent_settings_overlay">Agent オーバーレイ</string>
+    <string name="agent_settings_overlay_desc">Android ツールの使用中、他アプリの上に AI の思考とツール名を表示（スクリーンショットには写りません）</string>
+    <string name="agent_settings_overlay_permission_desc">Android ツール使用中に AI の思考とツール名を表示します。オーバーレイ権限が必要です</string>
+    <string name="agent_settings_overlay_grant">権限を付与</string>
     <string name="agent_settings_group_subagent">サブエージェント（Subagent）</string>
     <string name="agent_settings_group_tools">ツールとネットワーク</string>
     <string name="agent_settings_subagent_enable">Subagent を有効にする</string>

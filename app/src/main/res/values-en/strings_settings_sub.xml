@@ -266,6 +266,10 @@
     <string name="agent_settings_group_runtime">Runtime Limits</string>
     <string name="agent_settings_max_tool_calls">Max Tool Calls</string>
     <string name="agent_settings_max_tool_calls_desc">Maximum tool calls allowed in a single Agent turn (1–1000, default %1$d)</string>
+    <string name="agent_settings_overlay">Agent overlay</string>
+    <string name="agent_settings_overlay_desc">Show AI thinking and tool names above other apps while Android tools run (excluded from screenshots)</string>
+    <string name="agent_settings_overlay_permission_desc">Show AI thinking and tool names while Android tools run; overlay permission required</string>
+    <string name="agent_settings_overlay_grant">Grant</string>
     <string name="agent_settings_group_subagent">Subagent</string>
     <string name="agent_settings_group_tools">Tools and network</string>
     <string name="agent_settings_subagent_enable">Enable Subagent</string>
