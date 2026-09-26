@@ -1495,8 +1495,8 @@ internal class LocalPipelineCallbacks(
         args: Map<String, Any>,
         toolContext: Map<String, Any>
     ): Map<String, Any> {
-        // 策略闸门：网络总开关 + 破坏性操作确认。必须在任何执行之前拦截，
-        // 否则“删除文件/写入工作区之外”会在用户毫不知情的情况下生效。
+        // 策略闸门：网络总开关 + 共享工作区破坏性操作确认。必须在任何执行之前拦截，
+        // 否则“删除共享工作区文件/写入共享工作区”会在用户毫不知情的情况下生效。
         enforceToolPolicy(toolName, args)?.let { return it }
         if (toolName in subagentToolIds) {
             return executeSubagentTool(toolName, args, toolContext)
@@ -1545,16 +1545,20 @@ internal class LocalPipelineCallbacks(
     /**
      * 判断某个工具调用是否需要用户确认。
      *
-     * - 删除工作区文件：始终确认（不可撤销）；
-     * - 写入工作区之外（`shared://` 或绝对路径）：始终确认，指纹按父目录记忆；
+     * - 会话工作区内的文件操作（新建/编辑/删除）：视为安全，直接放行；
+     * - 共享工作区（`shared://`）的写入与删除：始终确认，指纹按父目录记忆；
      * - 插件 create/update/uninstall：始终确认。
      */
     private fun confirmationFor(toolName: String, args: Map<String, Any>): ToolConfirmation? {
-        val pathArg = (args["path"] ?: args["file_path"])?.toString()?.trim().orEmpty()
+        // 与 LocalAgentToolExecutor.workspacePath() 保持一致的参数名兼容（path/filename/file_path），
+        // 避免模型换用 filename 时绕过共享工作区确认。
+        val pathArg = (args["path"] ?: args["filename"] ?: args["file_path"])
+            ?.toString()?.trim().orEmpty()
+        val isSharedWorkspacePath = pathArg.startsWith("shared://", ignoreCase = true)
         return when {
-            toolName == "workspace_delete_file" -> ToolConfirmation(
-                pathArg.ifBlank { "(未提供路径)" },
-                "本地 Agent 请求删除文件：${pathArg.ifBlank { "(未提供路径)" }}"
+            toolName == "workspace_delete_file" && isSharedWorkspacePath -> ToolConfirmation(
+                pathArg,
+                "本地 Agent 请求删除共享工作区文件：$pathArg"
             )
             toolName == "plugin_use" -> {
                 val action = args["action"]?.toString()?.trim()?.lowercase().orEmpty()
@@ -1565,12 +1569,12 @@ internal class LocalPipelineCallbacks(
                 }
             }
             toolName in setOf("workspace_create_file", "workspace_edit_file", "file_write", "file_edit") &&
-                (pathArg.startsWith("shared://") || pathArg.startsWith("/")) -> {
+                isSharedWorkspacePath -> {
                 // 指纹用父目录：授权一次即覆盖该目录内的后续写入，避免每个文件都弹窗。
                 val directory = pathArg.substringBeforeLast('/', pathArg)
                 ToolConfirmation(
                     directory.ifBlank { pathArg },
-                    "本地 Agent 请求写入工作区之外的位置：$pathArg"
+                    "本地 Agent 请求写入共享工作区：$pathArg"
                 )
             }
             else -> null
