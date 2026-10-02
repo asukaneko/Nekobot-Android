@@ -48,14 +48,14 @@ class AgentToolTrajectoryPersistenceTest {
 
     @Test
     fun `超大工具结果落库时被压缩为占位说明`() {
-        val huge = "x".repeat(MAX_AGENT_TOOL_MESSAGE_ROW_CHARS + 100)
+        val huge = "x".repeat(MAX_AGENT_TOOL_MESSAGE_ROW_BYTES + 100)
         val message = toolResult("call-big", huge)
 
         val encoded = encodeAgentToolMessageRow(message)
 
         assertTrue(
             "落库行必须受体积上限约束，避免单行超过 SQLite CursorWindow",
-            encoded.length <= MAX_AGENT_TOOL_MESSAGE_ROW_CHARS + 2_000
+            encoded.utf8Size() <= MAX_AGENT_TOOL_MESSAGE_ROW_BYTES + 2_000
         )
         val decoded = decodeAgentToolMessageRow(encoded)
         assertNotNull(decoded)
@@ -145,9 +145,9 @@ class AgentToolTrajectoryPersistenceTest {
             )
         }
 
-        val encoded = boundAgentToolHistoryJson(history, maxChars = 60_000)!!
+        val encoded = boundAgentToolHistoryJson(history, maxBytes = 60_000)!!
 
-        assertTrue("写库体积必须受控", encoded.length <= 70_000)
+        assertTrue("写库体积必须受控（按 UTF-8 字节）", encoded.utf8Size() <= 70_000)
         val decoded = decodeToolCallHistory(encoded)
         assertTrue(decoded.isNotEmpty())
         assertTrue(
@@ -164,7 +164,7 @@ class AgentToolTrajectoryPersistenceTest {
     fun `体积未超限时工具历史原样写入`() {
         val history = listOf(assistantToolCall("call-1"), toolResult("call-1", "短结果"))
 
-        assertEquals(encodeToolCallHistory(history), boundAgentToolHistoryJson(history, maxChars = 60_000))
+        assertEquals(encodeToolCallHistory(history), boundAgentToolHistoryJson(history, maxBytes = 60_000))
     }
 
     @Test
@@ -174,11 +174,28 @@ class AgentToolTrajectoryPersistenceTest {
             toolResult("call-1", "超大结果".repeat(20_000))
         )
 
-        val encoded = boundAgentToolHistoryJson(history, maxChars = 1_000)!!
+        val encoded = boundAgentToolHistoryJson(history, maxBytes = 1_000)!!
 
-        assertTrue("单行体积必须硬性受控", encoded.length <= 1_000)
+        assertTrue("单行体积必须硬性受控（按 UTF-8 字节）", encoded.utf8Size() <= 1_000)
         val decoded = decodeToolCallHistory(encoded)
         assertEquals(1, decoded.size)
         assertTrue((decoded.first()["content"] as String).contains("超出单条消息体积上限"))
+    }
+
+    @Test
+    fun `中文字符按字节计费时字符数上限挡不住的场景也会触发截断`() {
+        // 30 万中文字符 = 约 90 万 UTF-8 字节，字符数远低于旧 1M 字符上限，
+        // 但字节体积已逼近 CursorWindow——必须按字节截断。
+        val history = listOf(
+            assistantToolCall("call-1"),
+            toolResult("call-1", "结".repeat(300_000))
+        )
+
+        val encoded = boundAgentToolHistoryJson(history)!!
+
+        assertTrue(
+            "中文内容必须按字节计入上限",
+            encoded.utf8Size() <= MAX_AGENT_MESSAGE_TOOL_HISTORY_BYTES
+        )
     }
 }

@@ -225,6 +225,7 @@
     <string name="log_repo_session_autonamed">セッション自動命名: %1$s -&gt; %2$s</string>
     <string name="log_repo_skill_extract_failed">Agentスキル定着に失敗（メインフローには影響なし）: %1$s</string>
     <string name="log_repo_state_cache_write_failed">状態履歴キャッシュの書き込みに失敗: %1$s</string>
+    <string name="log_repo_oversize_row_repair_retry">メッセージ行が CursorWindow の上限を超えたため修復後に再試行: %1$s</string>
     <string name="log_repo_task_expired">タスク「%1$s」の前回実行ポイントが期限切れ、%2$s に繰り越し</string>
     <string name="log_repo_token_usage_corrupt">Token使用量記録が破損、バックアップして再構築: %1$s</string>
     <string name="log_repo_token_usage_recovered">メッセージ記録から %1$s 件のToken使用量を復元</string>

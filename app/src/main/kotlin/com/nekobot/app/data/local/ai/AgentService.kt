@@ -605,35 +605,39 @@ fun extractToolCallHistory(messages: List<Map<String, Any>>): List<Map<String, A
 internal const val AGENT_RECOVERY_SOURCE = "agent_recovery"
 
 /**
- * 单条工具消息落库上限（字符）。
+ * 单条工具消息落库上限（UTF-8 字节）。
  *
  * 工具自身的输出上限通常在 20 万字符以内，但截图类工具会把 data URI 塞进结果正文。
  * 这里再兜一层，保证任何单行都不会逼近 Android SQLite 的 CursorWindow 单行上限
- * （约 2MB，超限时整表读取会抛异常）。
+ * （约 2MB，超限时整表读取会抛异常）。按字节而非字符计：中文等内容 1 字符占 3 字节。
  */
-internal const val MAX_AGENT_TOOL_MESSAGE_ROW_CHARS = 600_000
+internal const val MAX_AGENT_TOOL_MESSAGE_ROW_BYTES = 600_000
 
-/** 单条 assistant 消息携带的 tool_call_history 上限，避免 local_messages 出现超大行。 */
-internal const val MAX_AGENT_MESSAGE_TOOL_HISTORY_CHARS = 1_000_000
+/** 单条 assistant 消息携带的 tool_call_history 上限（UTF-8 字节），避免 local_messages 出现超大行。 */
+internal const val MAX_AGENT_MESSAGE_TOOL_HISTORY_BYTES = 900_000
 
 private const val AGENT_CHECKPOINT_SUMMARY_VERSION = 2
 
 /** Agent 检查点摘要：只记录进度，不再把整轮工具正文塞进单行 JSON。 */
 internal data class AgentCheckpointSummary(val toolCalls: Int, val tokens: Int)
 
+/** UTF-8 编码字节数；体积防护统一按字节计，与 SQLite CursorWindow 的实际约束对齐。 */
+internal fun String.utf8Size(): Int = toByteArray(Charsets.UTF_8).size
+
 /** 单条工具消息 json 化：超出上限时保留正文头部并标注原始长度。 */
 internal fun encodeAgentToolMessageRow(message: Map<String, Any>): String {
     val json = agentGson.toJson(message)
-    if (json.length <= MAX_AGENT_TOOL_MESSAGE_ROW_CHARS) return json
+    if (json.utf8Size() <= MAX_AGENT_TOOL_MESSAGE_ROW_BYTES) return json
     val trimmed = message.toMutableMap()
     val role = (message["role"] as? String).orEmpty()
     if (role == "tool") {
-        trimmed["content"] = "[单条工具结果过大，仅保留落库记录占位；原始长度 ${json.length} 字符，" +
+        trimmed["content"] = "[单条工具结果过大，仅保留落库记录占位；原始长度 ${json.utf8Size()} 字节，" +
             "需要细节时请重新调用该工具]"
     } else {
+        // 4 字节/字符的最坏情况下，chars/4 也不会超过字节预算。
         trimmed["content"] = ((message["content"] as? String) ?: "")
-            .take(MAX_AGENT_TOOL_MESSAGE_ROW_CHARS / 2)
-        trimmed["tool_calls"] = "[工具调用参数过大，已省略；原始长度 ${json.length} 字符]"
+            .take(MAX_AGENT_TOOL_MESSAGE_ROW_BYTES / 4)
+        trimmed["tool_calls"] = "[工具调用参数过大，已省略；原始长度 ${json.utf8Size()} 字节]"
     }
     return agentGson.toJson(trimmed)
 }
@@ -677,27 +681,28 @@ internal fun decodeAgentCheckpointSummary(json: String?): AgentCheckpointSummary
 /**
  * 限制写进消息行的 tool_call_history 体积：保留最近的几轮，丢弃更早的并在最前面标注。
  *
- * 整轮工具正文超过 [maxChars] 时不能再原样写库——单个 TEXT 行超过 CursorWindow
+ * 整轮工具正文超过 [maxBytes] 时不能再原样写库——单个 TEXT 行超过 CursorWindow
  * 上限会让该会话的所有消息都读不出来。完整轨迹由 local_agent_tool_messages 承担。
+ * 按 UTF-8 字节计（中文 1 字符 3 字节），字符数挡不住窗口溢出。
  */
 internal fun boundAgentToolHistoryJson(
     history: List<Map<String, Any>>?,
-    maxChars: Int = MAX_AGENT_MESSAGE_TOOL_HISTORY_CHARS
+    maxBytes: Int = MAX_AGENT_MESSAGE_TOOL_HISTORY_BYTES
 ): String? {
     val normalized = history.orEmpty()
         .filter { it["role"] in listOf("assistant", "tool") }
         .map { it.toMap() }
     if (normalized.isEmpty()) return null
     val encoded = agentGson.toJson(normalized)
-    if (encoded.length <= maxChars || maxChars <= 0) return encoded
+    if (encoded.utf8Size() <= maxBytes || maxBytes <= 0) return encoded
 
     // 从最新往回累积可整体保留的消息块（assistant tool_calls 与其 tool 结果同生共死）。
     val blocks = groupMessageBlocks(normalized)
     val kept = ArrayDeque<List<Map<String, Any>>>()
     var used = 0
     for (block in blocks.asReversed()) {
-        val size = agentGson.toJson(block).length
-        if (kept.isNotEmpty() && used + size > maxChars) break
+        val size = agentGson.toJson(block).utf8Size()
+        if (kept.isNotEmpty() && used + size > maxBytes) break
         kept.addFirst(block)
         used += size
     }
@@ -709,7 +714,7 @@ internal fun boundAgentToolHistoryJson(
                 "如需这些信息请重新调用对应工具获取]"
         )
         val bounded = agentGson.toJson(listOf(notice) + kept.flatten())
-        if (bounded.length <= maxChars) return bounded
+        if (bounded.utf8Size() <= maxBytes) return bounded
     }
     // 单块本身就超限（例如一批并行工具返回了多个超大结果）：宁可只留说明，
     // 也不能写入超限的 TEXT 行——那会让整个会话的消息都读不出来。

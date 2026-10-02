@@ -225,6 +225,7 @@
     <string name="log_repo_session_autonamed">会话自动命名: %1$s -&gt; %2$s</string>
     <string name="log_repo_skill_extract_failed">Agent 技能沉淀失败（不影响主流程）: %1$s</string>
     <string name="log_repo_state_cache_write_failed">状态历程缓存写入失败: %1$s</string>
+    <string name="log_repo_oversize_row_repair_retry">消息行超出 CursorWindow 限制，修复后重试: %1$s</string>
     <string name="log_repo_task_expired">任务「%1$s」上次执行点已过期，顺延到 %2$s</string>
     <string name="log_repo_token_usage_corrupt">Token 用量记录损坏，已备份并重建: %1$s</string>
     <string name="log_repo_token_usage_recovered">已从消息记录补回 %1$s 条 Token 用量</string>

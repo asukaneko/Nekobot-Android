@@ -248,6 +248,59 @@ interface MessageDao {
     @Query("UPDATE local_messages SET deleted = :deleted WHERE id = :id")
     suspend fun updateDeleted(id: String, deleted: Boolean)
 
+    // ===== 单行体积自愈（SQLiteBlobTooBigException 防护）=====
+
+    /**
+     * 找出五大 TEXT 字段合计字节数超过预算的消息 id。
+     *
+     * `length(CAST(x AS BLOB))` 在 SQLite 引擎内部按 UTF-8 字节计数，不把大字段
+     * 搬进 CursorWindow，因此这条查询本身对超限行也是安全的。
+     */
+    @Query(
+        "SELECT id FROM local_messages WHERE (:sessionId IS NULL OR session_id = :sessionId) AND deleted = 0 " +
+            "AND COALESCE(length(CAST(content AS BLOB)),0) + COALESCE(length(CAST(reasoning_content AS BLOB)),0) " +
+            "+ COALESCE(length(CAST(thinking_cards AS BLOB)),0) + COALESCE(length(CAST(tool_call_history AS BLOB)),0) " +
+            "+ COALESCE(length(CAST(knowledge_citations AS BLOB)),0) > :byteLimit"
+    )
+    suspend fun listOversizedMessageIds(sessionId: String?, byteLimit: Long): List<String>
+
+    /** 单条消息各大 TEXT 字段的字节数（只回传数字）。 */
+    @Query(
+        "SELECT COALESCE(length(CAST(content AS BLOB)),0) AS content, " +
+            "COALESCE(length(CAST(reasoning_content AS BLOB)),0) AS reasoning_content, " +
+            "COALESCE(length(CAST(thinking_cards AS BLOB)),0) AS thinking_cards, " +
+            "COALESCE(length(CAST(tool_call_history AS BLOB)),0) AS tool_call_history, " +
+            "COALESCE(length(CAST(knowledge_citations AS BLOB)),0) AS knowledge_citations " +
+            "FROM local_messages WHERE id = :id"
+    )
+    suspend fun getFieldSizes(id: String): MessageFieldSizes?
+
+    /** 分块读取超限字段：每次只取一小段，避免整行进 CursorWindow。 */
+    @Query("SELECT substr(content, :offset, :length) FROM local_messages WHERE id = :id")
+    suspend fun readContentChunk(id: String, offset: Int, length: Int): String?
+
+    @Query("SELECT substr(reasoning_content, :offset, :length) FROM local_messages WHERE id = :id")
+    suspend fun readReasoningContentChunk(id: String, offset: Int, length: Int): String?
+
+    @Query("SELECT substr(thinking_cards, :offset, :length) FROM local_messages WHERE id = :id")
+    suspend fun readThinkingCardsChunk(id: String, offset: Int, length: Int): String?
+
+    @Query("SELECT substr(tool_call_history, :offset, :length) FROM local_messages WHERE id = :id")
+    suspend fun readToolCallHistoryChunk(id: String, offset: Int, length: Int): String?
+
+    @Query("SELECT substr(knowledge_citations, :offset, :length) FROM local_messages WHERE id = :id")
+    suspend fun readKnowledgeCitationsChunk(id: String, offset: Int, length: Int): String?
+
+    /** 体积自愈专用：把超限字段的正文替换为头部片段（调用方已把完整内容转存文件）。 */
+    @Query("UPDATE local_messages SET reasoning_content = :value WHERE id = :id")
+    suspend fun updateReasoningContent(id: String, value: String?)
+
+    @Query("UPDATE local_messages SET tool_call_history = :value WHERE id = :id")
+    suspend fun updateToolCallHistory(id: String, value: String?)
+
+    @Query("UPDATE local_messages SET knowledge_citations = :value WHERE id = :id")
+    suspend fun updateKnowledgeCitations(id: String, value: String?)
+
     /**
      * swipes：把消息正文替换为指定候选，并记录候选总数。
      *

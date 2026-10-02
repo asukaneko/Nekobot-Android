@@ -225,6 +225,7 @@
     <string name="log_repo_session_autonamed">Session auto-named: %1$s -&gt; %2$s</string>
     <string name="log_repo_skill_extract_failed">Agent skill distillation failed (main flow unaffected): %1$s</string>
     <string name="log_repo_state_cache_write_failed">Failed to write state history cache: %1$s</string>
+    <string name="log_repo_oversize_row_repair_retry">Message row exceeds CursorWindow limit; repaired and retrying: %1$s</string>
     <string name="log_repo_task_expired">Task \"%1$s\" last run point expired; deferred to %2$s</string>
     <string name="log_repo_token_usage_corrupt">Token usage records corrupted; backed up and rebuilt: %1$s</string>
     <string name="log_repo_token_usage_recovered">Recovered %1$s token usage entries from message records</string>

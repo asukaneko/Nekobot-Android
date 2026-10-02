@@ -185,6 +185,17 @@ data class LocalMessageCursor(
 )
 
 /**
+ * 消息行各大 TEXT 字段的 UTF-8 字节数（体积自愈检测用，只回传数字、不搬运大字段）。
+ */
+data class MessageFieldSizes(
+    @ColumnInfo(name = "content") val content: Long,
+    @ColumnInfo(name = "reasoning_content") val reasoningContent: Long,
+    @ColumnInfo(name = "thinking_cards") val thinkingCards: Long,
+    @ColumnInfo(name = "tool_call_history") val toolCallHistory: Long,
+    @ColumnInfo(name = "knowledge_citations") val knowledgeCitations: Long
+)
+
+/**
  * 助手消息的一条候选回复（swipes）。
  *
  * 一瓶一候选：消息本身保存当前选中的正文，本表保存该消息的全部版本，

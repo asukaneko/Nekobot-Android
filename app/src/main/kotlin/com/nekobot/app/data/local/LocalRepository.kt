@@ -2608,8 +2608,21 @@ class LocalRepository(
 
     // ==================== 消息 ====================
 
+    /**
+     * 消息读取的体积自愈兜底：单行 TEXT 字段合计超过 CursorWindow（约 2MB）时，
+     * 任何整行读取都会抛 SQLiteBlobTooBigException，导致会话打不开。
+     * 捕获后转存截断超限字段（[MessageOversizeRepair]）再重试一次。
+     */
+    private suspend fun <T> withMessageRowRepair(sessionId: String?, block: suspend () -> T): T = try {
+        block()
+    } catch (e: android.database.sqlite.SQLiteBlobTooBigException) {
+        LocalLogger.w(TAG, R.string.log_repo_oversize_row_repair_retry, e.message)
+        MessageOversizeRepair.repairOversizedRows(messageDao, appContext, sessionId)
+        block()
+    }
+
     suspend fun listMessages(sessionId: String): List<Message> = withContext(Dispatchers.IO) {
-        messageDao.listBySession(sessionId).map { it.toMessage() }
+        withMessageRowRepair(sessionId) { messageDao.listBySession(sessionId).map { it.toMessage() } }
     }
 
     /**
@@ -2619,13 +2632,17 @@ class LocalRepository(
      * 一次性查询并渲染全部消息；AI 上下文、导出、统计等路径仍使用 [listMessages] 全量查询。
      */
     suspend fun listRecentMessages(sessionId: String, limit: Int): MessagePage = withContext(Dispatchers.IO) {
-        val pageSize = limit.coerceAtLeast(1)
-        // 多取一条用于判断是否还有更早历史，避免额外的 COUNT 查询
-        val rows = messageDao.listRecentRows(sessionId, pageSize + 1)
-        MessagePage(
-            messages = rows.take(pageSize).asReversed().map { it.message.toMessage() },
-            hasMore = rows.size > pageSize
-        )
+        // 打开会话时的主动检查：存量超大行会让下面所有整行查询崩溃，先转存截断。
+        MessageOversizeRepair.ensureSessionReadable(messageDao, appContext, sessionId)
+        withMessageRowRepair(sessionId) {
+            val pageSize = limit.coerceAtLeast(1)
+            // 多取一条用于判断是否还有更早历史，避免额外的 COUNT 查询
+            val rows = messageDao.listRecentRows(sessionId, pageSize + 1)
+            MessagePage(
+                messages = rows.take(pageSize).asReversed().map { it.message.toMessage() },
+                hasMore = rows.size > pageSize
+            )
+        }
     }
 
     /**
@@ -2639,13 +2656,19 @@ class LocalRepository(
         beforeMessageId: String,
         limit: Int
     ): MessagePage = withContext(Dispatchers.IO) {
-        val cursor = messageDao.cursorOf(beforeMessageId) ?: return@withContext MessagePage()
-        val pageSize = limit.coerceAtLeast(1)
-        val rows = messageDao.listRowsBefore(sessionId, cursor.createdAt, cursor.rowId, pageSize + 1)
-        MessagePage(
-            messages = rows.take(pageSize).asReversed().map { it.message.toMessage() },
-            hasMore = rows.size > pageSize
-        )
+        withMessageRowRepair(sessionId) {
+            val cursor = messageDao.cursorOf(beforeMessageId)
+            val pageSize = limit.coerceAtLeast(1)
+            if (cursor == null) {
+                MessagePage()
+            } else {
+                val rows = messageDao.listRowsBefore(sessionId, cursor.createdAt, cursor.rowId, pageSize + 1)
+                MessagePage(
+                    messages = rows.take(pageSize).asReversed().map { it.message.toMessage() },
+                    hasMore = rows.size > pageSize
+                )
+            }
+        }
     }
 
     /** 全局搜索使用的本地消息全文匹配；限制结果数，避免把完整历史载入 UI。 */
@@ -2656,18 +2679,19 @@ class LocalRepository(
     }
 
     /** 仅供 AI 调用链读取；命令输入和命令结果继续保留在聊天记录中。 */
-    private suspend fun listAiContextMessages(sessionId: String): List<LocalMessageEntity> {
-        val session = sessionDao.getById(sessionId)
-        if (session?.longConversationEnabled == true) ensureLongConversationBoundary(sessionId)
-        return (if (session?.sessionMode.equals("agent", true)) {
-            messageDao.listAgentRowsWithBoundary(
-                sessionId,
-                strictBoundary = session?.longConversationEnabled == true
-            )
-        } else {
-            messageDao.listBySession(sessionId)
-        }).filterNot { it.isLocalCommandMessage() }
-    }
+    private suspend fun listAiContextMessages(sessionId: String): List<LocalMessageEntity> =
+        withMessageRowRepair(sessionId) {
+            val session = sessionDao.getById(sessionId)
+            if (session?.longConversationEnabled == true) ensureLongConversationBoundary(sessionId)
+            (if (session?.sessionMode.equals("agent", true)) {
+                messageDao.listAgentRowsWithBoundary(
+                    sessionId,
+                    strictBoundary = session?.longConversationEnabled == true
+                )
+            } else {
+                messageDao.listBySession(sessionId)
+            }).filterNot { it.isLocalCommandMessage() }
+        }
 
     fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
         messageDao.observeBySession(sessionId)
