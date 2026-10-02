@@ -265,11 +265,22 @@ internal class LocalWorkspaceRepository(
                         addProperty("name", file.name)
                         addProperty("type", if (file.isDirectory) "directory" else "file")
                         addProperty("size", file.length())
+                        addProperty("modified_at", latestModifiedAt(file))
                         addProperty("path", file.relativeTo(root).invariantSeparatorsPath)
                         addProperty("mime_type", mimeType(file.name))
                     })
                 }
         }
+    }
+
+    /** 文件取自身修改时间；文件夹取内部全部内容的最新修改时间（递归，含自身）。 */
+    private fun latestModifiedAt(file: File): Long {
+        if (!file.isDirectory) return file.lastModified()
+        val latestInside = file.walkTopDown()
+            .filter(File::isFile)
+            .maxOfOrNull(File::lastModified)
+            ?: 0L
+        return maxOf(file.lastModified(), latestInside)
     }
 
     private fun writeFile(root: File, bytes: ByteArray, originalName: String): JsonObject {

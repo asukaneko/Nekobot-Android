@@ -68,6 +68,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** 工作区文件项 */
 @Immutable
@@ -76,7 +79,8 @@ data class WorkspaceFile(
     val type: String,        // "file" | "directory"
     val size: Long,
     val path: String,
-    val mimeType: String = ""
+    val mimeType: String = "",
+    val modifiedAt: Long = 0L   // 最近修改时间（epoch 毫秒，0 = 未知，如服务端未返回）
 ) {
     val isDirectory get() = type == "directory"
 }
@@ -580,7 +584,8 @@ class WorkspaceViewModel : BaseViewModel() {
         type = get("type")?.asString ?: "file",
         size = get("size")?.asLong ?: 0L,
         path = get("path")?.asString ?: "",
-        mimeType = get("mime_type")?.asString ?: ""
+        mimeType = get("mime_type")?.asString ?: "",
+        modifiedAt = runCatching { get("modified_at")?.asLong }.getOrNull() ?: 0L
     )
 
     private fun readUri(context: Context, uri: Uri): Pair<String, ByteArray>? {
@@ -1052,8 +1057,9 @@ private fun WorkspaceFileItem(
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                     }
                 }
+                val secondary = if (file.isDirectory) stringResource(R.string.workspace_folder) else formatSize(file.size)
                 Text(
-                    if (file.isDirectory) stringResource(R.string.workspace_folder) else formatSize(file.size),
+                    if (file.modifiedAt > 0L) "$secondary · ${formatModifiedTime(file.modifiedAt)}" else secondary,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1139,6 +1145,10 @@ private fun formatSize(bytes: Long): String = when {
     bytes < 1024 * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
     else -> "%.2f GB".format(bytes / (1024.0 * 1024 * 1024))
 }
+
+/** 最近修改时间：SimpleDateFormat 默认走设备时区与地区。 */
+private fun formatModifiedTime(epochMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(epochMillis))
 
 /** Ctrl+U：注入 cd 前先清掉 shell 里半行输入。 */
 private const val TERMINAL_CTRL_U = 0x15.toByte()
