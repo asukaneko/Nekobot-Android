@@ -73,7 +73,7 @@ internal fun buildSubagentToolDefinitions(): List<Map<String, Any>> {
         ),
         definition(
             TOOL_SUBAGENT_LIST,
-            "列出当前会话已提交的子代理任务（含后台运行的）及其状态。",
+            "列出当前会话已提交的子代理任务（含后台运行的）及其状态。只返回任务元信息（id、描述、状态、进度），不含输出内容；需要查看某个任务的结果时，用 subagent_get 传入其 task_id 查询。",
             mapOf("type" to "object", "properties" to emptyMap<String, Any>())
         ),
         definition(

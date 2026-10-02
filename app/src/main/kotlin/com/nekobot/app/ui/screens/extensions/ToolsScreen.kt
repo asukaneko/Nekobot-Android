@@ -69,11 +69,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Tools 配置 ViewModel：只读地展示当前实际存在的工具（内置 + 动态发现的 MCP 工具）。
+ * Tools 配置 ViewModel：只读地展示当前实际存在的工具。
  *
- * 工具清单完全来自 [com.nekobot.app.data.repository.UnifiedRepository.listTools]，
- * 界面不再硬编码任何工具条目：新增工具只要进入 [BuiltinTools] 或运行期动态注册到
- * [SessionToolCatalog]，就会自动出现在本页，无需改动 UI。
+ * 清单来自 [com.nekobot.app.data.repository.UnifiedRepository.listTools]，包含三部分：
+ * 数据库内置/自定义工具、代码定义的会话工具（Skill / 数据库 / 子代理）与已连接的 MCP
+ * 工具。界面不硬编码任何条目：新增工具只要在声明处写上所属大类（BuiltinToolSpec.category），
+ * 就会自动出现在本页对应分组中，无需改动 UI。
  */
 class ToolsViewModel : BaseViewModel() {
     private val _list = MutableStateFlow<List<Tool>>(emptyList())

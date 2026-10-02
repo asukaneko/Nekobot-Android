@@ -12437,9 +12437,48 @@ ${AiOutputLanguage.directive()}
         ensureBuiltinTools()
         // 内置工具按预设顺序置顶，用户自定义工具按创建时间倒序
         val builtinOrder = com.nekobot.app.data.local.db.BuiltinTools.all.mapIndexed { i, s -> s.id to i }.toMap()
-        db.toolDao().listAll()
+        val dbTools = db.toolDao().listAll()
             .sortedWith(compareBy({ builtinOrder[it.id] ?: Int.MAX_VALUE }, { it.createdAt }))
             .map { it.toTool() }
+        // 代码定义但不落库的会话工具（Skill / 数据库 / 子代理 / MCP）补成虚拟条目：
+        // 与 SessionToolCatalog 目录保持同一口径，新增工具进入定义构建函数后自动在本页出现。
+        dbTools + virtualSessionToolRows(dbTools.mapNotNull { it.id }.toSet())
+    }
+
+    /** 把 function-calling 定义转换为 Tools 页展示用的虚拟 Tool 条目。 */
+    private fun definitionToVirtualTool(
+        definition: Map<String, Any>,
+        existingIds: Set<String>,
+        enabled: Boolean,
+        builtin: Boolean,
+        displayName: String? = null
+    ): Tool? {
+        val function = definition["function"] as? Map<String, Any> ?: return null
+        val id = function["name"]?.toString() ?: return null
+        if (id in existingIds) return null
+        return Tool(
+            id = id,
+            // MCP 工具 id 带 mcp__<server>__<name> 前缀，留空让 UI 用去前缀的兜底名展示
+            name = displayName ?: id,
+            description = function["description"]?.toString(),
+            enabled = enabled,
+            parameters = function["parameters"]?.let { gson.toJsonTree(it) },
+            builtin = builtin
+        )
+    }
+
+    private fun virtualSessionToolRows(existingIds: Set<String>): List<Tool> {
+        val subagentEnabled = ServiceContainer.prefs.subagentEnabled
+        return buildSubagentToolDefinitions()
+            .mapNotNull { definitionToVirtualTool(it, existingIds, subagentEnabled, builtin = true) } +
+            buildLocalSkillToolDefinitions()
+                .mapNotNull { definitionToVirtualTool(it, existingIds, enabled = true, builtin = true) } +
+            buildLocalDbToolDefinitions()
+                .mapNotNull { definitionToVirtualTool(it, existingIds, enabled = true, builtin = true) } +
+            // MCP 工具取运行时缓存（不触发连接），未连接时为空列表
+            cachedMcpAgentTools.mapNotNull {
+                definitionToVirtualTool(it, existingIds, enabled = true, builtin = false, displayName = "")
+            }
     }
 
     suspend fun createTool(req: ToolRequest): Tool = withContext(Dispatchers.IO) {

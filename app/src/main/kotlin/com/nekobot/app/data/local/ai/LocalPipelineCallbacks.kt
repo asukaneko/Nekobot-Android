@@ -1941,14 +1941,25 @@ internal class LocalPipelineCallbacks(
         return mapOf(
             "success" to true,
             "count" to tasks.size,
+            // 只返回任务元信息，不携带 result / prompt / steps：列表用于掌握全局进度，
+            // 单个任务的输出内容统一由 subagent_get 按 task_id 取回，避免长输出刷爆上下文。
             "tasks" to tasks.take(50).map { t ->
-                // status 统一为小写（与 subagent_get 一致，便于模型按 outputting 判断）；
-                // 进行中的任务补一条 activity，说明当前在做什么。
-                t.toMap(gson).toMutableMap().apply {
+                buildMap<String, Any> {
+                    put("task_id", t.id)
+                    put("description", t.description)
+                    // status 统一为小写（与 subagent_get 一致，便于模型按 outputting 判断）
                     put("status", t.status.name.lowercase())
-                    if (t.isActive) put("activity", subagentActivityText(t))
+                    put("depth", t.depth)
+                    t.parentTaskId?.let { put("parent_task_id", it) }
+                    put("tool_calls", t.toolCalls)
+                    if (t.isActive) {
+                        put("activity", subagentActivityText(t))
+                    } else if (t.status == SubagentTaskStatus.FAILED) {
+                        put("error", (t.error ?: "子代理执行失败").take(200))
+                    }
                 }
-            }
+            },
+            "instruction" to "列表只包含任务元信息，不含最终输出内容；需要查看某个任务的结果时，用 subagent_get 传入对应 task_id 查询。"
         )
     }
 

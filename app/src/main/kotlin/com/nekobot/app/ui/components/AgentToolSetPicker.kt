@@ -46,6 +46,7 @@ import com.nekobot.app.data.local.ai.ToolSetModeCatalog
 import com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions
+import com.nekobot.app.data.local.ai.buildSubagentToolDefinitions
 import com.nekobot.app.data.local.ai.toolDisplayFallbackName
 import com.nekobot.app.data.local.db.BuiltinTools
 
@@ -706,12 +707,13 @@ internal data class ToolParameterEntry(val name: String, val required: Boolean)
 /**
  * 本地可执行工具的全部 function-calling 定义，与 Agent 注入给模型的口径一致。
  *
- * 覆盖内置工具、Agent 工具、Skill 工具与数据库工具；新增本地工具只要并入这里
- * 就能在「工具详情 / 进度卡片步骤详情」中展示说明与输入参数。
+ * 覆盖内置工具、Agent 工具、Skill 工具、数据库工具与子代理工具；新增本地工具只要
+ * 并入这里就能在「工具详情 / 进度卡片步骤详情」中展示说明与输入参数。
  */
 internal fun allLocalToolDefinitions(): List<Map<String, Any>> =
     buildLocalAgentToolDefinitions(recallEnabled = true) +
-        buildLocalSkillToolDefinitions() + buildLocalDbToolDefinitions()
+        buildLocalSkillToolDefinitions() + buildLocalDbToolDefinitions() +
+        buildSubagentToolDefinitions()
 
 /** 从一份 function-calling 定义中取出 function 节点。 */
 private fun functionNode(definition: Map<String, Any>): Map<String, Any>? {

@@ -2,6 +2,7 @@ package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.nekobot.app.data.local.db.BuiltinTools
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -31,169 +32,38 @@ object SessionToolCatalog {
         val toolIds: List<String>
     )
 
-    private val staticCategories: List<Category> = listOf(
-        // 基础查询 / 网络检索
-        Category(
-            id = "basic",
-            toolIds = listOf(
-                "get_weather",
-                "search_web",
-                "http_get",
-                "web_fetch",
-                "get_date_time",
-                "download_file"
-            )
-        ),
-        // 浏览器使用
-        Category(id = "browser", toolIds = listOf("browser_use")),
-        // Linux 沙盒命令与文件
-        Category(
-            id = "linux",
-            toolIds = listOf(
-                "exec_command",
-                "shell_job",
-                "file_read",
-                "file_write",
-                "file_edit",
-                "grep",
-                "glob"
-            )
-        ),
-        // 会话工作区
-        Category(
-            id = "workspace",
-            toolIds = listOf(
-                "workspace_create_file",
-                "workspace_read_file",
-                "workspace_edit_file",
-                "workspace_delete_file",
-                "workspace_list_files",
-                "workspace_send_file",
-                "workspace_parse_file",
-                "workspace_extract_epub",
-                "workspace_file_info"
-            )
-        ),
-        // 图片能力
-        Category(
-            id = "image",
-            toolIds = listOf(
-                "understand_image",
-                "generate_image",
-                "read_image"
-            )
-        ),
-        // 自定义表情包（导入的表情原图发送与查看）
-        Category(
-            id = "sticker",
-            toolIds = listOf(
-                "list_stickers",
-                "send_sticker",
-                "view_sticker"
-            )
-        ),
-        // 记忆
-        Category(
-            id = "memory",
-            toolIds = listOf(
-                "agent_memory_read",
-                "agent_memory_update",
-                "agent_recall_search",
-                "agent_history_search",
-                "agent_history_read"
-            )
-        ),
-        // 任务与提问
-        Category(
-            id = "task",
-            toolIds = listOf(
-                "todo_write",
-                "todo_read",
-                "ask_user_question",
-                "get_session_thinking_history",
-                "send_message"
-            )
-        ),
-        // 插件与技能
-        Category(
-            id = "plugin",
-            toolIds = listOf(
-                "plugin_use",
-                "skill_list",
-                "skill_view",
-                "skill_read",
-                "skill_get_info"
-            )
-        ),
-        // Android 系统操作
-        Category(
-            id = "android",
-            toolIds = listOf(
-                "android_help",
-                "android_device_info",
-                "android_battery_status",
-                "android_clipboard_read",
-                "android_clipboard_write",
-                "android_open_url",
-                "android_list_apps",
-                "android_open_app",
-                "android_open_settings",
-                "android_create_calendar_event",
-                "android_set_alarm",
-                "android_volume",
-                "android_accessibility_status",
-                "android_ui_tree",
-                "android_ui_click",
-                "android_ui_set_text",
-                "android_ui_scroll",
-                "android_ui_tap",
-                "android_ui_swipe",
-                "android_ui_ime_action",
-                "android_ui_paste",
-                "android_wait_for_idle",
-                "android_global_action",
-                "android_screenshot",
-                "android_step",
-                "android_notifications",
-                "android_notification_action",
-                "android_media_control"
-            )
-        ),
-        // 数据管理（数据库工具）
-        Category(
-            id = "db",
-            toolIds = listOf(
-                "db_list_characters", "db_get_character", "db_create_character",
-                "db_update_character", "db_delete_character",
-                "db_list_world_books", "db_get_world_book", "db_create_world_book",
-                "db_update_world_book", "db_delete_world_book",
-                "db_upsert_world_book_entry", "db_delete_world_book_entry",
-                "db_token_stats", "db_token_rankings", "db_session_token_usage",
-                "db_list_memories", "db_save_memory", "db_delete_memory",
-                "db_list_state_history", "db_get_latest_state",
-                "db_list_hooks", "db_create_hook", "db_update_hook",
-                "db_delete_hook", "db_toggle_hook",
-                "db_list_workflows", "db_create_workflow", "db_update_workflow",
-                "db_delete_workflow", "db_list_tasks", "db_create_task",
-                "db_update_task", "db_delete_task",
-                "db_list_skills", "db_create_skill", "db_update_skill",
-                "db_delete_skill", "db_toggle_skill",
-                "db_list_ai_models", "db_get_ai_model", "db_create_ai_model",
-                "db_update_ai_model", "db_delete_ai_model", "db_set_active_model",
-                "db_get_ai_config", "db_update_ai_config"
-            )
-        ),
-        // 子代理委派
-        Category(
-            id = "subagent",
-            toolIds = listOf(
-                "subagent",
-                "subagent_list",
-                "subagent_get",
-                "subagent_kill"
-            )
-        )
+    /**
+     * 大类展示顺序。新增大类时：① 在此追加 id；② 补 `toolset_cat_<id>` 多语言文案
+     * （AgentToolSetPicker.toolsetCategoryName）；③ 给工具声明所属大类。
+     */
+    private val categoryOrder: List<String> = listOf(
+        "basic", "browser", "linux", "workspace", "image", "sticker",
+        "memory", "task", "plugin", "android", "db", "subagent"
     )
+
+    /**
+     * 静态目录自动推导，无需手写工具 id 清单：
+     * - BuiltinTools 规格自带 [BuiltinToolSpec.category]，按大类分组归位；
+     * - 非内置定义的工具（Skill / 数据库 / 子代理）直接按各自的 id 集合整体归组。
+     * 新增工具只要在声明处写上 category，目录、工具集面板、工具集模式、Tools 配置页
+     * 会自动带出（一致性由 SessionToolCatalogConsistencyTest 守住）。
+     */
+    private val staticCategories: List<Category> by lazy {
+        val byCategory = LinkedHashMap<String, MutableList<String>>()
+        fun assign(categoryId: String, toolIds: Collection<String>) {
+            if (toolIds.isEmpty()) return
+            byCategory.getOrPut(categoryId) { mutableListOf() }.addAll(toolIds)
+        }
+        BuiltinTools.all
+            .filter { it.category.isNotBlank() }
+            .forEach { assign(it.category, listOf(it.id)) }
+        assign("plugin", localSkillToolIds.sorted())
+        assign("db", localDbToolIds.sorted())
+        assign("subagent", subagentToolIds.sorted())
+        categoryOrder.mapNotNull { id ->
+            byCategory[id]?.takeIf { it.isNotEmpty() }?.let { Category(id, it) }
+        }
+    }
 
     /** 运行期注册的动态工具：大类 id → 工具 id 列表（MCP 工具随服务器配置变化）。 */
     private val dynamicCategories = ConcurrentHashMap<String, List<String>>()
