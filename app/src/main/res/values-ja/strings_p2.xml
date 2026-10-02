@@ -27,6 +27,7 @@
     <string name="character_translate">キャラクターカードを翻訳</string>
     <string name="character_translate_target_language">翻訳先の言語を選択</string>
     <string name="character_translate_language_zh">中国語</string>
+    <string name="character_translate_language_zh_tw">繁體中文</string>
     <string name="character_translate_language_en">英語</string>
     <string name="character_translate_language_ja">日本語</string>
     <string name="character_translate_language_ko">韓国語</string>

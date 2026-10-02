@@ -27,6 +27,7 @@
     <string name="character_translate">캐릭터 카드 번역</string>
     <string name="character_translate_target_language">대상 언어 선택</string>
     <string name="character_translate_language_zh">중국어</string>
+    <string name="character_translate_language_zh_tw">繁體中文</string>
     <string name="character_translate_language_en">영어</string>
     <string name="character_translate_language_ja">일본어</string>
     <string name="character_translate_language_ko">한국어</string>
