@@ -11035,6 +11035,19 @@ ${AiOutputLanguage.directive()}
         true
     }
 
+    /** Bind a read-only browser to this repository's database, including its change observer. */
+    fun experienceSourceReader(): ExperienceSourceReader = ExperienceSourceReader(db)
+
+    /** Read source membership with bounded pages; no generation or chat-state changes. */
+    suspend fun readExperienceSourcePage(sessionId: String, archiveId: String, afterMessageId: String? = null): ExperienceSourcePage? =
+        withContext(Dispatchers.IO) { ExperienceSourceReader(db).sourcePage(sessionId, archiveId, afterMessageId) }
+
+    suspend fun readChatHistoryWindow(sessionId: String, messageId: String, archiveId: String? = null): ChatHistoryWindow? =
+        withContext(Dispatchers.IO) { ExperienceSourceReader(db).historyWindow(sessionId, messageId, archiveId) }
+
+    suspend fun readChatHistoryPage(sessionId: String, cursorId: String, older: Boolean, archiveId: String? = null): ChatHistoryPage? =
+        withContext(Dispatchers.IO) { ExperienceSourceReader(db).historyPage(sessionId, cursorId, older, archiveId) }
+
     /** 查看当前会话的分段经历；按页读取，不能把六万条原话带入页面。 */
     suspend fun listExperienceArchives(
         sessionId: String,

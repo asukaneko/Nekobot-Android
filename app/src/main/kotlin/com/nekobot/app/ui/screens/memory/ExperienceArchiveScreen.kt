@@ -45,6 +45,7 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ai.MemoryTags
 import com.nekobot.app.data.local.ExperienceBackfillInfo
+import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.db.LocalExperienceArchiveEntity
 import com.nekobot.app.data.local.db.LocalExperienceArchiveJobEntity
 import com.nekobot.app.data.model.LegacyMemory
@@ -61,12 +62,17 @@ import com.nekobot.app.ui.components.SectionHeader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** The list and edits always go through the current Room-backed LocalRepository. */
-class ExperienceArchiveViewModel : BaseViewModel() {
+/** A retained archive list and its actions belong to the database in which it was opened. */
+class ExperienceArchiveViewModel(
+    val dataSourceRevision: StateFlow<Long> = ServiceContainer.dataSourceRevision
+) : BaseViewModel() {
+    private val ownerRevision = dataSourceRevision.value
+    private val ownerRepository: LocalRepository = ServiceContainer.localRepository
     private val _archives = MutableStateFlow<List<LocalExperienceArchiveEntity>>(emptyList())
     val archives: StateFlow<List<LocalExperienceArchiveEntity>> = _archives.asStateFlow()
 
@@ -88,12 +94,32 @@ class ExperienceArchiveViewModel : BaseViewModel() {
 
     private var currentSessionId: String? = null
 
+    fun ownsCurrentDatabase(revision: Long = dataSourceRevision.value): Boolean = ownerRevision == revision &&
+        runCatching { ownerRepository === ServiceContainer.localRepository }.getOrDefault(false)
+
+    init {
+        viewModelScope.launch { dataSourceRevision.collect {
+            if (!ownsCurrentDatabase()) {
+                runningBackfill?.cancel()
+                currentSessionId = null
+                _archives.value = emptyList()
+                _characterMemories.value = emptyList()
+                _hasMore.value = false
+                _backfillInfo.value = null
+                _backfillJob.value = null
+                _historyCopyRunning.value = false
+                _historyCopyProgress.value = null
+                setLoading(false)
+            }
+        } }
+    }
+
     fun load(sessionId: String) {
-        if (sessionId.isBlank()) return
+        if (!ownsCurrentDatabase() || sessionId.isBlank()) return
+        val local = ownerRepository
         currentSessionId = sessionId
         launchResult(
             block = {
-                val local = ServiceContainer.localRepository
                 val session = local.getSession(sessionId)
                 val page = local.listExperienceArchives(sessionId, PAGE_SIZE, 0)
                 val info = local.experienceBackfillInfo(sessionId)
@@ -105,7 +131,7 @@ class ExperienceArchiveViewModel : BaseViewModel() {
                 Resource.Success(Triple(page, memories, info))
             },
             onSuccess = { (page, memories, info) ->
-                if (currentSessionId != sessionId) return@launchResult
+                if (!ownsCurrentDatabase() || currentSessionId != sessionId) return@launchResult
                 _archives.value = page
                 _characterMemories.value = memories
                 _hasMore.value = page.size == PAGE_SIZE
@@ -117,12 +143,14 @@ class ExperienceArchiveViewModel : BaseViewModel() {
 
     /** Called only after the explicit cost confirmation dialog has been accepted. */
     fun startBackfill() {
+        if (!ownsCurrentDatabase()) return
         val sessionId = currentSessionId ?: return
+        val local = ownerRepository
         if (runningBackfill?.isActive == true) return
         runningBackfill = viewModelScope.launch {
             try {
-                ServiceContainer.localRepository.runExperienceBackfill(sessionId) { job ->
-                    _backfillJob.value = job
+                local.runExperienceBackfill(sessionId) { job ->
+                    if (ownsCurrentDatabase()) _backfillJob.value = job
                 }
                 load(sessionId)
             } catch (_: CancellationException) {
@@ -137,16 +165,18 @@ class ExperienceArchiveViewModel : BaseViewModel() {
 
     /** Rebuilds a bounded read-only copy on demand; never calls an AI model. */
     fun rebuildHistoryCopy() {
+        if (!ownsCurrentDatabase()) return
         val sessionId = currentSessionId ?: return
+        val local = ownerRepository
         if (_historyCopyRunning.value) return
         viewModelScope.launch {
             _historyCopyRunning.value = true
             _historyCopyProgress.value = 0L
             try {
-                val result = ServiceContainer.localRepository.rebuildWorkspaceHistoryCopy(sessionId) { count ->
-                    _historyCopyProgress.value = count
+                val result = local.rebuildWorkspaceHistoryCopy(sessionId) { count ->
+                    if (ownsCurrentDatabase()) _historyCopyProgress.value = count
                 }
-                showToast(string(R.string.experience_history_copy_done, result.messageCount))
+                if (ownsCurrentDatabase()) showToast(string(R.string.experience_history_copy_done, result.messageCount))
             } catch (error: Exception) {
                 showError(error.message ?: string(R.string.experience_history_copy_failed))
             } finally {
@@ -156,17 +186,19 @@ class ExperienceArchiveViewModel : BaseViewModel() {
     }
 
     fun loadMore() {
+        if (!ownsCurrentDatabase()) return
         val sessionId = currentSessionId ?: return
+        val local = ownerRepository
         if (!_hasMore.value || loading.value) return
         val offset = _archives.value.size
         launchResult(
             block = {
                 Resource.Success(
-                    ServiceContainer.localRepository.listExperienceArchives(sessionId, PAGE_SIZE, offset)
+                    local.listExperienceArchives(sessionId, PAGE_SIZE, offset)
                 )
             },
             onSuccess = { page ->
-                if (currentSessionId != sessionId) return@launchResult
+                if (!ownsCurrentDatabase() || currentSessionId != sessionId) return@launchResult
                 _archives.value = (_archives.value + page).distinctBy { it.id }
                 _hasMore.value = page.size == PAGE_SIZE
             }
@@ -174,14 +206,17 @@ class ExperienceArchiveViewModel : BaseViewModel() {
     }
 
     fun save(archiveId: String, summary: String, tags: List<String>) {
+        if (!ownsCurrentDatabase()) return
         val sessionId = currentSessionId ?: return
+        val local = ownerRepository
         launchResult(
             block = {
                 Resource.Success(
-                    ServiceContainer.localRepository.updateExperienceArchive(archiveId, summary, tags)
+                    local.updateExperienceArchive(archiveId, summary, tags)
                 )
             },
             onSuccess = { saved ->
+                if (!ownsCurrentDatabase()) return@launchResult
                 if (saved) {
                     load(sessionId)
                     showToast(string(R.string.experience_archive_saved))
@@ -200,8 +235,20 @@ class ExperienceArchiveViewModel : BaseViewModel() {
 fun ExperienceArchiveScreen(
     sessionId: String,
     onBack: () -> Unit,
+    onOpenSource: (String) -> Unit = {},
     viewModel: ExperienceArchiveViewModel = viewModel()
 ) {
+    val databaseRevision by viewModel.dataSourceRevision.collectAsStateWithLifecycle()
+    if (!viewModel.ownsCurrentDatabase(databaseRevision)) {
+        Scaffold(topBar = { TopAppBar(
+            title = { Text(stringResource(R.string.experience_archive_title)) },
+            navigationIcon = { IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
+            } }
+        ) }) { padding -> Text(stringResource(R.string.experience_source_database_changed),
+            modifier = Modifier.padding(padding).padding(16.dp), color = MaterialTheme.colorScheme.error) }
+        return
+    }
     val archives by viewModel.archives.collectAsStateWithLifecycle()
     val memories by viewModel.characterMemories.collectAsStateWithLifecycle()
     val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
@@ -382,6 +429,7 @@ fun ExperienceArchiveScreen(
                             ExperienceArchiveCard(
                                 archive = archive,
                                 onEdit = { editing = archive },
+                                onOpenSource = { if (viewModel.ownsCurrentDatabase()) onOpenSource(archive.id) },
                                 onTagClick = { selectedTag = it }
                             )
                         }
@@ -463,6 +511,7 @@ fun ExperienceArchiveScreen(
 private fun ExperienceArchiveCard(
     archive: LocalExperienceArchiveEntity,
     onEdit: () -> Unit,
+    onOpenSource: () -> Unit,
     onTagClick: (String) -> Unit
 ) {
     val tags = remember(archive.tagsJson) { MemoryTags.fromJson(archive.tagsJson) }
@@ -503,6 +552,9 @@ private fun ExperienceArchiveCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onOpenSource) {
+                Text(stringResource(R.string.experience_source_open))
+            }
             TextButton(onClick = onEdit) {
                 Icon(Icons.Filled.Edit, contentDescription = null)
                 Text(stringResource(R.string.common_edit))

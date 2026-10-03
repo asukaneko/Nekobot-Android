@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="experience_source_open">查看來源</string>
+    <string name="experience_source_refresh">重新整理原話</string>
+    <string name="experience_source_title">經歷來源</string>
+    <string name="experience_source_session">來源會話：%1$s</string>
+    <string name="experience_source_time">原聊天時間：%1$s — %2$s</string>
+    <string name="experience_source_count">對應 %1$d 則原訊息 · 目前可查看 %2$d 則</string>
+    <string name="experience_source_summary">這份經歷的摘要</string>
+    <string name="experience_source_originals">對應的原聊天</string>
+    <string name="experience_source_missing">這份經歷或來源會話已不存在，無法查看原話。</string>
+    <string name="experience_source_missing_messages">有 %1$d 則來源訊息已刪除或無法使用。</string>
+    <string name="experience_source_changed">原話已變更；下方顯示目前保留的原聊天，摘要可能尚未更新。</string>
+    <string name="experience_source_empty">沒有可查看的來源原話</string>
+    <string name="experience_source_no_mapping">這份經歷未儲存原話來源，無法按標籤推斷原文。</string>
+    <string name="experience_source_load_more">載入更多原話</string>
+    <string name="experience_source_load_failed">原話讀取失敗，請重新整理後再試。</string>
+    <string name="experience_source_jump">定位原聊天</string>
+    <string name="experience_source_original_expand">展開原文</string>
+    <string name="experience_source_original_collapse">收合原文</string>
+    <string name="experience_source_expand_hint">長訊息可展開查看完整原文</string>
+    <string name="experience_source_summary_expand">查看經歷摘要</string>
+    <string name="experience_source_summary_collapse">收合經歷摘要</string>
+    <string name="experience_source_you">你</string>
+    <string name="experience_source_ai">AI</string>
+    <string name="experience_source_no_text">這則原訊息沒有文字正文。</string>
+    <string name="chat_location_title">原聊天位置</string>
+    <string name="chat_location_latest">回到最新聊天</string>
+    <string name="chat_location_target">已定位到這則原訊息</string>
+    <string name="chat_location_segment_target">已定位到這段原聊天</string>
+    <string name="chat_location_older">查看更早的原話</string>
+    <string name="chat_location_newer">查看後面的原話</string>
+    <string name="chat_location_start">已到聊天開頭</string>
+    <string name="chat_location_end">已到最新原話</string>
+    <string name="chat_location_missing">這則原訊息已刪除或不存在，無法定位。</string>
+    <string name="chat_location_return_target">返回定位訊息</string>
+    <string name="chat_location_return_segment">返回定位段落</string>
+    <string name="experience_source_database_changed">已切換資料庫，請返回會話列表重新開啟。</string>
+</resources>

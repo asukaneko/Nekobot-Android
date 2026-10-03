@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="experience_source_open">View source</string>
+    <string name="experience_source_refresh">Refresh original messages</string>
+    <string name="experience_source_title">Experience source</string>
+    <string name="experience_source_session">Source conversation: %1$s</string>
+    <string name="experience_source_time">Original conversation time: %1$s — %2$s</string>
+    <string name="experience_source_count">%1$d source messages · %2$d currently available</string>
+    <string name="experience_source_summary">Summary of this experience</string>
+    <string name="experience_source_originals">Original conversation</string>
+    <string name="experience_source_missing">This experience or its source conversation no longer exists. Original messages are unavailable.</string>
+    <string name="experience_source_missing_messages">%1$d source messages have been deleted or are unavailable.</string>
+    <string name="experience_source_changed">The original messages have changed. The currently saved conversation is shown below; the summary may be out of date.</string>
+    <string name="experience_source_empty">No original messages available</string>
+    <string name="experience_source_no_mapping">No source links were saved for this experience. Tags cannot identify the original messages.</string>
+    <string name="experience_source_load_more">Load more original messages</string>
+    <string name="experience_source_load_failed">Could not read original messages. Refresh and try again.</string>
+    <string name="experience_source_jump">Locate original conversation</string>
+    <string name="experience_source_original_expand">Show full message</string>
+    <string name="experience_source_original_collapse">Collapse message</string>
+    <string name="experience_source_expand_hint">Expand long messages to read the full original text</string>
+    <string name="experience_source_summary_expand">View experience summary</string>
+    <string name="experience_source_summary_collapse">Collapse experience summary</string>
+    <string name="experience_source_you">You</string>
+    <string name="experience_source_ai">AI</string>
+    <string name="experience_source_no_text">This original message has no text.</string>
+    <string name="chat_location_title">Original conversation location</string>
+    <string name="chat_location_latest">Back to latest chat</string>
+    <string name="chat_location_target">Located this original message</string>
+    <string name="chat_location_segment_target">Located this conversation segment</string>
+    <string name="chat_location_older">View earlier original messages</string>
+    <string name="chat_location_newer">View later original messages</string>
+    <string name="chat_location_start">Beginning of conversation</string>
+    <string name="chat_location_end">Latest original messages</string>
+    <string name="chat_location_missing">This original message has been deleted or does not exist. It cannot be located.</string>
+    <string name="chat_location_return_target">Return to located message</string>
+    <string name="chat_location_return_segment">Return to located segment</string>
+    <string name="experience_source_database_changed">Database changed. Return to the conversation list and open this page again.</string>
+</resources>

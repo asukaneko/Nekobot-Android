@@ -163,6 +163,14 @@ interface MessageDao {
     )
     suspend fun visibleAnchorRow(sessionId: String, id: String): LocalMessageRow?
 
+    /** Revalidate only displayed originals, scoped to their conversation and visibility. */
+    @Query(
+        "SELECT *, rowid AS row_id FROM local_messages WHERE session_id = :sessionId " +
+            "AND id IN (:messageIds) AND deleted = 0 AND role IN ('user', 'assistant') " +
+            "ORDER BY created_at ASC, rowid ASC"
+    )
+    suspend fun visibleRowsByIds(sessionId: String, messageIds: List<String>): List<LocalMessageRow>
+
     @Query(
         "SELECT *, rowid AS row_id FROM local_messages WHERE session_id = :sessionId AND deleted = 0 " +
             "AND role IN ('user', 'assistant') " +
@@ -1006,6 +1014,48 @@ interface ExperienceArchiveDao {
 
     @Query("SELECT message_id FROM local_experience_sources WHERE archive_id = :archiveId")
     suspend fun sourceMessageIds(archiveId: String): List<String>
+
+    @Query("SELECT COUNT(*) FROM local_experience_sources WHERE archive_id = :archiveId")
+    suspend fun sourceCount(archiveId: String): Int
+
+    @Query("SELECT EXISTS(SELECT 1 FROM local_experience_sources WHERE archive_id = :archiveId AND message_id = :messageId)")
+    suspend fun containsSource(archiveId: String, messageId: String): Boolean
+
+    /** Only fetch highlight membership for the bounded visible history window. */
+    @Query(
+        "SELECT s.message_id FROM local_experience_sources s " +
+            "JOIN local_experience_archives a ON a.id = s.archive_id " +
+            "JOIN local_messages m ON m.id = s.message_id " +
+            "WHERE s.archive_id = :archiveId AND a.session_id = :sessionId " +
+            "AND m.session_id = :sessionId AND m.deleted = 0 AND m.role IN ('user', 'assistant') " +
+            "AND s.message_id IN (:messageIds)"
+    )
+    suspend fun sourceIdsAmong(sessionId: String, archiveId: String, messageIds: List<String>): List<String>
+
+    /** Source membership, rather than a guessed date range, defines an episode. */
+    @Query(
+        "SELECT COUNT(*) FROM local_experience_sources s " +
+            "JOIN local_experience_archives a ON a.id = s.archive_id " +
+            "JOIN local_messages m ON m.id = s.message_id " +
+            "WHERE s.archive_id = :archiveId AND a.session_id = :sessionId " +
+            "AND m.session_id = :sessionId AND m.deleted = 0 AND m.role IN ('user', 'assistant')"
+    )
+    suspend fun availableSourceCount(sessionId: String, archiveId: String): Int
+
+    @Query(
+        "SELECT m.*, m.rowid AS row_id FROM local_experience_sources s " +
+            "JOIN local_experience_archives a ON a.id = s.archive_id " +
+            "JOIN local_messages m ON m.id = s.message_id " +
+            "WHERE s.archive_id = :archiveId AND a.session_id = :sessionId " +
+            "AND m.session_id = :sessionId AND m.deleted = 0 AND m.role IN ('user', 'assistant') " +
+            "AND (:afterCreatedAt IS NULL OR m.created_at > :afterCreatedAt " +
+            "OR (m.created_at = :afterCreatedAt AND m.rowid > :afterRowId)) " +
+            "ORDER BY m.created_at ASC, m.rowid ASC LIMIT :limit"
+    )
+    suspend fun listSourceRows(
+        sessionId: String, archiveId: String,
+        afterCreatedAt: String?, afterRowId: Long?, limit: Int
+    ): List<LocalMessageRow>
 
     @Query(
         "UPDATE local_experience_archives SET summary = :summary, tags_json = :tagsJson, " +

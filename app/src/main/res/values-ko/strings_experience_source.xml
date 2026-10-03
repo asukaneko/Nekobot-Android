@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="experience_source_open">출처 보기</string>
+    <string name="experience_source_refresh">원본 메시지 새로고침</string>
+    <string name="experience_source_title">경험 출처</string>
+    <string name="experience_source_session">출처 대화: %1$s</string>
+    <string name="experience_source_time">원본 대화 시간: %1$s — %2$s</string>
+    <string name="experience_source_count">출처 메시지 %1$d개 · 현재 볼 수 있는 메시지 %2$d개</string>
+    <string name="experience_source_summary">이 경험의 요약</string>
+    <string name="experience_source_originals">원본 대화</string>
+    <string name="experience_source_missing">이 경험 또는 출처 대화가 더 이상 존재하지 않아 원본 메시지를 볼 수 없습니다.</string>
+    <string name="experience_source_missing_messages">출처 메시지 %1$d개가 삭제되었거나 사용할 수 없습니다.</string>
+    <string name="experience_source_changed">원본 메시지가 변경되었습니다. 아래에는 현재 저장된 대화가 표시되며, 요약은 아직 갱신되지 않았을 수 있습니다.</string>
+    <string name="experience_source_empty">볼 수 있는 원본 메시지가 없습니다</string>
+    <string name="experience_source_no_mapping">이 경험에는 원본 메시지 연결이 저장되어 있지 않습니다. 태그로 원문을 특정할 수 없습니다.</string>
+    <string name="experience_source_load_more">원본 메시지 더 불러오기</string>
+    <string name="experience_source_load_failed">원본 메시지를 읽지 못했습니다. 새로고침 후 다시 시도하세요.</string>
+    <string name="experience_source_jump">원본 대화 위치로 이동</string>
+    <string name="experience_source_original_expand">원문 전체 보기</string>
+    <string name="experience_source_original_collapse">원문 접기</string>
+    <string name="experience_source_expand_hint">긴 메시지를 펼치면 원문 전체를 볼 수 있습니다</string>
+    <string name="experience_source_summary_expand">경험 요약 보기</string>
+    <string name="experience_source_summary_collapse">경험 요약 접기</string>
+    <string name="experience_source_you">나</string>
+    <string name="experience_source_ai">AI</string>
+    <string name="experience_source_no_text">이 원본 메시지에는 텍스트 본문이 없습니다.</string>
+    <string name="chat_location_title">원본 대화 위치</string>
+    <string name="chat_location_latest">최신 대화로 돌아가기</string>
+    <string name="chat_location_target">이 원본 메시지의 위치를 찾았습니다</string>
+    <string name="chat_location_segment_target">이 대화 구간의 위치를 찾았습니다</string>
+    <string name="chat_location_older">이전 원본 메시지 보기</string>
+    <string name="chat_location_newer">이후 원본 메시지 보기</string>
+    <string name="chat_location_start">대화의 시작입니다</string>
+    <string name="chat_location_end">최신 원본 메시지입니다</string>
+    <string name="chat_location_missing">이 원본 메시지가 삭제되었거나 존재하지 않아 위치를 찾을 수 없습니다.</string>
+    <string name="chat_location_return_target">찾은 메시지로 돌아가기</string>
+    <string name="chat_location_return_segment">찾은 대화 구간으로 돌아가기</string>
+    <string name="experience_source_database_changed">데이터베이스가 변경되었습니다. 대화 목록으로 돌아가 이 페이지를 다시 열어 주세요.</string>
+</resources>

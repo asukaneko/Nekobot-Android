@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="experience_source_open">元の会話を表示</string>
+    <string name="experience_source_refresh">元のメッセージを更新</string>
+    <string name="experience_source_title">体験の元の会話</string>
+    <string name="experience_source_session">元の会話：%1$s</string>
+    <string name="experience_source_time">元の会話の日時：%1$s — %2$s</string>
+    <string name="experience_source_count">元のメッセージ %1$d 件 · 現在表示可能 %2$d 件</string>
+    <string name="experience_source_summary">この体験の要約</string>
+    <string name="experience_source_originals">元の会話</string>
+    <string name="experience_source_missing">この体験または元の会話が存在しないため、元のメッセージを表示できません。</string>
+    <string name="experience_source_missing_messages">元のメッセージ %1$d 件が削除されたか、利用できません。</string>
+    <string name="experience_source_changed">元のメッセージが変更されています。現在保存されている会話を表示します。要約は更新されていない可能性があります。</string>
+    <string name="experience_source_empty">表示できる元のメッセージがありません</string>
+    <string name="experience_source_no_mapping">この体験には元のメッセージへのリンクが保存されていません。タグから原文を特定することはできません。</string>
+    <string name="experience_source_load_more">元のメッセージをさらに読み込む</string>
+    <string name="experience_source_load_failed">元のメッセージを読み込めませんでした。更新して再試行してください。</string>
+    <string name="experience_source_jump">元の会話の位置へ</string>
+    <string name="experience_source_original_expand">全文を表示</string>
+    <string name="experience_source_original_collapse">原文を折りたたむ</string>
+    <string name="experience_source_expand_hint">長いメッセージは展開して原文の全文を確認できます</string>
+    <string name="experience_source_summary_expand">体験の要約を表示</string>
+    <string name="experience_source_summary_collapse">体験の要約を折りたたむ</string>
+    <string name="experience_source_you">あなた</string>
+    <string name="experience_source_ai">AI</string>
+    <string name="experience_source_no_text">この元のメッセージには本文がありません。</string>
+    <string name="chat_location_title">元の会話の位置</string>
+    <string name="chat_location_latest">最新の会話に戻る</string>
+    <string name="chat_location_target">この元のメッセージの位置を表示中</string>
+    <string name="chat_location_segment_target">この会話区間の位置を表示中</string>
+    <string name="chat_location_older">以前のメッセージを表示</string>
+    <string name="chat_location_newer">後のメッセージを表示</string>
+    <string name="chat_location_start">会話の先頭です</string>
+    <string name="chat_location_end">最新のメッセージです</string>
+    <string name="chat_location_missing">この元のメッセージは削除されたか存在しないため、位置を表示できません。</string>
+    <string name="chat_location_return_target">対象メッセージに戻る</string>
+    <string name="chat_location_return_segment">対象の会話区間に戻る</string>
+    <string name="experience_source_database_changed">データベースが切り替わりました。会話一覧に戻って、このページを開き直してください。</string>
+</resources>

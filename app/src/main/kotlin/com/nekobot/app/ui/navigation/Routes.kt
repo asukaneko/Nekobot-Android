@@ -58,6 +58,14 @@ object Routes {
     const val MEMORY = "memory"
     const val EXPERIENCE_ARCHIVE = "experience_archive/{sessionId}"
     fun experienceArchive(sessionId: String) = "experience_archive/$sessionId"
+    const val EXPERIENCE_SOURCE = "experience_source/{sessionId}/{archiveId}"
+    fun experienceSource(sessionId: String, archiveId: String) =
+        "experience_source/${android.net.Uri.encode(sessionId)}/${android.net.Uri.encode(archiveId)}"
+    const val CHAT_LOCATION = "chat_location/{sessionId}/{messageId}?archiveId={archiveId}"
+    fun chatLocation(sessionId: String, messageId: String, archiveId: String? = null): String {
+        val route = "chat_location/${android.net.Uri.encode(sessionId)}/${android.net.Uri.encode(messageId)}"
+        return if (archiveId == null) route else "$route?archiveId=${android.net.Uri.encode(archiveId)}"
+    }
     const val STYLE_SETTINGS = "style_settings"
 
     const val WORKSPACE = "workspace/{sessionId}"

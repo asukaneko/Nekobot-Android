@@ -156,6 +156,18 @@ class IncrementalExperienceArchiverTest {
 
         override suspend fun sourceMessageIds(archiveId: String): List<String> = emptyList()
 
+        override suspend fun sourceCount(archiveId: String): Int = 0
+
+        override suspend fun containsSource(archiveId: String, messageId: String): Boolean = false
+
+        override suspend fun sourceIdsAmong(sessionId: String, archiveId: String, messageIds: List<String>): List<String> = emptyList()
+
+        override suspend fun availableSourceCount(sessionId: String, archiveId: String): Int = 0
+
+        override suspend fun listSourceRows(
+            sessionId: String, archiveId: String, afterCreatedAt: String?, afterRowId: Long?, limit: Int
+        ): List<com.nekobot.app.data.local.db.LocalMessageRow> = emptyList()
+
         override suspend fun updateUserEdits(id: String, summary: String, tagsJson: String, updatedAt: String) = Unit
 
         override suspend fun clearManualProtectionForExplicitRebuild(id: String) = Unit

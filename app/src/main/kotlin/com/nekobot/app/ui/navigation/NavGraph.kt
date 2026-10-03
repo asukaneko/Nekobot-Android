@@ -65,6 +65,8 @@ import com.nekobot.app.ui.screens.login.LoginScreen
 import com.nekobot.app.ui.screens.onboarding.QuickSetupScreen
 import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.memory.ExperienceArchiveScreen
+import com.nekobot.app.ui.screens.memory.ExperienceSourceScreen
+import com.nekobot.app.ui.screens.memory.ChatLocationScreen
 import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.search.GlobalSearchScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
@@ -689,7 +691,47 @@ fun NekobotNavGraph() {
             ) { entry ->
                 ExperienceArchiveScreen(
                     sessionId = entry.arguments?.getString("sessionId").orEmpty(),
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onOpenSource = { archiveId ->
+                        navController.navigate(Routes.experienceSource(entry.arguments?.getString("sessionId").orEmpty(), archiveId)) { launchSingleTop = true }
+                    }
+                )
+            }
+            composable(
+                route = Routes.EXPERIENCE_SOURCE,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType }, navArgument("archiveId") { type = NavType.StringType })
+            ) { entry ->
+                val sessionId = entry.arguments?.getString("sessionId").orEmpty()
+                val archiveId = entry.arguments?.getString("archiveId").orEmpty()
+                ExperienceSourceScreen(
+                    sessionId = sessionId,
+                    archiveId = archiveId,
+                    onBack = { navController.popBackStack() },
+                    onLocate = { messageId -> navController.navigate(Routes.chatLocation(sessionId, messageId, archiveId)) { launchSingleTop = true } }
+                )
+            }
+            composable(
+                route = Routes.CHAT_LOCATION,
+                arguments = listOf(
+                    navArgument("sessionId") { type = NavType.StringType },
+                    navArgument("messageId") { type = NavType.StringType },
+                    navArgument("archiveId") { type = NavType.StringType; nullable = true; defaultValue = null }
+                )
+            ) { entry ->
+                val sessionId = entry.arguments?.getString("sessionId").orEmpty()
+                ChatLocationScreen(
+                    sessionId = sessionId,
+                    messageId = entry.arguments?.getString("messageId").orEmpty(),
+                    archiveId = entry.arguments?.getString("archiveId"),
+                    onBack = { navController.popBackStack() },
+                    onLatest = {
+                        if (!navController.popBackStack(Routes.chat(sessionId), false)) {
+                            navController.navigate(Routes.chat(sessionId)) {
+                                popUpTo(Routes.CHAT_LOCATION) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    }
                 )
             }
             composable(Routes.STYLE_SETTINGS) {
