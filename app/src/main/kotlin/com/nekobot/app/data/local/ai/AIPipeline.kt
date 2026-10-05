@@ -369,20 +369,20 @@ class AIPipeline {
         }
 
         // PromptStack 合成最终 system prompt
-        // characterBasePrompt（角色运行时 promptText）已包含角色卡基础信息 + character.* 注入项，
-        // 管线栈额外包含 knowledge.rag / custom:* 项。
+        // characterBasePrompt 已包含角色卡基础信息 + character.* 注入项；basePrompt
+        // 还可能包含从历史加载的压缩摘要，必须一起保留，不能把它当成角色提示词的备用项。
         // 不能用 ctx.promptStack.render(characterBasePrompt)，因为 render 内部的 stripDynamicPromptSections
         // 会剥离 characterBasePrompt 中的 character.* 动态段，导致丢失角色运行时注入内容。
-        // 改为直接拼接 characterBasePrompt + 管线栈额外 items。
+        // 直接拼接角色、历史 system 内容和管线栈，完全相同的基础段只保留一次。
         val pipelineExtraItems = ctx.promptStack.getItems()
             .filter { it.enabled && it.content.isNotBlank() }
             .sortedBy { it.priority }
-        val composedSystem = if (pipelineExtraItems.isEmpty()) {
-            characterBasePrompt.ifBlank { basePrompt }
-        } else {
-            val extraParts = pipelineExtraItems.joinToString("\n\n") { "## ${it.key}\n${it.content.trim()}" }
-            (characterBasePrompt.ifBlank { basePrompt }).trim() + "\n\n" + extraParts
-        }
+        val baseParts = listOf(characterBasePrompt, basePrompt)
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+        val composedSystem = (baseParts + pipelineExtraItems.map { "## ${it.key}\n${it.content.trim()}" })
+            .joinToString("\n\n")
         ctx.metadata["composed_system_prompt"] = composedSystem
 
         // 合并提示词栈调试信息：管线栈 + 角色运行时栈（character.* 注入项）

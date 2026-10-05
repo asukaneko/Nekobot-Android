@@ -435,6 +435,7 @@ internal class LocalPipelineCallbacks(
         return knowledgeSearcher?.invoke(query).orEmpty()
     }
 
+    /** Load the safe history window, quote persisted summaries, and append the current request once. */
     override fun loadMessages(ctx: PipelineContext): List<Map<String, Any>> {
         val isAgentSession = session.sessionMode.equals("agent", ignoreCase = true)
         val history = kotlinx.coroutines.runBlocking {
@@ -504,10 +505,11 @@ internal class LocalPipelineCallbacks(
 
         // 历史消息
         for (msg in contextHistory) {
-            val historyContent = if (session.sessionMode.equals("group", ignoreCase = true)) {
-                LocalGroupChat.annotateHistoryContent(msg.role, msg.content, msg.sender)
-            } else {
-                msg.content
+            val historyContent = when {
+                isAgentSession && msg.isAgentContextSummary() -> formatAgentContextSummary(msg.content, session.id)
+                session.sessionMode.equals("group", ignoreCase = true) ->
+                    LocalGroupChat.annotateHistoryContent(msg.role, msg.content, msg.sender)
+                else -> msg.content
             }
             messages.add(buildMap {
                 put("role", msg.role)
