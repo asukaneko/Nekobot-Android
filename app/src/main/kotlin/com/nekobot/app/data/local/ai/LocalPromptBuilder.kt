@@ -67,10 +67,10 @@ object LocalPromptBuilder {
         // 3. 历史消息
         history.filterNot { it.isLocalCommandMessage() }.forEach { msg ->
             // Unbound Agents use this builder too. A persisted compression summary is
-            // conversation context, so keep it even though other stored system rows
-            // must not become instructions. Legacy summary markers are recognized here.
+            // quoted conversation data, not a new instruction or authorization. Keep it
+            // while ignoring other stored system rows, including for legacy markers.
             if (session.sessionMode.equals("agent", ignoreCase = true) && msg.isAgentContextSummary()) {
-                messages.add(mapOf("role" to "system", "content" to msg.content))
+                messages.add(mapOf("role" to "system", "content" to formatAgentContextSummary(msg.content, session.id)))
                 return@forEach
             }
             val role = when (msg.role.lowercase()) {
