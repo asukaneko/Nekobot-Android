@@ -2,6 +2,7 @@ package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
@@ -65,6 +66,13 @@ object LocalPromptBuilder {
 
         // 3. 历史消息
         history.filterNot { it.isLocalCommandMessage() }.forEach { msg ->
+            // Unbound Agents use this builder too. A persisted compression summary is
+            // conversation context, so keep it even though other stored system rows
+            // must not become instructions. Legacy summary markers are recognized here.
+            if (session.sessionMode.equals("agent", ignoreCase = true) && msg.isAgentContextSummary()) {
+                messages.add(mapOf("role" to "system", "content" to msg.content))
+                return@forEach
+            }
             val role = when (msg.role.lowercase()) {
                 "user", "human" -> "user"
                 "assistant", "ai" -> "assistant"
