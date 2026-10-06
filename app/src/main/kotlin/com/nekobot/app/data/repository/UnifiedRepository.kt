@@ -18,6 +18,7 @@ import com.nekobot.app.data.local.ai.toRealtimeModelConfig
 import com.nekobot.app.data.local.LocalWebDavBackupManager
 import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
+import com.nekobot.app.data.local.DownloadedSkillPackage
 import com.nekobot.app.data.local.SkillPackageDownloader
 import com.nekobot.app.data.local.validateSkillNameValue
 import com.nekobot.app.data.local.db.LocalAiModelEntity
@@ -1747,66 +1748,109 @@ class UnifiedRepository(
         } else {
             withContext(Dispatchers.IO) {
                 try {
-                    val packages = skillPackageDownloader.download(req.url)
-                    val duplicateNames = packages
-                        .groupBy { it.name.lowercase(java.util.Locale.ROOT) }
-                        .filterValues { it.size > 1 }
-                        .keys
-                    if (duplicateNames.isNotEmpty()) {
-                        return@withContext Resource.Error(
-                            "仓库中包含重名 Skill: ${duplicateNames.joinToString()}"
-                        )
-                    }
-                    val listed = when (val result = remote.listSkills()) {
-                        is Resource.Success -> result.data
-                        is Resource.Error -> return@withContext result
-                        is Resource.Loading -> return@withContext Resource.Loading
-                    }
-                    val conflicts = packages.mapNotNull { pkg ->
-                        listed.firstOrNull { it.name.equals(pkg.name, true) }
-                    }
-                    if (conflicts.isNotEmpty() && !req.overwrite) {
-                        return@withContext Resource.Error(
-                            "以下 Skill 已存在：${conflicts.joinToString { it.name }}。如需替换，请开启覆盖同名。"
-                        )
-                    }
-                    if (req.overwrite) {
-                        for (conflict in conflicts) {
-                            val id = conflict.id ?: continue
-                            if (remote.deleteSkill(id) is Resource.Error) {
-                                return@withContext Resource.Error("无法覆盖 Skill「${conflict.name}」")
-                            }
-                        }
-                    }
-                    val installed = mutableListOf<Skill>()
-                    for (pkg in packages) {
-                        val uploaded = when (val result = remote.uploadSkillPackage(pkg)) {
-                            is Resource.Success -> result.data
-                            is Resource.Error -> return@withContext result
-                            is Resource.Loading -> return@withContext Resource.Loading
-                        }
-                        val finalSkill = if (!req.enabled && uploaded.enabled) {
-                            val id = uploaded.id
-                                ?: return@withContext Resource.Error("服务器未返回 Skill ID")
-                            when (val toggled = remote.toggleSkill(id)) {
-                                is Resource.Success -> toggled.data
-                                is Resource.Error -> return@withContext toggled
-                                is Resource.Loading -> return@withContext Resource.Loading
-                            }
-                        } else uploaded
-                        installed += finalSkill.copy(
-                            skillMd = pkg.skillMd,
-                            referenceMd = pkg.referenceMd,
-                            sourceUrl = req.url,
-                            hasStorage = true
-                        )
-                    }
-                    Resource.Success(installed)
+                    installPackagesToServer(
+                        packages = skillPackageDownloader.download(req.url),
+                        sourceUrl = req.url,
+                        enabled = req.enabled,
+                        overwrite = req.overwrite
+                    )
                 } catch (e: Exception) {
                     Resource.Error(e.message ?: "安装失败")
                 }
             }
         }
+
+    /**
+     * 从本地选取的 ZIP 文件安装 Skill。
+     *
+     * 本地模式直接解压写入技能目录；远程模式把包内文件上传到服务端，
+     * 与 URL 安装共用同一套解析、重名检查与覆盖逻辑。
+     */
+    suspend fun installSkillFromZip(
+        zipBytes: ByteArray,
+        fileName: String,
+        enabled: Boolean = true,
+        overwrite: Boolean = false
+    ): Resource<List<Skill>> =
+        if (isLocal) {
+            runCatching {
+                Resource.Success(local.installSkillFromZip(zipBytes, fileName, enabled, overwrite))
+            }.getOrElse { Resource.Error(it.message ?: "安装失败") }
+        } else {
+            withContext(Dispatchers.IO) {
+                try {
+                    installPackagesToServer(
+                        packages = skillPackageDownloader.parseLocalZip(zipBytes, fileName),
+                        sourceUrl = null,
+                        enabled = enabled,
+                        overwrite = overwrite
+                    )
+                } catch (e: Exception) {
+                    Resource.Error(e.message ?: "安装失败")
+                }
+            }
+        }
+
+    /** 把已解析的 Skill 包上传到服务端（含重名检查、覆盖与启停），远程安装共用。 */
+    private suspend fun installPackagesToServer(
+        packages: List<DownloadedSkillPackage>,
+        sourceUrl: String?,
+        enabled: Boolean,
+        overwrite: Boolean
+    ): Resource<List<Skill>> {
+        require(packages.isNotEmpty()) { "没有发现可安装的 Skill" }
+        val duplicateNames = packages
+            .groupBy { it.name.lowercase(java.util.Locale.ROOT) }
+            .filterValues { it.size > 1 }
+            .keys
+        if (duplicateNames.isNotEmpty()) {
+            return Resource.Error("仓库中包含重名 Skill: ${duplicateNames.joinToString()}")
+        }
+        val listed = when (val result = remote.listSkills()) {
+            is Resource.Success -> result.data
+            is Resource.Error -> return result
+            is Resource.Loading -> return Resource.Loading
+        }
+        val conflicts = packages.mapNotNull { pkg ->
+            listed.firstOrNull { it.name.equals(pkg.name, true) }
+        }
+        if (conflicts.isNotEmpty() && !overwrite) {
+            return Resource.Error(
+                "以下 Skill 已存在：${conflicts.joinToString { it.name }}。如需替换，请开启覆盖同名。"
+            )
+        }
+        if (overwrite) {
+            for (conflict in conflicts) {
+                val id = conflict.id ?: continue
+                if (remote.deleteSkill(id) is Resource.Error) {
+                    return Resource.Error("无法覆盖 Skill「${conflict.name}」")
+                }
+            }
+        }
+        val installed = mutableListOf<Skill>()
+        for (pkg in packages) {
+            val uploaded = when (val result = remote.uploadSkillPackage(pkg)) {
+                is Resource.Success -> result.data
+                is Resource.Error -> return result
+                is Resource.Loading -> return Resource.Loading
+            }
+            val finalSkill = if (!enabled && uploaded.enabled) {
+                val id = uploaded.id ?: return Resource.Error("服务器未返回 Skill ID")
+                when (val toggled = remote.toggleSkill(id)) {
+                    is Resource.Success -> toggled.data
+                    is Resource.Error -> return toggled
+                    is Resource.Loading -> return Resource.Loading
+                }
+            } else uploaded
+            installed += finalSkill.copy(
+                skillMd = pkg.skillMd,
+                referenceMd = pkg.referenceMd,
+                sourceUrl = sourceUrl,
+                hasStorage = true
+            )
+        }
+        return Resource.Success(installed)
+    }
 
     // ---- Tools 配置 ----
     suspend fun listTools(): Resource<List<Tool>> =

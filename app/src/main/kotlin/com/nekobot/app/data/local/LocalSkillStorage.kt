@@ -102,6 +102,20 @@ internal class SkillPackageDownloader(
         throw IllegalStateException(lastError?.message ?: "无法下载 Skill")
     }
 
+    /**
+     * 解析本地选取的 ZIP 文件，与在线下载共用同一套解压限制、路径校验和多 SKILL.md 拆分逻辑。
+     *
+     * @param zipBytes ZIP 字节内容
+     * @param fileName 文件名，用于扩展名判断与错误提示
+     */
+    fun parseLocalZip(zipBytes: ByteArray, fileName: String): List<DownloadedSkillPackage> {
+        require(zipBytes.isNotEmpty()) { "ZIP 内容为空" }
+        require(zipBytes.size <= MAX_DOWNLOAD_BYTES) { "Skill 包超过 25 MB 限制" }
+        require(looksLikeZip(zipBytes, null, fileName)) { "所选文件不是 ZIP 格式" }
+        // 本地安装不记录 source_url，避免与下载来源混淆。
+        return parseZip(zipBytes, sourceUrl = "", requestedSubpath = null, requestedSkillName = null)
+    }
+
     private data class DownloadResponse(val bytes: ByteArray, val contentType: String?)
 
     private fun downloadBytes(url: String): DownloadResponse {

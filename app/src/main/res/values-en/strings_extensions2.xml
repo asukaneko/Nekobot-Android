@@ -27,6 +27,12 @@
     <string name="skills_url_label">GitHub, SKILL.md, or ZIP URL</string>
     <string name="skills_url_invalid">Enter a valid http/https URL</string>
     <string name="skills_install_formats">Supports skills.sh, GitHub/GitLab repositories and subpaths, direct SKILL.md links, and ZIP files. Repositories containing multiple SKILL.md files are installed in batch.</string>
+    <string name="skills_install_zip">Install from local ZIP</string>
+    <string name="skills_zip_install_action">Install</string>
+    <string name="skills_zip_file">File: %1$s</string>
+    <string name="skills_zip_invalid">The selected file is not a valid Skill ZIP package</string>
+    <string name="skills_zip_too_large">ZIP exceeds the 25 MB limit</string>
+    <string name="skills_zip_read_failed">Failed to read the local ZIP</string>
     <string name="skills_install_enabled_hint">Make it available to agents immediately</string>
     <string name="skills_overwrite">Overwrite same-name Skills</string>
     <string name="skills_overwrite_hint">When off, installation stops on a name conflict</string>

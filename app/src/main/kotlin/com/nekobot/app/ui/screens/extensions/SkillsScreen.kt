@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -90,12 +91,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 
 /** ZIP 导出结果：已写入下载目录，或需要界面用系统选择器另存（Android 9 及以下）。 */
 private sealed interface SkillZipOutcome {
     data class Saved(val fileName: String) : SkillZipOutcome
     data class NeedsSaveAs(val export: SkillZipExport) : SkillZipOutcome
 }
+
+/** 已选取、等待确认安装的本地 ZIP 包。用普通类避免自动 equals/hashCode 直接比较 ByteArray。 */
+class PendingSkillZip(val fileName: String, val bytes: ByteArray)
+
+/** 本地 ZIP 安装的读取上限，与在线下载保持一致的 25 MB。 */
+private const val MAX_SKILL_ZIP_BYTES = 25L * 1024 * 1024
 
 /** Skills 元数据、目录存储和 URL 安装的统一管理。 */
 class SkillsViewModel : BaseViewModel() {
@@ -105,6 +113,10 @@ class SkillsViewModel : BaseViewModel() {
     /** Android 9 及以下导出的 ZIP 待界面用系统选择器另存。 */
     private val _pendingSaveAs = MutableStateFlow<SkillZipExport?>(null)
     val pendingSaveAs: StateFlow<SkillZipExport?> = _pendingSaveAs.asStateFlow()
+
+    /** 已从本地选取、等待用户确认安装的 ZIP 包。 */
+    private val _pendingZip = MutableStateFlow<PendingSkillZip?>(null)
+    val pendingZip: StateFlow<PendingSkillZip?> = _pendingZip.asStateFlow()
 
     init {
         load()
@@ -116,6 +128,71 @@ class SkillsViewModel : BaseViewModel() {
     )
 
     fun clearPendingSaveAs() { _pendingSaveAs.value = null }
+
+    fun clearPendingZip() { _pendingZip.value = null }
+
+    /**
+     * 读取用户从系统文件选择器选中的本地 ZIP。
+     *
+     * 读取前校验 ZIP 文件头与 25 MB 上限，读取成功后交给界面弹出安装确认框，
+     * 用户此时还能选择是否启用、是否覆盖同名。
+     */
+    fun pickZipPackage(context: Context, uri: Uri) = launchWith(
+        onError = { showToast(it) },
+        block = {
+            _pendingZip.value = withContext(Dispatchers.IO) { readZipPackage(context, uri) }
+            Resource.Success(Unit)
+        }
+    )
+
+    /** 安装已选取的本地 ZIP 包（失败时保留确认框，方便用户改为覆盖后重试）。 */
+    fun installZipPackage(enabled: Boolean, overwrite: Boolean) {
+        val pending = _pendingZip.value ?: return
+        launchResult(
+            block = { unified.installSkillFromZip(pending.bytes, pending.fileName, enabled, overwrite) },
+            onSuccess = {
+                _pendingZip.value = null
+                showToast(string(R.string.skills_installed_count, it.size))
+                load()
+            },
+            onError = { showToast(it) }
+        )
+    }
+
+    /** 读取本地 ZIP 字节内容；非 ZIP 或超限时抛出可直接展示的错误文案。 */
+    private fun readZipPackage(context: Context, uri: Uri): PendingSkillZip {
+        val fileName = queryDisplayName(context, uri) ?: "skill.zip"
+        val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > MAX_SKILL_ZIP_BYTES) throw IllegalStateException(string(R.string.skills_zip_too_large))
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        } ?: throw IllegalStateException(string(R.string.skills_zip_read_failed))
+        val isZip = bytes.size >= 4 &&
+            bytes[0] == 0x50.toByte() &&
+            bytes[1] == 0x4B.toByte() &&
+            bytes[2] in listOf(0x03.toByte(), 0x05.toByte(), 0x07.toByte()) &&
+            bytes[3] in listOf(0x04.toByte(), 0x06.toByte(), 0x08.toByte())
+        if (!isZip) throw IllegalStateException(string(R.string.skills_zip_invalid))
+        return PendingSkillZip(fileName, bytes)
+    }
+
+    /** 取选择器返回的显示文件名，取不到时回退 null。 */
+    private fun queryDisplayName(context: Context, uri: Uri): String? = runCatching {
+        context.contentResolver
+            .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && index >= 0) cursor.getString(index) else null
+            }
+    }.getOrNull()
 
     /**
      * 导出 Skill 为 ZIP。
@@ -281,9 +358,16 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
 
     var showForm by remember { mutableStateOf(false) }
     var showInstaller by remember { mutableStateOf(false) }
+    var showAddMenu by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<Skill?>(null) }
     var deleteTarget by remember { mutableStateOf<Skill?>(null) }
+    val pendingZip by vm.pendingZip.collectAsStateWithLifecycle()
     val exportZip = rememberZipExportAction(vm)
+    val zipPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { vm.pickZipPackage(context, it) }
+    }
 
     LaunchedEffect(toast) {
         toast?.let {
@@ -311,11 +395,36 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
                             contentDescription = stringResource(R.string.skills_install_url)
                         )
                     }
-                    IconButton(onClick = {
-                        editingItem = null
-                        showForm = true
-                    }) {
-                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.skills_new))
+                    Box {
+                        IconButton(onClick = { showAddMenu = true }) {
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.skills_new))
+                        }
+                        GlassDropdownMenu(
+                            expanded = showAddMenu,
+                            onDismissRequest = { showAddMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.skills_new)) },
+                                onClick = {
+                                    showAddMenu = false
+                                    editingItem = null
+                                    showForm = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.skills_install_zip)) },
+                                onClick = {
+                                    showAddMenu = false
+                                    zipPicker.launch(
+                                        arrayOf(
+                                            "application/zip",
+                                            "application/x-zip-compressed",
+                                            "application/octet-stream"
+                                        )
+                                    )
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -396,6 +505,14 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
                 showInstaller = false
             },
             onDismiss = { showInstaller = false }
+        )
+    }
+
+    pendingZip?.let { pending ->
+        SkillZipInstallDialog(
+            fileName = pending.fileName,
+            onConfirm = { enabled, overwrite -> vm.installZipPackage(enabled, overwrite) },
+            onDismiss = { vm.clearPendingZip() }
         )
     }
 
@@ -701,36 +818,88 @@ private fun SkillInstallDialog(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.skills_enabled_label))
-                    Text(
-                        stringResource(R.string.skills_install_enabled_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(checked = enabled, onCheckedChange = { enabled = it })
-            }
+            SkillOptionSwitch(
+                title = stringResource(R.string.skills_enabled_label),
+                hint = stringResource(R.string.skills_install_enabled_hint),
+                checked = enabled,
+                onCheckedChange = { enabled = it }
+            )
             Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.skills_overwrite))
-                    Text(
-                        stringResource(R.string.skills_overwrite_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(checked = overwrite, onCheckedChange = { overwrite = it })
-            }
+            SkillOptionSwitch(
+                title = stringResource(R.string.skills_overwrite),
+                hint = stringResource(R.string.skills_overwrite_hint),
+                checked = overwrite,
+                onCheckedChange = { overwrite = it }
+            )
         }
+    }
+}
+
+/** 本地 ZIP 安装确认框：确认前仍可调整启用与覆盖同名，读取/解压只在确认后发生。 */
+@Composable
+private fun SkillZipInstallDialog(
+    fileName: String,
+    onConfirm: (enabled: Boolean, overwrite: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var enabled by remember { mutableStateOf(true) }
+    var overwrite by remember { mutableStateOf(false) }
+
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.skills_install_zip),
+        confirmText = stringResource(R.string.skills_zip_install_action),
+        onConfirm = { onConfirm(enabled, overwrite) }
+    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(max = 460.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                text = stringResource(R.string.skills_zip_file, fileName),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+            SkillOptionSwitch(
+                title = stringResource(R.string.skills_enabled_label),
+                hint = stringResource(R.string.skills_install_enabled_hint),
+                checked = enabled,
+                onCheckedChange = { enabled = it }
+            )
+            Spacer(Modifier.height(8.dp))
+            SkillOptionSwitch(
+                title = stringResource(R.string.skills_overwrite),
+                hint = stringResource(R.string.skills_overwrite_hint),
+                checked = overwrite,
+                onCheckedChange = { overwrite = it }
+            )
+        }
+    }
+}
+
+/** 安装选项行：标题 + 说明 + 开关，URL 安装与本地 ZIP 安装共用。 */
+@Composable
+private fun SkillOptionSwitch(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title)
+            Text(
+                hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

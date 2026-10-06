@@ -963,7 +963,12 @@ class NekobotRepository(
                 ?.toString(Charsets.UTF_8)
                 ?.let { JsonParser.parseString(it).asJsonObject }
         }.getOrNull() ?: com.google.gson.JsonObject()
-        configFile.addProperty("source_url", pkg.sourceUrl)
+        // 本地 ZIP 安装没有下载来源，此时不写入 source_url，避免服务端记录空来源。
+        if (pkg.sourceUrl.isBlank()) {
+            configFile.remove("source_url")
+        } else {
+            configFile.addProperty("source_url", pkg.sourceUrl)
+        }
         uploadFiles["config.json"] = gson.toJson(configFile).toByteArray(Charsets.UTF_8)
         val parts = uploadFiles.map { (path, bytes) ->
             MultipartBody.Part.createFormData(

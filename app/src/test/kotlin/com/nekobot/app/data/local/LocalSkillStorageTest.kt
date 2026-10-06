@@ -341,6 +341,34 @@ class LocalSkillStorageTest {
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("为空"))
     }
 
+    @Test
+    fun `local zip parse accepts an exported package`() {
+        val zip = SkillZipExporter.build(
+            "local-demo",
+            mapOf(
+                "SKILL.md" to "# local-demo\n\nLocal install".toByteArray(),
+                "scripts/run.py" to "print('hi')".toByteArray()
+            )
+        )
+
+        val packages = SkillPackageDownloader().parseLocalZip(zip, "local-demo.zip")
+
+        assertEquals(1, packages.size)
+        assertEquals("local-demo", packages.single().name)
+        assertTrue(packages.single().files.containsKey("scripts/run.py"))
+        assertEquals("本地安装不记录 source_url", "", packages.single().sourceUrl)
+    }
+
+    @Test
+    fun `local zip parse rejects non zip content`() {
+        val result = runCatching {
+            SkillPackageDownloader().parseLocalZip("not a zip".toByteArray(), "notes.txt")
+        }
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("不是 ZIP"))
+    }
+
     private fun clientReturning(bytes: ByteArray, contentType: String): OkHttpClient =
         OkHttpClient.Builder().addInterceptor { chain ->
             Response.Builder()

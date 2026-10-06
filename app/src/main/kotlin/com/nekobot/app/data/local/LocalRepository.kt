@@ -12202,7 +12202,38 @@ ${AiOutputLanguage.directive()}
     }
 
     suspend fun installSkillFromUrl(req: SkillInstallRequest): List<Skill> = withContext(Dispatchers.IO) {
-        val packages = skillPackageDownloader.download(req.url)
+        installSkillPackages(
+            packages = skillPackageDownloader.download(req.url),
+            enabled = req.enabled,
+            overwrite = req.overwrite
+        )
+    }
+
+    /**
+     * 从本地选取的 ZIP 文件安装 Skill。
+     *
+     * 与 URL 安装共用同一套校验、重名检查、覆盖与落库逻辑，只是包来源从网络换成
+     * 界面读到的 ZIP 字节；解压限制（25 MB / 500 文件 / 路径穿越）保持一致。
+     */
+    suspend fun installSkillFromZip(
+        zipBytes: ByteArray,
+        fileName: String,
+        enabled: Boolean,
+        overwrite: Boolean
+    ): List<Skill> = withContext(Dispatchers.IO) {
+        installSkillPackages(
+            packages = skillPackageDownloader.parseLocalZip(zipBytes, fileName),
+            enabled = enabled,
+            overwrite = overwrite
+        )
+    }
+
+    /** 写入已解析的 Skill 包：重名检查 → 覆盖处理 → 解压落盘 → 落库。 */
+    private suspend fun installSkillPackages(
+        packages: List<DownloadedSkillPackage>,
+        enabled: Boolean,
+        overwrite: Boolean
+    ): List<Skill> {
         require(packages.isNotEmpty()) { "没有发现可安装的 Skill" }
         val duplicatePackageNames = packages
             .groupBy { skillDirectoryName(it.name).lowercase(Locale.ROOT) }
@@ -12214,7 +12245,7 @@ ${AiOutputLanguage.directive()}
         packages.forEach { validateSkillNameValue(it.name) }
 
         val existing = db.skillDao().listAll()
-        if (!req.overwrite) {
+        if (!overwrite) {
             val conflicts = packages.filter { pkg ->
                 existing.any { it.name.equals(pkg.name, true) } ||
                     localSkillStorage?.exists(pkg.name) == true
@@ -12224,22 +12255,22 @@ ${AiOutputLanguage.directive()}
             }
         }
 
-        packages.map { pkg ->
+        return packages.map { pkg ->
             val old = existing.firstOrNull { it.name.equals(pkg.name, true) }
             val entity = LocalSkillEntity(
                 id = old?.id ?: UUID.randomUUID().toString(),
                 name = pkg.name.trim(),
                 description = pkg.description,
                 aliasesJson = gson.toJson(pkg.aliases),
-                enabled = req.enabled,
+                enabled = enabled,
                 parametersJson = old?.parametersJson,
                 createdAt = old?.createdAt ?: nowIso()
             )
-            if (req.overwrite && old != null && old.name != pkg.name) {
+            if (overwrite && old != null && old.name != pkg.name) {
                 localSkillStorage?.delete(old.name)
             }
             localSkillStorage
-                ?.install(pkg, overwrite = req.overwrite)
+                ?.install(pkg, overwrite = overwrite)
                 ?: throw IllegalStateException("本地 Skill 存储不可用")
             db.skillDao().upsert(entity)
             entity.toSkill()

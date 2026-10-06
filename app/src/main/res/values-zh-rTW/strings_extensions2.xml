@@ -27,6 +27,12 @@
     <string name="skills_url_label">GitHub、SKILL.md 或 ZIP URL</string>
     <string name="skills_url_invalid">請輸入有效的 http/https URL</string>
     <string name="skills_install_formats">支援 skills.sh、GitHub/GitLab 倉庫及子路徑、SKILL.md 直鏈和 ZIP。倉庫中有多個 SKILL.md 時會批量安裝。</string>
+    <string name="skills_install_zip">從本機 ZIP 安裝</string>
+    <string name="skills_zip_install_action">安裝</string>
+    <string name="skills_zip_file">檔案: %1$s</string>
+    <string name="skills_zip_invalid">所選檔案不是有效的 Skill ZIP 包</string>
+    <string name="skills_zip_too_large">ZIP 超過 25 MB 限制</string>
+    <string name="skills_zip_read_failed">讀取本機 ZIP 失敗</string>
     <string name="skills_install_enabled_hint">安裝後立即提供給 Agent 使用</string>
     <string name="skills_overwrite">覆蓋同名 Skill</string>
     <string name="skills_overwrite_hint">關閉時遇到同名技能會停止安裝，避免誤覆蓋</string>

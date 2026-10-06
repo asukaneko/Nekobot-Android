@@ -46,6 +46,12 @@
     <string name="skills_url_label">GitHub、SKILL.md、または ZIP の URL</string>
     <string name="skills_url_invalid">有効な http/https URL を入力してください</string>
     <string name="skills_install_formats">skills.sh、GitHub/GitLab のリポジトリとサブパス、SKILL.md の直リンク、ZIP に対応しています。リポジトリに複数の SKILL.md がある場合はまとめてインストールします。</string>
+    <string name="skills_install_zip">ローカル ZIP からインストール</string>
+    <string name="skills_zip_install_action">インストール</string>
+    <string name="skills_zip_file">ファイル: %1$s</string>
+    <string name="skills_zip_invalid">選択したファイルは有効な Skill ZIP ではありません</string>
+    <string name="skills_zip_too_large">ZIP が 25 MB の上限を超えています</string>
+    <string name="skills_zip_read_failed">ローカル ZIP の読み取りに失敗しました</string>
     <string name="skills_install_enabled_hint">インストール後すぐに Agent で使用可能にする</string>
     <string name="skills_overwrite">同名の Skill を上書き</string>
     <string name="skills_overwrite_hint">無効の場合、同名の Skill があるとインストールを停止し、誤った上書きを防ぎます</string>
