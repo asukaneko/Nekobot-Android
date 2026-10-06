@@ -82,7 +82,7 @@ object BuiltinTools {
             id = "browser_use",
             category = "browser",
             name = "浏览器使用",
-            description = "控制会话内的原生浏览器。支持打开网页、截图、读取正文、动态 DOM 源码、页面 URL 和可交互结构，以及点击、输入、滚动、前进、后退、刷新和执行 JavaScript。查找链接或资源地址时优先使用 get_links，需要源码时使用 get_html；页面包含图片、图表或复杂视觉内容时，使用 understand_screenshot 截图并自动调用图片理解模型。需要精确操作时先调用 get_backbone。",
+            description = "控制会话内的原生浏览器。支持打开网页、截图、读取正文、动态 DOM 源码、页面 URL 和可交互结构，以及点击、输入、滚动、前进、后退、刷新和执行 JavaScript。可打开 https 网页、本地回环 http 地址（localhost/127.0.0.1/::1，用于测试本机服务）和本地 .html 文件。查找链接或资源地址时优先使用 get_links，需要源码时使用 get_html；页面包含图片、图表或复杂视觉内容时，使用 understand_screenshot 截图并自动调用图片理解模型。需要精确操作时先调用 get_backbone。",
             parametersJson = """
                 {
                   "type": "object",
@@ -97,7 +97,7 @@ object BuiltinTools {
                     },
                     "url": {
                       "type": "string",
-                      "description": "navigate 要打开的 http(s) URL；省略协议时默认使用 https"
+                      "description": "navigate 要打开的地址：https 网页、本地回环 http（localhost/127.0.0.1/::1）或本地 .html 文件（file:// 路径或 / 开头的绝对路径）；省略协议时非回环默认 https"
                     },
                     "selector": {
                       "type": "string",
