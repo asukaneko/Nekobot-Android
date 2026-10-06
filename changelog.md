@@ -2,6 +2,40 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.8.2 - 2026-10-06
+
+### 新增
+
+- 经历档案支持查看对应聊天原文：从经历条目可跳转到原聊天并定位到历史段落，返回时保留原浏览位置；原话被删改的来源标记为失效并可刷新。
+- 浏览器工具支持本地回环网页与本地网页文件：可打开 localhost / 127.0.0.1 / ::1 等回环地址的明文 http 页面，以及 file:// 或绝对路径的 .html/.htm 文件。
+- 工作区的文件与文件夹条目显示最近修改时间。
+
+### 修复
+
+- 修复 Agent 上下文压缩后的历史摘要未发送给模型的问题，并标明历史摘要仅供回忆参考。
+- 修复超大消息行导致会话无法打开的问题：打开会话前扫描超限行并按 UTF-8 字节分块截断转存，读取消息时捕获超限异常自动修复重试。
+- 修复经历来源在原话被删改后不更新、切换资料库后仍显示旧聊天的问题。
+- 修复后台数据库更新打断经历来源与原聊天翻页的问题。
+- 补全日语、韩语资源中缺失的繁体中文界面语言选项。
+
+### 重构
+
+- 工具集目录改为自动推导：内置工具声明新增分类字段，新增工具无需再手写目录清单；Skill、数据库、子代理、MCP 等会话工具自动进入 Tools 配置页。
+- 精简 subagent_list 输出，只返回任务元信息，任务结果改用 subagent_get 按 id 查询。
+
+### English
+
+- Experience archive entries can open the original chat and jump to the source passage, keeping the previous scroll position on return; edited or deleted sources are marked invalid and refreshable
+- The browser tool now supports loopback http pages (localhost / 127.0.0.1 / ::1) and local .html/.htm files
+- Workspace files and folders now show their last modified time
+- Fixed compressed history summaries not being sent to the model; stored summaries are labeled as recall-only reference
+- Fixed very large message rows making a session impossible to open: oversized rows are scanned and truncated by UTF-8 bytes beforehand, and oversized reads are caught, auto-repaired and retried
+- Fixed experience sources not updating after the original text is edited or deleted, and stale chats appearing after switching databases
+- Fixed background database updates interrupting paging in experience sources and the original chat
+- Completed the missing Traditional Chinese language option in the Japanese and Korean resources
+- Tool catalog is now derived automatically, so new tools need no manual catalog list; Skill, database, sub-agent and MCP session tools now appear in the Tools configuration page
+- Slimmed subagent_list output to task metadata only; use subagent_get to fetch results
+
 ## v0.8.1 - 2026-10-02
 
 ### 新增
