@@ -890,6 +890,23 @@ class LocalRepository(
 
     init {
         com.nekobot.app.data.local.ai.SubagentTaskStore.bind(db.localSubagentTaskDao())
+        com.nekobot.app.data.local.ai.SubagentTaskStore.all()
+            .filter { it.status == com.nekobot.app.data.local.ai.SubagentTaskStatus.INTERRUPTED }
+            .forEach { task ->
+                persistAgentProgressCard(
+                    sessionId = task.sessionId,
+                    card = ThinkingCard(
+                        id = task.id,
+                        content = "⏸ 子代理已中断: ${task.description}",
+                        steps = task.steps,
+                        isComplete = true,
+                        isAgent = true,
+                        timestamp = nowIsoStatic(),
+                        parentMessageId = task.parentMessageId,
+                        subagentStatus = "interrupted"
+                    )
+                )
+            }
         aiClient.setOAuthCredentialResolver(oauthManager::resolveCredential)
         appContext?.let { context ->
             LocalPlotStoryStore.activateProfile(db.dbName, plotStoryOwner) {
@@ -901,6 +918,7 @@ class LocalRepository(
         }
         // 后台任务通知 → 会话唤醒：仓库实例重建（切库）时新实例覆盖旧钩子。
         AgentNoticeBus.onNoticePublished = { sessionId -> onAgentNoticePublished(sessionId) }
+        com.nekobot.app.data.local.ai.SubagentTaskStore.wakePendingNotices()
     }
 
     /** 将本地故事图整体持久化，保证重启应用后节点、边和当前分支仍可恢复。 */
@@ -6455,22 +6473,24 @@ class LocalRepository(
     private suspend fun tryWakeSessionForNotices(sessionId: String) {
         if (activeGenerations.containsKey(sessionId)) return
         if (!wakeUpLocks.add(sessionId)) return
+        var retryPendingAfterWake = true
         try {
             // 拿到锁后复查：另一个唤醒运行可能刚启动，或用户消息抢先开跑了。
             if (activeGenerations.containsKey(sessionId)) return
             if (!AgentNoticeBus.hasPending(sessionId)) return
             val session = sessionDao.getById(sessionId) ?: return
             if (session.archived || !session.sessionMode.equals("agent", ignoreCase = true)) return
-            runAgentWakeUpTurn(session)
+            retryPendingAfterWake = runAgentWakeUpTurn(session)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            retryPendingAfterWake = false
             LocalLogger.w(TAG, R.string.log_repo_wake_failed, sessionId, e.message)
         } finally {
             wakeUpLocks.remove(sessionId)
         }
         // 锁已释放：若本轮运行期间又有通知到达（未被本轮消费），再唤醒一次继续处理。
-        if (AgentNoticeBus.hasPending(sessionId)) {
+        if (retryPendingAfterWake && AgentNoticeBus.hasPending(sessionId)) {
             onAgentNoticePublished(sessionId)
         }
     }
@@ -6487,18 +6507,21 @@ class LocalRepository(
      * 失败或被停止时把通知放回队列（不再次自动唤醒，避免空转），等用户下次发消息时
      * 由循环内注入通道送达。
      */
-    private suspend fun runAgentWakeUpTurn(session: LocalSessionEntity) {
+    private suspend fun runAgentWakeUpTurn(session: LocalSessionEntity): Boolean {
         val sessionId = session.id
-        val notices = AgentNoticeBus.drain(sessionId)
-        if (notices.isEmpty()) return
-        val wakeMessage = buildAgentWakeUpMessage(notices)
-        if (wakeMessage.isBlank()) return
+        val notices = AgentNoticeBus.drainForWake(sessionId)
+        if (notices.isEmpty()) return true
+        val wakeMessage = buildAgentWakeUpMessage(notices.map { it.content })
+        if (wakeMessage.isBlank()) {
+            AgentNoticeBus.requeue(notices)
+            return false
+        }
         try {
             val model = getRoutedModel(sessionId, wakeMessage)
             if (model == null) {
                 // 没有可用模型：放回通知但不重试唤醒。
-                AgentNoticeBus.publish(sessionId, wakeMessage, wakeIfIdle = false)
-                return
+                AgentNoticeBus.requeue(notices)
+                return false
             }
             var failure: String? = null
             chatWithPipeline(
@@ -6519,14 +6542,18 @@ class LocalRepository(
             }
             if (failure != null) {
                 LocalLogger.w(TAG, R.string.log_repo_wake_run_failed, sessionId, failure)
-                AgentNoticeBus.publish(sessionId, wakeMessage, wakeIfIdle = false)
+                AgentNoticeBus.requeue(notices)
+                return false
             }
+            AgentNoticeBus.acknowledge(notices)
+            return true
         } catch (e: CancellationException) {
-            AgentNoticeBus.publish(sessionId, wakeMessage, wakeIfIdle = false)
+            AgentNoticeBus.requeue(notices)
             throw e
         } catch (e: Exception) {
             LocalLogger.w(TAG, R.string.log_repo_wake_run_error, sessionId, e.message)
-            AgentNoticeBus.publish(sessionId, wakeMessage, wakeIfIdle = false)
+            AgentNoticeBus.requeue(notices)
+            return false
         }
     }
 

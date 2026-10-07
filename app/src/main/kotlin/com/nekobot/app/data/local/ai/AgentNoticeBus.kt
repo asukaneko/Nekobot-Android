@@ -15,15 +15,15 @@ import com.nekobot.app.R
  *   开一轮新的 Agent 运行处理通知并向用户汇报结果（对齐 DeepSeek harness 的
  *   后台任务完成唤醒语义；可在设置中关闭）。
  *
- * 只做内存队列并限制长度：通知是过程性信息，任务结果本身持久化在 [SubagentTaskStore]，
- * 进程重启后依然可以用 subagent_get 查询完整结果。
+ * 内存队列只负责当前进程分发；子代理完成事件另写 Room outbox，进程重启后可补投。
+ * 任务结果本身持久化在 [SubagentTaskStore]，也可用 subagent_get 查询。
  */
 internal object AgentNoticeBus {
 
     /** 单个会话最多保留的通知条数，避免长期空闲的会话无上限堆积。 */
     internal const val MAX_NOTICES_PER_SESSION = 20
 
-    private val queues = ConcurrentHashMap<String, ConcurrentLinkedQueue<String>>()
+    private val queues = ConcurrentHashMap<String, ConcurrentLinkedQueue<SubagentNoticeEnvelope>>()
 
     /**
      * 通知到达监听器：由 LocalRepository 注册。
@@ -40,15 +40,34 @@ internal object AgentNoticeBus {
     /** 发布一条通知；超过上限时丢弃最旧的通知。 */
     fun publish(sessionId: String, notice: String, wakeIfIdle: Boolean = true) {
         if (sessionId.isBlank() || notice.isBlank()) return
+        enqueue(sessionId, SubagentNoticeEnvelope(eventId = null, content = notice))
+        if (wakeIfIdle) wake(sessionId)
+    }
+
+    internal fun publishPersisted(
+        sessionId: String,
+        eventId: String,
+        notice: String,
+        wakeIfIdle: Boolean = true
+    ) {
+        if (sessionId.isBlank() || eventId.isBlank() || notice.isBlank()) return
+        enqueue(sessionId, SubagentNoticeEnvelope(eventId, notice))
+        if (wakeIfIdle) wake(sessionId)
+    }
+
+    private fun enqueue(sessionId: String, notice: SubagentNoticeEnvelope) {
         val queue = queues.computeIfAbsent(sessionId) { ConcurrentLinkedQueue() }
-        queue.add(notice)
+        val queuedNotice = notice.copy(sessionId = sessionId)
+        if (queuedNotice.eventId != null && queue.any { it.eventId == queuedNotice.eventId }) return
+        queue.add(queuedNotice)
         while (queue.size > MAX_NOTICES_PER_SESSION) {
             queue.poll()
         }
-        if (wakeIfIdle) {
-            runCatching { onNoticePublished?.invoke(sessionId) }.onFailure { error ->
-                com.nekobot.app.data.local.LocalLogger.w("AgentNoticeBus", R.string.log_notice_wake_callback_failed, error.message)
-            }
+    }
+
+    private fun wake(sessionId: String) {
+        runCatching { onNoticePublished?.invoke(sessionId) }.onFailure { error ->
+            com.nekobot.app.data.local.LocalLogger.w("AgentNoticeBus", R.string.log_notice_wake_callback_failed, error.message)
         }
     }
 
@@ -58,8 +77,15 @@ internal object AgentNoticeBus {
 
     /** 取出并清空某会话的全部通知（取出即消费）。 */
     fun drain(sessionId: String): List<String> {
+        val records = drainForWake(sessionId)
+        acknowledge(records)
+        return records.map { it.content }
+    }
+
+    /** 唤醒运行需要等模型回合成功后才确认，失败时可原样放回 outbox 队列。 */
+    internal fun drainForWake(sessionId: String): List<SubagentNoticeEnvelope> {
         val queue = queues[sessionId] ?: return emptyList()
-        val drained = mutableListOf<String>()
+        val drained = mutableListOf<SubagentNoticeEnvelope>()
         while (true) {
             val item = queue.poll() ?: break
             drained.add(item)
@@ -67,11 +93,38 @@ internal object AgentNoticeBus {
         return drained
     }
 
+    internal fun acknowledge(notices: Collection<SubagentNoticeEnvelope>, runId: String? = null) {
+        notices.mapNotNull { it.eventId }.distinct().forEach { SubagentTaskStore.markNoticeDelivered(it, runId) }
+    }
+
+    internal fun requeue(notices: Collection<SubagentNoticeEnvelope>, wakeIfIdle: Boolean = false) {
+        notices.forEach { notice ->
+            val sessionId = notice.sessionId ?: return@forEach
+            enqueue(sessionId, notice)
+        }
+        if (wakeIfIdle) notices.mapNotNull { it.sessionId }.distinct().forEach(::wake)
+    }
+
+    /** 仓库重建后唤醒已从 Room 重放的 pending outbox。 */
+    internal fun wakePending() {
+        queues.filterValues { it.isNotEmpty() }.keys.forEach(::wake)
+    }
+
+    internal fun clearAll() {
+        queues.clear()
+    }
+
     /** 清空某会话的通知（会话删除/测试用）。 */
     fun clear(sessionId: String) {
         queues.remove(sessionId)
     }
 }
+
+internal data class SubagentNoticeEnvelope(
+    val eventId: String?,
+    val content: String,
+    val sessionId: String? = null
+)
 
 /**
  * 把一批后台任务通知组装成唤醒运行的「用户消息」。
@@ -169,16 +222,6 @@ internal object SubagentRunRegistry {
         return true
     }
 
-    /** 档案关闭时等待全部后台子代理退出，避免旧协程继续写入已切换的数据库。 */
-    fun cancelAllAndJoin() {
-        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-            val active = jobs.values.toList()
-            active.forEach { it.cancel() }
-            active.forEach { it.join() }
-        }
-        jobs.clear()
-    }
-
     /** 仅取消指定档案/会话中的任务句柄。 */
     fun cancelAndJoin(taskIds: Set<String>) {
         if (taskIds.isEmpty()) return
@@ -187,12 +230,12 @@ internal object SubagentRunRegistry {
             active.forEach { it.cancel() }
             active.forEach { it.join() }
         }
-        if (taskIds.isEmpty()) jobs.clear() else taskIds.forEach(jobs::remove)
+        taskIds.forEach(jobs::remove)
     }
 }
 
 /**
- * 子代理任务级通知队列（进程内单例）。
+ * 子代理任务级通知队列（进程内分发缓存）。
  *
  * 嵌套场景下，后台子代理自己也可以委派后台子任务。子任务完成时，若它的父任务
  * （也是子代理）仍在运行，通知投递到这里，由父任务工具循环在下一轮模型调用前
@@ -201,12 +244,24 @@ internal object SubagentRunRegistry {
  */
 internal object SubagentTaskNoticeBus {
 
-    private val queues = ConcurrentHashMap<String, ConcurrentLinkedQueue<String>>()
+    private val queues = ConcurrentHashMap<String, ConcurrentLinkedQueue<SubagentNoticeEnvelope>>()
+    private val inFlight = ConcurrentHashMap<String, ConcurrentLinkedQueue<SubagentNoticeEnvelope>>()
 
     /** 发布一条发给指定子代理任务的通知。 */
     fun publish(taskId: String, notice: String) {
         if (taskId.isBlank() || notice.isBlank()) return
-        queues.computeIfAbsent(taskId) { ConcurrentLinkedQueue() }.add(notice)
+        enqueue(taskId, SubagentNoticeEnvelope(eventId = null, content = notice))
+    }
+
+    internal fun publishPersisted(taskId: String, eventId: String, notice: String) {
+        if (taskId.isBlank() || eventId.isBlank() || notice.isBlank()) return
+        enqueue(taskId, SubagentNoticeEnvelope(eventId = eventId, content = notice))
+    }
+
+    private fun enqueue(taskId: String, notice: SubagentNoticeEnvelope) {
+        val queue = queues.computeIfAbsent(taskId) { ConcurrentLinkedQueue() }
+        if (notice.eventId != null && queue.any { it.eventId == notice.eventId }) return
+        queue.add(notice)
     }
 
     fun hasPending(taskId: String): Boolean = queues[taskId]?.isNotEmpty() == true
@@ -214,10 +269,31 @@ internal object SubagentTaskNoticeBus {
     /** 取出并清空某任务的通知（父任务循环每轮模型调用前消费）。 */
     fun drain(taskId: String): List<String> {
         val queue = queues[taskId] ?: return emptyList()
-        val drained = mutableListOf<String>()
+        val records = mutableListOf<SubagentNoticeEnvelope>()
         while (true) {
             val item = queue.poll() ?: break
-            drained.add(item)
+            records.add(item)
+        }
+        if (records.isNotEmpty()) {
+            inFlight.computeIfAbsent(taskId) { ConcurrentLinkedQueue() }.addAll(records)
+        }
+        return records.map { it.content }
+    }
+
+    /** 父任务已成功保存并完成一轮处理后确认通知。 */
+    fun acknowledgeConsumed(taskId: String) {
+        inFlight.remove(taskId)?.mapNotNull { it.eventId }?.distinct()
+            ?.forEach { SubagentTaskStore.markNoticeDelivered(it, taskId) }
+    }
+
+    /** 父任务结束时将尚未确认的通知连同队列中未取出的通知一起向上转发。 */
+    internal fun drainRecords(taskId: String): List<SubagentNoticeEnvelope> {
+        val drained = mutableListOf<SubagentNoticeEnvelope>()
+        listOfNotNull(queues.remove(taskId), inFlight.remove(taskId)).forEach { queue ->
+            while (true) {
+                val item = queue.poll() ?: break
+                drained.add(item)
+            }
         }
         return drained
     }
@@ -225,7 +301,15 @@ internal object SubagentTaskNoticeBus {
     /** 清理一批任务的通知（任务记录被清理时调用）。 */
     fun clearTasks(taskIds: Collection<String>) {
         if (taskIds.isEmpty()) return
-        taskIds.forEach(queues::remove)
+        taskIds.forEach {
+            queues.remove(it)
+            inFlight.remove(it)
+        }
+    }
+
+    fun clearAll() {
+        queues.clear()
+        inFlight.clear()
     }
 }
 
@@ -268,14 +352,8 @@ internal fun buildSubagentCompletionNotice(task: SubagentTask, addressedToParent
  */
 internal fun routeSubagentCompletionNotice(sessionId: String, task: SubagentTask) {
     val parent = task.parentTaskId?.let { SubagentTaskStore.get(it) }
-    if (parent != null && parent.isActive) {
-        SubagentTaskNoticeBus.publish(parent.id, buildSubagentCompletionNotice(task, addressedToParentTask = true))
-    } else {
-        AgentNoticeBus.publish(
-            sessionId,
-            buildSubagentCompletionNotice(task, addressedToParentTask = false)
-        )
-    }
+    val parentTaskId = parent?.id?.takeIf { parent.isActive }
+    SubagentTaskStore.publishCompletionNotice(task.copy(sessionId = sessionId), parentTaskId)
 }
 
 /**
@@ -286,12 +364,22 @@ internal fun routeSubagentCompletionNotice(sessionId: String, task: SubagentTask
  * 否则→会话级），保证嵌套结果最终总能到达主会话。
  */
 internal fun forwardUndeliveredSubagentTaskNotices(task: SubagentTask) {
-    val leftovers = SubagentTaskNoticeBus.drain(task.id)
+    val leftovers = SubagentTaskNoticeBus.drainRecords(task.id)
     if (leftovers.isEmpty()) return
     val parent = task.parentTaskId?.let { SubagentTaskStore.get(it) }
-    if (parent != null && parent.isActive) {
-        leftovers.forEach { SubagentTaskNoticeBus.publish(parent.id, it) }
-    } else {
-        leftovers.forEach { AgentNoticeBus.publish(task.sessionId, it) }
+    val parentTaskId = parent?.id?.takeIf { parent.isActive }
+    leftovers.forEach { notice ->
+        if (notice.eventId != null) {
+            SubagentTaskStore.retargetPendingNotice(notice.eventId, parentTaskId)
+            if (parentTaskId != null) {
+                SubagentTaskNoticeBus.publishPersisted(parentTaskId, notice.eventId, notice.content)
+            } else {
+                AgentNoticeBus.publishPersisted(task.sessionId, notice.eventId, notice.content)
+            }
+        } else if (parentTaskId != null) {
+            SubagentTaskNoticeBus.publish(parentTaskId, notice.content)
+        } else {
+            AgentNoticeBus.publish(task.sessionId, notice.content)
+        }
     }
 }

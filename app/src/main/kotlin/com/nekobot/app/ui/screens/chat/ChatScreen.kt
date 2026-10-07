@@ -1428,7 +1428,8 @@ fun ChatScreen(
                                             },
                                             onStepClick = { target ->
                                                 stepDetailTarget = target
-                                            }
+                                            },
+                                            onResumeSubagent = viewModel::resumeSubagentFromCard
                                         )
                                     }
                                 }
@@ -3558,10 +3559,15 @@ private fun ProgressCard(
     shape: Shape = RoundedCornerShape(14.dp),
     showBottomDivider: Boolean = false,
     onExpandedChange: (Boolean) -> Unit,
-    onStepClick: (StepDetailTarget) -> Unit = {}
+    onStepClick: (StepDetailTarget) -> Unit = {},
+    onResumeSubagent: ((String) -> Unit)? = null
 ) {
     val progress = card.progress?.coerceIn(0, 100)
-    val hasError = card.steps.any { it.status.equals("error", ignoreCase = true) }
+    val hasError = when (card.subagentStatus) {
+        "running", "outputting", "succeeded" -> false
+        "interrupted", "failed", "killed" -> true
+        else -> card.steps.any { it.status.equals("error", ignoreCase = true) }
+    }
     val statusColor = if (hasError) {
         MaterialTheme.colorScheme.error
     } else {
@@ -3674,6 +3680,23 @@ private fun ProgressCard(
             )
             Spacer(Modifier.height(6.dp))
             GitDiffSummarySection(summary = gitSummary)
+        }
+
+        if (card.subagentStatus == "interrupted" && onResumeSubagent != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                androidx.compose.material3.TextButton(
+                    onClick = { onResumeSubagent(card.id) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 8.dp,
+                        vertical = 2.dp
+                    )
+                ) {
+                    Text(stringResource(R.string.chat_subagent_resume_action))
+                }
+            }
         }
 
         // 步骤列表（可折叠）

@@ -23,6 +23,8 @@ import com.nekobot.app.data.local.LocalLogger
         LocalAgentToolMessageEntity::class,
         LocalSubagentTaskEntity::class,
         LocalSubagentMessageEntity::class,
+        LocalSubagentToolCallEntity::class,
+        LocalAgentNoticeEntity::class,
         LocalCharacterEntity::class,
         LocalWorldBookEntity::class,
         LocalWorldBookEntryEntity::class,
@@ -51,7 +53,7 @@ import com.nekobot.app.data.local.LocalLogger
         LocalMessageVariantEntity::class,
         LocalStickerEntity::class
     ],
-    version = 50,
+    version = 51,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -1115,6 +1117,54 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v50 → v51：独立持久化子代理工具调用检查点和完成通知 outbox。 */
+        val MIGRATION_50_51 = object : Migration(50, 51) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_subagent_tool_calls (
+                        task_id TEXT NOT NULL,
+                        execution_generation INTEGER NOT NULL,
+                        call_id TEXT NOT NULL,
+                        assistant_sequence INTEGER NOT NULL,
+                        result_sequence INTEGER,
+                        tool_name TEXT NOT NULL,
+                        arguments_summary TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        started_at INTEGER,
+                        finished_at INTEGER,
+                        recovery_decision TEXT,
+                        PRIMARY KEY(task_id, execution_generation, call_id),
+                        FOREIGN KEY(task_id) REFERENCES local_subagent_tasks(task_id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_subagent_tool_calls_task_id ON local_subagent_tool_calls(task_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_subagent_tool_calls_task_id_execution_generation_status ON local_subagent_tool_calls(task_id, execution_generation, status)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_agent_notices (
+                        notice_id TEXT NOT NULL PRIMARY KEY,
+                        task_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        parent_task_id TEXT,
+                        execution_generation INTEGER NOT NULL,
+                        payload TEXT NOT NULL,
+                        delivery_state TEXT NOT NULL DEFAULT 'pending',
+                        created_at INTEGER NOT NULL,
+                        delivered_at INTEGER,
+                        consumed_by_run_id TEXT,
+                        FOREIGN KEY(task_id) REFERENCES local_subagent_tasks(task_id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(parent_task_id) REFERENCES local_subagent_tasks(task_id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_agent_notices_task_id ON local_agent_notices(task_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_agent_notices_session_id_delivery_state_created_at ON local_agent_notices(session_id, delivery_state, created_at)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_agent_notices_parent_task_id_delivery_state ON local_agent_notices(parent_task_id, delivery_state)")
+            }
+        }
+
         /** Room 不声明触发器；数据库打开时也安装一次，覆盖全新安装。 */
         private fun installExperienceInvalidationTriggers(db: SupportSQLiteDatabase) {
             db.execSQL(
@@ -1167,7 +1217,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
             MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45,
             MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49,
-            MIGRATION_49_50
+            MIGRATION_49_50, MIGRATION_50_51
         )
 
         fun get(context: Context): NekobotDatabase =

@@ -2516,6 +2516,15 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
+    /** 从子代理中断卡片请求主 Agent 核查并恢复同一任务。 */
+    fun resumeSubagentFromCard(taskId: String) {
+        if (!isLocalMode || taskId.isBlank()) return
+        sendMessage(
+            text = string(R.string.chat_subagent_resume_prompt, taskId),
+            allowDelay = false
+        )
+    }
+
     fun sendMessage(
         text: String,
         plotChoiceId: String? = null,

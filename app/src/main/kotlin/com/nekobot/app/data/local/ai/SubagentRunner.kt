@@ -154,6 +154,7 @@ internal object SubagentRunner {
             maxConsecutiveErrors = 3,
             shouldStop = shouldStop,
             pendingUserMessages = { SubagentTaskNoticeBus.drain(taskId).filter(String::isNotBlank) },
+            persistPendingUserMessages = true,
             hooks = hooks,
             contextBudgetTokens = { contextBudgetTokens }
         )

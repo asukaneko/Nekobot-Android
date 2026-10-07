@@ -479,11 +479,52 @@ interface LocalSubagentTaskDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsertMessage(message: LocalSubagentMessageEntity)
 
+    @Upsert
+    fun upsertToolCall(call: LocalSubagentToolCallEntity)
+
+    @Query("SELECT * FROM local_subagent_tool_calls WHERE task_id = :taskId AND execution_generation = :generation AND call_id = :callId LIMIT 1")
+    fun getToolCall(taskId: String, generation: Int, callId: String): LocalSubagentToolCallEntity?
+
+    @Query("SELECT * FROM local_subagent_tool_calls WHERE task_id = :taskId AND call_id = :callId ORDER BY execution_generation DESC LIMIT 1")
+    fun getLatestToolCall(taskId: String, callId: String): LocalSubagentToolCallEntity?
+
+    @Query("SELECT * FROM local_subagent_tool_calls WHERE task_id = :taskId ORDER BY execution_generation ASC, assistant_sequence ASC")
+    fun listToolCalls(taskId: String): List<LocalSubagentToolCallEntity>
+
+    @Transaction
+    fun persistMessageCheckpoint(
+        task: LocalSubagentTaskEntity,
+        message: LocalSubagentMessageEntity,
+        toolCalls: List<LocalSubagentToolCallEntity>
+    ) {
+        upsert(task)
+        upsertMessage(message)
+        toolCalls.forEach(::upsertToolCall)
+    }
+
+    @Transaction
+    fun persistToolCallCheckpoint(task: LocalSubagentTaskEntity, call: LocalSubagentToolCallEntity) {
+        upsert(task)
+        upsertToolCall(call)
+    }
+
     @Query("SELECT * FROM local_subagent_messages WHERE task_id = :taskId ORDER BY sequence ASC")
     fun listMessages(taskId: String): List<LocalSubagentMessageEntity>
 
     @Query("DELETE FROM local_subagent_messages WHERE task_id = :taskId")
     fun deleteMessages(taskId: String)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertNoticeIfAbsent(notice: LocalAgentNoticeEntity): Long
+
+    @Query("SELECT * FROM local_agent_notices WHERE delivery_state = 'pending' ORDER BY created_at ASC")
+    fun listPendingNotices(): List<LocalAgentNoticeEntity>
+
+    @Query("UPDATE local_agent_notices SET delivery_state = 'delivered', delivered_at = :deliveredAt, consumed_by_run_id = :runId WHERE notice_id = :noticeId AND delivery_state = 'pending'")
+    fun markNoticeDelivered(noticeId: String, deliveredAt: Long, runId: String?): Int
+
+    @Query("UPDATE local_agent_notices SET parent_task_id = :parentTaskId WHERE notice_id = :noticeId AND delivery_state = 'pending'")
+    fun retargetPendingNotice(noticeId: String, parentTaskId: String?): Int
 }
 
 @Dao

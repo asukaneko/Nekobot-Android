@@ -779,4 +779,6 @@
     <string name="chat_queue_enqueued">メッセージをキューに追加しました</string>
     <string name="chat_queue_injecting">次のツール呼び出し前に AI へ送信されます</string>
     <string name="chat_queue_sent_now">今すぐ送信しました</string>
+    <string name="chat_subagent_resume_action">サブエージェントを再開</string>
+    <string name="chat_subagent_resume_prompt">サブエージェントタスク %1$s を再開してください。まず subagent_get で進捗を確認してください。結果不明のツール呼び出しがある場合は読み取り専用ツールで結果を確認し、確認できなければ停止して報告してください。現在の目標に合っている場合は subagent_resume(task_id=%1$s) を呼び出してください。</string>
 </resources>

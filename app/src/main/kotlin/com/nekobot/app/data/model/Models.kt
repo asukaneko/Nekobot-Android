@@ -380,10 +380,12 @@ data class ThinkingCard(
      * - 本地：[com.nekobot.app.data.local.LocalRepository.nowIsoStatic] 产出的 ISO 字符串
      * 使用 String 类型以兼容后端 ISO 字符串，避免 Gson 反序列化时 Long 解析失败。
      */
-    val timestamp: String = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-    /** 关联的父用户消息 id；用于在用户气泡与 AI 气泡之间渲染，并持久化到父消息 */
-    @SerializedName("parent_message_id") val parentMessageId: String? = null
-)
+      val timestamp: String = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+      /** 关联的父用户消息 id；用于在用户气泡与 AI 气泡之间渲染，并持久化到父消息 */
+      @SerializedName("parent_message_id") val parentMessageId: String? = null,
+      /** 子代理任务状态；仅用于恢复类进度卡的可用操作。 */
+      @SerializedName("subagent_status") val subagentStatus: String? = null
+  )
 
 /**
  * Agent 任务列表单项（todo_write 工具全量写入，会话级持久化）。

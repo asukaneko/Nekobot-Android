@@ -778,4 +778,6 @@
     <string name="chat_queue_enqueued">Message queued</string>
     <string name="chat_queue_injecting">Will be sent to the AI before the next tool call</string>
     <string name="chat_queue_sent_now">Sent immediately</string>
+    <string name="chat_subagent_resume_action">Resume subagent</string>
+    <string name="chat_subagent_resume_prompt">Resume subagent task %1$s. First call subagent_get to review its progress. If any tool call is unknown, use read-only tools to verify its outcome; stop and report if it cannot be verified. If the task still matches the current goal, call subagent_resume(task_id=%1$s).</string>
 </resources>

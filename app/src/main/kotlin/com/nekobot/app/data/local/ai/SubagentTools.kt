@@ -84,7 +84,7 @@ internal fun buildSubagentToolDefinitions(): List<Map<String, Any>> {
         ),
         definition(
             TOOL_SUBAGENT_GET,
-            "查询指定子代理任务的结果与状态。用于后台子代理完成后取回其结论。" +
+            "查询指定子代理任务的结果、待办、工具调用摘要与状态。工具记录包含调用状态和恢复决策，不含完整工具结果正文；遇到 status=unknown 时先查看记录并用只读工具核查，不要直接重放。用于后台子代理完成后取回结论，或恢复中断任务前核对进度。" +
                 "status=running 表示仍在执行工具任务；status=outputting 表示工具调用已结束、正在输出最终结果（通常数十秒内完成），" +
                 "此时不要用 sleep 长时间等待或连续轮询，稍等片刻再查询一次即可；" +
                 "任务结束时父会话也会收到系统通知。",

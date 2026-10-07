@@ -784,4 +784,6 @@
     <string name="chat_queue_enqueued">已加入排队队列</string>
     <string name="chat_queue_injecting">将在下一次工具调用前发送给 AI</string>
     <string name="chat_queue_sent_now">已立即发送</string>
+    <string name="chat_subagent_resume_action">继续子代理</string>
+    <string name="chat_subagent_resume_prompt">请恢复子代理任务 %1$s。先调用 subagent_get 核查进度；若存在 unknown 工具调用，使用只读工具确认结果，无法确认时停下并报告。确认仍符合当前目标后调用 subagent_resume(task_id=%1$s)。</string>
 </resources>

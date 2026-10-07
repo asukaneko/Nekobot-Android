@@ -2063,6 +2063,8 @@ internal class LocalPipelineCallbacks(
         if (t == null || t.sessionId != session.id) {
             return mapOf("success" to false, "error" to "子代理任务不存在或不属于当前会话: $id")
         }
+        val toolCalls = SubagentTaskStore.toolCallSnapshots(id)
+        val hasUnknownToolCalls = toolCalls.any { it["status"] == "unknown" }
         if (t.isActive) {
             val outputting = t.status == SubagentTaskStatus.OUTPUTTING
             return mapOf(
@@ -2073,6 +2075,7 @@ internal class LocalPipelineCallbacks(
                 "elapsed_seconds" to ((System.currentTimeMillis() - (t.startedAt ?: t.createdAt)) / 1000)
                     .coerceAtLeast(0),
                 "tools_used" to t.steps.count { it.type == "tool" || it.type == "tool_done" },
+                "tool_calls" to toolCalls,
                 "instruction" to if (outputting) {
                     "子代理工具调用已结束，正在输出最终结果，通常数十秒内完成。" +
                         "请不要执行 sleep 等长时间等待，也不要连续轮询；" +
@@ -2091,8 +2094,14 @@ internal class LocalPipelineCallbacks(
                 "status" to "interrupted",
                 "model" to t.modelUsed,
                 "tool_calls" to t.toolCalls,
+                "tool_call_records" to toolCalls,
+                "review_required" to hasUnknownToolCalls,
                 "todos" to t.todos.map { mapOf("content" to it.content, "status" to it.status) },
-                "recovery_reason" to "任务已中断。可调用 subagent_resume 恢复已保存的模型上下文；中断时正在执行且结果未保存的工具会被标记为未知，必须先核查。",
+                "recovery_reason" to if (hasUnknownToolCalls) {
+                    "任务已中断，存在执行结果未知的工具。先查看 tool_call_records 中 status=unknown 的调用，并用只读工具核查外部状态；确认已完成或未执行后再决定恢复，不要直接重放。"
+                } else {
+                    "任务已中断，已保存的工具结果可复用。可调用 subagent_resume 从检查点继续。"
+                },
                 "error" to (t.error ?: "任务已中断")
             )
         }
@@ -2102,6 +2111,7 @@ internal class LocalPipelineCallbacks(
             "status" to t.status.name.lowercase(),
             "model" to t.modelUsed,
             "tool_calls" to t.toolCalls,
+            "tool_call_records" to toolCalls,
             if (t.status == SubagentTaskStatus.SUCCEEDED) {
                 "result" to t.result.take(AgentToolLimits.toolOutputChars())
             } else "error" to (t.error ?: "子代理执行失败")
@@ -2300,7 +2310,8 @@ internal class LocalPipelineCallbacks(
             isComplete = true,
             isAgent = true,
             timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-            parentMessageId = parentMessageId
+            parentMessageId = interrupted.parentMessageId ?: parentMessageId,
+            subagentStatus = "interrupted"
         )
         emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
         runCatching { onSubagentThinkingCard?.invoke(card) }
@@ -2355,6 +2366,9 @@ internal class LocalPipelineCallbacks(
                     modelUsed = result.modelName,
                     toolCalls = task.toolCalls + result.toolCalls
                 )
+                if (result.status == SubagentTaskStatus.SUCCEEDED) {
+                    SubagentTaskNoticeBus.acknowledgeConsumed(taskId)
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 SubagentTaskStore.update(id = taskId, status = SubagentTaskStatus.KILLED, error = "已取消")
             } catch (e: Exception) {
@@ -2370,6 +2384,7 @@ internal class LocalPipelineCallbacks(
                 }
                 runCatching {
                     val latest = SubagentTaskStore.get(task.id) ?: task
+                    emitSubagentStatusCard(latest)
                     if (latest.status != SubagentTaskStatus.INTERRUPTED) {
                         forwardUndeliveredSubagentTaskNotices(latest)
                         routeSubagentCompletionNotice(session.id, latest)
@@ -2428,6 +2443,10 @@ internal class LocalPipelineCallbacks(
                 modelUsed = result.modelName,
                 toolCalls = task.toolCalls + result.toolCalls
             )
+            emitSubagentStatusCard(SubagentTaskStore.get(taskId) ?: task)
+            if (result.status == SubagentTaskStatus.SUCCEEDED) {
+                SubagentTaskNoticeBus.acknowledgeConsumed(taskId)
+            }
             // 前台子代理同样可能委派过后台子任务：进入终态后把未消费的子任务通知向上转发。
             runCatching {
                 forwardUndeliveredSubagentTaskNotices(SubagentTaskStore.get(taskId) ?: task)
@@ -2462,6 +2481,7 @@ internal class LocalPipelineCallbacks(
         return { header, isComplete, steps ->
             // 同步到任务存储，供 subagent_get 查询。
             SubagentTaskStore.update(id = taskId, steps = steps)
+            val task = SubagentTaskStore.get(taskId)
             val card = com.nekobot.app.data.model.ThinkingCard(
                 id = taskId,
                 content = header,
@@ -2469,7 +2489,8 @@ internal class LocalPipelineCallbacks(
                 isComplete = isComplete,
                 isAgent = true,
                 timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-                parentMessageId = parentMessageId
+                parentMessageId = task?.parentMessageId ?: parentMessageId,
+                subagentStatus = task?.status?.name?.lowercase() ?: "running"
             )
             emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
             runCatching { onSubagentThinkingCard?.invoke(card) }
@@ -2502,7 +2523,33 @@ internal class LocalPipelineCallbacks(
             isComplete = false,
             isAgent = true,
             timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-            parentMessageId = parentMessageId
+            parentMessageId = task.parentMessageId ?: parentMessageId,
+            subagentStatus = task.status.name.lowercase()
+        )
+        emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
+        runCatching { onSubagentThinkingCard?.invoke(card) }
+    }
+
+    /** 子代理终态更新后刷新原任务卡，避免恢复后的错误步骤继续主导图标。 */
+    private fun emitSubagentStatusCard(task: SubagentTask) {
+        val status = task.status
+        val label = when (status) {
+            SubagentTaskStatus.SUCCEEDED -> "✅ 子代理已完成"
+            SubagentTaskStatus.FAILED -> "⚠ 子代理执行失败"
+            SubagentTaskStatus.KILLED -> "⏹ 子代理已终止"
+            SubagentTaskStatus.INTERRUPTED -> "⏸ 子代理已中断"
+            SubagentTaskStatus.OUTPUTTING -> "子代理输出结果中"
+            SubagentTaskStatus.RUNNING -> "子代理执行中"
+        }
+        val card = com.nekobot.app.data.model.ThinkingCard(
+            id = task.id,
+            content = "$label: ${task.description}",
+            steps = task.steps,
+            isComplete = !task.isActive,
+            isAgent = true,
+            timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+            parentMessageId = task.parentMessageId ?: parentMessageId,
+            subagentStatus = status.name.lowercase()
         )
         emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
         runCatching { onSubagentThinkingCard?.invoke(card) }

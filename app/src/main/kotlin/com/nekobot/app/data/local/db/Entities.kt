@@ -405,6 +405,70 @@ data class LocalSubagentMessageEntity(
     @ColumnInfo(name = "created_at") val createdAt: Long
 )
 
+/** 子代理工具调用的独立检查点，保留每次执行代次的开始、结果与恢复决策。 */
+@Entity(
+    tableName = "local_subagent_tool_calls",
+    primaryKeys = ["task_id", "execution_generation", "call_id"],
+    indices = [Index("task_id"), Index(value = ["task_id", "execution_generation", "status"])],
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalSubagentTaskEntity::class,
+            parentColumns = ["task_id"],
+            childColumns = ["task_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class LocalSubagentToolCallEntity(
+    @ColumnInfo(name = "task_id") val taskId: String,
+    @ColumnInfo(name = "execution_generation") val executionGeneration: Int,
+    @ColumnInfo(name = "call_id") val callId: String,
+    @ColumnInfo(name = "assistant_sequence") val assistantSequence: Long,
+    @ColumnInfo(name = "result_sequence") val resultSequence: Long?,
+    @ColumnInfo(name = "tool_name") val toolName: String,
+    @ColumnInfo(name = "arguments_summary") val argumentsSummary: String,
+    val status: String,
+    @ColumnInfo(name = "started_at") val startedAt: Long?,
+    @ColumnInfo(name = "finished_at") val finishedAt: Long?,
+    @ColumnInfo(name = "recovery_decision") val recoveryDecision: String?
+)
+
+/** 持久化子代理完成通知；重启后可按 event id 幂等补投。 */
+@Entity(
+    tableName = "local_agent_notices",
+    indices = [
+        Index("task_id"),
+        Index(value = ["session_id", "delivery_state", "created_at"]),
+        Index(value = ["parent_task_id", "delivery_state"])
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalSubagentTaskEntity::class,
+            parentColumns = ["task_id"],
+            childColumns = ["task_id"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = LocalSubagentTaskEntity::class,
+            parentColumns = ["task_id"],
+            childColumns = ["parent_task_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class LocalAgentNoticeEntity(
+    @PrimaryKey @ColumnInfo(name = "notice_id") val noticeId: String,
+    @ColumnInfo(name = "task_id") val taskId: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    @ColumnInfo(name = "parent_task_id") val parentTaskId: String?,
+    @ColumnInfo(name = "execution_generation") val executionGeneration: Int,
+    val payload: String,
+    @ColumnInfo(name = "delivery_state", defaultValue = "'pending'") val deliveryState: String = "pending",
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "delivered_at") val deliveredAt: Long? = null,
+    @ColumnInfo(name = "consumed_by_run_id") val consumedByRunId: String? = null
+)
+
 /**
  * 本地角色卡。字段对齐后端 CharacterPreset 完整字段。
  *

@@ -1,10 +1,13 @@
 package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.db.LocalSubagentTaskDao
 import com.nekobot.app.data.local.db.LocalSubagentMessageEntity
 import com.nekobot.app.data.local.db.LocalSubagentTaskEntity
+import com.nekobot.app.data.local.db.LocalSubagentToolCallEntity
+import com.nekobot.app.data.local.db.LocalAgentNoticeEntity
 import com.nekobot.app.data.model.AgentTodo
 import com.nekobot.app.data.model.ThinkingStep
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +62,8 @@ data class SubagentTask(
     val parentMessageId: String? = null,
     val parentToolCallId: String? = null,
     val conversation: List<Map<String, Any>> = emptyList(),
-    val toolCallStates: Map<String, String> = emptyMap()
+    val toolCallStates: Map<String, String> = emptyMap(),
+    val executionGeneration: Int = 1
 ) {
     /** 前台与后台统一的 JSON 序列化，供工具返回给父模型。 */
     fun toJson(gson: Gson = Gson()): String = gson.toJson(this)
@@ -114,10 +118,28 @@ object SubagentTaskStore {
             }
             tasks[task.id] = task
         }
+        runBlocking(Dispatchers.IO) { persistence.listPendingNotices() }.forEach { notice ->
+            val parent = notice.parentTaskId?.let(tasks::get)
+            val alreadyPersistedInParent = parent?.conversation?.any { message ->
+                message["role"] == "user" && message["content"]?.toString() == notice.payload
+            } == true
+            if (alreadyPersistedInParent) {
+                markNoticeDelivered(notice.noticeId, parent?.id)
+            } else if (parent != null && parent.isActive) {
+                SubagentTaskNoticeBus.publishPersisted(parent.id, notice.noticeId, notice.payload)
+            } else {
+                if (notice.parentTaskId != null) {
+                    runBlocking(Dispatchers.IO) { persistence.retargetPendingNotice(notice.noticeId, null) }
+                }
+                AgentNoticeBus.publishPersisted(notice.sessionId, notice.noticeId, notice.payload, wakeIfIdle = false)
+            }
+        }
     }
 
     /** 标记任务中断、等待档案后台任务退出，再解除旧档案的写入绑定。 */
     fun closeRepository() {
+        val taskIds = tasks.keys.toList()
+        val sessionIds = tasks.values.map { it.sessionId }.distinct()
         synchronized(lock) {
             tasks.values.filter { it.isActive }.forEach { current ->
                 val interrupted = current.copy(status = SubagentTaskStatus.INTERRUPTED)
@@ -125,7 +147,9 @@ object SubagentTaskStore {
                 runCatching { persist(interrupted) }
             }
         }
-        SubagentRunRegistry.cancelAllAndJoin()
+        SubagentRunRegistry.cancelAndJoin(taskIds.toSet())
+        SubagentTaskNoticeBus.clearTasks(taskIds)
+        sessionIds.forEach(AgentNoticeBus::clear)
         synchronized(lock) { dao = null }
     }
 
@@ -230,7 +254,8 @@ object SubagentTaskStore {
             status = SubagentTaskStatus.RUNNING,
             error = null,
             startedAt = System.currentTimeMillis(),
-            finishedAt = null
+            finishedAt = null,
+            executionGeneration = current.executionGeneration + 1
         )
         persist(resumed)
         tasks[id] = resumed
@@ -243,7 +268,28 @@ object SubagentTaskStore {
         val current = tasks[id] ?: return@synchronized
         if (current.status == SubagentTaskStatus.INTERRUPTED) return@synchronized
         val next = current.copy(toolCallStates = current.toolCallStates + (callId to "running"))
-        persist(next)
+        val currentDao = dao
+        if (currentDao != null) {
+            val prior = io { currentDao.getToolCall(id, current.executionGeneration, callId) }
+            val metadata = findToolCallMetadata(current.conversation, callId)
+            val now = System.currentTimeMillis()
+            val call = (prior ?: LocalSubagentToolCallEntity(
+                taskId = id,
+                executionGeneration = current.executionGeneration,
+                callId = callId,
+                assistantSequence = metadata?.first ?: current.conversation.size.toLong(),
+                resultSequence = null,
+                toolName = metadata?.second.orEmpty(),
+                argumentsSummary = metadata?.third.orEmpty(),
+                status = "prepared",
+                startedAt = null,
+                finishedAt = null,
+                recoveryDecision = null
+            )).copy(status = "running", startedAt = prior?.startedAt ?: now)
+            io { currentDao.persistToolCallCheckpoint(next.toEntity(), call) }
+        } else {
+            persist(next)
+        }
         tasks[id] = next
     }
 
@@ -254,36 +300,96 @@ object SubagentTaskStore {
             throw kotlinx.coroutines.CancellationException("子代理已中断")
         }
         val nextConversation = current.conversation + message.toMap()
+        val sequence = nextConversation.size.toLong() - 1L
         val nextStates = current.toolCallStates.toMutableMap()
+        val callUpdates = mutableListOf<LocalSubagentToolCallEntity>()
         if (message["role"] == "assistant") {
             val calls = message["tool_calls"] as? List<*> ?: emptyList<Any>()
             calls.forEach { rawCall ->
                 val call = rawCall as? Map<*, *> ?: return@forEach
                 val callId = call["id"]?.toString()?.takeIf(String::isNotBlank) ?: return@forEach
                 nextStates.putIfAbsent(callId, "prepared")
+                val function = call["function"] as? Map<*, *>
+                val name = function?.get("name")?.toString().orEmpty()
+                val rawArguments = function?.get("arguments")
+                val arguments = when (rawArguments) {
+                    is String -> rawArguments
+                    null -> "{}"
+                    else -> gson.toJson(rawArguments)
+                }.take(2_000)
+                callUpdates += LocalSubagentToolCallEntity(
+                    taskId = id,
+                    executionGeneration = current.executionGeneration,
+                    callId = callId,
+                    assistantSequence = sequence,
+                    resultSequence = null,
+                    toolName = name,
+                    argumentsSummary = arguments,
+                    status = "prepared",
+                    startedAt = null,
+                    finishedAt = null,
+                    recoveryDecision = null
+                )
             }
         } else if (message["role"] == "tool") {
             val callId = message["tool_call_id"]?.toString()?.takeIf(String::isNotBlank)
-            if (callId != null) nextStates[callId] = "completed"
+            if (callId != null) {
+                val recoveryDecision = recoveryDecision(message["content"])
+                val callStatus = when (recoveryDecision) {
+                    "result_unknown" -> "unknown"
+                    "not_started" -> "not_started"
+                    else -> "completed"
+                }
+                nextStates[callId] = callStatus
+                val currentDao = dao
+                val prior = currentDao?.let { db ->
+                    io { db.getLatestToolCall(id, callId) }
+                }
+                val metadata = findToolCallMetadata(current.conversation, callId)
+                callUpdates += (prior ?: LocalSubagentToolCallEntity(
+                    taskId = id,
+                    executionGeneration = current.executionGeneration,
+                    callId = callId,
+                    assistantSequence = metadata?.first ?: sequence,
+                    resultSequence = null,
+                    toolName = message["name"]?.toString() ?: metadata?.second.orEmpty(),
+                    argumentsSummary = metadata?.third.orEmpty(),
+                    status = "prepared",
+                    startedAt = null,
+                    finishedAt = null,
+                    recoveryDecision = null
+                )).copy(
+                    status = callStatus,
+                    resultSequence = sequence,
+                    finishedAt = System.currentTimeMillis(),
+                    recoveryDecision = recoveryDecision
+                )
+            }
         }
 
+        val next = current.copy(conversation = nextConversation, toolCallStates = nextStates)
         val currentDao = dao
         if (currentDao != null) {
-            val sequence = nextConversation.size.toLong() - 1L
             io {
-                currentDao.upsertMessage(
-                    LocalSubagentMessageEntity(
+                currentDao.persistMessageCheckpoint(
+                    task = next.toEntity(),
+                    message = LocalSubagentMessageEntity(
                         taskId = id,
                         sequence = sequence,
                         payloadJson = gson.toJson(message),
                         createdAt = System.currentTimeMillis()
-                    )
+                    ),
+                    toolCalls = callUpdates
                 )
             }
+        } else {
+            persist(next)
         }
-        val next = current.copy(conversation = nextConversation, toolCallStates = nextStates)
-        persist(next)
         tasks[id] = next
+        if (message["role"] == "user") {
+            // 通知用户消息与 outbox 状态在消息落库后确认；进程若在此前退出，启动时可安全补投。
+            SubagentTaskNoticeBus.acknowledgeConsumed(id)
+        }
     }
 
     /**
@@ -377,7 +483,102 @@ object SubagentTaskStore {
     fun listForSession(sessionId: String): List<SubagentTask> =
         tasks.values.filter { it.sessionId == sessionId }.sortedByDescending { it.createdAt }
 
+    /** 返回可用于恢复核查的工具调用摘要，不携带工具结果正文。 */
+    fun toolCallSnapshots(taskId: String): List<Map<String, Any?>> {
+        val persisted = dao?.let { currentDao ->
+            runCatching { io { currentDao.listToolCalls(taskId) } }.getOrNull()
+        }
+        if (!persisted.isNullOrEmpty()) {
+            return persisted.takeLast(100).map { call ->
+                buildMap {
+                    put("execution_generation", call.executionGeneration)
+                    put("call_id", call.callId)
+                    put("tool", call.toolName)
+                    put("arguments", call.argumentsSummary)
+                    put("status", call.status)
+                    call.startedAt?.let { put("started_at", it) }
+                    call.finishedAt?.let { put("finished_at", it) }
+                    call.recoveryDecision?.let { put("recovery_decision", it) }
+                }
+            }
+        }
+
+        val task = tasks[taskId] ?: return emptyList()
+        return task.conversation.asSequence()
+            .filter { it["role"] == "assistant" }
+            .flatMap { it["tool_calls"] as? List<*> ?: emptyList<Any>() }
+            .mapNotNull { raw ->
+                val call = raw as? Map<*, *> ?: return@mapNotNull null
+                val function = call["function"] as? Map<*, *>
+                val callId = call["id"]?.toString()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+                val rawArguments = function?.get("arguments")
+                val arguments = when (rawArguments) {
+                    is String -> rawArguments
+                    null -> "{}"
+                    else -> gson.toJson(rawArguments)
+                }
+                buildMap<String, Any?> {
+                    put("call_id", callId)
+                    put("tool", function?.get("name")?.toString().orEmpty())
+                    put("arguments", arguments.take(2_000))
+                    put("status", task.toolCallStates[callId] ?: "prepared")
+                    task.toolCallStates[callId]?.takeIf { it == "unknown" }?.let {
+                        put("recovery_decision", "result_unknown")
+                    }
+                }
+            }
+            .toList()
+            .takeLast(100)
+    }
+
     fun all(): List<SubagentTask> = tasks.values.sortedByDescending { it.createdAt }
+
+    /** 保存完成 outbox 后再投递到当前父任务或会话队列；notice id 按执行代次幂等。 */
+    fun publishCompletionNotice(task: SubagentTask, parentTaskId: String?) {
+        val noticeId = "subagent:${task.id}:${task.executionGeneration}"
+        val payload = buildSubagentCompletionNotice(task, addressedToParentTask = parentTaskId != null)
+        val currentDao = dao
+        if (currentDao == null) {
+            if (parentTaskId != null) SubagentTaskNoticeBus.publish(parentTaskId, payload)
+            else AgentNoticeBus.publish(task.sessionId, payload)
+            return
+        }
+        val inserted = io {
+            currentDao.insertNoticeIfAbsent(
+                LocalAgentNoticeEntity(
+                    noticeId = noticeId,
+                    taskId = task.id,
+                    sessionId = task.sessionId,
+                    parentTaskId = parentTaskId,
+                    executionGeneration = task.executionGeneration,
+                    payload = payload,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+        }
+        if (inserted < 0L) return
+        if (parentTaskId != null) {
+            SubagentTaskNoticeBus.publishPersisted(parentTaskId, noticeId, payload)
+        } else {
+            AgentNoticeBus.publishPersisted(task.sessionId, noticeId, payload)
+        }
+    }
+
+    /** 队列消费后确认 outbox；未消费记录会在档案重新绑定时补投。 */
+    internal fun markNoticeDelivered(noticeId: String, runId: String? = null) {
+        val currentDao = dao ?: return
+        io { currentDao.markNoticeDelivered(noticeId, System.currentTimeMillis(), runId) }
+    }
+
+    internal fun retargetPendingNotice(noticeId: String, parentTaskId: String?) {
+        val currentDao = dao ?: return
+        io { currentDao.retargetPendingNotice(noticeId, parentTaskId) }
+    }
+
+    /** 档案绑定完成并注册唤醒回调后，触发已恢复的会话通知。 */
+    internal fun wakePendingNotices() {
+        AgentNoticeBus.wakePending()
+    }
 
     /** 清理指定会话下的任务记录（会话删除时调用）。 */
     fun clearSession(sessionId: String) {
@@ -409,7 +610,38 @@ object SubagentTaskStore {
         io { currentDao.upsert(task.toEntity()) }
     }
 
-    private fun io(block: () -> Unit) = runBlocking(Dispatchers.IO) { block() }
+    private fun <T> io(block: () -> T): T = runBlocking(Dispatchers.IO) { block() }
+
+    private fun recoveryDecision(rawContent: Any?): String? = runCatching {
+        when (rawContent) {
+            is Map<*, *> -> rawContent["recovery"]?.toString()
+            is String -> JsonParser.parseString(rawContent).asJsonObject.get("recovery")?.asString
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun findToolCallMetadata(
+        conversation: List<Map<String, Any>>,
+        callId: String
+    ): Triple<Long, String, String>? {
+        conversation.forEachIndexed { sequence, message ->
+            if (message["role"] != "assistant") return@forEachIndexed
+            val calls = message["tool_calls"] as? List<*> ?: return@forEachIndexed
+            calls.forEach { rawCall ->
+                val call = rawCall as? Map<*, *> ?: return@forEach
+                if (call["id"]?.toString() != callId) return@forEach
+                val function = call["function"] as? Map<*, *>
+                val rawArguments = function?.get("arguments")
+                val arguments = when (rawArguments) {
+                    is String -> rawArguments
+                    null -> "{}"
+                    else -> gson.toJson(rawArguments)
+                }
+                return Triple(sequence.toLong(), function?.get("name")?.toString().orEmpty(), arguments.take(2_000))
+            }
+        }
+        return null
+    }
 
     private fun SubagentTask.toEntity() = LocalSubagentTaskEntity(
         taskId = id,
@@ -425,7 +657,7 @@ object SubagentTaskStore {
         depth = depth,
         status = status.name.lowercase(),
         stage = status.name.lowercase(),
-        executionGeneration = 1,
+        executionGeneration = executionGeneration,
         completedToolCalls = toolCalls,
         checkpointSequence = conversation.size.toLong(),
         todosJson = gson.toJson(todos),
@@ -469,6 +701,7 @@ object SubagentTaskStore {
             runInBackground = runInBackground,
             parentMessageId = parentMessageId,
             parentToolCallId = parentToolCallId,
+            executionGeneration = executionGeneration,
             toolCallStates = runCatching { gson.fromJson<Map<String, String>>(toolCallStatesJson, callStatesType) }
                 .getOrDefault(emptyMap())
         )
