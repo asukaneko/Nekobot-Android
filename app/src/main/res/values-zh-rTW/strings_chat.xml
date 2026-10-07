@@ -786,12 +786,17 @@
     <string name="chat_queue_sent_now">已立即發送</string>
     <string name="chat_subagent_resume_action">繼續子代理</string>
     <string name="chat_subagent_resume_prompt">請恢復子代理任務 %1$s。先呼叫 subagent_get 核查進度；若有 unknown 工具呼叫，請使用唯讀工具確認結果，無法確認時停止並回報。確認仍符合目前目標後再呼叫 subagent_resume(task_id=%1$s)。</string>
-    <string name="chat_subagent_pause_action">暫停</string>
-    <string name="chat_subagent_pause_prompt">請暫停後台子代理任務 %1$s，呼叫 subagent_pause(task_id=%1$s)，並告訴我目前已保存的進度。</string>
-    <string name="chat_subagent_kill_action">終止</string>
-    <string name="chat_subagent_kill_prompt">請終止後台子代理任務 %1$s，呼叫 subagent_kill(task_id=%1$s)，並告訴我已保存的部分進度。</string>
-    <string name="chat_subagent_view_result_action">查看結果</string>
-    <string name="chat_subagent_view_result_prompt">請呼叫 subagent_get(task_id=%1$s) 讀取已完成子代理的完整結果，並向我簡要回報。</string>
-    <string name="chat_subagent_retry_action">重試</string>
+<string name="chat_subagent_pause_action">暫停</string>
+<string name="chat_subagent_kill_action">終止</string>
+<string name="chat_subagent_prompt_label">任務提示詞</string>
+<string name="chat_subagent_result_label">最終輸出</string>
+<string name="chat_subagent_pause_confirm_title">暫停子代理？</string>
+<string name="chat_subagent_pause_confirm_message">暫停後會保存目前進度，可稍後繼續。</string>
+<string name="chat_subagent_kill_confirm_title">終止子代理？</string>
+<string name="chat_subagent_kill_confirm_message">任務將停止執行，已保存的進度仍可查看。</string>
+<string name="chat_subagent_pause_done">子代理已暫停</string>
+<string name="chat_subagent_kill_done">子代理已終止</string>
+<string name="chat_subagent_control_unavailable">子代理狀態已變更，請重新整理後再試</string>
+<string name="chat_subagent_retry_action">重試</string>
     <string name="chat_subagent_retry_prompt">請先確認子代理任務 %1$s 仍符合目前目標，再呼叫 subagent_retry(task_id=%1$s) 建立重試任務並追蹤結果。</string>
 </resources>

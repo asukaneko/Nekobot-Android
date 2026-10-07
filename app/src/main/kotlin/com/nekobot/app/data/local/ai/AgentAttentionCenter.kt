@@ -127,6 +127,12 @@ object AgentAttentionCenter {
                 ?.takeIf { entry.sessionId == sessionId }
         }
 
+    fun isExecAuthorizationPending(sessionId: String, requestId: String): Boolean =
+        entries.values.any { entry ->
+            entry.sessionId == sessionId &&
+                (entry.payload as? Payload.Exec)?.request?.requestId == requestId
+        }
+
     fun pendingAskUserQuestion(sessionId: String): AskUserQuestionRequest? =
         entries.values.firstNotNullOfOrNull { entry ->
             (entry.payload as? Payload.Question)
@@ -145,6 +151,26 @@ object AgentAttentionCenter {
 
     fun resolveExecAuthorization(sessionId: String) {
         remove(sessionId, AgentAttentionKind.ExecAuthorization)
+    }
+
+    fun resolveExecAuthorization(sessionId: String, requestId: String) {
+        val targets = entries.values.filter { entry ->
+            entry.sessionId == sessionId &&
+                entry.item.kind == AgentAttentionKind.ExecAuthorization &&
+                (entry.payload as? Payload.Exec)?.request?.requestId == requestId
+        }
+        if (targets.isEmpty()) return
+        targets.forEach { entries.remove(it.id) }
+        publish()
+        val remaining = entries.values.filter {
+            it.sessionId == sessionId && it.item.kind == AgentAttentionKind.ExecAuthorization
+        }
+        if (remaining.isEmpty()) {
+            cancelNotification(sessionId, AgentAttentionKind.ExecAuthorization)
+        } else {
+            remaining.forEach { it.notified = false }
+            recheck()
+        }
     }
 
     fun resolveQuestion(sessionId: String) {

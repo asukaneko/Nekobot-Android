@@ -530,6 +530,13 @@ class UnifiedRepository(
         if (isLocal) local.setYoloEnabled(sessionId, enabled)
     }
 
+    /** 从本地子代理进度卡片直接暂停或终止后台任务。 */
+    suspend fun pauseSubagentTask(sessionId: String, taskId: String): Boolean =
+        isLocal && local.pauseSubagentTask(sessionId, taskId)
+
+    suspend fun killSubagentTask(sessionId: String, taskId: String): Boolean =
+        isLocal && local.killSubagentTask(sessionId, taskId)
+
     /** 会话 Agent 工具集选择；仅本地模式有效。 */
 
     /** 工具大类目录：id → 包含的工具 id 列表。 */

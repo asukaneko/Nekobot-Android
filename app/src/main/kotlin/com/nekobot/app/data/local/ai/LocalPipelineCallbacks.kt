@@ -2341,7 +2341,10 @@ internal class LocalPipelineCallbacks(
             isAgent = true,
             timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
             parentMessageId = interrupted.parentMessageId ?: parentMessageId,
-            subagentStatus = "interrupted"
+            subagentStatus = "interrupted",
+            subagentBackground = interrupted.runInBackground,
+            subagentPrompt = interrupted.prompt,
+            subagentResult = interrupted.result.takeIf { it.isNotBlank() }
         )
         emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
         runCatching { onSubagentThinkingCard?.invoke(card) }
@@ -2521,7 +2524,9 @@ internal class LocalPipelineCallbacks(
                 timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
                 parentMessageId = task?.parentMessageId ?: parentMessageId,
                 subagentStatus = task?.status?.name?.lowercase() ?: "running",
-                subagentBackground = task?.runInBackground == true
+                subagentBackground = task?.runInBackground == true,
+                subagentPrompt = task?.prompt,
+                subagentResult = task?.result?.takeIf { it.isNotBlank() }
             )
             emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
             runCatching { onSubagentThinkingCard?.invoke(card) }
@@ -2556,7 +2561,9 @@ internal class LocalPipelineCallbacks(
             timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
             parentMessageId = task.parentMessageId ?: parentMessageId,
             subagentStatus = task.status.name.lowercase(),
-            subagentBackground = task.runInBackground
+            subagentBackground = task.runInBackground,
+            subagentPrompt = task.prompt,
+            subagentResult = task.result.takeIf { it.isNotBlank() }
         )
         emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
         runCatching { onSubagentThinkingCard?.invoke(card) }
@@ -2582,7 +2589,9 @@ internal class LocalPipelineCallbacks(
             timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
             parentMessageId = task.parentMessageId ?: parentMessageId,
             subagentStatus = status.name.lowercase(),
-            subagentBackground = task.runInBackground
+            subagentBackground = task.runInBackground,
+            subagentPrompt = task.prompt,
+            subagentResult = task.result.takeIf { it.isNotBlank() }
         )
         emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
         runCatching { onSubagentThinkingCard?.invoke(card) }

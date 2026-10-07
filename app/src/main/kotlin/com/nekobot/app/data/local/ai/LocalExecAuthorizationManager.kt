@@ -387,6 +387,7 @@ class LocalExecAuthorizationManager(
         val mainCommand: String,
         val authorizationKeys: Set<String>,
         val memorizable: Boolean,
+        val yoloExempt: Boolean,
         val decision: CompletableDeferred<ExecAuthorization>
     )
 
@@ -394,8 +395,18 @@ class LocalExecAuthorizationManager(
     private val alwaysAllowed = ConcurrentHashMap<String, MutableSet<String>>()
     private val yoloSessions = ConcurrentHashMap.newKeySet<String>()
 
-    fun enableYolo(sessionId: String) {
+    /** 开启 YOLO 并立即放行该会话中已挂起、且允许 YOLO 跳过的请求。 */
+    fun enableYolo(sessionId: String): List<String> {
         yoloSessions.add(sessionId)
+        return pending.entries.mapNotNull { (requestId, request) ->
+            if (request.sessionId == sessionId && !request.yoloExempt &&
+                request.decision.complete(ExecAuthorization.Once)
+            ) {
+                requestId
+            } else {
+                null
+            }
+        }
     }
 
     fun disableYolo(sessionId: String) {
@@ -497,7 +508,14 @@ class LocalExecAuthorizationManager(
 
         val requestId = UUID.randomUUID().toString()
         val decision = CompletableDeferred<ExecAuthorization>()
-        pending[requestId] = Pending(sessionId, mainCommand, authorizationKeys, memorizable, decision)
+        pending[requestId] = Pending(
+            sessionId = sessionId,
+            mainCommand = mainCommand,
+            authorizationKeys = authorizationKeys,
+            memorizable = memorizable,
+            yoloExempt = yoloExempt,
+            decision = decision
+        )
         onRequest(
             ExecConfirmationRequest(
                 requestId = requestId,
@@ -524,13 +542,14 @@ class LocalExecAuthorizationManager(
     ): Boolean {
         val request = pending[requestId] ?: return false
         if (request.sessionId != sessionId) return false
+        if (!request.decision.complete(authorization)) return false
         // 不可记忆的请求不允许写入「始终允许」记忆，即使 UI 传了 Always。
         if (authorization == ExecAuthorization.Always && request.memorizable) {
             val keys = allowedKeySet(sessionId)
             keys.addAll(request.authorizationKeys)
             runCatching { savePersistedRules?.invoke(sessionId, keys.toSet()) }
         }
-        return request.decision.complete(authorization)
+        return true
     }
 
     /** 停止生成时拒绝该会话全部待确认命令，立即解除同步等待。 */

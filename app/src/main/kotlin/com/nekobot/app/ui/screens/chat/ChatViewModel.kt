@@ -754,12 +754,14 @@ class ChatViewModel : BaseViewModel() {
         // 授权项被悬浮窗/通知处理完成后，同步收起本页弹窗，避免出现已失效的确认框
         if (attentionSyncJob?.isActive != true) {
             attentionSyncJob = viewModelScope.launch {
-                com.nekobot.app.data.local.ai.AgentAttentionCenter.pendingBySession.collect { pending ->
+                com.nekobot.app.data.local.ai.AgentAttentionCenter.pendingBySession.collect {
                     val request = _execConfirmation.value ?: return@collect
-                    val stillPending = pending[request.sessionId].orEmpty().any {
-                        it.kind == com.nekobot.app.data.local.ai.AgentAttentionKind.ExecAuthorization
+                    val stillPending = com.nekobot.app.data.local.ai.AgentAttentionCenter
+                        .isExecAuthorizationPending(request.sessionId, request.requestId)
+                    if (!stillPending) {
+                        _execConfirmation.value = null
+                        restorePendingAttention(request.sessionId)
                     }
-                    if (!stillPending) _execConfirmation.value = null
                 }
             }
         }
@@ -928,9 +930,11 @@ class ChatViewModel : BaseViewModel() {
                     is RealtimeEvent.ExecConfirmationRequired -> {
                         val request = event.request
                         if (request.sessionId.isBlank() || request.sessionId == targetSessionId) {
-                            target.execConfirmation.value = request.copy(
-                                sessionId = request.sessionId.ifBlank { targetSessionId }
-                            )
+                            if (target.execConfirmation.value == null) {
+                                target.execConfirmation.value = request.copy(
+                                    sessionId = request.sessionId.ifBlank { targetSessionId }
+                                )
+                            }
                         }
                     }
                     is RealtimeEvent.AskUserQuestionRequired -> {
@@ -1358,6 +1362,7 @@ class ChatViewModel : BaseViewModel() {
             return
         }
         _execConfirmation.value = null
+        restorePendingAttention(sessionId)
         _sending.value = true
         showToast(
             string(
@@ -2525,22 +2530,26 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
-    /** 从任务卡请求主 Agent 暂停正在运行的后台子代理。 */
+    /** 直接暂停任务卡对应的后台子代理。 */
     fun pauseSubagentFromCard(taskId: String) {
         if (!isLocalMode || taskId.isBlank()) return
-        sendMessage(string(R.string.chat_subagent_pause_prompt, taskId), allowDelay = false)
+        val sessionId = currentSessionId
+        viewModelScope.launch {
+            val paused = unified.pauseSubagentTask(sessionId, taskId)
+            if (paused) showToast(string(R.string.chat_subagent_pause_done))
+            else showError(string(R.string.chat_subagent_control_unavailable))
+        }
     }
 
-    /** 从任务卡请求主 Agent 终止正在运行的后台子代理。 */
+    /** 直接终止任务卡对应的后台子代理。 */
     fun killSubagentFromCard(taskId: String) {
         if (!isLocalMode || taskId.isBlank()) return
-        sendMessage(string(R.string.chat_subagent_kill_prompt, taskId), allowDelay = false)
-    }
-
-    /** 将已完成任务的保存结果交给主 Agent 汇报。 */
-    fun viewSubagentResultFromCard(taskId: String) {
-        if (!isLocalMode || taskId.isBlank()) return
-        sendMessage(string(R.string.chat_subagent_view_result_prompt, taskId), allowDelay = false)
+        val sessionId = currentSessionId
+        viewModelScope.launch {
+            val killed = unified.killSubagentTask(sessionId, taskId)
+            if (killed) showToast(string(R.string.chat_subagent_kill_done))
+            else showError(string(R.string.chat_subagent_control_unavailable))
+        }
     }
 
     /** 以原始指令新建重试任务，并保留来源任务 id。 */

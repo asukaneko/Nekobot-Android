@@ -781,12 +781,17 @@
     <string name="chat_queue_sent_now">즉시 전송되었습니다</string>
     <string name="chat_subagent_resume_action">하위 에이전트 재개</string>
     <string name="chat_subagent_resume_prompt">하위 에이전트 작업 %1$s을(를) 재개해 주세요. 먼저 subagent_get을 호출해 진행 상황을 확인하세요. 결과를 알 수 없는 도구 호출이 있으면 읽기 전용 도구로 결과를 확인하고, 확인할 수 없으면 중단한 뒤 보고하세요. 현재 목표에 여전히 맞으면 subagent_resume(task_id=%1$s)을 호출하세요.</string>
-    <string name="chat_subagent_pause_action">일시 중지</string>
-    <string name="chat_subagent_pause_prompt">subagent_pause(task_id=%1$s)를 호출해 백그라운드 하위 에이전트를 일시 중지하고 저장된 진행 상황을 알려 주세요.</string>
-    <string name="chat_subagent_kill_action">종료</string>
-    <string name="chat_subagent_kill_prompt">subagent_kill(task_id=%1$s)를 호출해 백그라운드 하위 에이전트를 종료하고 저장된 부분 진행 상황을 알려 주세요.</string>
-    <string name="chat_subagent_view_result_action">결과 보기</string>
-    <string name="chat_subagent_view_result_prompt">subagent_get(task_id=%1$s)를 호출해 완료된 하위 에이전트의 결과를 가져와 간단히 알려 주세요.</string>
-    <string name="chat_subagent_retry_action">다시 시도</string>
+<string name="chat_subagent_pause_action">일시 중지</string>
+<string name="chat_subagent_kill_action">종료</string>
+<string name="chat_subagent_prompt_label">작업 프롬프트</string>
+<string name="chat_subagent_result_label">최종 출력</string>
+<string name="chat_subagent_pause_confirm_title">하위 에이전트를 일시 중지할까요?</string>
+<string name="chat_subagent_pause_confirm_message">현재 진행 상황을 저장하며 나중에 다시 시작할 수 있습니다.</string>
+<string name="chat_subagent_kill_confirm_title">하위 에이전트를 종료할까요?</string>
+<string name="chat_subagent_kill_confirm_message">작업이 중지됩니다. 저장된 진행 상황은 계속 확인할 수 있습니다.</string>
+<string name="chat_subagent_pause_done">하위 에이전트를 일시 중지했습니다</string>
+<string name="chat_subagent_kill_done">하위 에이전트를 종료했습니다</string>
+<string name="chat_subagent_control_unavailable">하위 에이전트 상태가 변경되었습니다. 새로고침 후 다시 시도하세요</string>
+<string name="chat_subagent_retry_action">다시 시도</string>
     <string name="chat_subagent_retry_prompt">먼저 하위 에이전트 작업 %1$s이(가) 현재 목표에 여전히 맞는지 확인한 다음 subagent_retry(task_id=%1$s)를 호출해 새 작업을 만들고 결과를 확인하세요.</string>
 </resources>

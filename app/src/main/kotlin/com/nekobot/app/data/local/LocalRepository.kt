@@ -903,7 +903,10 @@ class LocalRepository(
                         isAgent = true,
                         timestamp = nowIsoStatic(),
                         parentMessageId = task.parentMessageId,
-                        subagentStatus = "interrupted"
+                        subagentStatus = "interrupted",
+                        subagentBackground = task.runInBackground,
+                        subagentPrompt = task.prompt,
+                        subagentResult = task.result.takeIf { it.isNotBlank() }
                     )
                 )
             }
@@ -6965,7 +6968,7 @@ class LocalRepository(
             session.sessionMode.equals("agent", ignoreCase = true) &&
             userMessage.trim().equals("/yolo", ignoreCase = true)
         ) {
-            localExecAuthorizationManager.enableYolo(sessionId)
+            enableYoloAndResolvePending(sessionId)
             val reply = addAssistantMessage(
                 sessionId = sessionId,
                 content = "已开启 YOLO 模式：本会话内命令无需授权即可执行，高风险黑名单命令仍会被阻止。",
@@ -8067,8 +8070,75 @@ class LocalRepository(
         localExecAuthorizationManager.isYoloEnabled(sessionId)
 
     fun setYoloEnabled(sessionId: String, enabled: Boolean) {
-        if (enabled) localExecAuthorizationManager.enableYolo(sessionId)
+        if (enabled) enableYoloAndResolvePending(sessionId)
         else localExecAuthorizationManager.disableYolo(sessionId)
+    }
+
+    private fun enableYoloAndResolvePending(sessionId: String) {
+        localExecAuthorizationManager.enableYolo(sessionId).forEach { requestId ->
+            com.nekobot.app.data.local.ai.AgentAttentionCenter
+                .resolveExecAuthorization(sessionId, requestId)
+        }
+    }
+
+    /** 从进度卡片直接暂停后台子代理，并保存中断状态与卡片。 */
+    suspend fun pauseSubagentTask(sessionId: String, taskId: String): Boolean {
+        val task = com.nekobot.app.data.local.ai.SubagentTaskStore.get(taskId) ?: return false
+        if (task.sessionId != sessionId || !task.runInBackground) return false
+        val interrupted = com.nekobot.app.data.local.ai.SubagentTaskStore.interruptIfActive(
+            taskId,
+            "已由用户从任务卡暂停；恢复时先核查正在执行的工具结果。"
+        ) ?: return false
+        // 即使运行句柄刚好在状态更新前自然退出，中断状态也已原子写入；join 只负责等待清理。
+        com.nekobot.app.data.local.ai.SubagentRunRegistry.cancelAndJoin(taskId)
+        val latest = com.nekobot.app.data.local.ai.SubagentTaskStore.get(taskId) ?: interrupted
+        emitSubagentControlCard(latest)
+        return latest.status == com.nekobot.app.data.local.ai.SubagentTaskStatus.INTERRUPTED
+    }
+
+    /** 从进度卡片直接终止后台子代理。 */
+    suspend fun killSubagentTask(sessionId: String, taskId: String): Boolean {
+        val task = com.nekobot.app.data.local.ai.SubagentTaskStore.get(taskId) ?: return false
+        if (task.sessionId != sessionId || !task.runInBackground || !task.isActive) return false
+        if (!com.nekobot.app.data.local.ai.SubagentRunRegistry.cancelAndJoin(taskId)) return false
+        var latest = com.nekobot.app.data.local.ai.SubagentTaskStore.get(taskId) ?: return false
+        if (latest.isActive) {
+            com.nekobot.app.data.local.ai.SubagentTaskStore.update(
+                id = taskId,
+                status = com.nekobot.app.data.local.ai.SubagentTaskStatus.KILLED,
+                error = "已由用户从任务卡终止"
+            )
+            latest = com.nekobot.app.data.local.ai.SubagentTaskStore.get(taskId) ?: latest
+        }
+        if (latest.status != com.nekobot.app.data.local.ai.SubagentTaskStatus.KILLED) return false
+        runCatching {
+            com.nekobot.app.data.local.ai.forwardUndeliveredSubagentTaskNotices(latest)
+        }
+        emitSubagentControlCard(latest)
+        return true
+    }
+
+    private fun emitSubagentControlCard(task: com.nekobot.app.data.local.ai.SubagentTask) {
+        val label = when (task.status) {
+            com.nekobot.app.data.local.ai.SubagentTaskStatus.INTERRUPTED -> "⏸ 子代理已暂停"
+            com.nekobot.app.data.local.ai.SubagentTaskStatus.KILLED -> "⏹ 子代理已终止"
+            else -> "子代理状态已更新"
+        }
+        val card = ThinkingCard(
+            id = task.id,
+            content = "$label: ${task.description}",
+            steps = task.steps,
+            isComplete = !task.isActive,
+            isAgent = true,
+            timestamp = nowIsoStatic(),
+            parentMessageId = task.parentMessageId,
+            subagentStatus = task.status.name.lowercase(),
+            subagentBackground = task.runInBackground,
+            subagentPrompt = task.prompt,
+            subagentResult = task.result.takeIf { it.isNotBlank() }
+        )
+        persistAgentProgressCard(task.sessionId, card)
+        _agentWakeEvents.tryEmit(RealtimeEvent.ThinkingCardUpdate(card, task.sessionId))
     }
 
     // ==================== 会话 Agent 工具集选择 ====================
@@ -8265,7 +8335,8 @@ class LocalRepository(
             authorization = authorization
         )
         if (resolved) {
-            com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveExecAuthorization(sessionId)
+            com.nekobot.app.data.local.ai.AgentAttentionCenter
+                .resolveExecAuthorization(sessionId, requestId)
         }
         return resolved
     }

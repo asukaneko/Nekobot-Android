@@ -386,7 +386,11 @@ data class ThinkingCard(
       /** 子代理任务状态；仅用于恢复类进度卡的可用操作。 */
       @SerializedName("subagent_status") val subagentStatus: String? = null,
       /** 仅后台子代理可由卡片发起暂停。 */
-      @SerializedName("subagent_background") val subagentBackground: Boolean = false
+      @SerializedName("subagent_background") val subagentBackground: Boolean = false,
+      /** 子代理收到的原始任务提示词，供进度卡片折叠查看。 */
+      @SerializedName("subagent_prompt") val subagentPrompt: String? = null,
+      /** 子代理最终输出，供进度卡片折叠查看。 */
+      @SerializedName("subagent_result") val subagentResult: String? = null
   )
 
 /**
