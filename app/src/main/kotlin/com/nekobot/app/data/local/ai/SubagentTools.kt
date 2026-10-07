@@ -16,6 +16,7 @@ internal const val TOOL_SUBAGENT_GET = "subagent_get"
 internal const val TOOL_SUBAGENT_RESUME = "subagent_resume"
 internal const val TOOL_SUBAGENT_KILL = "subagent_kill"
 internal const val TOOL_SUBAGENT_PAUSE = "subagent_pause"
+internal const val TOOL_SUBAGENT_RETRY = "subagent_retry"
 
 internal val subagentToolIds = setOf(
     TOOL_SUBAGENT,
@@ -23,7 +24,8 @@ internal val subagentToolIds = setOf(
     TOOL_SUBAGENT_GET,
     TOOL_SUBAGENT_RESUME,
     TOOL_SUBAGENT_KILL,
-    TOOL_SUBAGENT_PAUSE
+    TOOL_SUBAGENT_PAUSE,
+    TOOL_SUBAGENT_RETRY
 )
 
 /** 子代理工具执行结果里的特殊键：标记需要向父会话派发后台任务。 */
@@ -56,6 +58,7 @@ internal fun buildSubagentToolDefinitions(): List<Map<String, Any>> {
             "父会话已空闲则会自动唤醒一轮新的执行来处理通知并向用户汇报，无需等待或轮询。" +
             "继续处理任务时先用 subagent_list 查看遗留任务；若任务已中断且仍符合当前目标，使用 subagent_resume 恢复原任务上下文，不要新建重复任务。" +
             "用户要求暂停后台子代理时，使用 subagent_pause 保存上下文并停止任务；之后可用 subagent_resume 继续。" +
+            "失败或已终止的任务若仍符合当前目标，可用 subagent_retry(task_id) 基于原始指令创建新任务；中断任务应恢复，不要重试。" +
             "不要用 sleep 等方式长时间空等，" +
                 "若查询到 status=outputting 说明工具调用已结束、正在输出最终结果，稍等片刻再查询即可。",
             mapOf(
@@ -139,6 +142,20 @@ internal fun buildSubagentToolDefinitions(): List<Map<String, Any>> {
                     "task_id" to mapOf(
                         "type" to "string",
                         "description" to "要终止的子代理任务 id（subagent_list 返回）。"
+                    )
+                ),
+                "required" to listOf("task_id")
+            )
+        ),
+        definition(
+            TOOL_SUBAGENT_RETRY,
+            "基于失败或已终止任务保存的原始指令创建一个新的子代理任务，并记录来源任务。只在用户仍需要完成该工作时使用；中断任务应使用 subagent_resume。",
+            mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "task_id" to mapOf(
+                        "type" to "string",
+                        "description" to "要重试的失败或已终止任务 id（subagent_list 返回）。"
                     )
                 ),
                 "required" to listOf("task_id")

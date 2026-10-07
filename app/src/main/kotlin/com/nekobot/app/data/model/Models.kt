@@ -384,7 +384,9 @@ data class ThinkingCard(
       /** 关联的父用户消息 id；用于在用户气泡与 AI 气泡之间渲染，并持久化到父消息 */
       @SerializedName("parent_message_id") val parentMessageId: String? = null,
       /** 子代理任务状态；仅用于恢复类进度卡的可用操作。 */
-      @SerializedName("subagent_status") val subagentStatus: String? = null
+      @SerializedName("subagent_status") val subagentStatus: String? = null,
+      /** 仅后台子代理可由卡片发起暂停。 */
+      @SerializedName("subagent_background") val subagentBackground: Boolean = false
   )
 
 /**

@@ -781,4 +781,12 @@
     <string name="chat_queue_sent_now">今すぐ送信しました</string>
     <string name="chat_subagent_resume_action">サブエージェントを再開</string>
     <string name="chat_subagent_resume_prompt">サブエージェントタスク %1$s を再開してください。まず subagent_get で進捗を確認してください。結果不明のツール呼び出しがある場合は読み取り専用ツールで結果を確認し、確認できなければ停止して報告してください。現在の目標に合っている場合は subagent_resume(task_id=%1$s) を呼び出してください。</string>
+    <string name="chat_subagent_pause_action">一時停止</string>
+    <string name="chat_subagent_pause_prompt">subagent_pause(task_id=%1$s) を呼び出してバックグラウンドのサブエージェントを一時停止し、保存された進捗を報告してください。</string>
+    <string name="chat_subagent_kill_action">終了</string>
+    <string name="chat_subagent_kill_prompt">subagent_kill(task_id=%1$s) を呼び出してバックグラウンドのサブエージェントを終了し、保存された途中経過を報告してください。</string>
+    <string name="chat_subagent_view_result_action">結果を見る</string>
+    <string name="chat_subagent_view_result_prompt">subagent_get(task_id=%1$s) を呼び出して完了したサブエージェントの結果を取得し、簡潔に報告してください。</string>
+    <string name="chat_subagent_retry_action">再試行</string>
+    <string name="chat_subagent_retry_prompt">まずサブエージェントタスク %1$s が現在の目標に合っていることを確認し、subagent_retry(task_id=%1$s) を呼び出して再試行し、結果を確認してください。</string>
 </resources>

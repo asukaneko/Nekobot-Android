@@ -786,4 +786,12 @@
     <string name="chat_queue_sent_now">已立即发送</string>
     <string name="chat_subagent_resume_action">继续子代理</string>
     <string name="chat_subagent_resume_prompt">请恢复子代理任务 %1$s。先调用 subagent_get 核查进度；若存在 unknown 工具调用，使用只读工具确认结果，无法确认时停下并报告。确认仍符合当前目标后调用 subagent_resume(task_id=%1$s)。</string>
+    <string name="chat_subagent_pause_action">暂停</string>
+    <string name="chat_subagent_pause_prompt">请暂停后台子代理任务 %1$s，调用 subagent_pause(task_id=%1$s)，并告知我当前保存的进度。</string>
+    <string name="chat_subagent_kill_action">终止</string>
+    <string name="chat_subagent_kill_prompt">请终止后台子代理任务 %1$s，调用 subagent_kill(task_id=%1$s)，并告知我已保存的部分进度。</string>
+    <string name="chat_subagent_view_result_action">查看结果</string>
+    <string name="chat_subagent_view_result_prompt">请调用 subagent_get(task_id=%1$s) 读取已完成子代理的完整结果，并向我简要汇报。</string>
+    <string name="chat_subagent_retry_action">重试</string>
+    <string name="chat_subagent_retry_prompt">请先确认子代理任务 %1$s 仍符合当前目标，然后调用 subagent_retry(task_id=%1$s) 创建重试任务，并跟进结果。</string>
 </resources>

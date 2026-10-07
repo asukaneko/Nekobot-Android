@@ -780,4 +780,12 @@
     <string name="chat_queue_sent_now">Sent immediately</string>
     <string name="chat_subagent_resume_action">Resume subagent</string>
     <string name="chat_subagent_resume_prompt">Resume subagent task %1$s. First call subagent_get to review its progress. If any tool call is unknown, use read-only tools to verify its outcome; stop and report if it cannot be verified. If the task still matches the current goal, call subagent_resume(task_id=%1$s).</string>
+    <string name="chat_subagent_pause_action">Pause</string>
+    <string name="chat_subagent_pause_prompt">Pause background subagent task %1$s by calling subagent_pause(task_id=%1$s), then tell me what progress was saved.</string>
+    <string name="chat_subagent_kill_action">Terminate</string>
+    <string name="chat_subagent_kill_prompt">Terminate background subagent task %1$s by calling subagent_kill(task_id=%1$s), then tell me what partial progress was saved.</string>
+    <string name="chat_subagent_view_result_action">View result</string>
+    <string name="chat_subagent_view_result_prompt">Call subagent_get(task_id=%1$s) to read the completed subagent result and summarize it for me.</string>
+    <string name="chat_subagent_retry_action">Retry</string>
+    <string name="chat_subagent_retry_prompt">First confirm subagent task %1$s still matches the current goal, then call subagent_retry(task_id=%1$s) to create a retry task and follow its result.</string>
 </resources>

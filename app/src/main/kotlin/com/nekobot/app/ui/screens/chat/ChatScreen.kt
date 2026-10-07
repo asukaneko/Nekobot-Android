@@ -1429,7 +1429,11 @@ fun ChatScreen(
                                             onStepClick = { target ->
                                                 stepDetailTarget = target
                                             },
-                                            onResumeSubagent = viewModel::resumeSubagentFromCard
+                                            onResumeSubagent = viewModel::resumeSubagentFromCard,
+                                            onPauseSubagent = viewModel::pauseSubagentFromCard,
+                                            onKillSubagent = viewModel::killSubagentFromCard,
+                                            onViewSubagentResult = viewModel::viewSubagentResultFromCard,
+                                            onRetrySubagent = viewModel::retrySubagentFromCard
                                         )
                                     }
                                 }
@@ -3560,7 +3564,11 @@ private fun ProgressCard(
     showBottomDivider: Boolean = false,
     onExpandedChange: (Boolean) -> Unit,
     onStepClick: (StepDetailTarget) -> Unit = {},
-    onResumeSubagent: ((String) -> Unit)? = null
+    onResumeSubagent: ((String) -> Unit)? = null,
+    onPauseSubagent: ((String) -> Unit)? = null,
+    onKillSubagent: ((String) -> Unit)? = null,
+    onViewSubagentResult: ((String) -> Unit)? = null,
+    onRetrySubagent: ((String) -> Unit)? = null
 ) {
     val progress = card.progress?.coerceIn(0, 100)
     val hasError = when (card.subagentStatus) {
@@ -3682,19 +3690,36 @@ private fun ProgressCard(
             GitDiffSummarySection(summary = gitSummary)
         }
 
-        if (card.subagentStatus == "interrupted" && onResumeSubagent != null) {
+        val subagentActions = buildList<Pair<Int, (String) -> Unit>> {
+            when {
+                card.subagentStatus == "interrupted" ->
+                    onResumeSubagent?.let { add(R.string.chat_subagent_resume_action to it) }
+                (card.subagentStatus == "running" || card.subagentStatus == "outputting") &&
+                    card.subagentBackground -> {
+                    onPauseSubagent?.let { add(R.string.chat_subagent_pause_action to it) }
+                    onKillSubagent?.let { add(R.string.chat_subagent_kill_action to it) }
+                }
+                card.subagentStatus == "succeeded" ->
+                    onViewSubagentResult?.let { add(R.string.chat_subagent_view_result_action to it) }
+                card.subagentStatus == "failed" || card.subagentStatus == "killed" ->
+                    onRetrySubagent?.let { add(R.string.chat_subagent_retry_action to it) }
+            }
+        }
+        if (subagentActions.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                androidx.compose.material3.TextButton(
-                    onClick = { onResumeSubagent(card.id) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 8.dp,
-                        vertical = 2.dp
-                    )
-                ) {
-                    Text(stringResource(R.string.chat_subagent_resume_action))
+                subagentActions.forEach { (labelRes, action) ->
+                    androidx.compose.material3.TextButton(
+                        onClick = { action(card.id) },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 8.dp,
+                            vertical = 2.dp
+                        )
+                    ) {
+                        Text(stringResource(labelRes))
+                    }
                 }
             }
         }

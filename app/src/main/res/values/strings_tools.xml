@@ -118,6 +118,7 @@
     <string name="tool_name_subagent_list">子代理任务列表</string>
     <string name="tool_name_subagent_get">子代理结果查询</string>
     <string name="tool_name_subagent_resume">恢复中断的子代理</string>
+    <string name="tool_name_subagent_retry">重试失败的子代理</string>
     <string name="tool_name_list_stickers">列出表情包</string>
     <string name="tool_name_send_sticker">发送表情包</string>
     <string name="tool_name_view_sticker">查看表情包图片</string>
@@ -186,6 +187,7 @@
     <string name="tool_desc_subagent">把独立任务委派给子代理执行。</string>
     <string name="tool_desc_subagent_resume">基于已保存的对话和检查点继续子代理任务。</string>
     <string name="tool_desc_subagent_pause">暂停后台子代理并保存上下文，之后可继续。</string>
+    <string name="tool_desc_subagent_retry">使用原始指令重试失败或已终止的任务，并保留来源关系。</string>
     <string name="tool_desc_get_session_thinking_history">获取当前会话中模型的思考过程历史记录。</string>
     <string name="tool_desc_send_message">向指定会话或频道发送消息。</string>
     <string name="tool_desc_skill_list">列出当前已启用的 Skills 及其文件数量。</string>

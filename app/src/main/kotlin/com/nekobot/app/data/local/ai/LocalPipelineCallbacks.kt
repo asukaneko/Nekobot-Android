@@ -30,6 +30,7 @@ import com.nekobot.app.R
 
 /** 本轮实际交给模型的工具名；执行时再次与会话当前权限取交集。 */
 internal const val SESSION_ALLOWED_TOOL_NAMES_CONTEXT_KEY = "_session_allowed_tool_names"
+private const val SUBAGENT_RETRY_SOURCE_TASK_CONTEXT_KEY = "_subagent_retry_source_task_id"
 
 /**
  * 本地模式 PipelineCallbacks 实现。
@@ -1939,6 +1940,31 @@ internal class LocalPipelineCallbacks(
             TOOL_SUBAGENT_RESUME -> return resumeSubagentTask(args, maxToolIterations)
             TOOL_SUBAGENT_PAUSE -> return pauseSubagentTask(args)
             TOOL_SUBAGENT_KILL -> return killSubagentTask(args)
+            TOOL_SUBAGENT_RETRY -> {
+                val id = args["task_id"]?.toString()?.trim().orEmpty()
+                if (id.isBlank()) return mapOf("success" to false, "error" to "task_id 不能为空")
+                val source = SubagentTaskStore.get(id)
+                if (source == null || source.sessionId != session.id) {
+                    return mapOf("success" to false, "error" to "子代理任务不存在或不属于当前会话: $id")
+                }
+                if (source.status != SubagentTaskStatus.FAILED && source.status != SubagentTaskStatus.KILLED) {
+                    return mapOf(
+                        "success" to false,
+                        "task_id" to id,
+                        "status" to source.status.name.lowercase(),
+                        "error" to "只有失败或已终止任务可以重试；中断任务请使用 subagent_resume。"
+                    )
+                }
+                return executeSubagentTool(
+                    TOOL_SUBAGENT,
+                    mapOf(
+                        "description" to source.description,
+                        "prompt" to source.prompt,
+                        "run_in_background" to source.runInBackground
+                    ),
+                    toolContext + (SUBAGENT_RETRY_SOURCE_TASK_CONTEXT_KEY to id)
+                )
+            }
             TOOL_SUBAGENT -> {
                 // Subagent 功能关闭时直接拒绝，避免无谓的模型往返。
                 val guard = SubagentRunner.guardDepth(parentDepth + 1, maxDepth)
@@ -1952,6 +1978,8 @@ internal class LocalPipelineCallbacks(
                     ?: com.nekobot.app.ServiceContainer.prefs.subagentDefaultBackground
 
                 val parentToolCallId = (toolContext[AGENT_TOOL_CALL_ID_CONTEXT_KEY] as? String)
+                    ?.takeIf(String::isNotBlank)
+                val sourceTaskId = (toolContext[SUBAGENT_RETRY_SOURCE_TASK_CONTEXT_KEY] as? String)
                     ?.takeIf(String::isNotBlank)
                 val requestKey = subagentRequestKey(
                     parentTaskId = ownerTaskId,
@@ -2006,7 +2034,8 @@ internal class LocalPipelineCallbacks(
                     runInBackground = runInBackground,
                     parentMessageId = parentMessageId,
                     parentToolCallId = parentToolCallId,
-                    requestKey = requestKey
+                    requestKey = requestKey,
+                    sourceTaskId = sourceTaskId
                 )
 
                 if (runInBackground) {
@@ -2042,6 +2071,7 @@ internal class LocalPipelineCallbacks(
                     put("status", t.status.name.lowercase())
                     put("depth", t.depth)
                     t.parentTaskId?.let { put("parent_task_id", it) }
+                    t.sourceTaskId?.let { put("source_task_id", it) }
                     put("tool_calls", t.toolCalls)
                     if (t.isActive) {
                         put("activity", subagentActivityText(t))
@@ -2490,7 +2520,8 @@ internal class LocalPipelineCallbacks(
                 isAgent = true,
                 timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
                 parentMessageId = task?.parentMessageId ?: parentMessageId,
-                subagentStatus = task?.status?.name?.lowercase() ?: "running"
+                subagentStatus = task?.status?.name?.lowercase() ?: "running",
+                subagentBackground = task?.runInBackground == true
             )
             emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
             runCatching { onSubagentThinkingCard?.invoke(card) }
@@ -2524,7 +2555,8 @@ internal class LocalPipelineCallbacks(
             isAgent = true,
             timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
             parentMessageId = task.parentMessageId ?: parentMessageId,
-            subagentStatus = task.status.name.lowercase()
+            subagentStatus = task.status.name.lowercase(),
+            subagentBackground = task.runInBackground
         )
         emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
         runCatching { onSubagentThinkingCard?.invoke(card) }
@@ -2549,7 +2581,8 @@ internal class LocalPipelineCallbacks(
             isAgent = true,
             timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
             parentMessageId = task.parentMessageId ?: parentMessageId,
-            subagentStatus = status.name.lowercase()
+            subagentStatus = status.name.lowercase(),
+            subagentBackground = task.runInBackground
         )
         emitSubagentCardEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
         runCatching { onSubagentThinkingCard?.invoke(card) }

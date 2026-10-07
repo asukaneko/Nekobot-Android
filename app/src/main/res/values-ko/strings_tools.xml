@@ -118,6 +118,7 @@
     <string name="tool_name_subagent_list">서브에이전트 작업 목록</string>
     <string name="tool_name_subagent_get">서브에이전트 결과 조회</string>
     <string name="tool_name_subagent_resume">중단된 서브에이전트 재개</string>
+    <string name="tool_name_subagent_retry">실패한 서브에이전트 다시 시도</string>
     <string name="tool_name_list_stickers">스티커 목록</string>
     <string name="tool_name_send_sticker">스티커 보내기</string>
     <string name="tool_name_view_sticker">스티커 이미지 보기</string>
@@ -186,6 +187,7 @@
     <string name="tool_desc_subagent">독립적인 작업을 서브에이전트에 위임합니다.</string>
     <string name="tool_desc_subagent_resume">저장된 대화와 체크포인트에서 서브에이전트 작업을 계속합니다.</string>
     <string name="tool_desc_subagent_pause">백그라운드 하위 에이전트를 일시 중지하고 대화를 저장합니다.</string>
+    <string name="tool_desc_subagent_retry">원래 지시로 실패하거나 종료된 작업을 다시 시도하고 원본 관계를 보존합니다.</string>
     <string name="tool_desc_get_session_thinking_history">현재 세션에서 모델의 사고 과정 기록을 가져옵니다.</string>
     <string name="tool_desc_send_message">지정한 세션이나 채널로 메시지를 보냅니다.</string>
     <string name="tool_desc_skill_list">현재 활성화된 Skill과 파일 수를 나열합니다.</string>

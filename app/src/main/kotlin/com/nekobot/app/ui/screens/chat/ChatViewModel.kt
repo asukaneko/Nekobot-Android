@@ -2525,6 +2525,30 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
+    /** 从任务卡请求主 Agent 暂停正在运行的后台子代理。 */
+    fun pauseSubagentFromCard(taskId: String) {
+        if (!isLocalMode || taskId.isBlank()) return
+        sendMessage(string(R.string.chat_subagent_pause_prompt, taskId), allowDelay = false)
+    }
+
+    /** 从任务卡请求主 Agent 终止正在运行的后台子代理。 */
+    fun killSubagentFromCard(taskId: String) {
+        if (!isLocalMode || taskId.isBlank()) return
+        sendMessage(string(R.string.chat_subagent_kill_prompt, taskId), allowDelay = false)
+    }
+
+    /** 将已完成任务的保存结果交给主 Agent 汇报。 */
+    fun viewSubagentResultFromCard(taskId: String) {
+        if (!isLocalMode || taskId.isBlank()) return
+        sendMessage(string(R.string.chat_subagent_view_result_prompt, taskId), allowDelay = false)
+    }
+
+    /** 以原始指令新建重试任务，并保留来源任务 id。 */
+    fun retrySubagentFromCard(taskId: String) {
+        if (!isLocalMode || taskId.isBlank()) return
+        sendMessage(string(R.string.chat_subagent_retry_prompt, taskId), allowDelay = false)
+    }
+
     fun sendMessage(
         text: String,
         plotChoiceId: String? = null,

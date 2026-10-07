@@ -63,7 +63,9 @@ data class SubagentTask(
     val parentToolCallId: String? = null,
     val conversation: List<Map<String, Any>> = emptyList(),
     val toolCallStates: Map<String, String> = emptyMap(),
-    val executionGeneration: Int = 1
+    val executionGeneration: Int = 1,
+    /** 重试任务指向其来源任务；普通委派为空。 */
+    val sourceTaskId: String? = null
 ) {
     /** 前台与后台统一的 JSON 序列化，供工具返回给父模型。 */
     fun toJson(gson: Gson = Gson()): String = gson.toJson(this)
@@ -164,7 +166,8 @@ object SubagentTaskStore {
         runInBackground: Boolean = false,
         requestKey: String? = null,
         parentMessageId: String? = null,
-        parentToolCallId: String? = null
+        parentToolCallId: String? = null,
+        sourceTaskId: String? = null
     ): SubagentTask {
         val now = System.currentTimeMillis()
         val task = SubagentTask(
@@ -181,7 +184,8 @@ object SubagentTaskStore {
             requestKey = requestKey,
             runInBackground = runInBackground,
             parentMessageId = parentMessageId,
-            parentToolCallId = parentToolCallId
+            parentToolCallId = parentToolCallId,
+            sourceTaskId = sourceTaskId
         )
         try {
             persist(task)
@@ -671,7 +675,8 @@ object SubagentTaskStore {
         startedAt = startedAt,
         finishedAt = finishedAt,
         updatedAt = System.currentTimeMillis(),
-        sourceDeviceId = null
+        sourceDeviceId = null,
+        sourceTaskId = sourceTaskId
     )
 
     private fun LocalSubagentTaskEntity.toTask(): SubagentTask {
@@ -703,7 +708,8 @@ object SubagentTaskStore {
             parentToolCallId = parentToolCallId,
             executionGeneration = executionGeneration,
             toolCallStates = runCatching { gson.fromJson<Map<String, String>>(toolCallStatesJson, callStatesType) }
-                .getOrDefault(emptyMap())
+                .getOrDefault(emptyMap()),
+            sourceTaskId = sourceTaskId
         )
     }
 }

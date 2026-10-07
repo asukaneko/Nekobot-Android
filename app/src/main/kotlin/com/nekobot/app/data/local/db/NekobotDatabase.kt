@@ -53,7 +53,7 @@ import com.nekobot.app.data.local.LocalLogger
         LocalMessageVariantEntity::class,
         LocalStickerEntity::class
     ],
-    version = 51,
+    version = 52,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -1165,6 +1165,13 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v51 → v52：记录失败/终止任务重试所来源的子代理任务。 */
+        val MIGRATION_51_52 = object : Migration(51, 52) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_subagent_tasks ADD COLUMN source_task_id TEXT")
+            }
+        }
+
         /** Room 不声明触发器；数据库打开时也安装一次，覆盖全新安装。 */
         private fun installExperienceInvalidationTriggers(db: SupportSQLiteDatabase) {
             db.execSQL(
@@ -1217,7 +1224,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
             MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45,
             MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49,
-            MIGRATION_49_50, MIGRATION_50_51
+            MIGRATION_49_50, MIGRATION_50_51, MIGRATION_51_52
         )
 
         fun get(context: Context): NekobotDatabase =

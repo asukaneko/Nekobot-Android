@@ -381,7 +381,8 @@ data class LocalSubagentTaskEntity(
     @ColumnInfo(name = "started_at") val startedAt: Long?,
     @ColumnInfo(name = "finished_at") val finishedAt: Long?,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
-    @ColumnInfo(name = "source_device_id") val sourceDeviceId: String?
+    @ColumnInfo(name = "source_device_id") val sourceDeviceId: String?,
+    @ColumnInfo(name = "source_task_id") val sourceTaskId: String? = null
 )
 
 /** 子代理按序保存的协议消息；每条消息独立成行，避免长任务撑大任务状态行。 */
