@@ -50,8 +50,9 @@ internal fun evaluateLocalCommand(command: String): LocalCommandPolicy {
         )
     }
 
+    val isExplicitPath = firstToken.contains('/') || firstToken.contains('\\')
     val containsShellControl = Regex("""[;&|><`$()\r\n]""").containsMatchIn(trimmed)
-    val isBareSafeCommand = mainCommand in localSafeCommands && !containsShellControl
+    val isBareSafeCommand = mainCommand in localSafeCommands && !isExplicitPath && !containsShellControl
     return LocalCommandPolicy(
         mainCommand = mainCommand,
         requiresAuthorization = !isBareSafeCommand
@@ -128,7 +129,7 @@ internal fun extractLocalAuthorizationCommands(
             ?: emptySet()
     }
 
-    return segments.asSequence()
+    val extracted = segments.asSequence()
         .mapNotNull { segment ->
             Regex("""^\s*(?:"([^"]+)"|'([^']+)'|(\S+))""")
                 .find(segment.trim())
@@ -139,7 +140,7 @@ internal fun extractLocalAuthorizationCommands(
         .map(::normalizeLocalCommandName)
         .filter(String::isNotBlank)
         .toSet()
-        .ifEmpty {
+    return if (hasShellBoundary && extracted.isNotEmpty()) extracted else extracted.ifEmpty {
             normalizeLocalCommandName(fallbackMainCommand)
                 .takeIf(String::isNotBlank)
                 ?.let(::setOf)
@@ -181,11 +182,41 @@ private val localInstallSubcommands = setOf(
  * `apk add`）同理：指纹只能记到「命令名 + 子命令」，一次「始终允许」等于放行后续任意安装。
  */
 internal fun isMemorizableCommand(command: String): Boolean {
+    if (containsDynamicShellSyntax(command)) return false
     val segments = extractLocalSegments(command).map(String::trim).filter(String::isNotBlank)
     if (segments.isEmpty()) return false
     return segments.none { segment ->
         isInterpreterSegment(segment) || isInstallingSegment(segment)
     }
+}
+
+/** Shell 展开、重定向或控制符会让静态指纹无法代表真实执行内容，禁止「始终允许」。 */
+private fun containsDynamicShellSyntax(command: String): Boolean {
+    if ('$' in command || '`' in command) return true
+    var quote: Char? = null
+    var escaped = false
+    for (index in command.indices) {
+        val char = command[index]
+        if (escaped) {
+            if (char == '\n' || char == '\r') return true
+            escaped = false
+            continue
+        }
+        if (char == '\\' && quote != '\'') {
+            escaped = true
+            continue
+        }
+        if (quote != null) {
+            if (char == quote) quote = null
+            continue
+        }
+        if (char == '\'' || char == '"') {
+            quote = char
+            continue
+        }
+        if (char in ";|&><(){}*?~\r\n") return true
+    }
+    return false
 }
 
 private fun isInterpreterSegment(segment: String): Boolean =
@@ -234,7 +265,12 @@ internal fun localAuthorizationFingerprint(segment: String, fallbackMainCommand:
         normalizeLocalCommandName(fallbackMainCommand)
     }
     if (mainCommand.isBlank()) return null
-    if (mainCommand !in localSubcommandSensitiveCommands) return mainCommand
+    val commandToken = rawCommand.trim('"', '\'')
+    val normalizedIdentity = commandToken.replace('\\', '/')
+        .replace(Regex("/{2,}"), "/")
+        .lowercase()
+    val commandIdentity = if ('/' in normalizedIdentity) "path:$normalizedIdentity" else mainCommand
+    if (mainCommand !in localSubcommandSensitiveCommands) return commandIdentity
 
     val subcommand = tokens.drop(1)
         .firstOrNull { token ->
@@ -243,9 +279,9 @@ internal fun localAuthorizationFingerprint(segment: String, fallbackMainCommand:
                 !cleaned.contains('=') && !cleaned.contains('/')
         }
     return if (subcommand == null) {
-        mainCommand
+        commandIdentity
     } else {
-        "$mainCommand ${subcommand.trim('"', '\'').lowercase()}"
+        "$commandIdentity ${subcommand.trim('"', '\'').lowercase()}"
     }
 }
 
@@ -268,20 +304,18 @@ internal fun extractLocalAuthorizationFingerprints(
     mainCommand: String
 ): Set<String> {
     val fallback = normalizeLocalCommandName(mainCommand)
-    val fingerprints = extractLocalSegments(command)
+    val segments = extractLocalSegments(command)
         .map { it.trim() }
         .filter { it.isNotBlank() }
-        .mapNotNull { segment ->
-            val firstToken = localCommandTokens(segment).firstOrNull()
-                ?.let(::normalizeLocalCommandName)
-            if (firstToken.isNullOrBlank() || (fallback.isNotBlank() && firstToken != fallback)) {
-                // 段首不是预期的命令名：这是工具标签而非 Shell 命令，用主命令兜底。
-                localAuthorizationFingerprint(fallback, fallback)
-            } else {
-                localAuthorizationFingerprint(segment, fallback)
-            }
-        }
-        .toSet()
+    val firstToken = segments.firstOrNull()?.let { localCommandTokens(it).firstOrNull() }
+        ?.let(::normalizeLocalCommandName)
+    val isShellChain = segments.size > 1 || Regex("""[;&|\r\n]""").containsMatchIn(command)
+    val fingerprints = if (!isShellChain && (firstToken.isNullOrBlank() || (fallback.isNotBlank() && firstToken != fallback))) {
+        // 非 Shell 工具标签（如 agent_memory_update 的 mode 参数）沿用调用方工具名。
+        localAuthorizationFingerprint(fallback, fallback)?.let(::setOf).orEmpty()
+    } else {
+        segments.mapNotNull { segment -> localAuthorizationFingerprint(segment, fallback) }.toSet()
+    }
     return fingerprints.ifEmpty {
         localAuthorizationFingerprint(fallback, fallback)?.let(::setOf) ?: emptySet()
     }
@@ -420,6 +454,8 @@ class LocalExecAuthorizationManager(
         toolName: String,
         fingerprintArgument: String,
         message: String,
+        memorizable: Boolean = true,
+        yoloExempt: Boolean = false,
         onRequest: (ExecConfirmationRequest) -> Unit
     ): Boolean {
         val decision = awaitDecision(
@@ -430,6 +466,8 @@ class LocalExecAuthorizationManager(
                 toolAuthorizationFingerprint(toolName, fingerprintArgument)
             ),
             message = message,
+            memorizable = memorizable,
+            yoloExempt = yoloExempt,
             onRequest = onRequest
         )
         return decision != ExecAuthorization.Reject

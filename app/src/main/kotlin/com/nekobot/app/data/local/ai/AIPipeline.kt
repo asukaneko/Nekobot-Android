@@ -750,7 +750,10 @@ class AIPipeline {
             // arguments 可能是 Map，也可能是 JSON 字符串（部分协议原样下发）
             val args = normalizeAgentToolArguments(toolCall["arguments"])
 
-            val result = callbacks.executeTool(name, args, ctx.toolContext)
+            val executionContext = ctx.toolContext + (
+                SESSION_ALLOWED_TOOL_NAMES_CONTEXT_KEY to tools.mapNotNull(::toolNameOf).toSet()
+            )
+            val result = callbacks.executeTool(name, args, executionContext)
 
             // 处理确认请求
             if (result["require_confirmation"] == true) {
@@ -781,7 +784,9 @@ class AIPipeline {
             onToolStart = { toolCall, thinking, _, _ ->
                 val name = (toolCall["name"] as? String) ?: ""
                 // 与工具执行共用同一份参数规范化：JSON 字符串也要能显示在进度卡片上
-                val args = normalizeAgentToolArguments(toolCall["arguments"])
+                val args = sanitizeSensitiveAgentToolCall(
+                    mapOf("name" to name, "arguments" to normalizeAgentToolArguments(toolCall["arguments"]))
+                )["arguments"] as? Map<String, Any> ?: emptyMap()
                 progress.onToolStart(ctx, name, args, thinking)
                 callbacks.markAgentToolRunning(ctx, name)
             },

@@ -25,6 +25,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import com.nekobot.app.R
 
+/** 本轮实际交给模型的工具名；执行时再次与会话当前权限取交集。 */
+internal const val SESSION_ALLOWED_TOOL_NAMES_CONTEXT_KEY = "_session_allowed_tool_names"
+
 /**
  * 本地模式 PipelineCallbacks 实现。
  *
@@ -1599,8 +1602,12 @@ internal class LocalPipelineCallbacks(
         args: Map<String, Any>,
         toolContext: Map<String, Any>
     ): Map<String, Any> {
-        if (toolName in agentRecallToolIds && isSessionToolEnabled?.invoke(toolName) != true) {
-            return mapOf("success" to false, "error" to "当前会话未启用此记忆回查工具")
+        val providedToolNames = (toolContext[SESSION_ALLOWED_TOOL_NAMES_CONTEXT_KEY] as? Collection<*>)
+            ?.filterIsInstance<String>()
+            ?.toSet()
+            .orEmpty()
+        if (toolName !in providedToolNames || isSessionToolEnabled?.invoke(toolName) != true) {
+            return mapOf("success" to false, "error" to "当前会话未启用或未提供此工具")
         }
         // 策略闸门：网络总开关 + 共享工作区破坏性操作确认。必须在任何执行之前拦截，
         // 否则“删除共享工作区文件/写入共享工作区”会在用户毫不知情的情况下生效。
@@ -1652,7 +1659,9 @@ internal class LocalPipelineCallbacks(
     /** 需要用户确认的破坏性工具操作。 */
     private data class ToolConfirmation(
         val fingerprintArgument: String,
-        val message: String
+        val message: String,
+        val memorizable: Boolean = true,
+        val yoloExempt: Boolean = false
     )
 
     /**
@@ -1681,6 +1690,29 @@ internal class LocalPipelineCallbacks(
                     ToolConfirmation(action, "本地 Agent 请求执行插件操作：$action")
                 }
             }
+            toolName in setOf("db_create_ai_model", "db_update_ai_model") &&
+                (toolName == "db_create_ai_model" ||
+                    listOf("base_url", "proxy_url", "api_key").any(args::containsKey)) -> {
+                val modelId = args["model_id"]?.toString()?.takeIf(String::isNotBlank)
+                    ?: "新模型配置"
+                val destinations = buildList {
+                    args["base_url"]?.toString()?.takeIf(String::isNotBlank)
+                        ?.let { add("API 地址=${redactModelEndpoint(it)}") }
+                    if (args.containsKey("proxy_url")) {
+                        val proxy = args["proxy_url"]?.toString().orEmpty()
+                        add("代理=${if (proxy.isBlank()) "直连" else redactModelEndpoint(proxy)}")
+                    }
+                    if (args.containsKey("api_key")) {
+                        add(if (args["api_key"]?.toString().isNullOrBlank()) "API Key=清空" else "API Key=更新")
+                    }
+                }
+                ToolConfirmation(
+                    fingerprintArgument = "per-call",
+                    message = "本地 Agent 请求修改 AI 模型配置：$modelId；${destinations.joinToString("，")}",
+                    memorizable = false,
+                    yoloExempt = true
+                )
+            }
             toolName in setOf("workspace_create_file", "workspace_edit_file", "file_write", "file_edit") &&
                 isSharedWorkspacePath -> {
                 // 指纹用父目录：授权一次即覆盖该目录内的后续写入，避免每个文件都弹窗。
@@ -1693,6 +1725,15 @@ internal class LocalPipelineCallbacks(
             else -> null
         }
     }
+
+    /** 确认弹窗展示目标主机和路径，但不暴露 URL 用户信息或查询参数。 */
+    private fun redactModelEndpoint(raw: String): String = runCatching {
+        val uri = java.net.URI(raw.trim())
+        val scheme = uri.scheme ?: return@runCatching "无效地址"
+        val host = uri.host ?: return@runCatching "无效地址"
+        val port = if (uri.port >= 0) ":${uri.port}" else ""
+        "$scheme://$host$port${uri.rawPath.orEmpty()}"
+    }.getOrDefault("无效地址")
 
     /**
      * 策略闸门：返回非 null 表示已拦截（直接作为工具结果返回），null 表示放行。
@@ -1716,12 +1757,14 @@ internal class LocalPipelineCallbacks(
         }
 
         val confirmation = confirmationFor(toolName, args) ?: return null
-        if (execAuthorizationManager.isYoloEnabled(session.id)) return null
+        if (execAuthorizationManager.isYoloEnabled(session.id) && !confirmation.yoloExempt) return null
         val allowed = execAuthorizationManager.requestToolAuthorization(
             sessionId = session.id,
             toolName = toolName,
             fingerprintArgument = confirmation.fingerprintArgument,
             message = confirmation.message,
+            memorizable = confirmation.memorizable,
+            yoloExempt = confirmation.yoloExempt,
             onRequest = { request ->
                 execConfirmationEmitter?.invoke(request)
                     ?: emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
@@ -2348,10 +2391,15 @@ internal class LocalPipelineCallbacks(
                 }
                 // 把自己的任务 id 通过工具上下文传下去：
                 // 子代理内部若再委派 subagent，深度按任务树累加（不再依赖实例计数器）。
-                val context = ownerTaskId
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { mapOf(SUBAGENT_TASK_CONTEXT_KEY to it) }
-                    ?: emptyMap()
+                val context = buildMap<String, Any> {
+                    put(
+                        SESSION_ALLOWED_TOOL_NAMES_CONTEXT_KEY,
+                        toolDefinitions.mapNotNull(::toolNameOf).toSet()
+                    )
+                    ownerTaskId?.takeIf { it.isNotBlank() }?.let {
+                        put(SUBAGENT_TASK_CONTEXT_KEY, it)
+                    }
+                }
                 executeTool(name, callArgs, context)
             }
         return SubagentDelegateScope(buildModelCall = { modelCall }, toolExecutor = toolExecutor)

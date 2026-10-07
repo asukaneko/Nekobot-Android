@@ -115,6 +115,9 @@ internal class PluginApiDispatcher(
     private val gson = Gson()
     private val aiQuota = PluginAiQuota()
     private val httpClient = OkHttpClient.Builder()
+        .dns(PublicHttpsDns())
+        .followRedirects(false)
+        .followSslRedirects(false)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS)
@@ -1264,23 +1267,9 @@ internal class PluginApiDispatcher(
         if (host.equals("localhost", ignoreCase = true) || host.endsWith(".localhost", ignoreCase = true)) {
             throw PluginApiException("$what 不允许访问内网或本机地址：$host", "invalid_argument")
         }
-        val addresses = runCatching { InetAddress.getAllByName(host) }.getOrNull().orEmpty()
-        if (addresses.isEmpty() || addresses.any(::isBlockedAddress)) {
+        if (runCatching { PublicHttpsAddressPolicy.resolve(host) }.isFailure) {
             throw PluginApiException("$what 不允许访问内网或本机地址：$host", "invalid_argument")
         }
-    }
-
-    private fun isBlockedAddress(address: InetAddress): Boolean =
-        address.isAnyLocalAddress ||
-            address.isLoopbackAddress ||
-            address.isLinkLocalAddress ||
-            address.isSiteLocalAddress ||
-            address.isMulticastAddress ||
-            isUniqueLocalIpv6(address)
-
-    private fun isUniqueLocalIpv6(address: InetAddress): Boolean {
-        val bytes = address.address
-        return bytes.size == 16 && (bytes[0].toInt() and 0xFE) == 0xFC
     }
 
     private fun storageKey(pluginId: String, raw: String): String {

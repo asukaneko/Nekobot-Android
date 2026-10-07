@@ -471,7 +471,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
 
         // ===== AI 模型 =====
         definition("db_list_ai_models", "列出所有本地 AI 模型配置。", params(emptyMap())),
-        definition("db_get_ai_model", "查看指定 AI 模型详情（含 api_key 等敏感字段）。", params(mapOf("model_id" to str("模型 ID")), listOf("model_id"))),
+        definition("db_get_ai_model", "查看指定 AI 模型详情（密钥只返回是否已设置，地址会脱敏）。", params(mapOf("model_id" to str("模型 ID")), listOf("model_id"))),
         definition(
             "db_create_ai_model",
             "创建一个新的本地 AI 模型配置。注意：api_key/base_url/model 必填。",
@@ -1916,7 +1916,7 @@ internal class LocalDbToolExecutor(
         "priority" to priority,
         "active" to active,
         "supports_vision" to supportsVision,
-        "base_url" to baseUrl,
+        "base_url" to safeModelEndpoint(baseUrl, includePath = true),
         "uses_proxy" to proxyUrl.isNotBlank(),
         "created_at" to createdAt
     )
@@ -1926,9 +1926,9 @@ internal class LocalDbToolExecutor(
         "name" to name,
         "protocol" to protocol,
         "provider" to (provider ?: ""),
-        "api_key" to apiKey,
-        "proxy_url" to proxyUrl,
-        "base_url" to baseUrl,
+        "has_api_key" to apiKey.isNotBlank(),
+        "proxy_url" to safeModelEndpoint(proxyUrl, includePath = false),
+        "base_url" to safeModelEndpoint(baseUrl, includePath = true),
         "model" to model,
         "enabled" to enabled,
         "purpose" to purpose,
@@ -1949,4 +1949,17 @@ internal class LocalDbToolExecutor(
         "cache_write_price" to (cacheWritePrice ?: 0.0),
         "created_at" to createdAt
     )
+
+    /** 工具响应只暴露目标主机与可选路径，避免返回 URL 凭据或查询参数。 */
+    private fun safeModelEndpoint(raw: String, includePath: Boolean): String {
+        if (raw.isBlank()) return ""
+        return runCatching {
+            val uri = java.net.URI(raw.trim())
+            val scheme = uri.scheme ?: return@runCatching ""
+            val host = uri.host ?: return@runCatching ""
+            val port = if (uri.port >= 0) ":${uri.port}" else ""
+            val path = if (includePath) uri.rawPath.orEmpty() else ""
+            "$scheme://$host$port$path"
+        }.getOrDefault("")
+    }
 }

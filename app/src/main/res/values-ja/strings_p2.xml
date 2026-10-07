@@ -5,6 +5,9 @@
     <string name="agent_notification_listener_label">Nekobot Agent 通知・メディア操作</string>
     <string name="share_choose_session">共有内容を受け取るセッションを選択してください</string>
     <string name="share_imported">共有ファイルを %1$d 件インポートしました</string>
+    <string name="share_upload_confirmation_title">共有ファイルをアップロードしますか？</string>
+    <string name="share_upload_confirmation_message">%1$d 個のファイルを現在のセッションのワークスペースにアップロードします。続行しますか？</string>
+    <string name="share_upload_confirmation_action">アップロードして追加</string>
     <string name="widget_description">最近のセッション、今日の Token、クイック送信</string>
     <string name="widget_no_session">利用可能なセッションがありません</string>
     <string name="widget_today_tokens">今日の Token：%1$d</string>

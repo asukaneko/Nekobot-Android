@@ -1,6 +1,7 @@
 package com.nekobot.app
 
 import android.app.Application
+import java.io.File
 import android.app.Activity
 import android.content.Context
 import android.os.Build
@@ -221,10 +222,29 @@ object ServiceContainer {
 
     fun setPendingSessionId(id: String?) { _pendingSessionId.value = id }
 
-    fun setPendingShare(share: IncomingShare?) { _pendingShare.value = share }
+    fun setPendingShare(share: IncomingShare?) {
+        _pendingShare.value?.takeIf { it.id != share?.id }?.let(::deleteIncomingShareFiles)
+        _pendingShare.value = share
+    }
 
     fun consumePendingShare(id: String) {
-        if (_pendingShare.value?.id == id) _pendingShare.value = null
+        val current = _pendingShare.value ?: return
+        if (current.id == id) {
+            deleteIncomingShareFiles(current)
+            _pendingShare.value = null
+        }
+    }
+
+    private fun deleteIncomingShareFiles(share: IncomingShare) {
+        val cacheDir = appContext?.cacheDir ?: return
+        val incomingDir = File(cacheDir, "incoming_share").canonicalFile
+        val allowedPrefix = incomingDir.path + File.separator
+        share.attachments.forEach { attachment ->
+            runCatching {
+                val file = File(attachment.localPath).canonicalFile
+                if (file.path.startsWith(allowedPrefix) && file.isFile) file.delete()
+            }
+        }
     }
 
     /** 广播角色卡数据变化（id 为变化的角色卡 ID，null/blank 时广播通配符 ""）。 */

@@ -5,6 +5,9 @@
     <string name="agent_notification_listener_label">Nekobot Agent 알림 및 미디어 제어</string>
     <string name="share_choose_session">공유 내용을 받을 세션을 선택하세요</string>
     <string name="share_imported">공유 파일 %1$d개를 가져왔습니다</string>
+    <string name="share_upload_confirmation_title">공유 파일을 업로드할까요?</string>
+    <string name="share_upload_confirmation_message">파일 %1$d개를 현재 세션 작업공간에 업로드합니다. 계속할까요?</string>
+    <string name="share_upload_confirmation_action">업로드 후 추가</string>
     <string name="widget_description">최근 세션, 오늘의 Token 및 빠른 전송</string>
     <string name="widget_no_session">사용 가능한 세션이 없습니다</string>
     <string name="widget_today_tokens">오늘의 Token: %1$d</string>

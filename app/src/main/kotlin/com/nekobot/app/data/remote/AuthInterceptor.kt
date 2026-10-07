@@ -3,7 +3,8 @@ package com.nekobot.app.data.remote
 import com.nekobot.app.data.local.PrefsManager
 import okhttp3.Interceptor
 import okhttp3.Response
-import java.net.URI
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * 注入鉴权 header：Authorization: Bearer <token>
@@ -20,7 +21,7 @@ class AuthInterceptor(private val prefs: PrefsManager) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val token = prefs.token
-        val request = if (!token.isNullOrEmpty() && isServerHost(original.url.host)) {
+        val request = if (!token.isNullOrEmpty() && isServerOrigin(original.url, prefs.serverUrl.toHttpUrlOrNull())) {
             original.newBuilder()
                 .header("Authorization", "Bearer $token")
                 .build()
@@ -30,10 +31,10 @@ class AuthInterceptor(private val prefs: PrefsManager) : Interceptor {
         return chain.proceed(request)
     }
 
-    /** 请求主机是否就是用户配置的服务器主机。 */
-    private fun isServerHost(host: String): Boolean {
-        if (host.isBlank()) return false
-        val serverHost = runCatching { URI(prefs.serverUrl).host }.getOrNull() ?: return false
-        return serverHost.isNotBlank() && host.equals(serverHost, ignoreCase = true)
-    }
+    /** 请求 scheme、host 和有效端口都必须与服务器配置一致。 */
+    private fun isServerOrigin(requestUrl: HttpUrl, serverUrl: HttpUrl?): Boolean =
+        serverUrl != null &&
+            requestUrl.scheme == serverUrl.scheme &&
+            requestUrl.host.equals(serverUrl.host, ignoreCase = true) &&
+            requestUrl.port == serverUrl.port
 }

@@ -143,6 +143,109 @@ internal fun normalizeAgentToolCall(toolCall: Map<String, Any>): Map<String, Any
     return normalized
 }
 
+/** 工具仍使用原始参数执行；历史消息和进度只保留脱敏后的模型配置字段。 */
+internal fun sanitizeSensitiveAgentToolCall(toolCall: Map<String, Any>): Map<String, Any> {
+    val name = toolCall["name"]?.toString().orEmpty()
+    if (name !in setOf("db_create_ai_model", "db_update_ai_model")) return toolCall
+    val arguments = toolCall["arguments"] as? Map<*, *> ?: return toolCall
+    val sanitized = arguments.entries.associate { (rawKey, rawValue) ->
+        val key = rawKey?.toString().orEmpty()
+        val value = rawValue?.toString().orEmpty()
+        key to when (key) {
+            "api_key" -> if (value.isBlank()) "" else "[已隐藏]"
+            "base_url" -> if (value.isBlank()) "" else sanitizeModelEndpointForHistory(value, includePath = true)
+            "proxy_url" -> if (value.isBlank()) "" else sanitizeModelEndpointForHistory(value, includePath = false)
+            else -> rawValue ?: ""
+        }
+    }
+    return toolCall.toMutableMap().apply { put("arguments", sanitized) }
+}
+
+private fun sanitizeModelEndpointForHistory(raw: String, includePath: Boolean): String = runCatching {
+    val uri = java.net.URI(raw.trim())
+    val scheme = uri.scheme ?: return@runCatching "[已隐藏]"
+    val host = uri.host ?: return@runCatching "[已隐藏]"
+    val port = if (uri.port >= 0) ":${uri.port}" else ""
+    val path = if (includePath) uri.rawPath.orEmpty() else ""
+    "$scheme://$host$port$path"
+}.getOrDefault("[已隐藏]")
+
+/** 读取旧轨迹时也脱敏，避免升级前保存的凭据再次进入模型上下文。 */
+internal fun sanitizeAgentToolHistoryMessage(message: Map<String, Any>): Map<String, Any> {
+    val sanitized = message.toMutableMap()
+    when (message["role"]?.toString()) {
+        "assistant" -> {
+            val calls = (message["tool_calls"] as? List<*>)?.map { rawCall ->
+                val call = rawCall as? Map<*, *> ?: return@map rawCall
+                val function = call["function"] as? Map<*, *> ?: return@map rawCall
+                val name = function["name"]?.toString().orEmpty()
+                if (name !in setOf("db_create_ai_model", "db_update_ai_model")) return@map rawCall
+                val rawArguments = function["arguments"]
+                val arguments = when (rawArguments) {
+                    is Map<*, *> -> rawArguments.entries.associate { it.key.toString() to (it.value ?: "") }
+                    is String -> parseToolArguments(rawArguments)
+                    else -> emptyMap()
+                }
+                val safeArguments = if (arguments.isNotEmpty() || rawArguments == "{}") {
+                    sanitizeSensitiveAgentToolCall(mapOf("name" to name, "arguments" to arguments))["arguments"]
+                } else {
+                    mapOf("api_key" to "[已隐藏]", "base_url" to "[已隐藏]", "proxy_url" to "[已隐藏]")
+                }
+                call.toMutableMap().apply {
+                    put("function", function.toMutableMap().apply {
+                        put("arguments", agentGson.toJson(safeArguments))
+                    })
+                }
+            }
+            if (calls != null) sanitized["tool_calls"] = calls
+        }
+        "tool" -> {
+            val content = message["content"] as? String
+            if (!content.isNullOrBlank()) sanitized["content"] = sanitizeCredentialJsonText(content)
+        }
+    }
+    return sanitized
+}
+
+private fun sanitizeCredentialJsonText(raw: String): String = runCatching {
+    val parsed = com.google.gson.JsonParser.parseString(raw)
+    agentGson.toJson(redactCredentialJson(parsed))
+}.getOrDefault(raw)
+
+private fun redactCredentialJson(element: com.google.gson.JsonElement): com.google.gson.JsonElement = when {
+    element.isJsonObject -> com.google.gson.JsonObject().apply {
+        element.asJsonObject.entrySet().forEach { (key, value) ->
+            val replacement = when (key.lowercase()) {
+                "api_key" -> if (value.asStringOrEmpty().isBlank()) value else
+                    com.google.gson.JsonPrimitive("[已隐藏]")
+                "base_url" -> redactJsonEndpoint(value, includePath = true)
+                "proxy_url" -> redactJsonEndpoint(value, includePath = false)
+                else -> redactCredentialJson(value)
+            }
+            add(key, replacement)
+        }
+    }
+    element.isJsonArray -> com.google.gson.JsonArray().apply {
+        element.asJsonArray.forEach { add(redactCredentialJson(it)) }
+    }
+    else -> element
+}
+
+private fun redactJsonEndpoint(
+    element: com.google.gson.JsonElement,
+    includePath: Boolean
+): com.google.gson.JsonElement {
+    if (!element.isJsonPrimitive || !element.asJsonPrimitive.isString) {
+        return com.google.gson.JsonPrimitive("[已隐藏]")
+    }
+    val raw = element.asString
+    return if (raw.isBlank()) element else
+        com.google.gson.JsonPrimitive(sanitizeModelEndpointForHistory(raw, includePath))
+}
+
+private fun com.google.gson.JsonElement.asStringOrEmpty(): String =
+    if (isJsonPrimitive && asJsonPrimitive.isString) asString else ""
+
 @Suppress("UNCHECKED_CAST")
 private fun parseToolArguments(raw: String): Map<String, Any> {
     val trimmed = raw.trim()
@@ -570,7 +673,7 @@ fun prepareChatContext(
 /** 将工具调用历史追加到消息列表末尾 */
 fun applyToolCallHistory(messages: List<Map<String, Any>>, toolCallHistory: List<Map<String, Any>>?): List<Map<String, Any>> {
     if (toolCallHistory.isNullOrEmpty()) return messages
-    return messages + toolCallHistory.map { it.toMap() }
+    return messages + toolCallHistory.map(::sanitizeAgentToolHistoryMessage)
 }
 
 /** 将持久化的工具调用历史 JSON 恢复为模型可直接使用的 assistant/tool 消息。 */
@@ -580,7 +683,7 @@ fun decodeToolCallHistory(json: String?): List<Map<String, Any>> {
         agentGson.fromJson<List<Map<String, Any>>>(json, toolCallHistoryType)
             .orEmpty()
             .filter { it["role"] in listOf("assistant", "tool") }
-            .map { it.toMap() }
+            .map(::sanitizeAgentToolHistoryMessage)
     }.getOrDefault(emptyList())
 }
 
@@ -588,13 +691,14 @@ fun decodeToolCallHistory(json: String?): List<Map<String, Any>> {
 fun encodeToolCallHistory(history: List<Map<String, Any>>?): String? {
     val normalized = history.orEmpty()
         .filter { it["role"] in listOf("assistant", "tool") }
-        .map { it.toMap() }
+        .map(::sanitizeAgentToolHistoryMessage)
     return normalized.takeIf { it.isNotEmpty() }?.let(agentGson::toJson)
 }
 
 /** 提取工具调用历史（role 为 assistant 或 tool 的消息） */
 fun extractToolCallHistory(messages: List<Map<String, Any>>): List<Map<String, Any>> {
-    return messages.filter { it["role"] in listOf("assistant", "tool") }.map { it.toMap() }
+    return messages.filter { it["role"] in listOf("assistant", "tool") }
+        .map(::sanitizeAgentToolHistoryMessage)
 }
 
 // ============================================================================
@@ -648,7 +752,9 @@ internal fun decodeAgentToolMessageRow(payload: String?): Map<String, Any>? {
     return runCatching {
         val type = object : TypeToken<Map<String, Any>>() {}.type
         agentGson.fromJson<Map<String, Any>>(payload, type)?.toMap()
-    }.getOrNull()?.takeIf { it["role"] in listOf("assistant", "tool") }
+    }.getOrNull()
+        ?.takeIf { it["role"] in listOf("assistant", "tool") }
+        ?.let(::sanitizeAgentToolHistoryMessage)
 }
 
 /** 检查点摘要 JSON：`{"v":2,"count":N,"tokens":T}`。 */
@@ -1037,12 +1143,13 @@ suspend fun runToolCallLoop(
         if (toolCalls.isNotEmpty()) {
             // 构造 assistant 消息（含 tool_calls）
             val toolCallEntries = toolCalls.map { tc ->
+                val historyCall = sanitizeSensitiveAgentToolCall(tc)
                 buildMap {
                     put("id", tc["id"] ?: "")
                     put("type", "function")
                     val funcMap = mutableMapOf<String, Any>(
-                        "name" to (tc["name"] ?: ""),
-                        "arguments" to agentGson.toJson(tc["arguments"] ?: emptyMap<String, Any>())
+                        "name" to (historyCall["name"] ?: ""),
+                        "arguments" to agentGson.toJson(historyCall["arguments"] ?: emptyMap<String, Any>())
                     )
                     tc["_thought_signature"]?.let { funcMap["_thought_signature"] = it }
                     put("function", funcMap)
@@ -1076,7 +1183,12 @@ suspend fun runToolCallLoop(
 
                 // 1) 预检串行执行：守卫与参数校验的顺序必须稳定，越界调用直接返回错误结果。
                 val prepared = batch.map { toolCall ->
-                    hooks?.onToolStart?.invoke(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
+                    hooks?.onToolStart?.invoke(
+                        sanitizeSensitiveAgentToolCall(toolCall),
+                        thinkingContent,
+                        iteration,
+                        toolMessages.map { it.toMap() }
+                    )
                     val loopGuardMessage = loopAbortMessage ?: loopGuard.inspect(toolCall)
                     if (loopAbortMessage == null && loopGuardMessage != null) {
                         loopAbortMessage = loopGuardMessage
@@ -1150,7 +1262,11 @@ suspend fun runToolCallLoop(
                     var toolHistoryMessage: Map<String, Any>? = null
                     if (hooks?.onToolResult != null) {
                         toolHistoryMessage = hooks.onToolResult.invoke(
-                            toolCall, toolResult, thinkingContent, iteration, toolMessages.map { it.toMap() }
+                            sanitizeSensitiveAgentToolCall(toolCall),
+                            toolResult,
+                            thinkingContent,
+                            iteration,
+                            toolMessages.map { it.toMap() }
                         )
                     }
 

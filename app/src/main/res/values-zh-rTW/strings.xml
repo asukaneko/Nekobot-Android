@@ -85,6 +85,9 @@
     <string name="more_stickers_desc">匯入自訂表情，聊天與 AI 都能發送原圖</string>
     <string name="share_choose_session">請選擇一個會話接收分享內容</string>
     <string name="share_imported">已匯入 %1$d 個分享檔案</string>
+    <string name="share_upload_confirmation_title">要上傳分享附件嗎？</string>
+    <string name="share_upload_confirmation_message">這會將 %1$d 個檔案上傳到目前會話工作區，是否繼續？</string>
+    <string name="share_upload_confirmation_action">上傳並加入</string>
     <string name="widget_description">最近會話、今日 Token 與快捷發送</string>
     <string name="widget_no_session">暫無可用會話</string>
     <string name="widget_today_tokens">今日 Token：%1$d</string>

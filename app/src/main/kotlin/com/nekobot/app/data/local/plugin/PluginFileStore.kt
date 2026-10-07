@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.nekobot.app.integration.isOwnedContentProvider
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -19,15 +20,17 @@ import java.util.Locale
  */
 class PluginFileStore internal constructor(
     private val root: File,
-    private val contentResolver: ContentResolver?
+    private val contentResolver: ContentResolver?,
+    private val appContext: Context? = null
 ) {
     constructor(context: Context) : this(
         File(context.applicationContext.filesDir, ROOT_DIRECTORY_NAME),
-        context.applicationContext.contentResolver
+        context.applicationContext.contentResolver,
+        context.applicationContext
     )
 
     /** 纯 JVM 场景（单元测试）使用；没有 ContentResolver 时不能从 Uri 导入。 */
-    constructor(root: File) : this(root, null)
+    constructor(root: File) : this(root, null, null)
 
     data class Entry(val name: String, val size: Long, val updatedAt: Long)
 
@@ -68,6 +71,12 @@ class PluginFileStore internal constructor(
 
     /** 页面文件选择的复制入口：按显示的原始文件名复制到插件私有目录。 */
     fun importFromUri(pluginId: String, uri: Uri): Entry {
+        if (!uri.scheme.equals("content", ignoreCase = true)) {
+            throw PluginApiException("所选文件 URI 类型无效", "invalid_argument")
+        }
+        if (appContext?.isOwnedContentProvider(uri) == true) {
+            throw PluginApiException("不能将应用私有文件导入插件", "invalid_argument")
+        }
         val resolver = contentResolver
             ?: throw PluginApiException("当前环境不支持文件上传", "unavailable")
         val input = resolver.openInputStream(uri)

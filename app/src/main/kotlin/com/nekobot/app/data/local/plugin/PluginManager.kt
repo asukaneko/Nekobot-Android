@@ -16,6 +16,7 @@ import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.LocalCommandProgressReporter
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.LocalSlashCommands
+import com.nekobot.app.integration.isOwnedContentProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,9 @@ class PluginManager(
     internal val pluginFiles: PluginFileStore = PluginFileStore(appContext)
 
     private val httpClient = OkHttpClient.Builder()
+        .dns(PublicHttpsDns())
+        .followRedirects(false)
+        .followSslRedirects(false)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS)
@@ -599,6 +603,12 @@ class PluginManager(
     }
 
     private fun copyUriToFile(uri: Uri, target: File) {
+        if (!uri.scheme.equals("content", ignoreCase = true)) {
+            throw PluginInstallException("所选插件文件 URI 类型无效")
+        }
+        if (appContext.isOwnedContentProvider(uri)) {
+            throw PluginInstallException("不能从应用私有文件安装插件")
+        }
         val input = appContext.contentResolver.openInputStream(uri)
             ?: throw PluginInstallException("无法读取所选 ZIP 文件")
         input.use { source ->
@@ -1264,8 +1274,8 @@ class PluginManager(
      * 仅校验 scheme 时可以用 `https://127.0.0.1/`、`https://192.168.x.x/` 探测内网服务
      * （SSRF）。这里同时解析域名，拦住「域名解析到内网」这种常见绕过。
      *
-     * 局限：DNS 重绑定（先解析为公网、连接时再解析为内网）无法在此彻底杜绝，
-     * 要完全解决需要把校验过的 IP 绑定到连接层。
+     * 连接层使用受控 DNS 再校验实际返回的地址列表，并关闭自动重定向，
+     * 因此校验时的解析结果不能被连接时的新解析或后续跳转绕过。
      */
     private fun requirePublicHttpsUrl(raw: String, what: String) {
         val url = runCatching { raw.toHttpUrlOrNull() }.getOrNull()
@@ -1275,28 +1285,13 @@ class PluginManager(
         if (isBlockedHostName(host)) {
             throw IllegalArgumentException("$what 不允许访问内网或本机地址：$host")
         }
-        val addresses = runCatching { InetAddress.getAllByName(host) }.getOrNull().orEmpty()
-        if (addresses.isEmpty() || addresses.any(::isBlockedAddress)) {
+        if (runCatching { PublicHttpsAddressPolicy.resolve(host) }.isFailure) {
             throw IllegalArgumentException("$what 不允许访问内网或本机地址：$host")
         }
     }
 
     private fun isBlockedHostName(host: String): Boolean =
         host.equals("localhost", ignoreCase = true) || host.endsWith(".localhost", ignoreCase = true)
-
-    private fun isBlockedAddress(address: InetAddress): Boolean =
-        address.isAnyLocalAddress ||
-            address.isLoopbackAddress ||
-            address.isLinkLocalAddress ||
-            address.isSiteLocalAddress ||
-            address.isMulticastAddress ||
-            isUniqueLocalIpv6(address)
-
-    /** IPv6 唯一本地地址 fc00::/7。 */
-    private fun isUniqueLocalIpv6(address: InetAddress): Boolean {
-        val bytes = address.address
-        return bytes.size == 16 && (bytes[0].toInt() and 0xFE) == 0xFC
-    }
 
     private data class PluginState(
         val enabled: Boolean = true,

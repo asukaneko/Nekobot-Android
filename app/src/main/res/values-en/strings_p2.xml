@@ -5,6 +5,9 @@
     <string name="agent_notification_listener_label">Nekobot Agent notifications and media control</string>
     <string name="share_choose_session">Choose a session to receive the shared content</string>
     <string name="share_imported">Imported %1$d shared files</string>
+    <string name="share_upload_confirmation_title">Upload shared files?</string>
+    <string name="share_upload_confirmation_message">This uploads %1$d files to the current session workspace. Continue?</string>
+    <string name="share_upload_confirmation_action">Upload and add</string>
     <string name="widget_description">Recent sessions, today\'s tokens, and quick send</string>
     <string name="widget_no_session">No available sessions</string>
     <string name="widget_today_tokens">Tokens today: %1$d</string>

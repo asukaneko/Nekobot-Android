@@ -956,8 +956,37 @@ private fun ModernChatComposer(
     }
 
     val pendingShare by ServiceContainer.pendingShare.collectAsStateWithLifecycle()
-    LaunchedEffect(sessionId, pendingShare?.id) {
+    var confirmedIncomingShareId by remember { mutableStateOf<String?>(null) }
+    val shareAwaitingUploadConfirmation = pendingShare?.takeIf {
+        it.attachments.isNotEmpty() && confirmedIncomingShareId != it.id
+    }
+    if (shareAwaitingUploadConfirmation != null) {
+        AlertDialog(
+            onDismissRequest = { ServiceContainer.consumePendingShare(shareAwaitingUploadConfirmation.id) },
+            title = { Text(context.getString(R.string.share_upload_confirmation_title)) },
+            text = {
+                Text(
+                    context.getString(
+                        R.string.share_upload_confirmation_message,
+                        shareAwaitingUploadConfirmation.attachments.size
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmedIncomingShareId = shareAwaitingUploadConfirmation.id }) {
+                    Text(context.getString(R.string.share_upload_confirmation_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { ServiceContainer.consumePendingShare(shareAwaitingUploadConfirmation.id) }) {
+                    Text(context.getString(R.string.common_cancel))
+                }
+            }
+        )
+    }
+    LaunchedEffect(sessionId, pendingShare?.id, confirmedIncomingShareId) {
         val share = pendingShare ?: return@LaunchedEffect
+        if (share.attachments.isNotEmpty() && confirmedIncomingShareId != share.id) return@LaunchedEffect
         fileBusy = share.attachments.isNotEmpty()
         try {
             if (share.text.isNotBlank()) {
