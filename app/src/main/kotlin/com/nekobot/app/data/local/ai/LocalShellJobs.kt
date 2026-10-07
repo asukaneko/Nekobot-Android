@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 用户看不到进度，模型也无法在等待期间做别的事，超时上限还容易被顶到。
  * 这里提供最小可用的后台执行：命令在独立协程里继续跑，结果累积到任务记录，
  * 模型用 `shell_job` 工具查询或终止；完成时通过 [AgentNoticeBus] 通知父会话。
+ * 命令本身跑在各自的独立沙盒进程里（见 `executeDetached`），因此互不排队。
  *
  * 生命周期与进程一致（内存态）。后台命令的授权在启动前于前台完成，
  * 因此不存在"后台偷偷获得了新权限"的路径。
@@ -35,7 +36,9 @@ internal object LocalShellJobs {
         @Volatile var output: String = "",
         @Volatile var exitCode: Int? = null,
         @Volatile var error: String? = null,
-        @Volatile var finishedAt: Long? = null
+        @Volatile var finishedAt: Long? = null,
+        /** 后台命令的沙盒进程句柄（独立 PRoot 进程）；终止任务时直接销毁它。 */
+        @Volatile var process: Process? = null
     ) {
         val isRunning: Boolean get() = status == STATUS_RUNNING
     }
@@ -58,12 +61,13 @@ internal object LocalShellJobs {
         jobs[jobId]?.takeIf { it.sessionId == sessionId }
 
     /**
-     * 启动一个后台命令。[runner] 返回一次性命令结果（与前台 exec_command 相同结构）。
+     * 启动一个后台命令。[runner] 返回一次性命令结果（与前台 exec_command 相同结构），
+     * 并可通过 [ShellJob.process] 登记自己的沙盒进程，供 [kill] 真正终止。
      */
     internal fun start(
         sessionId: String,
         command: String,
-        runner: suspend () -> Map<String, Any>
+        runner: suspend (ShellJob) -> Map<String, Any>
     ): ShellJob {
         val job = ShellJob(
             id = UUID.randomUUID().toString().take(8),
@@ -82,7 +86,7 @@ internal object LocalShellJobs {
             kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()
         ) {
             try {
-                val result = runner()
+                val result = runner(job)
                 recordResult(job, result)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 finish(job, STATUS_KILLED, error = "已终止")
@@ -102,17 +106,22 @@ internal object LocalShellJobs {
         return job
     }
 
-    /** 终止后台命令。@return 是否确实终止了正在运行的任务。 */
+    /**
+     * 终止后台命令：销毁它的沙盒进程并取消协程。@return 是否确实终止了正在运行的任务。
+     */
     internal fun kill(sessionId: String, jobId: String): Boolean {
         val job = get(sessionId, jobId) ?: return false
         if (!job.isRunning) return false
-        val handle = handles.remove(jobId)
-        if (handle == null) {
-            finish(job, STATUS_KILLED, error = "已终止")
-            return false
-        }
-        handle.cancel()
+        // 先把状态落成 killed：进程销毁后运行体会返回结果，避免它把状态改回 failed/succeeded。
         finish(job, STATUS_KILLED, error = "已终止")
+        val process = job.process
+        job.process = null
+        val handle = handles.remove(jobId)
+        if (process != null) {
+            runCatching { process.destroy() }
+            if (process.isAlive) runCatching { process.destroyForcibly() }
+        }
+        handle?.cancel()
         return true
     }
 
@@ -125,11 +134,17 @@ internal object LocalShellJobs {
                 append(it)
             }
         }
+        val exitCode = (result["exit_code"] as? Number)?.toInt()
+        if (job.status == STATUS_KILLED) {
+            // 已被用户终止：保留 killed 状态与已产出的输出，不再发"已完成"通知。
+            finish(job, STATUS_KILLED, output = output, exitCode = exitCode, error = job.error ?: "已终止")
+            return
+        }
         finish(
             job = job,
             status = if (succeeded) STATUS_SUCCEEDED else STATUS_FAILED,
             output = output,
-            exitCode = (result["exit_code"] as? Number)?.toInt(),
+            exitCode = exitCode,
             error = (result["error"] as? String)
         )
         val summary = if (succeeded) "执行成功" else "执行失败"

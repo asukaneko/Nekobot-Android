@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tool_name_get_weather">날씨 조회</string>
     <string name="tool_name_search_web">웹 검색</string>
@@ -130,7 +130,7 @@
     <string name="tool_desc_get_date_time">현재 날짜, 시간, 요일을 가져옵니다.</string>
     <string name="tool_desc_download_file">지정한 URL에서 파일을 다운로드합니다.</string>
     <string name="tool_desc_browser_use">세션 내 브라우저 제어: 페이지 열기, 스크린샷, 본문 읽기, 클릭, 입력, 스크립트 실행.</string>
-    <string name="tool_desc_exec_command">Alpine Linux 샌드박스에서 명령을 실행합니다. 워크스페이스는 /workspace에 마운트됩니다.</string>
+    <string name="tool_desc_exec_command">Alpine Linux 샌드박스에서 명령을 실행합니다. 워크스페이스는 /workspace에 마운트됩니다. background=true 명령은 별도 프로세스에서 병렬로 실행됩니다.</string>
     <string name="tool_desc_shell_job">백그라운드로 실행 중인 명령 작업을 확인하거나 종료합니다.</string>
     <string name="tool_desc_file_read">샌드박스의 텍스트 파일을 줄 범위로 읽습니다.</string>
     <string name="tool_desc_file_write">샌드박스의 텍스트 파일을 덮어쓰거나 추가합니다.</string>

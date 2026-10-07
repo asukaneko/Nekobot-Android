@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tool_name_get_weather">查詢天氣</string>
     <string name="tool_name_search_web">網頁搜尋</string>
@@ -130,7 +130,7 @@
     <string name="tool_desc_get_date_time">獲取當前日期、時間與星期。</string>
     <string name="tool_desc_download_file">從指定 URL 下載檔案到本地。</string>
     <string name="tool_desc_browser_use">控制會話內瀏覽器：開啟網頁、截圖、讀取正文、點擊、輸入與執行腳本。</string>
-    <string name="tool_desc_exec_command">在 Alpine Linux 沙盒中執行命令，工作區掛載為 /workspace。</string>
+    <string name="tool_desc_exec_command">在 Alpine Linux 沙盒中執行命令，工作區掛載為 /workspace；background=true 的命令在獨立進程中並行執行。</string>
     <string name="tool_desc_shell_job">查看或終止後台運行的命令任務。</string>
     <string name="tool_desc_file_read">讀取沙盒內的文字檔案，支援按行分片。</string>
     <string name="tool_desc_file_write">寫入沙盒內的文字檔案，可覆蓋或追加。</string>

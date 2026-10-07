@@ -1054,8 +1054,8 @@ internal class LocalAgentToolExecutor(
                 "command" to command
             )
         }
-        val job = LocalShellJobs.start(sessionId = sessionId, command = command) {
-            runCommandOnce(command, policy.mainCommand, timeoutSeconds, authorizationLabel)
+        val job = LocalShellJobs.start(sessionId = sessionId, command = command) { job ->
+            runCommandOnce(command, policy.mainCommand, timeoutSeconds, authorizationLabel, detachedJob = job)
         }
         return success(
             "command" to command,
@@ -1127,12 +1127,18 @@ internal class LocalAgentToolExecutor(
         }
     }
 
-    /** 真正执行一次命令（策略与授权已在前置步骤完成）。 */
+    /**
+     * 真正执行一次命令（策略与授权已在前置步骤完成）。
+     *
+     * [detachedJob] 非空表示这是后台任务：命令跑在独立的 PRoot 进程里而不是会话 shell，
+     * 因此多个后台任务之间（以及后台任务与前台命令之间）是真并行。
+     */
     private suspend fun runCommandOnce(
         command: String,
         mainCommand: String,
         timeoutSeconds: Int,
-        authorization: String
+        authorization: String,
+        detachedJob: LocalShellJobs.ShellJob? = null
     ): Map<String, Any> {
         val activeWorkspace = workspace ?: return failure("本地工作区不可用")
         activeWorkspace.mkdirs()
@@ -1142,15 +1148,27 @@ internal class LocalAgentToolExecutor(
         // exec 可能通过 shell 直接创建/修改/删除工作区文件（echo > file、cp、git 等），
         // 执行前后对工作区做快照对比，把这些变更纳入 git 摘要追踪。
         val snapshotBefore = snapshotWorkspaceFiles()
+        val timeoutMs = TimeUnit.SECONDS.toMillis(timeoutSeconds.toLong())
         val result = runCatching {
-            LocalLinuxSandboxCoordinator.execute(
-                context = context,
-                sessionId = sessionId,
-                workspace = activeWorkspace,
-                command = command,
-                timeoutMs = TimeUnit.SECONDS.toMillis(timeoutSeconds.toLong()),
-                shouldStop = { generationController.isStopped },
-            )
+            if (detachedJob == null) {
+                LocalLinuxSandboxCoordinator.execute(
+                    context = context,
+                    sessionId = sessionId,
+                    workspace = activeWorkspace,
+                    command = command,
+                    timeoutMs = timeoutMs,
+                    shouldStop = { generationController.isStopped },
+                )
+            } else {
+                LocalLinuxSandboxCoordinator.executeDetached(
+                    context = context,
+                    sessionId = sessionId,
+                    workspace = activeWorkspace,
+                    command = command,
+                    timeoutMs = timeoutMs,
+                    onProcessStarted = { process -> detachedJob.process = process },
+                )
+            }
         }.getOrElse { error ->
             return failure(
                 error.message ?: "Linux 沙盒命令执行失败",
@@ -1162,7 +1180,8 @@ internal class LocalAgentToolExecutor(
         }
         recordWorkspaceChanges(snapshotBefore)
 
-        if (result.stopped || generationController.isStopped) {
+        // 前台命令随本次生成停止而中止；后台命令按用户/模型意图继续跑完，不受停止影响。
+        if (detachedJob == null && (result.stopped || generationController.isStopped)) {
             return stoppedFailure(
                 "command" to command,
                 "main_command" to mainCommand,

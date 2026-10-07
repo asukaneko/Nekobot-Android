@@ -92,6 +92,50 @@ class LocalShellJobsTest {
     }
 
     @Test
+    fun `多个后台任务并行运行而不是排队`() {
+        val sessionId = "shell-session-parallel"
+        val allStarted = java.util.concurrent.CountDownLatch(3)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val jobs = (1..3).map { index ->
+            LocalShellJobs.start(sessionId, "job$index") {
+                allStarted.countDown()
+                // 三个任务必须同时在跑才能全部到达这里；任一排队就会等到超时
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                mapOf("success" to true, "output" to "done$index", "exit_code" to 0)
+            }
+        }
+
+        assertTrue("三个后台任务应同时在运行", allStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        release.countDown()
+        jobs.forEach { job -> waitUntil { LocalShellJobs.get(sessionId, job.id)?.isRunning == false } }
+        jobs.forEach { job ->
+            assertEquals(
+                LocalShellJobs.STATUS_SUCCEEDED,
+                LocalShellJobs.get(sessionId, job.id)?.status
+            )
+        }
+        LocalShellJobs.clear(sessionId)
+    }
+
+    @Test
+    fun `终止后运行体返回的结果不会把状态改回成功`() {
+        val sessionId = "shell-session-killed-late"
+        val started = java.util.concurrent.CountDownLatch(1)
+        val job = LocalShellJobs.start(sessionId, "sleep 100") {
+            started.countDown()
+            Thread.sleep(400)
+            mapOf("success" to true, "output" to "too late", "exit_code" to 0)
+        }
+        assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+
+        assertTrue(LocalShellJobs.kill(sessionId, job.id))
+        Thread.sleep(800)
+
+        assertEquals(LocalShellJobs.STATUS_KILLED, LocalShellJobs.get(sessionId, job.id)?.status)
+        LocalShellJobs.clear(sessionId)
+    }
+
+    @Test
     fun `并发上限为三个`() {
         assertEquals(3, LocalShellJobs.MAX_JOBS_PER_SESSION)
     }

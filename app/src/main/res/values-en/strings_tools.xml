@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tool_name_get_weather">Weather</string>
     <string name="tool_name_search_web">Web search</string>
@@ -130,7 +130,7 @@
     <string name="tool_desc_get_date_time">Get the current date, time and weekday.</string>
     <string name="tool_desc_download_file">Download a file from a URL.</string>
     <string name="tool_desc_browser_use">Control the in-session browser: open pages, screenshot, read text, click, type and run scripts.</string>
-    <string name="tool_desc_exec_command">Run commands in an Alpine Linux sandbox with the workspace mounted at /workspace.</string>
+    <string name="tool_desc_exec_command">Run commands in an Alpine Linux sandbox with the workspace mounted at /workspace; background=true commands run in parallel in separate processes.</string>
     <string name="tool_desc_shell_job">Inspect or kill background command jobs.</string>
     <string name="tool_desc_file_read">Read text files in the sandbox, optionally by line range.</string>
     <string name="tool_desc_file_write">Write text files in the sandbox, overwriting or appending.</string>

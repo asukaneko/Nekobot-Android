@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tool_name_get_weather">天気を調べる</string>
     <string name="tool_name_search_web">ウェブ検索</string>
@@ -130,7 +130,7 @@
     <string name="tool_desc_get_date_time">現在の日付・時刻・曜日を取得します。</string>
     <string name="tool_desc_download_file">指定 URL からファイルをダウンロードします。</string>
     <string name="tool_desc_browser_use">セッション内ブラウザを操作：ページを開く、スクリーンショット、本文取得、クリック、入力、スクリプト実行。</string>
-    <string name="tool_desc_exec_command">Alpine Linux サンドボックスでコマンドを実行します。ワークスペースは /workspace にマウントされます。</string>
+    <string name="tool_desc_exec_command">Alpine Linux サンドボックスでコマンドを実行します。ワークスペースは /workspace にマウントされます。background=true のコマンドは独立したプロセスで並行実行されます。</string>
     <string name="tool_desc_shell_job">バックグラウンドで実行中のコマンドを確認・終了します。</string>
     <string name="tool_desc_file_read">サンドボックス内のテキストファイルを行範囲指定で読み取ります。</string>
     <string name="tool_desc_file_write">サンドボックス内のテキストファイルを上書きまたは追記します。</string>

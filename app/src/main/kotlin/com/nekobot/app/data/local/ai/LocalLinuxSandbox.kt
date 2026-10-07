@@ -127,6 +127,98 @@ internal object LocalLinuxSandboxCoordinator {
         }
     }
 
+    /**
+     * 后台命令：直接用一次性 PRoot 进程执行 `sh -c <command>`，不占用会话的持久 shell。
+     *
+     * 会话 shell 只有一条 stdin/stdout 通道（见 [LocalPersistentLinuxShell]），同一时刻只能跑一个命令，
+     * 后台任务若复用它会退化成排队执行。这里每个后台任务独占一个进程，因此多个后台任务之间、
+     * 后台任务与前台命令之间都能真并行。代价是不继承前台 shell 的 cwd/export（统一从 /workspace 起步）。
+     *
+     * [onProcessStarted] 把进程句柄交给调用方，便于用户终止任务。
+     */
+    fun executeDetached(
+        context: Context,
+        sessionId: String,
+        workspace: File,
+        command: String,
+        timeoutMs: Long,
+        maxOutputChars: Int = AgentToolLimits.toolOutputChars(),
+        onProcessStarted: (Process) -> Unit = {},
+    ): CommandResult {
+        val startedAt = System.currentTimeMillis()
+        val runtime = LocalLinuxRootfsManager.getInstance(context).ensureReady()
+        val sharedWorkspace = LocalWorkspaceStorage.resolveShared(context.filesDir)
+        val guestWorkspace = workspace.canonicalFile
+        guestWorkspace.mkdirs()
+        // PRoot 的绑定目标必须已存在，旧 rootfs 可能缺少这些目录。
+        File(runtime.rootfs, "workspace").mkdirs()
+        if (sharedWorkspace != null) File(runtime.rootfs, "shared").mkdirs()
+
+        val argv = buildLocalDetachedCommand(
+            proot = runtime.proot,
+            rootfs = runtime.rootfs,
+            workspace = guestWorkspace,
+            command = command,
+            sharedWorkspace = sharedWorkspace,
+        )
+        val process = ProcessBuilder(argv)
+            .directory(context.filesDir)
+            .redirectErrorStream(true)
+            .apply { applyLocalSandboxEnvironment(runtime, sessionId) }
+            .start()
+        onProcessStarted(process)
+
+        val collector = LocalLinuxCommandOutputCollector(markerPrefix = null, maxOutputChars = maxOutputChars)
+        val reader = Thread(
+            { drainDetachedOutput(process, collector) },
+            "NekobotLinuxJob-$sessionId"
+        ).apply {
+            isDaemon = true
+            start()
+        }
+
+        val finished = runCatching { process.waitFor(timeoutMs, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+        if (!finished) {
+            runCatching { process.destroy() }
+            if (!process.waitFor(500, TimeUnit.MILLISECONDS)) runCatching { process.destroyForcibly() }
+            reader.join(500)
+            return CommandResult(
+                output = collector.renderOutput(),
+                exitCode = 124,
+                durationMs = System.currentTimeMillis() - startedAt,
+                timedOut = true,
+                stopped = false,
+            )
+        }
+        reader.join(1_000)
+        return CommandResult(
+            output = collector.renderOutput(),
+            exitCode = runCatching { process.exitValue() }.getOrDefault(-1),
+            durationMs = System.currentTimeMillis() - startedAt,
+            timedOut = false,
+            stopped = false,
+        )
+    }
+
+    /** 一直排空子进程输出（管道写满会让子进程卡住），截断交由 [collector] 处理。 */
+    private fun drainDetachedOutput(
+        process: Process,
+        collector: LocalLinuxCommandOutputCollector,
+    ) {
+        try {
+            process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
+                val buffer = CharArray(4096)
+                while (true) {
+                    val count = reader.read(buffer)
+                    if (count < 0) break
+                    collector.accept(String(buffer, 0, count))
+                }
+            }
+        } catch (error: Exception) {
+            Log.d(TAG, "后台命令输出读取结束: ${error.message}")
+        }
+    }
+
     private fun createShell(
         context: Context,
         sessionId: String,
@@ -551,20 +643,7 @@ internal class LocalPersistentLinuxShell(
         val builder = ProcessBuilder(command)
             .directory(context.filesDir)
             .redirectErrorStream(true)
-        builder.environment().apply {
-            this["PROOT_TMP_DIR"] = runtime.prootTempDir.absolutePath
-            this["LD_LIBRARY_PATH"] = runtime.nativeLibraryDir.absolutePath
-            runtime.loader64?.let { this["PROOT_LOADER"] = it.absolutePath }
-            runtime.loader32?.let { this["PROOT_LOADER_32"] = it.absolutePath }
-            this["HOME"] = "/root"
-            this["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-            this["LANG"] = "C.UTF-8"
-            this["LC_ALL"] = "C.UTF-8"
-            this["TERM"] = "dumb"
-            this["PS1"] = ""
-            this["TZ"] = localPosixTimezone()
-            this["NEKOBOT_SESSION_ID"] = sessionId
-        }
+        builder.applyLocalSandboxEnvironment(runtime, sessionId)
 
         val started = builder.start()
         process = started
@@ -699,9 +778,12 @@ internal class LocalPersistentLinuxShell(
 /**
  * 流式解析 shell 完成标记。保留不足一个标记长度的尾部，
  * 因而标记即使跨 stdout 数据块也不会泄露到命令输出。
+ *
+ * [markerPrefix] 为 null 时表示流里没有完成标记（一次性进程用它累计输出，
+ * 退出码直接取自进程），此时只做截断累积。
  */
 internal class LocalLinuxCommandOutputCollector(
-    private val markerPrefix: String,
+    private val markerPrefix: String?,
     private val maxOutputChars: Int,
 ) {
     private val scanBuffer = StringBuilder()
@@ -712,6 +794,10 @@ internal class LocalLinuxCommandOutputCollector(
     @Synchronized
     fun accept(text: String): Int? {
         if (completed) return null
+        if (markerPrefix == null) {
+            appendOutput(text)
+            return null
+        }
         scanBuffer.append(text)
 
         val markerIndex = scanBuffer.indexOf(markerPrefix)
@@ -800,6 +886,41 @@ internal fun buildLocalProotCommand(
     workspace: File,
     sharedWorkspace: File? = null,
 ): List<String> = buildLocalProotPrefix(proot, rootfs, workspace, sharedWorkspace) + listOf("/bin/sh")
+
+/**
+ * 生成后台命令（一次性进程）的启动参数：PRoot 前缀 + /bin/sh -c "<command>"。
+ *
+ * 命令原样作为单个 argv 传入，不经过外层 shell 二次解析，语义与写进持久 shell 的 stdin 一致。
+ * 保持为纯函数以便 JVM 单元测试覆盖。
+ */
+internal fun buildLocalDetachedCommand(
+    proot: File,
+    rootfs: File,
+    workspace: File,
+    command: String,
+    sharedWorkspace: File? = null,
+): List<String> = buildLocalProotCommand(proot, rootfs, workspace, sharedWorkspace) + listOf("-c", command)
+
+/** 写入 PRoot 子进程的固定环境（持久 shell、后台命令、交互终端共用同一套）。 */
+internal fun ProcessBuilder.applyLocalSandboxEnvironment(
+    runtime: LocalLinuxRuntime,
+    sessionId: String? = null,
+) {
+    environment().apply {
+        this["PROOT_TMP_DIR"] = runtime.prootTempDir.absolutePath
+        this["LD_LIBRARY_PATH"] = runtime.nativeLibraryDir.absolutePath
+        runtime.loader64?.let { this["PROOT_LOADER"] = it.absolutePath }
+        runtime.loader32?.let { this["PROOT_LOADER_32"] = it.absolutePath }
+        this["HOME"] = "/root"
+        this["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        this["LANG"] = "C.UTF-8"
+        this["LC_ALL"] = "C.UTF-8"
+        this["TERM"] = "dumb"
+        this["PS1"] = ""
+        this["TZ"] = localPosixTimezone()
+        sessionId?.let { this["NEKOBOT_SESSION_ID"] = it }
+    }
+}
 
 internal fun localPosixTimezone(): String {
     val offsetMs = TimeZone.getDefault().getOffset(System.currentTimeMillis())

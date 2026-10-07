@@ -82,6 +82,35 @@ class LocalLinuxSandboxTest {
     }
 
     @Test
+    fun `detached command keeps the raw command in a single argv and mounts the workspace`() {
+        val proot = File("native/libproot.so").absoluteFile
+        val rootfs = File("data/alpine-rootfs").absoluteFile
+        val workspace = File("data/workspace/session-a").absoluteFile
+        val raw = "sleep 3 && echo \"it's done\""
+
+        val command = buildLocalDetachedCommand(
+            proot = proot,
+            rootfs = rootfs,
+            workspace = workspace,
+            command = raw,
+        )
+
+        assertTrue(command.windowed(2).contains(listOf("-b", "${workspace.absolutePath}:/workspace")))
+        assertTrue(command.windowed(2).contains(listOf("-w", "/workspace")))
+        // 命令原样作为单个 argv 传给沙盒内的 /bin/sh -c，不经过外层 shell 二次解析
+        assertEquals(listOf("/bin/sh", "-c", raw), command.takeLast(3))
+    }
+
+    @Test
+    fun `marker-less collector accumulates and truncates detached output`() {
+        val collector = LocalLinuxCommandOutputCollector(markerPrefix = null, maxOutputChars = 5)
+
+        assertEquals(null, collector.accept("1234"))
+        assertEquals(null, collector.accept("56789"))
+        assertEquals("12345\n[输出已截断，最多返回 5 个字符]", collector.renderOutput())
+    }
+
+    @Test
     fun `stream parser detects marker split across chunks`() {
         val collector = LocalLinuxCommandOutputCollector(
             markerPrefix = "__NEKOBOT_DONE_token_EXIT_",
