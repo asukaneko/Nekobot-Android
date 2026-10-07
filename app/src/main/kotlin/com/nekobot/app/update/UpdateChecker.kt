@@ -323,8 +323,7 @@ object UpdateChecker {
 
                 when {
                     expectedSize > 0 && downloaded != expectedSize -> "下载文件不完整"
-                    !isValidApk(context, target) -> "下载内容不是本应用的合法更新包（签名或包名不匹配）"
-                    else -> null
+                    else -> validateApk(context, target)
                 }
             }
         }.getOrElse { error -> error.message ?: "下载失败" }
@@ -336,31 +335,59 @@ object UpdateChecker {
     }
 
     /**
-     * 校验下载内容确实是本应用的合法更新包。
+     * 校验下载内容确实是本应用的合法更新包；返回 null 表示通过，否则返回失败原因。
      *
      * 仅检查 ZIP 内是否存在 AndroidManifest.xml 是不够的：应用会引导用户安装该文件
      * （Manifest 声明了 REQUEST_INSTALL_PACKAGES），必须同时确认包名一致、且签名与本机
-     * 已安装版本完全一致，否则任意 APK 都能被当作「更新」投递。
+     * 已安装版本一致，否则任意 APK 都能被当作「更新」投递。
+     *
+     * 读取「本机已安装版本」必须按包名走 getPackageInfo：getPackageArchiveInfo 只接受
+     * APK 文件路径，把包名当路径传进去必然返回 null，会让所有正常更新都被误判成
+     * 「签名或包名不匹配」而无法安装。
      */
-    private fun isValidApk(context: Context, file: File): Boolean = runCatching {
-        ZipFile(file).use { zip ->
-            if (zip.getEntry("AndroidManifest.xml") == null) return false
-        }
+    private fun validateApk(context: Context, file: File): String? {
         val manager = context.packageManager
-        val downloaded = packageInfo(manager, file.absolutePath) ?: return false
-        if (downloaded.packageName != context.packageName) return false
-        val installed = packageInfo(manager, context.packageName) ?: return false
-        val expected = signerDigests(installed)
-        val actual = signerDigests(downloaded)
-        expected.isNotEmpty() && actual == expected
-    }.getOrDefault(false)
+        val hasManifest = runCatching {
+            ZipFile(file).use { it.getEntry("AndroidManifest.xml") != null }
+        }.getOrDefault(false)
+        if (!hasManifest) return "压缩包内缺少 AndroidManifest.xml（文件已损坏）"
 
-    private fun packageInfo(manager: PackageManager, path: String): PackageInfo? =
+        val downloaded = runCatching { archiveInfo(manager, file.absolutePath) }.getOrNull()
+            ?: return "无法解析下载的安装包（文件已损坏或不是 APK）"
+        if (downloaded.packageName != context.packageName) {
+            return "包名不一致（${downloaded.packageName}）"
+        }
+
+        // 读不到归档签名时不再拦截：安装阶段系统仍会强制校验签名，签名不符的包无法覆盖
+        // 安装，这里只是提前发现问题的兜底，避免个别机型读不到归档签名就完全无法更新。
+        val actual = runCatching { signerDigests(downloaded) }.getOrDefault(emptySet())
+        if (actual.isEmpty()) {
+            LocalLogger.w(TAG, R.string.log_update_signature_unreadable)
+            return null
+        }
+        val installed = runCatching { installedInfo(manager, context.packageName) }.getOrNull()
+            ?: return null
+        val expected = runCatching { signerDigests(installed) }.getOrDefault(emptySet())
+        if (expected.isEmpty()) return null
+        return if (actual == expected) null else "签名与本机已安装版本不一致"
+    }
+
+    /** 解析 APK 归档文件（只接受文件路径）。 */
+    private fun archiveInfo(manager: PackageManager, path: String): PackageInfo? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             manager.getPackageArchiveInfo(path, PackageManager.GET_SIGNING_CERTIFICATES)
         } else {
             @Suppress("DEPRECATION")
             manager.getPackageArchiveInfo(path, PackageManager.GET_SIGNATURES)
+        }
+
+    /** 读取本机已安装包的签名信息；必须按包名查询。 */
+    @Suppress("DEPRECATION")
+    private fun installedInfo(manager: PackageManager, packageName: String): PackageInfo? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            manager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            manager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
         }
 
     /** 取 APK 当前签名证书的指纹集合，用于比较「是否同一把密钥签发」。 */

@@ -263,6 +263,7 @@
     <string name="log_svc_tool_message_persist_failed">도구 메시지 저장 실패: %1$s</string>
     <string name="log_update_check_failed">업데이트 확인 실패: %1$s</string>
     <string name="log_update_download_failed">업데이트 패키지 다운로드 실패: %1$s</string>
+    <string name="log_update_signature_unreadable">업데이트 패키지 서명을 읽을 수 없어 서명 비교를 건너뛰고 시스템 설치 시 검증에 맡깁니다</string>
     <string name="log_vm_task_failed">UI 작업 실행 실패: %1$s</string>
     <string name="log_widget_update_failed">위젯 업데이트 실패: %1$s</string>
 </resources>

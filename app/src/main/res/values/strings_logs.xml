@@ -263,6 +263,7 @@
     <string name="log_svc_tool_message_persist_failed">工具消息落库失败: %1$s</string>
     <string name="log_update_check_failed">检查更新失败: %1$s</string>
     <string name="log_update_download_failed">更新包下载失败: %1$s</string>
+    <string name="log_update_signature_unreadable">读不到更新包签名，跳过签名比对，交由系统安装时校验</string>
     <string name="log_vm_task_failed">界面任务执行失败: %1$s</string>
     <string name="log_widget_update_failed">桌面小组件更新失败: %1$s</string>
 </resources>

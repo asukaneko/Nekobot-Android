@@ -263,6 +263,7 @@
     <string name="log_svc_tool_message_persist_failed">ツールメッセージの保存に失敗: %1$s</string>
     <string name="log_update_check_failed">アップデート確認に失敗: %1$s</string>
     <string name="log_update_download_failed">アップデートパッケージのダウンロードに失敗: %1$s</string>
+    <string name="log_update_signature_unreadable">更新パッケージの署名を読み取れないため、署名照合を省略し、インストール時にシステムへ委ねます</string>
     <string name="log_vm_task_failed">UIタスクの実行に失敗: %1$s</string>
     <string name="log_widget_update_failed">ウィジェットの更新に失敗: %1$s</string>
 </resources>

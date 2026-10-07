@@ -90,16 +90,21 @@ object LocalLogger {
     fun e(tag: String, msg: String, throwable: Throwable? = null) =
         log(LEVEL_ERROR, tag, exceptionMessage(msg, throwable))
 
-    /** 资源化日志：记录时按当前所选语言渲染消息文案。 */
-    fun d(tag: String, msgRes: Int, vararg fmtArgs: Any?) = log(LEVEL_DEBUG, tag, str(msgRes, fmtArgs))
+    /**
+     * 资源化日志：记录时按当前所选语言渲染消息文案。
+     *
+     * 注意必须用 `*fmtArgs` 展开：`str(msgRes, fmtArgs)` 会把整个数组当成「单个」
+     * 占位参数传入，日志里只会显示 `[Ljava.lang.Object;@xxxx`，看不出真实原因。
+     */
+    fun d(tag: String, msgRes: Int, vararg fmtArgs: Any?) = log(LEVEL_DEBUG, tag, str(msgRes, *fmtArgs))
 
-    fun i(tag: String, msgRes: Int, vararg fmtArgs: Any?) = log(LEVEL_INFO, tag, str(msgRes, fmtArgs))
+    fun i(tag: String, msgRes: Int, vararg fmtArgs: Any?) = log(LEVEL_INFO, tag, str(msgRes, *fmtArgs))
 
     fun w(tag: String, msgRes: Int, vararg fmtArgs: Any?, throwable: Throwable? = null) =
-        log(LEVEL_WARNING, tag, exceptionMessage(str(msgRes, fmtArgs), throwable))
+        log(LEVEL_WARNING, tag, exceptionMessage(str(msgRes, *fmtArgs), throwable))
 
     fun e(tag: String, msgRes: Int, vararg fmtArgs: Any?, throwable: Throwable? = null) =
-        log(LEVEL_ERROR, tag, exceptionMessage(str(msgRes, fmtArgs), throwable))
+        log(LEVEL_ERROR, tag, exceptionMessage(str(msgRes, *fmtArgs), throwable))
 
     /**
      * 按当前语言解析资源文案；供数据层在记录前构造本地化的动态消息。

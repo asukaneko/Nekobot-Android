@@ -263,6 +263,7 @@
     <string name="log_svc_tool_message_persist_failed">Failed to persist tool message: %1$s</string>
     <string name="log_update_check_failed">Update check failed: %1$s</string>
     <string name="log_update_download_failed">Update package download failed: %1$s</string>
+    <string name="log_update_signature_unreadable">Could not read update package signature; skipping the comparison and leaving it to the system installer</string>
     <string name="log_vm_task_failed">UI task failed: %1$s</string>
     <string name="log_widget_update_failed">Widget update failed: %1$s</string>
 </resources>
