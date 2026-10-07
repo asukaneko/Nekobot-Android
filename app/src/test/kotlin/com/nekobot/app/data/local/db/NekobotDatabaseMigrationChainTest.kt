@@ -14,6 +14,6 @@ class NekobotDatabaseMigrationChainTest {
         migrations.zipWithNext().forEach { (current, next) ->
             assertEquals(current.endVersion, next.startVersion)
         }
-        assertEquals(48, migrations.last().endVersion)
+        assertEquals(50, migrations.last().endVersion)
     }
 }

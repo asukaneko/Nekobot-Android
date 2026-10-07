@@ -168,6 +168,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -391,6 +392,10 @@ class LocalRepository(
     private val aiClient: LocalAiClient = LocalAiClient(),
     private val appContext: android.content.Context? = null
 ) {
+    /** 子代理后台任务属于当前档案仓库生命周期，切档/关闭时统一停止。 */
+    private val subagentScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+    )
     private val gson = Gson()
     private val workspaceRepository = LocalWorkspaceRepository(appContext)
     /** 每个仓库实例唯一；同名 profile 覆盖重建后，旧协程也无法通过 active 检查。 */
@@ -884,6 +889,7 @@ class LocalRepository(
     }
 
     init {
+        com.nekobot.app.data.local.ai.SubagentTaskStore.bind(db.localSubagentTaskDao())
         aiClient.setOAuthCredentialResolver(oauthManager::resolveCredential)
         appContext?.let { context ->
             LocalPlotStoryStore.activateProfile(db.dbName, plotStoryOwner) {
@@ -2127,6 +2133,7 @@ class LocalRepository(
 
     suspend fun deleteSession(id: String) = withContext(Dispatchers.IO) {
         activeExperienceBackfills[id]?.cancel()
+        com.nekobot.app.data.local.ai.SubagentTaskStore.clearSession(id)
         // 先清理该会话的剧情选项缓存（不影响 token 用量）
         appContext?.let { context ->
             LocalPlotStoryStore.runIfActiveProfile(db.dbName, plotStoryOwner) {
@@ -6547,6 +6554,9 @@ class LocalRepository(
             .onFailure { error ->
                 LocalLogger.w(TAG, R.string.log_repo_close_pause_skip, error.message, throwable = error)
             }
+        runCatching { com.nekobot.app.data.local.ai.SubagentTaskStore.closeRepository() }
+            .onFailure { error -> LocalLogger.w(TAG, R.string.log_repo_close_pause_skip, error.message, throwable = error) }
+        subagentScope.cancel()
         localMcpRuntime.close()
         localBrowserTools.values.forEach(LocalBrowserTool::close)
         localBrowserTools.clear()
@@ -6596,7 +6606,8 @@ class LocalRepository(
             skillStorage = localSkillStorage,
             sessionToolFilter = { definitions -> filterDefinitionsForSession(sessionId, definitions) },
             recallReader = recallReader,
-            isSessionToolEnabled = { toolName -> sessionToolRegistry.isToolEnabled(sessionId, toolName) }
+            isSessionToolEnabled = { toolName -> sessionToolRegistry.isToolEnabled(sessionId, toolName) },
+            backgroundTaskScope = subagentScope
         )
         val disabledKeys = session.disabledPromptKeys
             ?.split(",")
@@ -7273,7 +7284,8 @@ class LocalRepository(
                 _agentWakeEvents.tryEmit(reattachWakeUpSession(sessionId, event))
             },
             recallReader = recallReader,
-            isSessionToolEnabled = { toolName -> sessionToolRegistry.isToolEnabled(sessionId, toolName) }
+            isSessionToolEnabled = { toolName -> sessionToolRegistry.isToolEnabled(sessionId, toolName) },
+            backgroundTaskScope = subagentScope
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -7866,7 +7878,8 @@ class LocalRepository(
                 pluginInstallConfirmationEmitter = { request -> emitPluginInstallConfirmation(request) },
                 sessionToolFilter = { definitions -> filterDefinitionsForSession(session.id, definitions) },
                 recallReader = recallReader,
-                isSessionToolEnabled = { toolName -> sessionToolRegistry.isToolEnabled(session.id, toolName) }
+                isSessionToolEnabled = { toolName -> sessionToolRegistry.isToolEnabled(session.id, toolName) },
+                backgroundTaskScope = subagentScope
             )
 
             val metadata = buildMap<String, Any> {

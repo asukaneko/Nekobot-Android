@@ -21,6 +21,8 @@ import com.nekobot.app.data.local.LocalLogger
         LocalMessageImageEntity::class,
         LocalAgentRunEntity::class,
         LocalAgentToolMessageEntity::class,
+        LocalSubagentTaskEntity::class,
+        LocalSubagentMessageEntity::class,
         LocalCharacterEntity::class,
         LocalWorldBookEntity::class,
         LocalWorldBookEntryEntity::class,
@@ -49,7 +51,7 @@ import com.nekobot.app.data.local.LocalLogger
         LocalMessageVariantEntity::class,
         LocalStickerEntity::class
     ],
-    version = 48,
+    version = 50,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -59,6 +61,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun messageImageDao(): MessageImageDao
     abstract fun agentRunDao(): AgentRunDao
     abstract fun agentToolMessageDao(): AgentToolMessageDao
+    abstract fun localSubagentTaskDao(): LocalSubagentTaskDao
     abstract fun characterDao(): CharacterDao
     abstract fun worldBookDao(): WorldBookDao
     abstract fun aiModelDao(): AiModelDao
@@ -1044,6 +1047,74 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v48 → v49：为本地子代理任务与待办增加档案级持久存储。 */
+        val MIGRATION_48_49 = object : Migration(48, 49) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_subagent_tasks (
+                        task_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        root_run_id TEXT NOT NULL,
+                        parent_task_id TEXT,
+                        parent_message_id TEXT,
+                        parent_tool_call_id TEXT,
+                        request_key TEXT,
+                        description TEXT NOT NULL,
+                        prompt TEXT NOT NULL,
+                        run_in_background INTEGER NOT NULL,
+                        depth INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        stage TEXT NOT NULL,
+                        execution_generation INTEGER NOT NULL,
+                        completed_tool_calls INTEGER NOT NULL,
+                        checkpoint_sequence INTEGER NOT NULL,
+                        todos_json TEXT NOT NULL,
+                        result_text TEXT NOT NULL,
+                        error_text TEXT,
+                        model_used TEXT NOT NULL,
+                        tool_calls INTEGER NOT NULL,
+                        steps_json TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        started_at INTEGER,
+                        finished_at INTEGER,
+                        updated_at INTEGER NOT NULL,
+                        source_device_id TEXT,
+                        PRIMARY KEY(task_id),
+                        FOREIGN KEY(session_id) REFERENCES local_sessions(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_subagent_tasks_session_id ON local_subagent_tasks(session_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_subagent_tasks_parent_task_id ON local_subagent_tasks(parent_task_id)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_local_subagent_tasks_request_key ON local_subagent_tasks(request_key)")
+            }
+        }
+
+        /** v49 → v50：保留子代理协议上下文，并逐条记录工具调用状态以支持安全恢复。 */
+        val MIGRATION_49_50 = object : Migration(49, 50) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE local_subagent_tasks ADD COLUMN tool_call_states_json TEXT NOT NULL DEFAULT '{}'"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_subagent_messages (
+                        task_id TEXT NOT NULL,
+                        sequence INTEGER NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        PRIMARY KEY(task_id, sequence),
+                        FOREIGN KEY(task_id) REFERENCES local_subagent_tasks(task_id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_subagent_messages_task_id ON local_subagent_messages(task_id)"
+                )
+            }
+        }
+
         /** Room 不声明触发器；数据库打开时也安装一次，覆盖全新安装。 */
         private fun installExperienceInvalidationTriggers(db: SupportSQLiteDatabase) {
             db.execSQL(
@@ -1095,7 +1166,8 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
             MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
             MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45,
-            MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48
+            MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49,
+            MIGRATION_49_50
         )
 
         fun get(context: Context): NekobotDatabase =

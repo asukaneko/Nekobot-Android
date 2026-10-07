@@ -305,6 +305,7 @@ internal fun toolNameResId(id: String): Int = when (id) {
     "grep" -> R.string.tool_name_grep
     "glob" -> R.string.tool_name_glob
     "subagent_kill" -> R.string.tool_name_subagent_kill
+    "subagent_pause" -> R.string.tool_name_subagent_pause
     "todo_read" -> R.string.tool_name_todo_read
     "shell_job" -> R.string.tool_name_shell_job
     "get_date_time" -> R.string.tool_name_get_date_time
@@ -417,6 +418,7 @@ internal fun toolNameResId(id: String): Int = when (id) {
     "subagent" -> R.string.tool_name_subagent
     "subagent_list" -> R.string.tool_name_subagent_list
     "subagent_get" -> R.string.tool_name_subagent_get
+    "subagent_resume" -> R.string.tool_name_subagent_resume
     "list_stickers" -> R.string.tool_name_list_stickers
     "send_sticker" -> R.string.tool_name_send_sticker
     "view_sticker" -> R.string.tool_name_view_sticker
@@ -494,6 +496,8 @@ internal fun toolDescResId(id: String): Int = when (id) {
     "android_notification_action" -> R.string.tool_desc_android_notification_action
     "android_media_control" -> R.string.tool_desc_android_media_control
     "subagent" -> R.string.tool_desc_subagent
+    "subagent_resume" -> R.string.tool_desc_subagent_resume
+    "subagent_pause" -> R.string.tool_desc_subagent_pause
     "get_session_thinking_history" -> R.string.tool_desc_get_session_thinking_history
     "send_message" -> R.string.tool_desc_send_message
     "skill_list" -> R.string.tool_desc_skill_list

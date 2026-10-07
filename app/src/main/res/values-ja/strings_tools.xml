@@ -114,8 +114,10 @@
     <string name="tool_name_db_update_ai_config">AI 設定を更新</string>
     <string name="tool_name_subagent">サブエージェント委任</string>
     <string name="tool_name_subagent_kill">バックグラウンド子エージェントを停止</string>
+    <string name="tool_name_subagent_pause">バックグラウンド子エージェントを一時停止</string>
     <string name="tool_name_subagent_list">サブエージェントタスク一覧</string>
     <string name="tool_name_subagent_get">サブエージェント結果取得</string>
+    <string name="tool_name_subagent_resume">中断したサブエージェントを再開</string>
     <string name="tool_name_list_stickers">スタンプ一覧</string>
     <string name="tool_name_send_sticker">スタンプ送信</string>
     <string name="tool_name_view_sticker">スタンプ画像を表示</string>
@@ -182,6 +184,8 @@
     <string name="tool_desc_android_notification_action">通知を開く・消す・操作します。</string>
     <string name="tool_desc_android_media_control">メディアセッションの一覧または再生操作を行います。</string>
     <string name="tool_desc_subagent">独立したタスクをサブエージェントに委任します。</string>
+    <string name="tool_desc_subagent_resume">保存された会話とチェックポイントからサブエージェントのタスクを続行します。</string>
+    <string name="tool_desc_subagent_pause">バックグラウンド子エージェントを一時停止し、会話を保存します。</string>
     <string name="tool_desc_get_session_thinking_history">現在のセッションにおけるモデルの思考履歴を取得します。</string>
     <string name="tool_desc_send_message">指定したセッションまたはチャンネルにメッセージを送信します。</string>
     <string name="tool_desc_skill_list">現在有効な Skill とそのファイル数を一覧表示します。</string>

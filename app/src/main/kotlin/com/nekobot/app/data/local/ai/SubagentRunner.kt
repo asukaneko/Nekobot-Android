@@ -93,29 +93,43 @@ internal object SubagentRunner {
         shouldStop: () -> Boolean,
         onProgress: ((header: String, isComplete: Boolean, steps: List<ThinkingStep>) -> Unit)? = null,
         /** 子代理自己的输入 token 预算（0 表示不做循环内上下文管理）。 */
-        contextBudgetTokens: Int = 0
+        contextBudgetTokens: Int = 0,
+        /** 中断恢复时追加到系统提示和原始任务之后的协议消息。 */
+        restoredMessages: List<Map<String, Any>> = emptyList(),
+        /** 恢复卡片中的既有步骤，避免重启后进度从空白开始。 */
+        initialSteps: List<ThinkingStep> = emptyList(),
+        /** 前台父会话暂停时保留为可恢复状态；后台显式终止仍保持 KILLED。 */
+        stoppedStatus: SubagentTaskStatus = SubagentTaskStatus.KILLED
     ): SubagentRunResult {
         if (shouldStop()) {
-            return SubagentRunResult("", error = "生成已停止", status = SubagentTaskStatus.KILLED)
+            return SubagentRunResult("", error = "生成已停止", status = stoppedStatus)
         }
         // 独立上下文：轻量子代理系统提示 + 委派任务。
         val systemPrompt = buildSubagentSystemPrompt(language)
         val messages = listOf<Map<String, Any>>(
             mapOf("role" to "system", "content" to systemPrompt),
             mapOf("role" to "user", "content" to prompt)
-        )
+        ) + restoredMessages
 
-        val stepSink = SubagentProgressCollector(description)
+        val stepSink = SubagentProgressCollector(description, initialSteps)
+        val iterationBase = SubagentTaskStore.get(taskId)?.toolCalls ?: 0
         val hooks = ToolLoopHooks(
             onIterationStart = { iteration, _ ->
                 // 新一轮模型调用开始：若上一轮停在"输出中"，状态回到"执行中"。
                 SubagentTaskStore.markRunning(taskId)
                 stepSink.markIteration(iteration)
+                SubagentTaskStore.update(id = taskId, toolCalls = maxOf(
+                    SubagentTaskStore.get(taskId)?.toolCalls ?: 0,
+                    iterationBase + iteration + 1
+                ))
                 onProgress?.invoke(stepSink.header(), stepSink.complete, stepSink.steps())
             },
             onToolStart = { toolCall, thinking, iteration, _ ->
                 // 模型又开始调用工具：确认为"执行中"（本轮正文流若已标记为输出中，需要撤回）。
                 SubagentTaskStore.markRunning(taskId)
+                (toolCall["id"] as? String)?.let { callId ->
+                    SubagentTaskStore.markToolCallRunning(taskId, callId)
+                }
                 stepSink.onToolStart(toolCall, thinking)
                 onProgress?.invoke(stepSink.header(), stepSink.complete, stepSink.steps())
             },
@@ -123,6 +137,9 @@ internal object SubagentRunner {
                 stepSink.onToolResult(toolCall, result)
                 onProgress?.invoke(stepSink.header(), stepSink.complete, stepSink.steps())
                 null
+            },
+            onToolMessageAppended = { message ->
+                SubagentTaskStore.appendConversationMessage(taskId, message)
             }
         )
 
@@ -145,12 +162,12 @@ internal object SubagentRunner {
             val loop = execution.loopResult
             val content = resolveLoopFinalContent(loop)
             if (loop.stopped) {
-                stepSink.finish(SubagentTaskStatus.KILLED)
+                stepSink.finish(stoppedStatus)
                 onProgress?.invoke(stepSink.header(), true, stepSink.steps())
                 SubagentRunResult(
                     content = content,
                     error = "子代理执行被取消（父会话停止）",
-                    status = SubagentTaskStatus.KILLED,
+                    status = stoppedStatus,
                     modelName = loop.modelName,
                     toolCalls = loop.iterations.coerceAtMost(maxToolIterations)
                 )
@@ -169,12 +186,13 @@ internal object SubagentRunner {
             // 任务被终止（subagent_kill / 协程取消）：补发终态卡片并返回 KILLED，
             // 不向上抛出——后台清理（通知路由/额度释放）仍要完整执行。
             LocalLogger.i(TAG, R.string.log_sub_terminated, e.message)
-            stepSink.finish(SubagentTaskStatus.KILLED)
+            val terminalStatus = if (shouldStop()) stoppedStatus else SubagentTaskStatus.KILLED
+            stepSink.finish(terminalStatus)
             onProgress?.invoke(stepSink.header(), true, stepSink.steps())
             SubagentRunResult(
                 content = "",
                 error = "子代理执行已终止",
-                status = SubagentTaskStatus.KILLED
+                status = terminalStatus
             )
         } catch (e: ToolLoopModelError) {
             LocalLogger.w(TAG, R.string.log_sub_model_loop_failed, e.iteration, e.message)
@@ -187,9 +205,9 @@ internal object SubagentRunner {
             )
         } catch (e: Exception) {
             if (shouldStop()) {
-                stepSink.finish(SubagentTaskStatus.KILLED)
+                stepSink.finish(stoppedStatus)
                 onProgress?.invoke(stepSink.header(), true, stepSink.steps())
-                SubagentRunResult("", error = "生成已停止", status = SubagentTaskStatus.KILLED)
+                SubagentRunResult("", error = "生成已停止", status = stoppedStatus)
             } else {
                 LocalLogger.w(TAG, R.string.log_sub_execution_error, e.message)
                 stepSink.finish(SubagentTaskStatus.FAILED)
@@ -261,18 +279,23 @@ internal class SubagentDelegateScope(
  * [ThinkingStep]，通过 [SubagentRunner.runForeground] 的 onProgress 回调推到 UI。
  */
 internal class SubagentProgressCollector(
-    private val description: String
+    private val description: String,
+    initialSteps: List<ThinkingStep> = emptyList()
 ) {
-    private val _steps = mutableListOf<ThinkingStep>()
+    private val _steps = initialSteps.toMutableList()
     private var iteration = 0
     private var pendingToolName: String? = null
     private var pendingToolDetail: String? = null
+    private var finalStatus: SubagentTaskStatus? = null
     var complete: Boolean = false
         private set
 
     /** 当前头部文本：运行中或已完成 / 失败。 */
     fun header(): String = when {
-        complete -> "✅ 子代理完成: $description"
+        finalStatus == SubagentTaskStatus.SUCCEEDED -> "✅ 子代理完成: $description"
+        finalStatus == SubagentTaskStatus.INTERRUPTED -> "⏸ 子代理已中断: $description"
+        finalStatus == SubagentTaskStatus.KILLED -> "⛔ 子代理已终止: $description"
+        finalStatus == SubagentTaskStatus.FAILED -> "❌ 子代理失败: $description"
         pendingToolName != null -> "子代理: $description · $pendingToolName"
         else -> "子代理: $description"
     }
@@ -326,6 +349,7 @@ internal class SubagentProgressCollector(
 
     fun finish(status: SubagentTaskStatus) {
         complete = true
+        finalStatus = status
         for (i in _steps.indices) {
             if (_steps[i].status == "running" || _steps[i].status == "active") {
                 _steps[i] = _steps[i].copy(status = "done")
@@ -334,7 +358,12 @@ internal class SubagentProgressCollector(
         _steps.add(
             ThinkingStep(
                 type = "done",
-                name = if (status == SubagentTaskStatus.SUCCEEDED) "子代理完成" else "子代理失败",
+                name = when (status) {
+                    SubagentTaskStatus.SUCCEEDED -> "子代理完成"
+                    SubagentTaskStatus.INTERRUPTED -> "子代理已中断"
+                    SubagentTaskStatus.KILLED -> "子代理已终止"
+                    else -> "子代理失败"
+                },
                 status = "done"
             )
         )

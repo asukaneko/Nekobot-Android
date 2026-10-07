@@ -334,6 +334,78 @@ data class LocalAgentToolMessageEntity(
 )
 
 /**
+ * 本地子代理任务持久状态。消息轨迹和工具调用边界由后续恢复层按独立行追加；
+ * 这里保存任务元数据、最终结果、当前进度和可离线恢复的待办。
+ */
+@Entity(
+    tableName = "local_subagent_tasks",
+    indices = [
+        Index("session_id"),
+        Index("parent_task_id"),
+        Index(value = ["request_key"], unique = true)
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class LocalSubagentTaskEntity(
+    @PrimaryKey @ColumnInfo(name = "task_id") val taskId: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    @ColumnInfo(name = "root_run_id") val rootRunId: String,
+    @ColumnInfo(name = "parent_task_id") val parentTaskId: String?,
+    @ColumnInfo(name = "parent_message_id") val parentMessageId: String?,
+    @ColumnInfo(name = "parent_tool_call_id") val parentToolCallId: String?,
+    @ColumnInfo(name = "request_key") val requestKey: String?,
+    val description: String,
+    val prompt: String,
+    @ColumnInfo(name = "run_in_background") val runInBackground: Boolean,
+    val depth: Int,
+    val status: String,
+    val stage: String,
+    @ColumnInfo(name = "execution_generation") val executionGeneration: Int,
+    @ColumnInfo(name = "completed_tool_calls") val completedToolCalls: Int,
+    @ColumnInfo(name = "checkpoint_sequence") val checkpointSequence: Long,
+    @ColumnInfo(name = "todos_json") val todosJson: String,
+    @ColumnInfo(name = "tool_call_states_json", defaultValue = "'{}'") val toolCallStatesJson: String = "{}",
+    @ColumnInfo(name = "result_text") val result: String,
+    @ColumnInfo(name = "error_text") val error: String?,
+    @ColumnInfo(name = "model_used") val modelUsed: String,
+    @ColumnInfo(name = "tool_calls") val toolCalls: Int,
+    @ColumnInfo(name = "steps_json") val stepsJson: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "started_at") val startedAt: Long?,
+    @ColumnInfo(name = "finished_at") val finishedAt: Long?,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    @ColumnInfo(name = "source_device_id") val sourceDeviceId: String?
+)
+
+/** 子代理按序保存的协议消息；每条消息独立成行，避免长任务撑大任务状态行。 */
+@Entity(
+    tableName = "local_subagent_messages",
+    primaryKeys = ["task_id", "sequence"],
+    indices = [Index("task_id")],
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalSubagentTaskEntity::class,
+            parentColumns = ["task_id"],
+            childColumns = ["task_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class LocalSubagentMessageEntity(
+    @ColumnInfo(name = "task_id") val taskId: String,
+    val sequence: Long,
+    @ColumnInfo(name = "payload_json") val payloadJson: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long
+)
+
+/**
  * 本地角色卡。字段对齐后端 CharacterPreset 完整字段。
  *
  * tags / alternateGreetings / rules / state 以 JSON 字符串存储，由 Dao 层转换。

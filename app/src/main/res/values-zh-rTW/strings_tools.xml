@@ -114,8 +114,10 @@
     <string name="tool_name_db_update_ai_config">更新 AI 配置</string>
     <string name="tool_name_subagent">子代理委派</string>
     <string name="tool_name_subagent_kill">終止後台子代理</string>
+    <string name="tool_name_subagent_pause">暫停後台子代理</string>
     <string name="tool_name_subagent_list">子代理任務列表</string>
     <string name="tool_name_subagent_get">子代理結果查詢</string>
+    <string name="tool_name_subagent_resume">恢復中斷的子代理</string>
     <string name="tool_name_list_stickers">列出表情包</string>
     <string name="tool_name_send_sticker">發送表情包</string>
     <string name="tool_name_view_sticker">查看錶情包圖片</string>
@@ -182,6 +184,8 @@
     <string name="tool_desc_android_notification_action">開啟、清除通知或執行通知動作。</string>
     <string name="tool_desc_android_media_control">列出媒體會話或控制播放。</string>
     <string name="tool_desc_subagent">把獨立任務委派給子代理執行。</string>
+    <string name="tool_desc_subagent_resume">根據已儲存的對話與檢查點繼續子代理任務。</string>
+    <string name="tool_desc_subagent_pause">暫停後台子代理並儲存上下文，之後可繼續。</string>
     <string name="tool_desc_get_session_thinking_history">獲取當前會話中模型的思考過程歷史記錄。</string>
     <string name="tool_desc_send_message">向指定會話或頻道發送訊息。</string>
     <string name="tool_desc_skill_list">列出當前已啟用的 Skills 及其檔案數量。</string>

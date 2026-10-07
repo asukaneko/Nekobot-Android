@@ -457,6 +457,36 @@ interface MessageVariantDao {
 }
 
 @Dao
+interface LocalSubagentTaskDao {
+    @Upsert
+    fun upsert(task: LocalSubagentTaskEntity)
+
+    @Query("SELECT * FROM local_subagent_tasks WHERE task_id = :taskId LIMIT 1")
+    fun get(taskId: String): LocalSubagentTaskEntity?
+
+    @Query("SELECT * FROM local_subagent_tasks WHERE session_id = :sessionId ORDER BY created_at DESC")
+    fun listForSession(sessionId: String): List<LocalSubagentTaskEntity>
+
+    @Query("SELECT * FROM local_subagent_tasks ORDER BY created_at DESC")
+    fun listAll(): List<LocalSubagentTaskEntity>
+
+    @Query("DELETE FROM local_subagent_tasks WHERE session_id = :sessionId")
+    fun deleteForSession(sessionId: String)
+
+    @Query("DELETE FROM local_subagent_tasks WHERE task_id = :taskId")
+    fun delete(taskId: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertMessage(message: LocalSubagentMessageEntity)
+
+    @Query("SELECT * FROM local_subagent_messages WHERE task_id = :taskId ORDER BY sequence ASC")
+    fun listMessages(taskId: String): List<LocalSubagentMessageEntity>
+
+    @Query("DELETE FROM local_subagent_messages WHERE task_id = :taskId")
+    fun deleteMessages(taskId: String)
+}
+
+@Dao
 interface AgentRunDao {
     @Query("SELECT * FROM local_agent_runs WHERE session_id = :sessionId LIMIT 1")
     fun observeBySession(sessionId: String): Flow<LocalAgentRunEntity?>

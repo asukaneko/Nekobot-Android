@@ -89,4 +89,30 @@ class SubagentTodoStoreTest {
         assertEquals(null, SubagentTaskStore.get(task.id))
         assertEquals(emptyList<AgentTodo>(), SubagentTodoStore.get(task.id))
     }
+
+    @Test
+    fun interruptedTask_keepsOfflineTodosAndIgnoresLateCompletion() {
+        val task = SubagentTaskStore.register(
+            sessionId = "session-subagent-interrupted",
+            parentRunId = "run-2",
+            description = "中断任务",
+            prompt = "p",
+            depth = 2,
+            parentTaskId = null,
+            runInBackground = true,
+            parentMessageId = "message-2"
+        )
+        val todos = listOf(AgentTodo(content = "未完成步骤"))
+        SubagentTodoStore.set(task.id, todos)
+        SubagentTaskStore.update(task.id, status = SubagentTaskStatus.INTERRUPTED)
+
+        SubagentTaskStore.update(task.id, status = SubagentTaskStatus.SUCCEEDED, result = "迟到结果")
+
+        val saved = SubagentTaskStore.get(task.id)!!
+        assertEquals(SubagentTaskStatus.INTERRUPTED, saved.status)
+        assertEquals(todos, saved.todos)
+        assertEquals("message-2", saved.parentMessageId)
+        assertTrue(saved.runInBackground)
+        SubagentTaskStore.clearSession("session-subagent-interrupted")
+    }
 }

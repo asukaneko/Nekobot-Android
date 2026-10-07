@@ -161,8 +161,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -4910,24 +4912,22 @@ private fun StepResultListItem(index: Int, item: StepResultNode) {
 /** 嵌套值渲染：左侧竖线标识层级，内容递归渲染，逐层自然缩进。 */
 @Composable
 private fun StepResultNested(value: StepResultNode) {
-    Row(
+    val guideColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-    ) {
-        Box(
-            modifier = Modifier
-                .width(2.dp)
-                .fillMaxHeight()
-                .background(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                    shape = RoundedCornerShape(1.dp)
+            .drawBehind {
+                val x = 1.dp.toPx()
+                drawLine(
+                    color = guideColor,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 2.dp.toPx()
                 )
-        )
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            StepResultNodeView(value)
-        }
+            }
+            .padding(start = 10.dp)
+    ) {
+        StepResultNodeView(value)
     }
 }
 

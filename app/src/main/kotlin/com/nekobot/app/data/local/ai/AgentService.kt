@@ -111,6 +111,7 @@ private val requiredToolArguments = mapOf(
     "web_fetch" to setOf("url"),
     "shell_job" to setOf("action"),
     "subagent_get" to setOf("task_id"),
+    "subagent_pause" to setOf("task_id"),
     "subagent_kill" to setOf("task_id"),
     "exec_command" to setOf("command"),
     "file_read" to setOf("path"),
@@ -1065,10 +1066,7 @@ suspend fun runToolCallLoop(
     fun appendMessage(message: MutableMap<String, Any>, persist: Boolean = true) {
         toolMessages.add(message)
         if (persist) {
-            runCatching { hooks?.onToolMessageAppended?.invoke(message) }
-                .onFailure { error ->
-                    com.nekobot.app.data.local.LocalLogger.w("AgentService", R.string.log_svc_tool_message_persist_failed, error.message)
-                }
+            hooks?.onToolMessageAppended?.invoke(message)
         }
     }
 

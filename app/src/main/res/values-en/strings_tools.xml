@@ -114,8 +114,10 @@
     <string name="tool_name_db_update_ai_config">Update AI config</string>
     <string name="tool_name_subagent">Subagent delegation</string>
     <string name="tool_name_subagent_kill">Stop background subagent</string>
+    <string name="tool_name_subagent_pause">Pause background subagent</string>
     <string name="tool_name_subagent_list">Subagent task list</string>
     <string name="tool_name_subagent_get">Query subagent result</string>
+    <string name="tool_name_subagent_resume">Resume interrupted subagent</string>
     <string name="tool_name_list_stickers">List stickers</string>
     <string name="tool_name_send_sticker">Send sticker</string>
     <string name="tool_name_view_sticker">View sticker image</string>
@@ -182,6 +184,8 @@
     <string name="tool_desc_android_notification_action">Open, dismiss or act on a notification.</string>
     <string name="tool_desc_android_media_control">List media sessions or control playback.</string>
     <string name="tool_desc_subagent">Delegate an independent task to a subagent.</string>
+    <string name="tool_desc_subagent_resume">Continue a subagent task from its saved conversation and checkpoint.</string>
+    <string name="tool_desc_subagent_pause">Pause a background subagent and save its context for later.</string>
     <string name="tool_desc_get_session_thinking_history">Read the model reasoning history of the current session.</string>
     <string name="tool_desc_send_message">Send a message to a session or channel.</string>
     <string name="tool_desc_skill_list">List the currently enabled skills and their file counts.</string>

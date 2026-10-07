@@ -752,7 +752,7 @@ class AIPipeline {
 
             val executionContext = ctx.toolContext + (
                 SESSION_ALLOWED_TOOL_NAMES_CONTEXT_KEY to tools.mapNotNull(::toolNameOf).toSet()
-            )
+            ) + (AGENT_TOOL_CALL_ID_CONTEXT_KEY to (toolCall["id"] as? String).orEmpty())
             val result = callbacks.executeTool(name, args, executionContext)
 
             // 处理确认请求

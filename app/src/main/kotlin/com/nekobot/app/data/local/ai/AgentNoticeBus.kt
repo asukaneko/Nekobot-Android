@@ -132,12 +132,13 @@ internal object SubagentConcurrency {
 
 /** 工具上下文里传递“当前子代理任务 id”的键，用于按任务树计算嵌套深度。 */
 internal const val SUBAGENT_TASK_CONTEXT_KEY = "_subagent_task_id"
+internal const val AGENT_TOOL_CALL_ID_CONTEXT_KEY = "_agent_tool_call_id"
 
 /**
  * 后台子代理运行句柄表。
  *
  * 后台子代理是独立协程，光有任务记录（[SubagentTaskStore]）无法终止它；
- * 这里登记 taskId → Job，供 `subagent_kill` 精确取消单个任务（不影响其他子代理）。
+ * 这里登记 taskId → Job，供 `subagent_pause` / `subagent_kill` 精确取消单个任务。
  */
 internal object SubagentRunRegistry {
 
@@ -158,6 +159,35 @@ internal object SubagentRunRegistry {
         val job = jobs.remove(taskId) ?: return false
         job.cancel()
         return true
+    }
+
+    /** 暂停任务时等待其 finally 完成，确保并发额度和后台服务槽位已释放。 */
+    suspend fun cancelAndJoin(taskId: String): Boolean {
+        val job = jobs.remove(taskId) ?: return false
+        job.cancel()
+        job.join()
+        return true
+    }
+
+    /** 档案关闭时等待全部后台子代理退出，避免旧协程继续写入已切换的数据库。 */
+    fun cancelAllAndJoin() {
+        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            val active = jobs.values.toList()
+            active.forEach { it.cancel() }
+            active.forEach { it.join() }
+        }
+        jobs.clear()
+    }
+
+    /** 仅取消指定档案/会话中的任务句柄。 */
+    fun cancelAndJoin(taskIds: Set<String>) {
+        if (taskIds.isEmpty()) return
+        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            val active = taskIds.mapNotNull(jobs::get)
+            active.forEach { it.cancel() }
+            active.forEach { it.join() }
+        }
+        if (taskIds.isEmpty()) jobs.clear() else taskIds.forEach(jobs::remove)
     }
 }
 
