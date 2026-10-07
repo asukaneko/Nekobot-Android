@@ -287,6 +287,8 @@ fun ChatScreen(
     onOpenSessionDetail: (String) -> Unit = {},
     onOpenWorkspace: (String) -> Unit = {},
     onOpenStoryGraph: (String) -> Unit = {},
+    /** 内置浏览器「更多 → 浏览器设置」入口。 */
+    onOpenBrowserSettings: () -> Unit = {},
     externalListState: androidx.compose.foundation.lazy.LazyListState? = null,
     customBottomBar: (@Composable () -> Unit)? = null,
     // 平板双栏嵌入会话页时，底部悬浮导航栏盖住覆盖层输入区，需要整体抬升避让
@@ -418,6 +420,8 @@ fun ChatScreen(
     var showRestoreArchiveDialog by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showArchiveViewer by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showSandboxTerminal by rememberSaveable(sessionId) { mutableStateOf(false) }
+    // 内置浏览器：输入网址或直接打开当前会话工作区里的 HTML 文件
+    var showBuiltinBrowser by rememberSaveable(sessionId) { mutableStateOf(false) }
     // 沙盒文件浏览器：覆盖在终端之上，复用同一会话沙盒 shell 的命令通道
     var showSandboxFiles by rememberSaveable(sessionId) { mutableStateOf(false) }
     // 展开状态必须高于 LazyColumn item：工具步骤更新或卡片离屏回收后仍保留用户选择。
@@ -979,6 +983,16 @@ fun ChatScreen(
                                             onClick = {
                                                 menuExpanded = false
                                                 showSandboxTerminal = true
+                                            }
+                                        )
+                                    }
+                                    if (session?.sessionMode.equals("agent", ignoreCase = true)) {
+                                        // 内置浏览器：输入网址，或打开会话工作区里的 HTML（本地模式）
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.chat_browser)) },
+                                            onClick = {
+                                                menuExpanded = false
+                                                showBuiltinBrowser = true
                                             }
                                         )
                                     }
@@ -2193,6 +2207,15 @@ fun ChatScreen(
             onRunCommand = viewModel::executeSandboxCommand,
             onDismiss = { showSandboxFiles = false },
             bottomClearance = embeddedBottomBarClearance,
+        )
+    }
+    if (showBuiltinBrowser) {
+        // 内置浏览器：独立窗口（单行顶栏 + 标签弹层 + 工作区抽屉，并跟随 browser_use）
+        BuiltinBrowserDialog(
+            sessionId = sessionId,
+            viewModel = viewModel(),
+            onDismiss = { showBuiltinBrowser = false },
+            onOpenBrowserSettings = onOpenBrowserSettings,
         )
     }
 }

@@ -691,6 +691,26 @@
     <string name="chat_sandbox_files_unsaved_title">放棄未儲存的修改？</string>
     <string name="chat_sandbox_files_discard">放棄</string>
     <string name="chat_sandbox_files_keep_editing">繼續編輯</string>
+    <!-- ==================== 內建瀏覽器 ==================== -->
+    <string name="chat_browser">瀏覽器</string>
+    <string name="chat_browser_url_hint">輸入網址</string>
+    <string name="chat_browser_open">開啟</string>
+    <string name="chat_browser_workspace_html">工作區 HTML</string>
+    <string name="chat_browser_empty_hint">輸入網址開始瀏覽</string>
+    <string name="chat_browser_invalid_url">無法識別該位址</string>
+    <string name="chat_browser_restricted">不支援的位址：%1$s</string>
+    <string name="chat_browser_reload">重新整理</string>
+    <string name="chat_browser_back">上一頁</string>
+    <string name="chat_browser_close">關閉瀏覽器</string>
+    <string name="chat_browser_load_failed">載入失敗：%1$s</string>
+    <string name="chat_browser_new_tab">新增分頁</string>
+    <string name="chat_browser_close_tab">關閉分頁</string>
+    <string name="chat_browser_tabs">分頁</string>
+    <string name="chat_browser_close_all">全部關閉</string>
+    <string name="chat_browser_copy_url">複製網址</string>
+    <string name="chat_browser_copied">已複製</string>
+    <string name="chat_browser_settings">瀏覽器設定</string>
+    <string name="chat_browser_local_file">本地檔案</string>
     <string name="live_start">開始 Live 對話</string>
     <string name="live_title">Live 對話</string>
     <string name="live_pipeline_label">對話流程</string>

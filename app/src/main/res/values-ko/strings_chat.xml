@@ -686,6 +686,26 @@
     <string name="chat_sandbox_files_unsaved_title">저장하지 않은 변경 사항을 버릴까요?</string>
     <string name="chat_sandbox_files_discard">버리기</string>
     <string name="chat_sandbox_files_keep_editing">계속 편집</string>
+    <!-- ==================== 내장 브라우저 ==================== -->
+    <string name="chat_browser">브라우저</string>
+    <string name="chat_browser_url_hint">주소 입력</string>
+    <string name="chat_browser_open">열기</string>
+    <string name="chat_browser_workspace_html">워크스페이스 HTML</string>
+    <string name="chat_browser_empty_hint">주소를 입력하여 탐색 시작</string>
+    <string name="chat_browser_invalid_url">인식할 수 없는 주소입니다</string>
+    <string name="chat_browser_restricted">지원하지 않는 주소: %1$s</string>
+    <string name="chat_browser_reload">새로 고침</string>
+    <string name="chat_browser_back">뒤로</string>
+    <string name="chat_browser_close">브라우저 닫기</string>
+    <string name="chat_browser_load_failed">불러오기 실패: %1$s</string>
+    <string name="chat_browser_new_tab">새 탭</string>
+    <string name="chat_browser_close_tab">탭 닫기</string>
+    <string name="chat_browser_tabs">탭</string>
+    <string name="chat_browser_close_all">모두 닫기</string>
+    <string name="chat_browser_copy_url">주소 복사</string>
+    <string name="chat_browser_copied">복사됨</string>
+    <string name="chat_browser_settings">브라우저 설정</string>
+    <string name="chat_browser_local_file">로컬 파일</string>
     <string name="live_start">Live 대화 시작</string>
     <string name="live_title">Live 대화</string>
     <string name="live_pipeline_label">대화 흐름</string>

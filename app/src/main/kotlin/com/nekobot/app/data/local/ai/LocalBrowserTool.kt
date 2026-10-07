@@ -252,8 +252,26 @@ internal class LocalBrowserTool(
                 synchronized(tabs) { tabs[tab.id] = tab }
                 selectedTabId = tab.id
                 webView = tab.view
+                publishTabs()
             }.view
         }
+    }
+
+    /** 把标签页快照推给 UI：内置浏览器据此镜像标签页并跟随 AI 当前页。 */
+    private fun publishTabs() {
+        LocalBrowserPreviewRegistry.updateTabs(
+            sessionId = sessionId,
+            tabs = synchronized(tabs) {
+                tabs.values.map { tab ->
+                    LocalBrowserTabInfo(
+                        tabId = tab.id,
+                        url = tab.url,
+                        title = tab.title,
+                        selected = tab.id == selectedTabId
+                    )
+                }
+            }
+        )
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -297,6 +315,7 @@ internal class LocalBrowserTool(
                                 title = currentTitle
                             )
                         }
+                        publishTabs()
                     }
                 }
                 applyViewport(this, config.viewportWidthCss, config.viewportHeightCss)
@@ -330,6 +349,7 @@ internal class LocalBrowserTool(
                     advanceRevision = true
                 )
             }
+            publishTabs()
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
@@ -348,6 +368,7 @@ internal class LocalBrowserTool(
                 )
                 navigationLatch?.countDown()
             }
+            publishTabs()
         }
 
         override fun onReceivedError(
@@ -409,6 +430,7 @@ internal class LocalBrowserTool(
             isLoading = false,
             advanceRevision = true
         )
+        publishTabs()
         return null
     }
 
@@ -456,6 +478,7 @@ internal class LocalBrowserTool(
             val fallbackId = synchronized(tabs) { tabs.keys.last() }
             selectTab(fallbackId)
         }
+        publishTabs()
         return success(
             "action" to "close_tab",
             "content" to "已关闭标签页 $tabId",
@@ -773,6 +796,7 @@ internal class LocalBrowserTool(
             isLoading = true,
             advanceRevision = true
         )
+        publishTabs()
         runOnMain { requireWebView().loadUrl(normalized) }
         val completed = navigation.await(NAVIGATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         navigationLatch = null

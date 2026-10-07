@@ -179,6 +179,8 @@ fun ModernChatScreen(
     onOpenWenku8Login: () -> Unit = {},
     /** 打开表情包管理页（聊天输入区表情面板的「管理」入口）。 */
     onOpenStickers: () -> Unit = {},
+    /** 内置浏览器「更多 → 浏览器设置」入口。 */
+    onOpenBrowserSettings: () -> Unit = {},
     /**
      * 「跳到最新」处理：null 表示由本页自行滚动到底部。
      *
@@ -240,6 +242,7 @@ fun ModernChatScreen(
     onOpenSessionDetail = onOpenSessionDetail,
     onOpenWorkspace = onOpenWorkspace,
     onOpenStoryGraph = onOpenStoryGraph,
+    onOpenBrowserSettings = onOpenBrowserSettings,
     externalListState = listState,
     embeddedBottomBarClearance = embeddedBottomBarClearance,
     customBottomBar = {

@@ -23,10 +23,21 @@ internal data class LocalBrowserPreviewState(
     val revision: Long = 0L
 )
 
+/** Agent 浏览器标签页的只读快照，供内置浏览器镜像展示与跟随。 */
+internal data class LocalBrowserTabInfo(
+    val tabId: Int,
+    val url: String,
+    val title: String,
+    val selected: Boolean
+)
+
 internal object LocalBrowserPreviewRegistry {
     private val browsers = ConcurrentHashMap<String, LocalBrowserTool>()
     private val _states = MutableStateFlow<Map<String, LocalBrowserPreviewState>>(emptyMap())
     val states: StateFlow<Map<String, LocalBrowserPreviewState>> = _states.asStateFlow()
+
+    private val _tabs = MutableStateFlow<Map<String, List<LocalBrowserTabInfo>>>(emptyMap())
+    val tabs: StateFlow<Map<String, List<LocalBrowserTabInfo>>> = _tabs.asStateFlow()
 
     fun register(sessionId: String, browser: LocalBrowserTool) {
         browsers[sessionId] = browser
@@ -38,6 +49,13 @@ internal object LocalBrowserPreviewRegistry {
                     )
                 )
         }
+        // 新实例意味着全新的标签页集合，旧的镜像结果不能留
+        _tabs.update { current -> current + (sessionId to emptyList()) }
+    }
+
+    /** 更新 Agent 浏览器的标签页快照（由 [LocalBrowserTool] 在标签页变化时推送）。 */
+    fun updateTabs(sessionId: String, tabs: List<LocalBrowserTabInfo>) {
+        _tabs.update { current -> current + (sessionId to tabs) }
     }
 
     fun update(
@@ -64,6 +82,7 @@ internal object LocalBrowserPreviewRegistry {
         browsers.remove(sessionId, browser)
         if (!browsers.containsKey(sessionId)) {
             _states.update { current -> current - sessionId }
+            _tabs.update { current -> current - sessionId }
         }
     }
 

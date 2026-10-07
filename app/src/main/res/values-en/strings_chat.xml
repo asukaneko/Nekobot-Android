@@ -685,6 +685,26 @@
     <string name="chat_sandbox_files_unsaved_title">Discard unsaved changes?</string>
     <string name="chat_sandbox_files_discard">Discard</string>
     <string name="chat_sandbox_files_keep_editing">Keep editing</string>
+    <!-- ==================== Built-in browser ==================== -->
+    <string name="chat_browser">Browser</string>
+    <string name="chat_browser_url_hint">Enter a URL</string>
+    <string name="chat_browser_open">Open</string>
+    <string name="chat_browser_workspace_html">Workspace HTML</string>
+    <string name="chat_browser_empty_hint">Enter a URL to start browsing</string>
+    <string name="chat_browser_invalid_url">Unrecognized address</string>
+    <string name="chat_browser_restricted">Unsupported address: %1$s</string>
+    <string name="chat_browser_reload">Reload</string>
+    <string name="chat_browser_back">Back</string>
+    <string name="chat_browser_close">Close browser</string>
+    <string name="chat_browser_load_failed">Load failed: %1$s</string>
+    <string name="chat_browser_new_tab">New tab</string>
+    <string name="chat_browser_close_tab">Close tab</string>
+    <string name="chat_browser_tabs">Tabs</string>
+    <string name="chat_browser_close_all">Close all</string>
+    <string name="chat_browser_copy_url">Copy address</string>
+    <string name="chat_browser_copied">Copied</string>
+    <string name="chat_browser_settings">Browser settings</string>
+    <string name="chat_browser_local_file">Local file</string>
     <string name="live_start">Start Live conversation</string>
     <string name="live_title">Live conversation</string>
     <string name="live_pipeline_label">Conversation flow</string>

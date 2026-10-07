@@ -686,6 +686,26 @@
     <string name="chat_sandbox_files_unsaved_title">未保存の変更を破棄しますか？</string>
     <string name="chat_sandbox_files_discard">破棄</string>
     <string name="chat_sandbox_files_keep_editing">編集を続ける</string>
+    <!-- ==================== 内蔵ブラウザ ==================== -->
+    <string name="chat_browser">ブラウザ</string>
+    <string name="chat_browser_url_hint">URL を入力</string>
+    <string name="chat_browser_open">開く</string>
+    <string name="chat_browser_workspace_html">ワークスペース HTML</string>
+    <string name="chat_browser_empty_hint">URL を入力して閲覧を開始</string>
+    <string name="chat_browser_invalid_url">認識できないアドレスです</string>
+    <string name="chat_browser_restricted">対応していないアドレス：%1$s</string>
+    <string name="chat_browser_reload">再読み込み</string>
+    <string name="chat_browser_back">戻る</string>
+    <string name="chat_browser_close">ブラウザを閉じる</string>
+    <string name="chat_browser_load_failed">読み込みに失敗しました：%1$s</string>
+    <string name="chat_browser_new_tab">新しいタブ</string>
+    <string name="chat_browser_close_tab">タブを閉じる</string>
+    <string name="chat_browser_tabs">タブ</string>
+    <string name="chat_browser_close_all">すべて閉じる</string>
+    <string name="chat_browser_copy_url">アドレスをコピー</string>
+    <string name="chat_browser_copied">コピーしました</string>
+    <string name="chat_browser_settings">ブラウザ設定</string>
+    <string name="chat_browser_local_file">ローカルファイル</string>
     <string name="live_start">Live 会話を開始</string>
     <string name="live_title">Live 会話</string>
     <string name="live_pipeline_label">会話フロー</string>
