@@ -212,6 +212,7 @@
     <string name="webdav_sync_pull_button">Sync pull</string>
     <string name="webdav_sync_confirm_title">Restore local data from WebDAV</string>
     <string name="webdav_sync_confirm_message">The remote backup will replace the current local database, token usage, and achievements. A temporary rollback copy will be kept during restoration. Continue?</string>
+    <string name="webdav_restore_preview_summary">Backup overview: format v%1$d, %2$d records, %3$d files, %4$d data categories. Created: %5$s.</string>
     <!-- ViewModel toasts -->
     <string name="webdav_config_saved">Config saved</string>
     <string name="webdav_connection_success">Connection successful</string>

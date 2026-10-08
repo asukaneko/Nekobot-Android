@@ -455,6 +455,64 @@ internal object LocalPlotStoryStore {
         }
     }
 
+    /** 合并便携归档中的会话剧情，保留本次归档未包含的会话。 */
+    fun mergeImportedSessions(
+        context: Context,
+        databaseName: String,
+        importedSessionIds: Set<String>,
+        currentSessionIds: Set<String>,
+        story: DbProfileStoryData
+    ) {
+        require(importedSessionIds.all { it in currentSessionIds }) {
+            "剧情地图引用了当前档案不存在的会话"
+        }
+        require(story.plotChoices.keys.all { it in importedSessionIds }) {
+            "剧情选项包含不属于当前归档的会话"
+        }
+
+        val existing = capture(context, databaseName, currentSessionIds)
+        val manager = PlotGraphManager().apply { fromJson(existing.graphJson) }
+        manager.replaceConversationsFromJson(
+            conversationIdsToReplace = importedSessionIds,
+            graphJson = story.graphJson,
+            allowedConversationIds = importedSessionIds
+        )
+
+        val mergedChoices = existing.plotChoices.toMutableMap().apply {
+            importedSessionIds.forEach { remove(it) }
+            putAll(story.plotChoices)
+        }
+        importedSessionIds.sorted().forEach { sessionId ->
+            if (sessionId !in mergedChoices) {
+                val graphNodes = manager.getGraph(sessionId)["nodes"] as? List<*>
+                if (!graphNodes.isNullOrEmpty()) {
+                    mergedChoices[sessionId] = gson.toJson(
+                        mapOf("choices" to manager.getLatestChoices(sessionId).map { it.toDict() })
+                    )
+                }
+            }
+        }
+
+        synchronized(activeProfileLock) {
+            if (activeDatabaseName == normalizedDatabaseName(databaseName)) {
+                activeOwner = null
+                activeDatabaseName = null
+                getGlobalPlotGraphManager().clear()
+            }
+            val editor = profilePreferences(context, databaseName).edit()
+                .putBoolean(INITIALIZED_KEY, true)
+                .putString(GRAPH_KEY, manager.toJson())
+            importedSessionIds.forEach { editor.remove(choiceKey(it)) }
+            mergedChoices.forEach { (sessionId, json) ->
+                editor.putString(choiceKey(sessionId), json)
+            }
+            check(editor.commit()) { "无法合并故事地图" }
+            if (isLegacyProfilePending(context, databaseName)) {
+                runCatching { resolveLegacyProfile(context, databaseName) }
+            }
+        }
+    }
+
     fun clearProfile(context: Context, databaseName: String) {
         synchronized(activeProfileLock) {
             if (activeDatabaseName == normalizedDatabaseName(databaseName)) {

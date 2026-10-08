@@ -52,7 +52,7 @@ internal object LocalWorkspaceStorage {
     // ==================== 共享工作区（跨会话） ====================
 
     /** 共享工作区的固定目录名 */
-    private const val SHARED_DIR_NAME = "shared"
+    internal const val SHARED_DIR_NAME = "shared"
 
     /** 返回共享工作区根目录（filesDir/workspace/shared/），不存在则创建。 */
     fun resolveShared(filesDir: File): File? = synchronized(migrationLock) {

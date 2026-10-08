@@ -212,6 +212,7 @@
     <string name="webdav_sync_pull_button">동기화 풀</string>
     <string name="webdav_sync_confirm_title">WebDAV에서 로컬 데이터 복원</string>
     <string name="webdav_sync_confirm_message">원격 백업이 현재 로컬 데이터베이스, 토큰 사용량 및 업적 기록을 대체합니다. 복원 중에는 임시 롤백 복사본을 유지합니다. 계속할까요?</string>
+    <string name="webdav_restore_preview_summary">백업 개요: 형식 v%1$d, 레코드 %2$d개, 파일 %3$d개, 데이터 범주 %4$d개. 생성 시간: %5$s.</string>
     <!-- ViewModel 토스트 -->
     <string name="webdav_config_saved">설정이 저장되었어요</string>
     <string name="webdav_connection_success">연결 성공</string>

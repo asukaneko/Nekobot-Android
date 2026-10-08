@@ -77,6 +77,8 @@
     <string name="webdav_keep_local">로컬 버전 유지</string>
     <string name="webdav_use_remote">원격 버전 사용</string>
     <string name="webdav_auto_resolved">자동 해결됨</string>
+    <string name="webdav_conflict_resolved">동기화 충돌을 해결했습니다</string>
+    <string name="webdav_conflict_resolve_failed">동기화 충돌을 해결하지 못했습니다</string>
     <string name="webdav_revision_history">리비전 기록</string>
     <string name="webdav_revision_number">리비전 %1$d</string>
     <string name="webdav_current_suffix">(현재)</string>

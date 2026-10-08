@@ -6,6 +6,8 @@ import android.database.Cursor
 import android.net.Uri
 import android.util.Base64
 import androidx.room.withTransaction
+import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -16,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -24,7 +25,9 @@ import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.time.OffsetDateTime
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -39,7 +42,13 @@ enum class PortableDataCategory(
         listOf(
             "local_sessions",
             "local_messages",
+            "local_message_variants",
             "local_agent_runs",
+            "local_agent_tool_messages",
+            "local_subagent_tasks",
+            "local_subagent_messages",
+            "local_subagent_tool_calls",
+            "local_agent_notices",
             "local_message_favorites",
             "local_message_images",
             "local_experience_archives",
@@ -123,15 +132,25 @@ data class PortableImportResult(
  */
 class PortableDataArchiveManager(private val context: Context) {
     private val appContext = context.applicationContext
+    private val gson = Gson()
 
     suspend fun scanCurrent(): List<PortableCategorySummary> = withContext(Dispatchers.IO) {
         val db = activeDatabase()
+        requirePortableTableCoverage(db)
+        val currentSessionIds = db.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
         PortableDataCategory.entries.map { category ->
             val tableDetails = category.tables.map { table ->
                 PortableCategoryDetail("table:$table", countRows(db, table))
             }
             val fileDetails = attachmentRoots(category).map { (rootId, root) ->
-                PortableCategoryDetail("root:$rootId", countFiles(root), isFile = true)
+                val allowedWorkspaceRoots = if (category == PortableDataCategory.WORKSPACE) {
+                    currentSessionIds + LocalWorkspaceStorage.SHARED_DIR_NAME
+                } else null
+                PortableCategoryDetail(
+                    "root:$rootId",
+                    countFiles(root, allowedWorkspaceRoots),
+                    isFile = true
+                )
             }
             val globalMemory = if (
                 category == PortableDataCategory.GLOBAL_MEMORY && globalMemoryFile().isFile
@@ -142,7 +161,10 @@ class PortableDataArchiveManager(private val context: Context) {
             val credentialBundle = if (category == PortableDataCategory.CREDENTIALS) {
                 listOf(PortableCategoryDetail("credentials_bundle", 1))
             } else emptyList()
-            val details = tableDetails + fileDetails + settings + globalMemory + credentialBundle
+            val plotStory = if (
+                category == PortableDataCategory.CONVERSATIONS && currentSessionIds.isNotEmpty()
+            ) listOf(PortableCategoryDetail(PLOT_STORY_DETAIL, 1)) else emptyList()
+            val details = tableDetails + fileDetails + settings + globalMemory + credentialBundle + plotStory
             PortableCategorySummary(
                 category = category,
                 rowCount = details.filterNot { it.isFile }.sumOf(PortableCategoryDetail::itemCount),
@@ -167,7 +189,10 @@ class PortableDataArchiveManager(private val context: Context) {
         val temp = File.createTempFile("portable-data-", ".zip", appContext.cacheDir)
         try {
             val db = activeDatabase()
+            requirePortableTableCoverage(db)
+            val currentSessionIds = db.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
             val summaries = mutableListOf<PortableCategorySummary>()
+            val fileInventory = com.google.gson.JsonArray()
             val exportedAt = OffsetDateTime.now().toString()
             ZipOutputStream(BufferedOutputStream(temp.outputStream())).use { zip ->
                 PortableDataCategory.entries.filter(selected::contains).forEach { category ->
@@ -185,33 +210,69 @@ class PortableDataArchiveManager(private val context: Context) {
                     }
                     var rowCount = 0
                     var fileCount = 0
-                    if (selectedTables.isNotEmpty()) {
+                    val includePlotStory = category == PortableDataCategory.CONVERSATIONS &&
+                        "local_sessions" in selectedTables &&
+                        (allDetails || PLOT_STORY_DETAIL in detailKeys.orEmpty())
+                    if (selectedTables.isNotEmpty() || category == PortableDataCategory.CONVERSATIONS) {
                         zip.putNextEntry(ZipEntry("data/${category.id}.json"))
                         rowCount = writeDatabaseCategory(zip, db, category, selectedTables)
                         zip.closeEntry()
+                    }
+                    if (includePlotStory) {
+                        val sessionIds = db.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
+                        val story = LocalPlotStoryStore.capture(
+                            appContext,
+                            ServiceContainerProfile.activeName(),
+                            sessionIds
+                        )
+                        val bytes = gson.toJson(story).toByteArray(StandardCharsets.UTF_8)
+                        require(bytes.size <= MAX_PLOT_STORY_BYTES) { "故事地图超过 16 MB 限制" }
+                        putBytes(zip, PLOT_STORY_ENTRY, bytes)
+                        rowCount++
                     }
                     if (category == PortableDataCategory.APP_SETTINGS && (allDetails || "app_settings" in detailKeys.orEmpty())) {
                         putBytes(zip, "data/${category.id}.json", captureAppSettings())
                         rowCount = 1
                     }
                     selectedRoots.forEach { (rootId, root) ->
-                        fileCount += writeDirectory(zip, category, rootId, root)
+                        val allowedWorkspaceRoots = if (category == PortableDataCategory.WORKSPACE) {
+                            currentSessionIds + LocalWorkspaceStorage.SHARED_DIR_NAME
+                        } else null
+                        fileCount += writeDirectory(
+                            zip,
+                            category,
+                            rootId,
+                            root,
+                            allowedWorkspaceRoots,
+                            fileInventory
+                        )
                     }
                     if (category == PortableDataCategory.GLOBAL_MEMORY && (allDetails || "global_memory" in detailKeys.orEmpty())) {
                         val memory = globalMemoryFile()
                         if (memory.isFile) {
-                            putFile(zip, "files/${category.id}/memory/global-memory.md", memory)
+                            val entryName = "files/${category.id}/memory/global-memory.md"
+                            putFile(zip, entryName, memory)
+                            fileInventory.add(fileInventoryEntry(
+                                category = category,
+                                rootId = "memory",
+                                logicalPath = "global-memory.md",
+                                archivePath = entryName,
+                                size = memory.length(),
+                                sha256 = sha256(memory)
+                            ))
                             fileCount++
                         }
                     }
                     summaries += PortableCategorySummary(category, rowCount, fileCount)
                 }
 
+                var credentialsIncluded = false
                 if (
                     PortableDataCategory.CREDENTIALS in selected &&
                     (selectedDetails[PortableDataCategory.CREDENTIALS].isNullOrEmpty() ||
                         "credentials_bundle" in selectedDetails[PortableDataCategory.CREDENTIALS].orEmpty())
                 ) {
+                    credentialsIncluded = true
                     val bundle = LocalDatabaseCredentialBundle.capture(db)
                     val encryptedBundle = LocalWebDavArchiveCodec.encrypt(
                         archive = bundle,
@@ -227,23 +288,50 @@ class PortableDataArchiveManager(private val context: Context) {
                     encrypted = password.isNotBlank(),
                     categories = summaries
                 )
-                putBytes(zip, MANIFEST_ENTRY, manifestJson(preview, db.openHelper.readableDatabase.version))
+                putBytes(
+                    zip,
+                    MANIFEST_ENTRY,
+                    manifestJson(
+                        preview = preview,
+                        databaseVersion = db.openHelper.readableDatabase.version,
+                        profileName = ServiceContainerProfile.activeName(),
+                        fileInventory = fileInventory,
+                        credentialsIncluded = credentialsIncluded
+                    )
+                )
             }
 
-            val target = if (password.isBlank()) {
-                temp.inputStream()
+            val targetFile = if (password.isBlank()) {
+                temp
             } else {
-                require(temp.length() <= MAX_ENCRYPTED_ARCHIVE_BYTES) {
-                    "加密归档超过 256 MB，请取消大型文件类别后重试"
-                }
-                val encrypted = LocalWebDavArchiveCodec.encrypt(
-                    archive = temp.readBytes(),
-                    password = password,
-                    profileName = ServiceContainerProfile.activeName()
+                val encrypted = File.createTempFile(
+                    "portable-data-encrypted-",
+                    ".nbotcfg",
+                    appContext.cacheDir
                 )
-                ByteArrayInputStream(encrypted)
+                try {
+                    LocalWebDavArchiveCodec.encryptFile(
+                        archive = temp,
+                        password = password,
+                        profileName = ServiceContainerProfile.activeName(),
+                        output = encrypted
+                    )
+                    require(encrypted.length() <= MAX_ENCRYPTED_ARCHIVE_BYTES) {
+                        "加密归档超过 512 MB，请减少导出内容后重试"
+                    }
+                    encrypted
+                } catch (error: Exception) {
+                    encrypted.delete()
+                    throw error
+                }
             }
-            target.use { input -> BufferedOutputStream(output).use { input.copyTo(it) } }
+            try {
+                targetFile.inputStream().buffered().use { input ->
+                    BufferedOutputStream(output).use { input.copyTo(it) }
+                }
+            } finally {
+                if (targetFile != temp) targetFile.delete()
+            }
             PortableArchivePreview(exportedAt, appVersion, password.isNotBlank(), summaries)
         } finally {
             temp.delete()
@@ -272,12 +360,21 @@ class PortableDataArchiveManager(private val context: Context) {
             require(selected.all { it in available }) { "所选类别不在归档中" }
 
             val entries = readSelectedDataEntries(archive.zipFile, selected)
+            val importedStory = entries[PLOT_STORY_ENTRY]?.let(::parsePlotStory)
+            val importedSessionIds = if (
+                importedStory != null && PortableDataCategory.CONVERSATIONS in selected
+            ) {
+                parseImportedSessionIds(entries["data/conversations.json"])
+            } else {
+                emptySet()
+            }
             selected.filter { it.tables.isNotEmpty() || it == PortableDataCategory.APP_SETTINGS }.forEach { category ->
                 require(entries.containsKey("data/${category.id}.json")) {
                     "归档缺少 ${category.id} 数据"
                 }
             }
             val db = activeDatabase()
+            requirePortableTableCoverage(db)
             var importedRows = 0
             db.withTransaction {
                 PortableDataCategory.entries.filter(selected::contains).forEach { category ->
@@ -310,6 +407,16 @@ class PortableDataArchiveManager(private val context: Context) {
             }
 
             val importedFiles = restoreSelectedFiles(archive.zipFile, selected)
+            if (PortableDataCategory.CONVERSATIONS in selected && importedStory != null) {
+                val currentSessionIds = db.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
+                LocalPlotStoryStore.mergeImportedSessions(
+                    appContext,
+                    ServiceContainerProfile.activeName(),
+                    importedSessionIds,
+                    currentSessionIds,
+                    importedStory
+                )
+            }
             if (PortableDataCategory.APP_SETTINGS in selected) {
                 entries["data/${PortableDataCategory.APP_SETTINGS.id}.json"]?.let(::restoreAppSettings)
                 importedRows++
@@ -317,6 +424,26 @@ class PortableDataArchiveManager(private val context: Context) {
 
             // 原始 SQLite 合并和文件恢复完成后重建本地仓库，刷新长生命周期缓存及所有 Room Flow。
             com.nekobot.app.ServiceContainer.switchLocalDb(ServiceContainerProfile.activeName())
+            val archiveIdentity = runCatching {
+                JsonParser.parseString(
+                    String(readManifest(archive.zipFile), StandardCharsets.UTF_8)
+                ).asJsonObject.get("source_profile_id")?.asString.orEmpty()
+            }.getOrDefault("")
+            LocalDataCatalog.adoptProfileIdIfAbsent(
+                appContext,
+                ServiceContainerProfile.activeName(),
+                archiveIdentity
+            )
+            val archiveSyncGroupId = runCatching {
+                JsonParser.parseString(
+                    String(readManifest(archive.zipFile), StandardCharsets.UTF_8)
+                ).asJsonObject.get("source_sync_group_id")?.asString.orEmpty()
+            }.getOrDefault("")
+            LocalDataCatalog.adoptSyncGroupIdIfAbsent(
+                appContext,
+                ServiceContainerProfile.activeName(),
+                archiveSyncGroupId
+            )
 
             PortableImportResult(importedRows, importedFiles, selected.size)
         } finally {
@@ -345,10 +472,50 @@ class PortableDataArchiveManager(private val context: Context) {
     private fun activeDatabase(): NekobotDatabase =
         NekobotDatabase.get(appContext, ServiceContainerProfile.activeName())
 
+    private fun parsePlotStory(raw: ByteArray): DbProfileStoryData {
+        val root = runCatching { JsonParser.parseString(String(raw, StandardCharsets.UTF_8)).asJsonObject }
+            .getOrElse { throw IllegalArgumentException("故事地图格式无效", it) }
+        val graphJson = root.get("graphJson")?.takeUnless { it.isJsonNull }?.asString
+            ?.takeIf(String::isNotBlank)
+            ?: throw IllegalArgumentException("故事地图缺少图谱")
+        require(JsonParser.parseString(graphJson).isJsonObject) { "故事地图格式无效" }
+        val choicesObject = root.getAsJsonObject("plotChoices")
+            ?: throw IllegalArgumentException("剧情选项格式无效")
+        val choices = linkedMapOf<String, String>()
+        choicesObject.entrySet().forEach { (sessionId, rawChoices) ->
+            require(sessionId.isNotBlank()) { "剧情选项包含空会话 ID" }
+            val choicesJson = rawChoices.takeUnless { it.isJsonNull }?.asString
+                ?: throw IllegalArgumentException("剧情选项格式无效")
+            require(JsonParser.parseString(choicesJson).isJsonObject) { "剧情选项格式无效" }
+            choices[sessionId] = choicesJson
+        }
+        return DbProfileStoryData(graphJson, choices)
+    }
+
+    private fun parseImportedSessionIds(raw: ByteArray?): Set<String> {
+        if (raw == null) return emptySet()
+        val rows = runCatching {
+            JsonParser.parseString(String(raw, StandardCharsets.UTF_8))
+                .asJsonObject.getAsJsonObject("tables")?.getAsJsonArray("local_sessions")
+        }.getOrElse { throw IllegalArgumentException("会话归档格式无效", it) }
+        return rows?.mapTo(linkedSetOf()) { row ->
+            row.asJsonObject.get("id")?.takeUnless { it.isJsonNull }?.asString
+                ?.takeIf(String::isNotBlank)
+                ?: throw IllegalArgumentException("会话归档缺少 ID")
+        } ?: emptySet()
+    }
+
     private fun countRows(db: NekobotDatabase, table: String): Int =
         db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM `${safeName(table)}`").use { cursor ->
             if (cursor.moveToFirst()) cursor.getInt(0) else 0
         }
+
+    /**
+     * 防止新增 Room 表后被数据迁移静默漏掉。归档声明必须与当前数据库表保持一致。
+     */
+    private fun requirePortableTableCoverage(db: NekobotDatabase) {
+        LocalDataCatalog.validateRoomCoverage(db.openHelper.readableDatabase)
+    }
 
     private fun writeDatabaseCategory(
         output: OutputStream,
@@ -369,6 +536,8 @@ class PortableDataArchiveManager(private val context: Context) {
                         writer.name(column)
                         if (isSensitiveColumn(table, column)) {
                             writer.value("")
+                        } else if (isDeviceLocalColumn(table, column)) {
+                            writer.nullValue()
                         } else {
                             writeCursorValue(writer, cursor, index)
                         }
@@ -588,13 +757,17 @@ class PortableDataArchiveManager(private val context: Context) {
             val encrypted = !isZip(rawFile)
             if (encrypted) {
                 require(password.isNotBlank()) { "此归档已加密，请输入密码" }
-                require(rawFile.length() <= MAX_ENCRYPTED_ARCHIVE_BYTES) { "加密归档超过 256 MB 限制" }
-                val decrypted = runCatching {
-                    LocalWebDavArchiveCodec.decrypt(rawFile.readBytes(), password)
-                }.getOrElse { throw IllegalArgumentException("归档密码错误或文件已损坏", it) }
-                require(isZip(decrypted)) { "不是有效的 NekoBot 数据归档" }
+                require(rawFile.length() <= MAX_ENCRYPTED_ARCHIVE_BYTES) { "加密归档超过 512 MB 限制" }
                 zipFile = File.createTempFile("portable-import-", ".zip", appContext.cacheDir)
-                zipFile.writeBytes(decrypted)
+                runCatching {
+                    LocalWebDavArchiveCodec.decryptFile(
+                        payload = rawFile,
+                        password = password,
+                        output = zipFile,
+                        maxOutputBytes = MAX_EXPANDED_BYTES
+                    )
+                }.getOrElse { throw IllegalArgumentException("归档密码错误或文件已损坏", it) }
+                require(isZip(zipFile)) { "不是有效的 NekoBot 数据归档" }
             }
             val preview = readPreview(zipFile, encrypted)
             return ResolvedArchive(
@@ -613,7 +786,16 @@ class PortableDataArchiveManager(private val context: Context) {
         val manifest = readManifest(zipFile)
         val root = JsonParser.parseString(String(manifest, StandardCharsets.UTF_8)).asJsonObject
         require(root.get("format")?.asString == FORMAT) { "不是有效的 NekoBot 数据归档" }
-        require(root.get("version")?.asInt == FORMAT_VERSION) { "不支持的数据归档版本" }
+        val formatVersion = root.get("version")?.asInt ?: 0
+        require(formatVersion in MIN_READABLE_FORMAT_VERSION..FORMAT_VERSION) { "不支持的数据归档版本" }
+        if (formatVersion >= 3) {
+            require(root.get("archive_id")?.asString?.isNotBlank() == true) { "归档缺少 archive_id" }
+            require(root.get("source_profile_id")?.asString?.isNotBlank() == true) {
+                "归档缺少档案稳定 ID"
+            }
+            require(root.getAsJsonArray("files") != null) { "归档缺少文件清单" }
+            validateFileInventory(zipFile, root.getAsJsonArray("files"))
+        }
         val databaseVersion = root.get("database_version")?.asInt ?: 0
         require(databaseVersion <= activeDatabase().openHelper.readableDatabase.version) {
             "归档来自更高版本的数据库，请先升级应用"
@@ -634,6 +816,57 @@ class PortableDataArchiveManager(private val context: Context) {
             encrypted = encrypted,
             categories = summaries
         )
+    }
+
+    /** 新格式在预览和导入前校验每个可携带文件的大小和 SHA-256。 */
+    private fun validateFileInventory(zipFile: File, inventory: JsonArray) {
+        require(inventory.size() <= MAX_ENTRIES) { "归档文件清单过大" }
+        val expected = linkedMapOf<String, Pair<Long, String>>()
+        inventory.forEach { element ->
+            val entry = element.asJsonObject
+            val path = safeEntryName(entry.get("path")?.asString.orEmpty())
+            require(path.startsWith("files/")) { "文件清单包含非文件路径" }
+            val size = entry.get("size")?.asLong ?: error("文件清单缺少大小")
+            val hash = entry.get("sha256")?.asString.orEmpty()
+            require(size >= 0L && hash.matches(Regex("[0-9a-f]{64}"))) {
+                "文件清单中的大小或哈希无效"
+            }
+            require(expected.put(path, size to hash) == null) { "文件清单包含重复路径：$path" }
+        }
+
+        ZipInputStream(BufferedInputStream(zipFile.inputStream())).use { zip ->
+            val found = linkedSetOf<String>()
+            var totalBytes = 0L
+            while (true) {
+                val archiveEntry = zip.nextEntry ?: break
+                val path = safeEntryName(archiveEntry.name)
+                if (!archiveEntry.isDirectory) {
+                    val descriptor = expected[path]
+                    if (descriptor != null) {
+                        require(found.add(path)) { "归档包含重复文件：$path" }
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        var size = 0L
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            size += count
+                            totalBytes += count
+                            require(totalBytes <= MAX_EXPANDED_BYTES) { "归档解压后过大" }
+                            digest.update(buffer, 0, count)
+                        }
+                        val hash = digest.digest().joinToString("") { "%02x".format(it) }
+                        require(size == descriptor.first && hash == descriptor.second) {
+                            "归档文件校验失败：$path"
+                        }
+                    }
+                }
+                zip.closeEntry()
+            }
+            val missing = expected.keys - found
+            require(missing.isEmpty()) { "归档缺少文件：${missing.take(5).joinToString()}" }
+        }
     }
 
     private fun readManifest(zipFile: File): ByteArray {
@@ -666,9 +899,15 @@ class PortableDataArchiveManager(private val context: Context) {
                 require(count <= MAX_ENTRIES) { "归档条目过多" }
                 val name = safeEntryName(entry.name)
                 val wanted = name in dataNames ||
-                    (PortableDataCategory.CREDENTIALS in selected && name == CREDENTIALS_ENTRY)
+                    (PortableDataCategory.CREDENTIALS in selected && name == CREDENTIALS_ENTRY) ||
+                    (PortableDataCategory.CONVERSATIONS in selected && name == PLOT_STORY_ENTRY)
                 if (!entry.isDirectory && wanted) {
-                    val bytes = readBounded(zip, MAX_ENTRY_BYTES)
+                    val entryLimit = if (name == PLOT_STORY_ENTRY) {
+                        MAX_PLOT_STORY_BYTES
+                    } else {
+                        MAX_ENTRY_BYTES
+                    }
+                    val bytes = readBounded(zip, entryLimit)
                     total += bytes.size
                     require(total <= MAX_EXPANDED_BYTES) { "归档解压后过大" }
                     result[name] = bytes
@@ -678,24 +917,10 @@ class PortableDataArchiveManager(private val context: Context) {
         return result
     }
 
-    private fun attachmentRoots(category: PortableDataCategory): List<Pair<String, File>> = when (category) {
-        PortableDataCategory.WORLD_BOOKS -> listOf(
-            "worldbook_covers" to File(appContext.filesDir, "worldbook_covers")
-        )
-        PortableDataCategory.MEDIA -> listOf(
-            "portraits" to File(appContext.filesDir, "portraits"),
-            "cached_portraits" to File(appContext.cacheDir, "portraits"),
-            "tts_audio" to File(appContext.filesDir, "tts"),
-            "chat_backgrounds" to File(appContext.filesDir, "chat_backgrounds"),
-            "fonts" to File(appContext.filesDir, "fonts")
-        )
-        PortableDataCategory.WORKSPACE -> listOf("workspace" to File(appContext.filesDir, "workspace"))
-        PortableDataCategory.EXTENSIONS -> listOf("skills" to File(appContext.filesDir, "skills"))
-        PortableDataCategory.STICKERS -> listOf("stickers" to File(appContext.filesDir, "stickers"))
-        else -> emptyList()
-    }
+    private fun attachmentRoots(category: PortableDataCategory): List<Pair<String, File>> =
+        LocalDataCatalog.fileRoots(appContext, category)
 
-    private fun captureAppSettings(): ByteArray {
+    internal fun captureAppSettings(): ByteArray {
         val prefs = com.nekobot.app.ServiceContainer.prefs
         return JsonObject().apply {
             addProperty("chat_input_layout", prefs.chatInputLayoutMode.name)
@@ -731,7 +956,7 @@ class PortableDataArchiveManager(private val context: Context) {
         }.toString().toByteArray(StandardCharsets.UTF_8)
     }
 
-    private fun restoreAppSettings(raw: ByteArray) {
+    internal fun restoreAppSettings(raw: ByteArray) {
         val root = JsonParser.parseString(String(raw, StandardCharsets.UTF_8)).asJsonObject
         val prefs = com.nekobot.app.ServiceContainer.prefs
         root.string("chat_input_layout")?.let { prefs.chatInputLayoutMode = ChatInputLayoutMode.fromStorage(it) }
@@ -806,21 +1031,111 @@ class PortableDataArchiveManager(private val context: Context) {
         zip: ZipOutputStream,
         category: PortableDataCategory,
         rootId: String,
-        root: File
+        root: File,
+        allowedTopLevelDirectories: Set<String>? = null,
+        fileInventory: JsonArray? = null
     ): Int {
         if (!root.isDirectory) return 0
         val canonicalRoot = root.canonicalFile
         var count = 0
-        root.walkTopDown().forEach { file ->
+        root.walkTopDown()
+            .onEnter { directory ->
+                !(category == PortableDataCategory.EXTENSIONS && rootId == "plugin_packages" &&
+                    directory != root && directory.name.startsWith(".staging-"))
+            }
+            .forEach { file ->
             if (!file.isFile || Files.isSymbolicLink(file.toPath())) return@forEach
+            if (category == PortableDataCategory.EXTENSIONS && rootId == "plugin_files" &&
+                file.name.startsWith(".")) return@forEach
             val canonical = file.canonicalFile
             require(canonical.path.startsWith(canonicalRoot.path + File.separator)) { "文件路径越界" }
             require(file.length() <= MAX_ATTACHMENT_BYTES) { "文件 ${file.name} 超过 64 MB 限制" }
             val relative = canonical.relativeTo(canonicalRoot).invariantSeparatorsPath
-            putFile(zip, "files/${category.id}/$rootId/$relative", canonical)
+            if (
+                category == PortableDataCategory.WORKSPACE &&
+                allowedTopLevelDirectories != null &&
+                relative.substringBefore('/') !in allowedTopLevelDirectories
+            ) return@forEach
+            val entryName = "files/${category.id}/$rootId/$relative"
+            if (category == PortableDataCategory.EXTENSIONS && rootId == "plugin_packages" &&
+                file.name == PLUGIN_STATE_ENTRY
+            ) {
+                val bytes = gson.toJson(
+                    PortablePluginState(enabled = false, installedAt = file.lastModified())
+                ).toByteArray(StandardCharsets.UTF_8)
+                putBytes(zip, entryName, bytes)
+                fileInventory?.add(fileInventoryEntry(
+                    category,
+                    rootId,
+                    relative,
+                    entryName,
+                    bytes.size.toLong(),
+                    sha256(bytes)
+                ))
+            } else {
+                putFile(zip, entryName, canonical)
+                fileInventory?.add(fileInventoryEntry(
+                    category,
+                    rootId,
+                    relative,
+                    entryName,
+                    canonical.length(),
+                    sha256(canonical)
+                ))
+            }
             count++
         }
         return count
+    }
+
+    private fun fileInventoryEntry(
+        category: PortableDataCategory,
+        rootId: String,
+        logicalPath: String,
+        archivePath: String,
+        size: Long,
+        sha256: String
+    ): JsonObject = JsonObject().apply {
+        addProperty("category", category.id)
+        addProperty("scope", LocalDataCatalog.descriptor(category).scope.name.lowercase())
+        addProperty("root", rootId)
+        addProperty("logical_id", "$rootId/$logicalPath")
+        addProperty("path", archivePath)
+        addProperty("size", size)
+        addProperty("sha256", sha256)
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (read > 0) digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+
+    private fun archivePluginIds(zipFile: File): Set<String> = buildSet {
+        ZipInputStream(BufferedInputStream(zipFile.inputStream())).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val name = runCatching { safeEntryName(entry.name) }.getOrNull() ?: continue
+                val prefix = "files/${PortableDataCategory.EXTENSIONS.id}/plugin_packages/"
+                if (!name.startsWith(prefix)) continue
+                val relative = name.removePrefix(prefix)
+                val pluginId = relative.substringBefore('/')
+                if (pluginId.isNotBlank() && pluginId != relative && !pluginId.startsWith('.')) {
+                    add(pluginId)
+                }
+            }
+        }
     }
 
     private fun restoreSelectedFiles(
@@ -878,11 +1193,31 @@ class PortableDataArchiveManager(private val context: Context) {
                 count++
             }
         }
+        if (PortableDataCategory.EXTENSIONS in selected) {
+            archivePluginIds(zipFile).forEach { pluginId ->
+                val pluginDirectory = File(appContext.filesDir, "plugins/$pluginId")
+                if (pluginDirectory.isDirectory) {
+                    File(pluginDirectory, PLUGIN_STATE_ENTRY).writeText(
+                        gson.toJson(PortablePluginState(enabled = false)),
+                        StandardCharsets.UTF_8
+                    )
+                    com.nekobot.app.ServiceContainer.pluginGrants.revoke(pluginId)
+                }
+            }
+            com.nekobot.app.ServiceContainer.pluginManager.reload()
+        }
         return count
     }
 
-    private fun countFiles(root: File): Int =
-        if (!root.isDirectory) 0 else root.walkTopDown().count { it.isFile && !Files.isSymbolicLink(it.toPath()) }
+    private fun countFiles(root: File, allowedTopLevelDirectories: Set<String>? = null): Int =
+        if (!root.isDirectory) 0 else root.walkTopDown()
+            .onEnter { !Files.isSymbolicLink(it.toPath()) }
+            .count { file ->
+                file.isFile && !Files.isSymbolicLink(file.toPath()) &&
+                    (allowedTopLevelDirectories == null ||
+                        file.canonicalFile.relativeTo(root.canonicalFile).invariantSeparatorsPath
+                            .substringBefore('/') in allowedTopLevelDirectories)
+            }
 
     /** 当前 Profile 的全局 Agent 记忆文件；记忆按数据库 Profile 隔离存放。 */
     private fun globalMemoryFile() = GlobalAgentMemoryStore.memoryFileFor(
@@ -890,22 +1225,39 @@ class PortableDataArchiveManager(private val context: Context) {
         ServiceContainerProfile.activeName()
     )
 
-    private fun manifestJson(preview: PortableArchivePreview, databaseVersion: Int): ByteArray {
+    private fun manifestJson(
+        preview: PortableArchivePreview,
+        databaseVersion: Int,
+        profileName: String,
+        fileInventory: JsonArray,
+        credentialsIncluded: Boolean
+    ): ByteArray {
         val root = JsonObject().apply {
             addProperty("format", FORMAT)
             addProperty("version", FORMAT_VERSION)
+            addProperty("archive_id", UUID.randomUUID().toString())
+            addProperty("source_profile_id", LocalDataCatalog.stableProfileId(appContext, profileName))
+            addProperty("source_sync_group_id", LocalDataCatalog.stableSyncGroupId(appContext, profileName))
+            addProperty("source_profile_name", profileName)
             addProperty("app_version", preview.sourceVersion)
             addProperty("database_version", databaseVersion)
             addProperty("exported_at", preview.exportedAt)
+            addProperty("credentials_included", credentialsIncluded)
             add("categories", com.google.gson.JsonArray().apply {
                 preview.categories.forEach { summary ->
+                    val descriptor = LocalDataCatalog.descriptor(summary.category)
                     add(JsonObject().apply {
                         addProperty("id", summary.category.id)
                         addProperty("rows", summary.rowCount)
                         addProperty("files", summary.fileCount)
+                        addProperty("scope", descriptor.scope.name.lowercase())
+                        add("dependencies", JsonArray().apply {
+                            descriptor.dependencies.sorted().forEach(::add)
+                        })
                     })
                 }
             })
+            add("files", fileInventory)
         }
         return root.toString().toByteArray(StandardCharsets.UTF_8)
     }
@@ -945,6 +1297,10 @@ class PortableDataArchiveManager(private val context: Context) {
 
     private fun isSensitiveColumn(table: String, column: String): Boolean =
         column in sensitiveColumns(table)
+
+    /** 完成事件的消费游标属于本机运行状态，不应在另一设备上复用。 */
+    private fun isDeviceLocalColumn(table: String, column: String): Boolean =
+        table == "local_agent_notices" && column == "consumed_by_run_id"
 
     private fun isZip(bytes: ByteArray): Boolean =
         bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte() &&
@@ -988,11 +1344,21 @@ class PortableDataArchiveManager(private val context: Context) {
         fun activeName(): String = com.nekobot.app.ServiceContainer.prefs.activeDbName
     }
 
+    private data class PortablePluginState(
+        val enabled: Boolean = false,
+        val installedAt: Long = System.currentTimeMillis()
+    )
+
     companion object {
         private const val FORMAT = "nekobot-portable-data"
-        private const val FORMAT_VERSION = 1
+        private const val FORMAT_VERSION = 3
+        private const val MIN_READABLE_FORMAT_VERSION = 1
         private const val MANIFEST_ENTRY = "manifest.json"
         private const val CREDENTIALS_ENTRY = "credentials/portable-credentials.json"
+        private const val PLOT_STORY_ENTRY = "data/conversations-story.json"
+        private const val PLOT_STORY_DETAIL = "plot_story"
+        private const val PLUGIN_STATE_ENTRY = ".plugin-state.json"
+        private const val MAX_PLOT_STORY_BYTES = 16L * 1024 * 1024
         private const val BLOB_KEY = "__base64_blob__"
         private const val MIN_PASSWORD_LENGTH = 8
         private const val MAX_ENTRIES = 50_000
@@ -1000,7 +1366,7 @@ class PortableDataArchiveManager(private val context: Context) {
         private const val MAX_EXPANDED_BYTES = 1024L * 1024 * 1024
         private const val MAX_ENTRY_BYTES = 128L * 1024 * 1024
         private const val MAX_ATTACHMENT_BYTES = 64L * 1024 * 1024
-        private const val MAX_ENCRYPTED_ARCHIVE_BYTES = 256L * 1024 * 1024
+        private const val MAX_ENCRYPTED_ARCHIVE_BYTES = 512L * 1024 * 1024
         private const val MAX_MANIFEST_BYTES = 1024L * 1024
         private const val GLOBAL_MEMORY_MAX_BYTES = 256L * 1024
     }

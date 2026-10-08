@@ -274,7 +274,7 @@
     <string name="portability_category_ai_config">AI 모델 설정</string>
     <string name="portability_category_ai_config_desc">로컬 모델, 장애 조치, 기능 설정</string>
     <string name="portability_category_extensions">확장 기능과 Skills</string>
-    <string name="portability_category_extensions_desc">Hooks, 작업, 워크플로, 도구, MCP, Skill 파일</string>
+    <string name="portability_category_extensions_desc">Hooks, 작업, 워크플로, 도구, MCP, Skill, 플러그인 및 사용자 파일</string>
     <string name="portability_category_knowledge">지식 베이스</string>
     <string name="portability_category_knowledge_desc">지식 문서와 검색 인덱스</string>
     <string name="portability_category_analytics">통계 기록</string>

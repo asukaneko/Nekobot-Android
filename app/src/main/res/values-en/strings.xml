@@ -274,7 +274,7 @@
     <string name="portability_category_ai_config">AI model configuration</string>
     <string name="portability_category_ai_config_desc">Local models, failover, and capability configuration</string>
     <string name="portability_category_extensions">Extensions and Skills</string>
-    <string name="portability_category_extensions_desc">Hooks, tasks, workflows, tools, MCP, and Skill files</string>
+    <string name="portability_category_extensions_desc">Hooks, tasks, workflows, tools, MCP, Skills, plugin packages, and plugin user files</string>
     <string name="portability_category_knowledge">Knowledge base</string>
     <string name="portability_category_knowledge_desc">Knowledge documents and search index</string>
     <string name="portability_category_analytics">Analytics</string>

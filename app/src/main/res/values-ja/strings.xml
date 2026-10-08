@@ -274,7 +274,7 @@
     <string name="portability_category_ai_config">AI モデル設定</string>
     <string name="portability_category_ai_config_desc">ローカルモデル、フェイルオーバー、機能設定</string>
     <string name="portability_category_extensions">拡張機能と Skills</string>
-    <string name="portability_category_extensions_desc">Hooks、タスク、ワークフロー、ツール、MCP、Skill ファイル</string>
+    <string name="portability_category_extensions_desc">Hooks、タスク、ワークフロー、ツール、MCP、Skill、プラグインとユーザーファイル</string>
     <string name="portability_category_knowledge">ナレッジベース</string>
     <string name="portability_category_knowledge_desc">ナレッジ文書と検索インデックス</string>
     <string name="portability_category_analytics">統計記録</string>

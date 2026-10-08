@@ -218,6 +218,7 @@
     <string name="webdav_sync_pull_button">同步拉取</string>
     <string name="webdav_sync_confirm_title">从 WebDAV 恢复本地数据</string>
     <string name="webdav_sync_confirm_message">远程备份将覆盖当前本地数据库、Token 用量和成就记录。恢复前会保留临时回滚副本，确定继续吗？</string>
+    <string name="webdav_restore_preview_summary">备份概览：格式 v%1$d，%2$d 条记录、%3$d 个文件、%4$d 个数据类别。创建时间：%5$s。</string>
     <!-- ViewModel 提示 -->
     <string name="webdav_config_saved">配置已保存</string>
     <string name="webdav_connection_success">连接成功</string>

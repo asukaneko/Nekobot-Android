@@ -87,6 +87,9 @@ class WebDavBackupViewModel : BaseViewModel() {
     private val _incrementalHistory = MutableStateFlow<JsonObject?>(null)
     val incrementalHistory: StateFlow<JsonObject?> = _incrementalHistory.asStateFlow()
 
+    private val _restorePreview = MutableStateFlow<JsonObject?>(null)
+    val restorePreview: StateFlow<JsonObject?> = _restorePreview.asStateFlow()
+
     init {
         loadConfig()
     }
@@ -215,6 +218,18 @@ class WebDavBackupViewModel : BaseViewModel() {
         )
     }
 
+    fun previewSync(password: String) {
+        val req = WebDavBackupRequest(password = password.ifBlank { null })
+        launchResult(
+            block = { unified.webDavPreviewSync(req) },
+            onSuccess = { elem -> _restorePreview.value = elem?.asJsonObject }
+        )
+    }
+
+    fun clearRestorePreview() {
+        _restorePreview.value = null
+    }
+
     fun incrementalSync(password: String) {
         val req = WebDavBackupRequest(password = password.ifBlank { null })
         launchResult(
@@ -247,6 +262,22 @@ class WebDavBackupViewModel : BaseViewModel() {
         launchResult(
             block = { unified.webDavIncrementalHistory(req) },
             onSuccess = { elem -> _incrementalHistory.value = elem?.asJsonObject }
+        )
+    }
+
+    fun resolveConflict(conflictCopyKey: String, password: String) {
+        val req = WebDavBackupRequest(password = password.ifBlank { null })
+        launchResult(
+            block = { unified.webDavResolveIncrementalConflict(conflictCopyKey, req) },
+            onSuccess = { elem ->
+                val obj = elem?.asJsonObject
+                if (obj?.get("success")?.asBoolean == true) {
+                    showToast(string(R.string.webdav_conflict_resolved))
+                    loadHistory(password)
+                } else {
+                    showError(obj?.get("error")?.asString ?: string(R.string.webdav_conflict_resolve_failed))
+                }
+            }
         )
     }
 
@@ -300,6 +331,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
     val remoteInfo by vm.remoteInfo.collectAsStateWithLifecycle()
     val testResult by vm.testResult.collectAsStateWithLifecycle()
     val incrementalHistory by vm.incrementalHistory.collectAsStateWithLifecycle()
+    val restorePreview by vm.restorePreview.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
@@ -671,17 +703,51 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                 conflicts.take(12).forEach { element ->
                                     val conflict = element.asJsonObject
                                     val key = conflict.get("key")?.asString.orEmpty()
-                                    val resolution = when (conflict.get("resolution")?.asString) {
-                                        "local" -> stringResource(R.string.webdav_keep_local)
-                                        "remote" -> stringResource(R.string.webdav_use_remote)
-                                        else -> stringResource(R.string.webdav_auto_resolved)
-                                    }
+                                    val type = conflict.get("type")?.asString.orEmpty()
+                                    val recordId = conflict.get("id")?.asString.orEmpty()
+                                    val shortId = recordId.substringBefore(':').ifBlank { recordId }
                                     Text(
-                                        "$key · $resolution",
+                                        if (type.isBlank()) key else "$type · $shortId",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(top = 4.dp)
                                     )
+                                    val localCopyKey = conflict.get("local_conflict_copy_key")
+                                        ?.takeUnless { it.isJsonNull }?.asString
+                                    val remoteCopyKey = conflict.get("remote_conflict_copy_key")
+                                        ?.takeUnless { it.isJsonNull }?.asString
+                                    if (!localCopyKey.isNullOrBlank() && !remoteCopyKey.isNullOrBlank()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = { vm.resolveConflict(localCopyKey, incrementalPassword) },
+                                                enabled = !loading,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(stringResource(R.string.webdav_keep_local))
+                                            }
+                                            OutlinedButton(
+                                                onClick = { vm.resolveConflict(remoteCopyKey, incrementalPassword) },
+                                                enabled = !loading,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(stringResource(R.string.webdav_use_remote))
+                                            }
+                                        }
+                                    } else {
+                                        val resolution = when (conflict.get("resolution")?.asString) {
+                                            "local" -> stringResource(R.string.webdav_keep_local)
+                                            "remote" -> stringResource(R.string.webdav_use_remote)
+                                            else -> stringResource(R.string.webdav_auto_resolved)
+                                        }
+                                        Text(
+                                            resolution,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                             if (revisions != null && revisions.size() > 0) {
@@ -817,7 +883,13 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(12.dp))
 
                         Button(
-                            onClick = { showSyncConfirm = true },
+                            onClick = {
+                                if (ServiceContainer.prefs.isLocalMode) {
+                                    vm.previewSync(syncPassword)
+                                } else {
+                                    showSyncConfirm = true
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -852,6 +924,40 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { showSyncConfirm = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    restorePreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = { vm.clearRestorePreview() },
+            title = { Text(stringResource(R.string.webdav_sync_confirm_title)) },
+            text = {
+                val summary = stringResource(
+                    R.string.webdav_restore_preview_summary,
+                    preview.get("archive_version")?.asInt ?: 1,
+                    preview.get("total_rows")?.asInt ?: 0,
+                    preview.get("total_files")?.asInt ?: 0,
+                    preview.getAsJsonArray("categories")?.size() ?: 0,
+                    preview.get("created_at")?.asString.orEmpty().ifBlank { "—" }
+                )
+                Text(stringResource(R.string.webdav_sync_confirm_message) + "\n\n" + summary)
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.clearRestorePreview()
+                        vm.sync(syncPassword, syncIncludePortraits)
+                    },
+                    enabled = !loading
+                ) {
+                    Text(stringResource(R.string.webdav_sync_pull_button), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.clearRestorePreview() }) {
                     Text(stringResource(R.string.common_cancel))
                 }
             }

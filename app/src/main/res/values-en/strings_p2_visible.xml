@@ -74,9 +74,11 @@
     <string name="webdav_refresh_revision_history">Refresh revision history</string>
     <string name="webdav_current_revision_summary">Current revision %1$d · %2$d records</string>
     <string name="webdav_conflicts_summary">The last sync handled %1$d conflicts</string>
-    <string name="webdav_keep_local">Kept local version</string>
-    <string name="webdav_use_remote">Used remote version</string>
+    <string name="webdav_keep_local">Keep local version</string>
+    <string name="webdav_use_remote">Use remote version</string>
     <string name="webdav_auto_resolved">Resolved automatically</string>
+    <string name="webdav_conflict_resolved">Sync conflict resolved</string>
+    <string name="webdav_conflict_resolve_failed">Could not resolve sync conflict</string>
     <string name="webdav_revision_history">Revision history</string>
     <string name="webdav_revision_number">Revision %1$d</string>
     <string name="webdav_current_suffix"> (current)</string>

@@ -212,6 +212,7 @@
     <string name="webdav_sync_pull_button">同期プル</string>
     <string name="webdav_sync_confirm_title">WebDAV からローカルデータを復元</string>
     <string name="webdav_sync_confirm_message">リモートバックアップで現在のローカルデータベース、トークン使用量、実績記録を置き換えます。復元中は一時的なロールバックコピーを保持します。続行しますか？</string>
+    <string name="webdav_restore_preview_summary">バックアップ概要：形式 v%1$d、%2$d 件のレコード、%3$d 個のファイル、%4$d 個のデータカテゴリ。作成日時：%5$s。</string>
     <!-- ViewModel トースト -->
     <string name="webdav_config_saved">設定を保存しました</string>
     <string name="webdav_connection_success">接続成功</string>

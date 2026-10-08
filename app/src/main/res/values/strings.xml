@@ -306,7 +306,7 @@
     <string name="portability_category_ai_config">AI 模型配置</string>
     <string name="portability_category_ai_config_desc">本地模型、故障转移和生成能力配置</string>
     <string name="portability_category_extensions">扩展与 Skills</string>
-    <string name="portability_category_extensions_desc">Hooks、任务、工作流、工具、MCP 和 Skill 文件</string>
+    <string name="portability_category_extensions_desc">Hooks、任务、工作流、工具、MCP、Skill、插件和插件用户文件</string>
     <string name="portability_category_knowledge">知识库</string>
     <string name="portability_category_knowledge_desc">知识文档与检索索引</string>
     <string name="portability_category_analytics">统计记录</string>

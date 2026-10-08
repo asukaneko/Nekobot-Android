@@ -2360,6 +2360,14 @@ class UnifiedRepository(
             remote.webDavSync(req)
         }
 
+    suspend fun webDavPreviewSync(req: WebDavBackupRequest): Resource<JsonElement> =
+        if (isLocal) {
+            runCatching { Resource.Success<JsonElement>(localWebDav.previewSync(req)) }
+                .getOrElse { Resource.Error(it.message ?: "WebDAV 备份预览失败") }
+        } else {
+            Resource.Error("WebDAV 内容预览仅支持本地模式")
+        }
+
     suspend fun webDavIncrementalSync(req: WebDavBackupRequest): Resource<JsonElement> =
         if (isLocal) {
             runCatching { Resource.Success<JsonElement>(localWebDav.incrementalSync(req)) }
@@ -2375,6 +2383,17 @@ class UnifiedRepository(
         } else {
             Resource.Error("WebDAV 增量历史仅支持本地模式")
         }
+
+    suspend fun webDavResolveIncrementalConflict(
+        conflictCopyKey: String,
+        req: WebDavBackupRequest
+    ): Resource<JsonElement> = if (isLocal) {
+        runCatching {
+            Resource.Success<JsonElement>(localWebDav.resolveIncrementalConflict(conflictCopyKey, req))
+        }.getOrElse { Resource.Error(it.message ?: "解决 WebDAV 同步冲突失败") }
+    } else {
+        Resource.Error("WebDAV 增量冲突处理仅支持本地模式")
+    }
 
     suspend fun webDavRestoreIncrementalRevision(
         revision: Long,

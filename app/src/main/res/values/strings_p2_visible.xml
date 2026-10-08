@@ -83,6 +83,8 @@
     <string name="webdav_keep_local">保留本机版本</string>
     <string name="webdav_use_remote">采用远端版本</string>
     <string name="webdav_auto_resolved">已自动解决</string>
+    <string name="webdav_conflict_resolved">同步冲突已解决</string>
+    <string name="webdav_conflict_resolve_failed">解决同步冲突失败</string>
     <string name="webdav_revision_history">版本历史</string>
     <string name="webdav_revision_number">修订 %1$d</string>
     <string name="webdav_current_suffix">（当前）</string>

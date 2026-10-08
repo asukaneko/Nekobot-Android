@@ -11,6 +11,7 @@ import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.local.LocalPlotStoryStore
 import com.nekobot.app.data.local.PrefsManager
+import com.nekobot.app.data.local.recoverPendingLocalWebDavRestore
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
@@ -477,6 +478,7 @@ object ServiceContainer {
 class NekobotApp : Application(), coil.ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        recoverPendingLocalWebDavRestore(this)
         PDFBoxResourceLoader.init(this)
         ServiceContainer.init(this)
         registerForegroundTracking()

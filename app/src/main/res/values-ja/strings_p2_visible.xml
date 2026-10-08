@@ -74,9 +74,11 @@
     <string name="webdav_refresh_revision_history">リビジョン履歴を更新</string>
     <string name="webdav_current_revision_summary">現在のリビジョン %1$d · %2$d 件</string>
     <string name="webdav_conflicts_summary">前回の同期で %1$d 件の競合を処理しました</string>
-    <string name="webdav_keep_local">ローカル版を保持</string>
-    <string name="webdav_use_remote">リモート版を採用</string>
+    <string name="webdav_keep_local">ローカル版を保持する</string>
+    <string name="webdav_use_remote">リモート版を使う</string>
     <string name="webdav_auto_resolved">自動解決済み</string>
+    <string name="webdav_conflict_resolved">同期の競合を解決しました</string>
+    <string name="webdav_conflict_resolve_failed">同期の競合を解決できませんでした</string>
     <string name="webdav_revision_history">リビジョン履歴</string>
     <string name="webdav_revision_number">リビジョン %1$d</string>
     <string name="webdav_current_suffix">（現在）</string>
