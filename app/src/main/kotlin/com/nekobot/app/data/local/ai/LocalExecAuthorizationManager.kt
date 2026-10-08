@@ -190,11 +190,12 @@ internal fun isMemorizableCommand(command: String): Boolean {
     }
 }
 
-/** Shell 展开、重定向或控制符会让静态指纹无法代表真实执行内容，禁止「始终允许」。 */
+/** Shell 展开、重定向或后台执行会让静态指纹无法代表真实执行内容，禁止「始终允许」。 */
 private fun containsDynamicShellSyntax(command: String): Boolean {
     if ('$' in command || '`' in command) return true
     var quote: Char? = null
     var escaped = false
+    var skipPairedAmpersand = false
     for (index in command.indices) {
         val char = command[index]
         if (escaped) {
@@ -214,7 +215,19 @@ private fun containsDynamicShellSyntax(command: String): Boolean {
             quote = char
             continue
         }
-        if (char in ";|&><(){}*?~\r\n") return true
+        if (char == '&') {
+            if (skipPairedAmpersand) {
+                skipPairedAmpersand = false
+                continue
+            }
+            // 简单的 && 链会逐段生成独立授权指纹；单独的 & 仍表示后台执行，拒绝记忆。
+            if (command.getOrNull(index + 1) == '&') {
+                skipPairedAmpersand = true
+                continue
+            }
+            return true
+        }
+        if (char in ";|><(){}*?~\r\n") return true
     }
     return false
 }

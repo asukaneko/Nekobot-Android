@@ -210,6 +210,8 @@ internal fun sanitizeAgentToolHistoryMessage(message: Map<String, Any>): Map<Str
 
 private fun sanitizeCredentialJsonText(raw: String): String = runCatching {
     val parsed = com.google.gson.JsonParser.parseString(raw)
+    // Gson 的 JsonParser 也会把普通裸文本识别成字符串 primitive；这类工具输出必须原样保留。
+    if (!parsed.isJsonObject && !parsed.isJsonArray) return@runCatching raw
     agentGson.toJson(redactCredentialJson(parsed))
 }.getOrDefault(raw)
 

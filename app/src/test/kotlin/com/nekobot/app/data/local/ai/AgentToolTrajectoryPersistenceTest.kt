@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.ai
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -37,6 +38,17 @@ class AgentToolTrajectoryPersistenceTest {
         val decoded = decodeAgentToolMessageRow(encodeAgentToolMessageRow(message))
 
         assertEquals(message, decoded)
+    }
+
+    @Test
+    fun `JSON 工具结果中的凭据仍会脱敏`() {
+        val message = toolResult("call-credentials", """{"api_key":"secret","base_url":"https://example.com/v1"}""")
+
+        val decoded = decodeAgentToolMessageRow(encodeAgentToolMessageRow(message))!!
+        val content = decoded["content"] as String
+
+        assertFalse(content.contains("secret"))
+        assertTrue(content.contains("[已隐藏]"))
     }
 
     @Test
