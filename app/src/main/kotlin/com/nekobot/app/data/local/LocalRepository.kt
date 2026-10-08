@@ -1579,6 +1579,13 @@ class LocalRepository(
         )
         sessionDao.upsert(entity)
 
+        // 新建本地 Agent 会话可沿用 Agent 设置中的默认 YOLO 状态。
+        if (req.sessionMode.equals("agent", ignoreCase = true) &&
+            ServiceContainer.prefs.agentDefaultYoloEnabled
+        ) {
+            localExecAuthorizationManager.enableYolo(id)
+        }
+
         // 成就触发：会话数量
         kotlin.runCatching {
             reportAchievementProgress(

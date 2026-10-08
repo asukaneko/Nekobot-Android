@@ -256,6 +256,11 @@ class PrefsManager(context: Context) {
         get() = prefs.getInt(KEY_AGENT_MAX_TOOL_CALLS, 150)
         set(value) = prefs.edit().putInt(KEY_AGENT_MAX_TOOL_CALLS, value.coerceIn(1, 1000)).apply()
 
+    /** 新建本地 Agent 会话是否默认启用 YOLO；默认关闭。 */
+    var agentDefaultYoloEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AGENT_DEFAULT_YOLO_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_AGENT_DEFAULT_YOLO_ENABLED, value).apply()
+
     /**
      * 所有「返回文本内容」的 Agent 工具的统一输出字符上限。默认 50000。
      *
@@ -1291,6 +1296,7 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_REASONING_EFFORT = "reasoning_effort_agent"
         private const val KEY_CHARACTER_REASONING_EFFORT = "reasoning_effort_character"
         private const val KEY_AGENT_MAX_TOOL_CALLS = "agent_max_tool_calls"
+        private const val KEY_AGENT_DEFAULT_YOLO_ENABLED = "agent_default_yolo_enabled"
         /** 新会话默认工具集（全局）：未单独自定义过工具集的会话沿用它。 */
         private const val KEY_DEFAULT_SESSION_TOOLSET = "default_session_toolset"
         private const val KEY_DEFAULT_SESSION_TOOLSET_TOUCHED = "default_session_toolset_touched"

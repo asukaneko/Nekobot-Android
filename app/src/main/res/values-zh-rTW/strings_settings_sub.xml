@@ -300,6 +300,8 @@
     <string name="agent_settings_group_runtime">運行限制</string>
     <string name="agent_settings_max_tool_calls">最大工具呼叫次數</string>
     <string name="agent_settings_max_tool_calls_desc">單個 Agent 回合內允許的最大工具呼叫次數（1–1000，預設 %1$d）</string>
+    <string name="agent_settings_default_yolo">新會話預設開啟 YOLO</string>
+    <string name="agent_settings_default_yolo_desc">建立本地 Agent 會話時自動開啟；高風險操作和需要明確確認的操作仍會攔截</string>
     <string name="agent_settings_overlay">Agent 懸浮視窗</string>
     <string name="agent_settings_overlay_desc">使用安卓工具時在其他應用上方顯示 AI 思考與工具名（不會被截圖捕獲）</string>
     <string name="agent_settings_overlay_permission_desc">使用安卓工具時顯示 AI 思考與工具名，需要懸浮視窗權限</string>

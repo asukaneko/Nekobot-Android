@@ -128,6 +128,7 @@ fun AgentSettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var overlayEnabled by remember { mutableStateOf(ServiceContainer.prefs.agentOverlayEnabled) }
+    var defaultYoloEnabled by remember { mutableStateOf(ServiceContainer.prefs.agentDefaultYoloEnabled) }
     var overlayPermitted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -238,6 +239,21 @@ fun AgentSettingsScreen(
                     desc = stringResource(R.string.agent_settings_max_tool_calls_desc, MAX_TOOL_CALLS_DEFAULT),
                     trailing = {
                         ToolCallsInput()
+                    }
+                )
+                AgentSettingRow(
+                    icon = Icons.Filled.Shield,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    title = stringResource(R.string.agent_settings_default_yolo),
+                    desc = stringResource(R.string.agent_settings_default_yolo_desc),
+                    trailing = {
+                        Switch(
+                            checked = defaultYoloEnabled,
+                            onCheckedChange = {
+                                defaultYoloEnabled = it
+                                ServiceContainer.prefs.agentDefaultYoloEnabled = it
+                            }
+                        )
                     }
                 )
                 AgentSettingRow(
