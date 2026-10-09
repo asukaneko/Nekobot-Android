@@ -925,21 +925,19 @@ class LocalWebDavBackupManager(
                         encryptionPassword,
                         profileName
                     )
-                    val builder = Request.Builder()
-                        .url(manifestUrl)
-                        .put(encryptedManifest.toRequestBody(BINARY_MEDIA_TYPE))
-                    if (!remoteManifestEtag.isNullOrBlank()) {
-                        builder.header("If-Match", remoteManifestEtag!!)
-                    } else if (remoteManifestPayload == null) {
-                        builder.header("If-None-Match", "*")
+                    val manifestCode = if (remoteManifestPayload == null) {
+                        createIncrementalManifest(manifestUrl, encryptedManifest, raw)
+                    } else {
+                        execute(
+                            Request.Builder().url(manifestUrl)
+                                .put(encryptedManifest.toRequestBody(BINARY_MEDIA_TYPE))
+                                .header("If-Match", requireNotNull(remoteManifestEtag)),
+                            raw
+                        ).use { it.code }
                     }
-                    execute(builder, raw).use { response ->
-                        if (response.code == 412) {
-                            throw ConcurrentManifestUpdateException()
-                        }
-                        if (response.code !in listOf(200, 201, 204)) {
-                            error("更新增量同步清单失败 (HTTP ${response.code})")
-                        }
+                    if (manifestCode == 412) throw ConcurrentManifestUpdateException()
+                    if (manifestCode !in listOf(200, 201, 204)) {
+                        error("更新增量同步清单失败 (HTTP $manifestCode)")
                     }
                     uploadedBytes += encryptedManifest.size
                 }
@@ -1202,17 +1200,10 @@ class LocalWebDavBackupManager(
             password,
             profileName
         )
-        val created = execute(
-            Request.Builder().url(newManifestUrl)
-                .put(migratedCurrent.toRequestBody(BINARY_MEDIA_TYPE))
-                .header("If-None-Match", "*"),
-            raw
-        )
-        created.use {
-            if (it.code == 412) return
-            if (it.code !in listOf(200, 201, 204)) {
-                error("提交 v2 初始清单失败 (HTTP ${it.code})")
-            }
+        val createCode = createIncrementalManifest(newManifestUrl, migratedCurrent, raw)
+        if (createCode == 412) return
+        if (createCode !in listOf(200, 201, 204)) {
+            error("提交 v2 初始清单失败 (HTTP $createCode)")
         }
 
         val legacyBaselineKey = "$KEY_SYNC_BASE_PREFIX$profileName"
@@ -4307,82 +4298,50 @@ class LocalWebDavBackupManager(
         }
     }
 
-    private fun ensureConditionalWriteSupport(raw: RawConfig) {
+    private fun conditionalModeKey(raw: RawConfig): String {
         val fingerprint = MessageDigest.getInstance("SHA-256")
             .digest("${normalizeBaseUrl(raw.url)}|${raw.username}".toByteArray(Charsets.UTF_8))
             .take(12)
             .joinToString("") { "%02x".format(it) }
-        val preferenceKey = "$KEY_SYNC_CAS_PROBE_PREFIX$fingerprint"
-        if (configPrefs.getBoolean(preferenceKey, false)) return
-
-        val probeUrl = "${resolveIncrementalRootUrl(raw.url, prefs.activeDbName)}" +
-            ".conditional-probe-${UUID.randomUUID()}.tmp"
-        try {
-            var firstEtag: String? = null
-            val firstCode = execute(
-                Request.Builder()
-                    .url(probeUrl)
-                    .put(ByteArray(0).toRequestBody(BINARY_MEDIA_TYPE))
-                    .header("If-None-Match", "*"),
-                raw
-            ).use {
-                firstEtag = it.header("ETag")
-                it.code
-            }
-            require(firstCode in listOf(200, 201, 204)) {
-                "WebDAV 服务器不支持 If-None-Match 条件写入 (HTTP $firstCode)"
-            }
-            val secondCode = execute(
-                Request.Builder()
-                    .url(probeUrl)
-                    .put(ByteArray(0).toRequestBody(BINARY_MEDIA_TYPE))
-                    .header("If-None-Match", "*"),
-                raw
-            ).use { it.code }
-            require(secondCode == 412) {
-                "WebDAV 服务器未执行 If-None-Match 条件写入，已停止增量同步以避免覆盖并发数据"
-            }
-            val currentEtag = firstEtag ?: execute(Request.Builder().url(probeUrl).get(), raw).use { response ->
-                if (response.code != 200) error("读取 WebDAV 条件写入探测资源失败")
-                response.header("ETag")
-            }
-            require(!currentEtag.isNullOrBlank()) {
-                "WebDAV 服务器没有为对象提供 ETag，无法安全进行多设备增量同步"
-            }
-            val invalidMatchCode = execute(
-                Request.Builder()
-                    .url(probeUrl)
-                    .put(ByteArray(0).toRequestBody(BINARY_MEDIA_TYPE))
-                    .header("If-Match", "\"codex-invalid-etag\""),
-                raw
-            ).use { it.code }
-            require(invalidMatchCode == 412) {
-                "WebDAV 服务器未执行 If-Match 条件写入，已停止增量同步以避免覆盖并发数据"
-            }
-            val validMatchCode = execute(
-                Request.Builder()
-                    .url(probeUrl)
-                    .put(ByteArray(0).toRequestBody(BINARY_MEDIA_TYPE))
-                    .header("If-Match", currentEtag),
-                raw
-            ).use { it.code }
-            require(validMatchCode in listOf(200, 204)) {
-                "WebDAV 服务器拒绝有效的 If-Match 条件写入 (HTTP $validMatchCode)"
-            }
-            check(configPrefs.edit().putBoolean(preferenceKey, true).commit()) {
-                "无法保存 WebDAV 条件写入探测结果"
-            }
-        } finally {
-            runCatching { execute(Request.Builder().url(probeUrl).delete(), raw).use { } }
-        }
+        return "${KEY_SYNC_CAS_PROBE_PREFIX}create_v2_$fingerprint"
     }
+
+    private fun conditionalWriter(raw: RawConfig) = WebDavConditionalWriter { request ->
+        execute(request.newBuilder(), raw)
+    }
+
+    private fun ensureConditionalWriteSupport(raw: RawConfig): WebDavConditionalWriter.CreateMode {
+        val key = conditionalModeKey(raw)
+        val cached = configPrefs.getString(key, null)?.let { value ->
+            WebDavConditionalWriter.CreateMode.entries.firstOrNull { it.name == value }
+        }
+        if (cached != null) return cached
+        val mode = conditionalWriter(raw).probe(resolveIncrementalRootUrl(raw.url, prefs.activeDbName))
+        check(configPrefs.edit().putString(key, mode.name).commit()) {
+            "无法保存 WebDAV 条件写入探测结果"
+        }
+        return mode
+    }
+
+    private fun createIncrementalManifest(url: String, bytes: ByteArray, raw: RawConfig): Int =
+        conditionalWriter(raw).create(
+            url,
+            bytes.toRequestBody(BINARY_MEDIA_TYPE),
+            ensureConditionalWriteSupport(raw)
+        ) { fallback ->
+            check(configPrefs.edit().putString(conditionalModeKey(raw), fallback.name).commit()) {
+                "无法保存 WebDAV 条件写入回退方式"
+            }
+        }
 
     private fun execute(builder: Request.Builder, raw: RawConfig): okhttp3.Response {
         builder.header("User-Agent", USER_AGENT)
         if (raw.username.isNotBlank()) {
             builder.header("Authorization", Credentials.basic(raw.username, raw.password))
         }
-        return client.newCall(builder.build()).execute()
+        return WebDavTransferReporter.execute(builder.build()) { request ->
+            client.newCall(request).execute()
+        }
     }
 
     private fun rawConfig(

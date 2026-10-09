@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_tab_backup">バックアップ</string>
+    <string name="webdav_tab_history">履歴</string>
+    <string name="webdav_tab_settings">設定</string>
+    <string name="webdav_overview">バックアップ状況</string>
+    <string name="webdav_full_backup">完全バックアップ</string>
+    <string name="webdav_incremental_short_desc">端末間の変更を統合</string>
+    <string name="webdav_upload_short_desc">端末のデータをアップロード</string>
+    <string name="webdav_restore_short_desc">クラウドから端末を復元</string>
+    <string name="webdav_password_override">一時的な暗号化パスワード</string>
+    <string name="webdav_include_images_short">画像を含める</string>
+    <string name="webdav_images_desc">立ち絵・スタンプ・表紙</string>
+    <string name="webdav_secret_saved">設定済み。空欄で保持</string>
+    <string name="webdav_setup_hint">WebDAV の URL を設定して保存</string>
+    <string name="webdav_save_before_action">変更した設定を先に保存</string>
+    <string name="webdav_history_empty">履歴はまだありません</string>
+    <string name="webdav_history_load_hint">更新してクラウドの履歴を表示</string>
+    <string name="webdav_auto_on">自動同期オン</string>
+    <string name="webdav_auto_off">自動同期オフ</string>
+    <string name="webdav_auto_short_desc">接続時に定期同期</string>
+    <string name="webdav_interval_range">1〜168 時間</string>
+    <string name="webdav_versions_range">1〜50 バージョン</string>
+    <string name="webdav_preview_restore">復元をプレビュー</string>
+    <string name="webdav_transfer_preparing">準備中…</string>
+    <string name="webdav_transfer_uploading">アップロード中</string>
+    <string name="webdav_transfer_downloading">ダウンロード中</string>
+    <string name="webdav_transfer_processing">処理中…</string>
+    <string name="webdav_transfer_server">サーバー処理中…</string>
+    <string name="webdav_transfer_percent">現在のファイル %1$d%%</string>
+</resources>

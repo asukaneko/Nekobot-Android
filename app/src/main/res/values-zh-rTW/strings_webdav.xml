@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_tab_backup">備份</string>
+    <string name="webdav_tab_history">版本</string>
+    <string name="webdav_tab_settings">設定</string>
+    <string name="webdav_overview">備份狀態</string>
+    <string name="webdav_full_backup">完整備份</string>
+    <string name="webdav_incremental_short_desc">合併各裝置的變更</string>
+    <string name="webdav_upload_short_desc">打包上傳本機資料</string>
+    <string name="webdav_restore_short_desc">用雲端備份還原本機</string>
+    <string name="webdav_password_override">臨時加密密碼</string>
+    <string name="webdav_include_images_short">包含圖片</string>
+    <string name="webdav_images_desc">立繪、表情與世界書封面</string>
+    <string name="webdav_secret_saved">已設定，留空保留</string>
+    <string name="webdav_setup_hint">先設定 WebDAV 位址並儲存</string>
+    <string name="webdav_save_before_action">設定有變更，請先儲存</string>
+    <string name="webdav_history_empty">尚無歷史版本</string>
+    <string name="webdav_history_load_hint">重新整理以查看雲端版本</string>
+    <string name="webdav_auto_on">自動同步已開啟</string>
+    <string name="webdav_auto_off">自動同步已關閉</string>
+    <string name="webdav_auto_short_desc">有網路時按間隔同步</string>
+    <string name="webdav_interval_range">1–168 小時</string>
+    <string name="webdav_versions_range">1–50 個版本</string>
+    <string name="webdav_preview_restore">預覽還原</string>
+    <string name="webdav_transfer_preparing">準備中…</string>
+    <string name="webdav_transfer_uploading">正在上傳</string>
+    <string name="webdav_transfer_downloading">正在下載</string>
+    <string name="webdav_transfer_processing">處理中…</string>
+    <string name="webdav_transfer_server">伺服器處理中…</string>
+    <string name="webdav_transfer_percent">目前檔案 %1$d%%</string>
+</resources>

@@ -15,6 +15,8 @@ import com.nekobot.app.data.local.ai.terminal.LocalTerminalSession
 import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
 import com.nekobot.app.data.local.ai.RealtimeModelConfig
 import com.nekobot.app.data.local.ai.toRealtimeModelConfig
+import com.nekobot.app.data.local.WebDavTransferReporter
+import com.nekobot.app.data.model.WebDavTransferProgress
 import com.nekobot.app.data.local.LocalWebDavBackupManager
 import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
@@ -2344,41 +2346,56 @@ class UnifiedRepository(
             remote.webDavInfo()
         }
 
-    suspend fun webDavBackup(req: WebDavBackupRequest): Resource<JsonElement> =
+    suspend fun webDavBackup(
+        req: WebDavBackupRequest,
+        onProgress: ((WebDavTransferProgress) -> Unit)? = null
+    ): Resource<JsonElement> =
         if (isLocal) {
-            runCatching { Resource.Success<JsonElement>(localWebDav.backup(req)) }
+            runCatching { Resource.Success<JsonElement>(WebDavTransferReporter.track(onProgress) { localWebDav.backup(req) }) }
                 .getOrElse { Resource.Error(it.message ?: "WebDAV 备份失败") }
         } else {
             remote.webDavBackup(req)
         }
 
-    suspend fun webDavSync(req: WebDavBackupRequest): Resource<JsonElement> =
+    suspend fun webDavSync(
+        req: WebDavBackupRequest,
+        onProgress: ((WebDavTransferProgress) -> Unit)? = null
+    ): Resource<JsonElement> =
         if (isLocal) {
-            runCatching { Resource.Success<JsonElement>(localWebDav.sync(req)) }
+            runCatching { Resource.Success<JsonElement>(WebDavTransferReporter.track(onProgress) { localWebDav.sync(req) }) }
                 .getOrElse { Resource.Error(it.message ?: "WebDAV 恢复失败") }
         } else {
             remote.webDavSync(req)
         }
 
-    suspend fun webDavPreviewSync(req: WebDavBackupRequest): Resource<JsonElement> =
+    suspend fun webDavPreviewSync(
+        req: WebDavBackupRequest,
+        onProgress: ((WebDavTransferProgress) -> Unit)? = null
+    ): Resource<JsonElement> =
         if (isLocal) {
-            runCatching { Resource.Success<JsonElement>(localWebDav.previewSync(req)) }
+            runCatching { Resource.Success<JsonElement>(WebDavTransferReporter.track(onProgress) { localWebDav.previewSync(req) }) }
                 .getOrElse { Resource.Error(it.message ?: "WebDAV 备份预览失败") }
         } else {
             Resource.Error("WebDAV 内容预览仅支持本地模式")
         }
 
-    suspend fun webDavIncrementalSync(req: WebDavBackupRequest): Resource<JsonElement> =
+    suspend fun webDavIncrementalSync(
+        req: WebDavBackupRequest,
+        onProgress: ((WebDavTransferProgress) -> Unit)? = null
+    ): Resource<JsonElement> =
         if (isLocal) {
-            runCatching { Resource.Success<JsonElement>(localWebDav.incrementalSync(req)) }
+            runCatching { Resource.Success<JsonElement>(WebDavTransferReporter.track(onProgress) { localWebDav.incrementalSync(req) }) }
                 .getOrElse { Resource.Error(it.message ?: "WebDAV 增量同步失败") }
         } else {
             Resource.Error("WebDAV 增量同步仅支持本地模式")
         }
 
-    suspend fun webDavIncrementalHistory(req: WebDavBackupRequest): Resource<JsonElement> =
+    suspend fun webDavIncrementalHistory(
+        req: WebDavBackupRequest,
+        onProgress: ((WebDavTransferProgress) -> Unit)? = null
+    ): Resource<JsonElement> =
         if (isLocal) {
-            runCatching { Resource.Success<JsonElement>(localWebDav.incrementalHistory(req)) }
+            runCatching { Resource.Success<JsonElement>(WebDavTransferReporter.track(onProgress) { localWebDav.incrementalHistory(req) }) }
                 .getOrElse { Resource.Error(it.message ?: "读取 WebDAV 历史失败") }
         } else {
             Resource.Error("WebDAV 增量历史仅支持本地模式")
@@ -2386,10 +2403,13 @@ class UnifiedRepository(
 
     suspend fun webDavResolveIncrementalConflict(
         conflictCopyKey: String,
-        req: WebDavBackupRequest
+        req: WebDavBackupRequest,
+        onProgress: ((WebDavTransferProgress) -> Unit)? = null
     ): Resource<JsonElement> = if (isLocal) {
         runCatching {
-            Resource.Success<JsonElement>(localWebDav.resolveIncrementalConflict(conflictCopyKey, req))
+            Resource.Success<JsonElement>(WebDavTransferReporter.track(onProgress) {
+                localWebDav.resolveIncrementalConflict(conflictCopyKey, req)
+            })
         }.getOrElse { Resource.Error(it.message ?: "解决 WebDAV 同步冲突失败") }
     } else {
         Resource.Error("WebDAV 增量冲突处理仅支持本地模式")
@@ -2397,10 +2417,13 @@ class UnifiedRepository(
 
     suspend fun webDavRestoreIncrementalRevision(
         revision: Long,
-        req: WebDavBackupRequest
+        req: WebDavBackupRequest,
+        onProgress: ((WebDavTransferProgress) -> Unit)? = null
     ): Resource<JsonElement> = if (isLocal) {
         runCatching {
-            Resource.Success<JsonElement>(localWebDav.restoreIncrementalRevision(revision, req))
+            Resource.Success<JsonElement>(WebDavTransferReporter.track(onProgress) {
+                localWebDav.restoreIncrementalRevision(revision, req)
+            })
         }.getOrElse { Resource.Error(it.message ?: "恢复 WebDAV 历史修订失败") }
     } else {
         Resource.Error("WebDAV 增量历史恢复仅支持本地模式")
