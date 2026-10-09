@@ -2,6 +2,38 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.8.3 - 2026-10-09
+
+### 新增
+
+- Agent 设置可为新建本地会话默认开启 YOLO 授权。
+- 子代理任务支持暂停、恢复、进度恢复与重试沿袭，并改进任务卡片控制和授权审批。
+- 新增独立全屏内置浏览器，可同步 Agent 浏览器标签页并浏览工作区网页文件。
+- Skills 支持从本地 ZIP 文件安装。
+- 后台命令支持在独立 PRoot 进程中并行执行，不占用会话 shell。
+- WebDAV 备份与恢复升级：覆盖更多可移植数据，支持冲突手动解决、恢复预览及中断恢复回滚。
+
+### 修复
+
+- 修复更新包校验误判导致 APK 下载后无法自动安装。
+- 修复 Agent 工具轨迹恢复和授权记忆。
+
+### 优化
+
+- 强化命令授权、插件请求与分享文件的安全校验。
+
+### English
+
+- Agent settings can enable YOLO authorization by default for new local sessions.
+- Sub-agent tasks support pausing, resuming, progress recovery and retries with lineage; task card controls and approval handling are improved.
+- Added a standalone full-screen built-in browser that syncs Agent browser tabs and opens workspace web files.
+- Skills can now be installed from local ZIP files.
+- Background commands can run concurrently in independent PRoot processes without occupying the session shell.
+- WebDAV backup and restore cover more portable data and support manual conflict resolution, restore previews and rollback after interrupted restores.
+- Fixed valid APK updates being rejected by package verification, which prevented automatic installation.
+- Fixed restoration of Agent tool trajectories and remembered authorizations.
+- Improved security checks for command authorization, plugin requests and shared files.
+
 ## v0.8.2 - 2026-10-06
 
 ### 新增
