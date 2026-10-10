@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.sessions
 
+import com.nekobot.app.ui.components.GlassAlertDialog as AlertDialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.background
@@ -2190,7 +2191,7 @@ private fun PlotStylePickerDialog(
     var selectedPreset by remember { mutableStateOf(PLOT_STYLE_PRESETS.firstOrNull { it.first == currentStyle }?.first ?: "custom") }
     var customText by remember { mutableStateOf(if (selectedPreset == "custom") currentStyle else "") }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.sessions_detail_edit_reply_style), fontWeight = FontWeight.SemiBold) },
         text = {
@@ -2303,7 +2304,7 @@ private fun PlotOutlineEditorDialog(
         }
     }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.sessions_detail_edit_plot_outline), fontWeight = FontWeight.SemiBold) },
         text = {
@@ -2396,7 +2397,7 @@ private fun UserPersonaEditorDialog(
 ) {
     var personaText by remember { mutableStateOf(currentPersona) }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.sessions_detail_edit_user_persona), fontWeight = FontWeight.SemiBold) },
         text = {
@@ -2517,7 +2518,7 @@ private fun IntervalPickerDialog(
     onDismiss: () -> Unit
 ) {
     var selected by remember { mutableStateOf(current) }
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(titleRes), fontWeight = FontWeight.SemiBold) },
         text = {

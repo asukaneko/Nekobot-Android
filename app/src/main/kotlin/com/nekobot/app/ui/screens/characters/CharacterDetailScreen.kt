@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.characters
 
+import com.nekobot.app.ui.components.GlassAlertDialog as AlertDialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.content.Context

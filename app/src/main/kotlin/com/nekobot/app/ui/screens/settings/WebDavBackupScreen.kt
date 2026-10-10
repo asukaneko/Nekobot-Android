@@ -40,7 +40,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.WifiFind
-import androidx.compose.material3.AlertDialog
+import com.nekobot.app.ui.components.GlassAlertDialog as AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -1238,7 +1238,7 @@ private fun WebDavTransferDialog(progress: WebDavTransferProgress) {
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
     ) {
-        Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 6.dp) {
+        com.nekobot.app.ui.components.GlassDialogSurface(shape = RoundedCornerShape(24.dp), tonalElevation = 6.dp) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val title = when {
                     progress.completed -> R.string.webdav_transfer_processing

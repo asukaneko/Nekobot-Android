@@ -107,6 +107,8 @@ private fun AchievementUnlockDialog(
     onDismiss: () -> Unit
 ) {
     val target = AchievementManager.targetFor(event.id) ?: return
+    val backdrop = rememberPopupGlassBackdrop(true)
+    val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
     val tierColor = achievementTierColor(event.tier)
     val entryScale = remember(event.id, event.unlockedAt) { Animatable(0.62f) }
     val entryAlpha = remember(event.id, event.unlockedAt) { Animatable(0f) }
@@ -157,9 +159,12 @@ private fun AchievementUnlockDialog(
                         scaleY = entryScale.value
                         alpha = entryAlpha.value
                     }
+                    .liquidGlassDialogSurface(
+                        backdrop, RoundedCornerShape(28.dp), glassDialogTint(containerColor)
+                    )
                     .clickable(enabled = false) {},
                 cornerRadius = 28,
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                containerColor = if (backdrop == null) containerColor else Color.Transparent,
                 borderWidth = 2,
                 borderColor = tierColor.copy(alpha = 0.82f),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(

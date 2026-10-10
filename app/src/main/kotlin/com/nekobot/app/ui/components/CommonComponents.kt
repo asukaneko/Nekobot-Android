@@ -83,10 +83,7 @@ fun GlassCard(
 }
 
 /**
- * 统一的磨砂玻璃选项菜单。
- *
- * Popup 无法直接采样宿主窗口做实时背景模糊，因此使用半透明表面、玻璃高光描边和柔和阴影，
- * 在保证菜单文字对比度的同时与应用内的玻璃卡片保持一致。
+ * 选项菜单使用跨窗口背景采样，保留液态玻璃的模糊、折射和高光。
  */
 @Composable
 fun GlassDropdownMenu(
@@ -117,15 +114,26 @@ fun GlassDropdownMenu(
             )
         )
     }
-    DropdownMenu(
+    LiquidGlassMenuPopup(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         shape = shape,
-        containerColor = containerColor,
-        tonalElevation = 0.dp,
-        shadowElevation = 10.dp,
+        tint = containerColor.copy(alpha = if (dark) 0.66f else 0.48f),
         border = BorderStroke(1.dp, borderBrush),
+        fallback = {
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = onDismissRequest,
+                modifier = modifier,
+                shape = shape,
+                containerColor = containerColor,
+                tonalElevation = 0.dp,
+                shadowElevation = 10.dp,
+                border = BorderStroke(1.dp, borderBrush),
+                content = content,
+            )
+        },
         content = content
     )
 }
@@ -262,6 +270,9 @@ fun NekoDialog(
     dismissOnClickOutside: Boolean = true,
     content: @Composable (ColumnScope.() -> Unit)? = null
 ) {
+    val backdrop = rememberPopupGlassBackdrop(true)
+    val shape = RoundedCornerShape(24.dp)
+    val containerColor = MaterialTheme.colorScheme.surface
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -280,9 +291,10 @@ fun NekoDialog(
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
                     .heightIn(max = maxDialogHeight)
-                    .padding(8.dp),
+                    .padding(8.dp)
+                    .liquidGlassDialogSurface(backdrop, shape, glassDialogTint(containerColor)),
                 cornerRadius = 24,
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = if (backdrop == null) containerColor else Color.Transparent,
                 borderWidth = borderWidth
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -60,7 +60,7 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.Web
-import androidx.compose.material3.AlertDialog
+import com.nekobot.app.ui.components.GlassAlertDialog as AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton

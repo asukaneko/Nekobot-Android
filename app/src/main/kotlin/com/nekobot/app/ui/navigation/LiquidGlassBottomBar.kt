@@ -47,7 +47,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -58,6 +61,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +73,14 @@ import com.nekobot.app.ui.adaptive.rememberShouldUseNavRail
 import com.nekobot.app.ui.adaptive.rememberWindowWidthClass
 import com.nekobot.app.ui.components.GlassBackdrop
 import com.nekobot.app.ui.components.GlassPane
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -197,6 +209,7 @@ fun LiquidGlassBottomBar(
     modifier: Modifier = Modifier,
     backdrop: GlassBackdrop? = null,
 ) {
+    if (items.isEmpty()) return
     val dark = isSystemInDarkTheme()
     val selectedIndex = items.indexOfFirst { it.route == selectedRoute }.coerceAtLeast(0)
     val density = LocalDensity.current
@@ -216,7 +229,12 @@ fun LiquidGlassBottomBar(
         animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow),
         label = "liquidProgress"
     )
-    val liquid: () -> Float = { liquidProgress.value }
+    val liquid: () -> Float = { liquidProgress.value.coerceIn(0f, 1f) }
+    val touchPosition = remember { mutableStateOf<Offset?>(null) }
+    val tabsBackdrop = if (backdrop != null) rememberLayerBackdrop() else null
+    val indicatorBackdrop = if (backdrop != null && tabsBackdrop != null) {
+        rememberCombinedBackdrop(backdrop, tabsBackdrop)
+    } else null
 
     Box(
         modifier = modifier
@@ -231,6 +249,7 @@ fun LiquidGlassBottomBar(
             backdrop = backdrop,
             corner = layout.pillCorner,
             liquidProgress = liquid,
+            touchPosition = { touchPosition.value },
             modifier = if (maxPillWidth != null) {
                 Modifier.widthIn(max = maxPillWidth).fillMaxWidth()
             } else {
@@ -324,6 +343,7 @@ fun LiquidGlassBottomBar(
                             pass = PointerEventPass.Initial
                         )
                         val downX = down.position.x
+                        touchPosition.value = down.position
                         val slop = viewConfiguration.touchSlop
                         var active = false
                         var fraction = currentIndex.toFloat()
@@ -332,6 +352,7 @@ fun LiquidGlassBottomBar(
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                touchPosition.value = change.position
                                 if (!change.pressed) {
                                     // 抬起：拖动中必须吃掉它，否则原标签会再触发一次点击
                                     if (active) change.consume()
@@ -369,16 +390,13 @@ fun LiquidGlassBottomBar(
                     }
                 }
 
-                SlidingIndicator(
-                    leftEdge = leftEdge,
-                    rightEdge = rightEdge,
-                    itemWidth = itemWidth,
-                    dark = dark,
-                    backdrop = backdrop,
-                    liquidProgress = liquid,
-                    inset = layout.indicatorInset,
-                    corner = layout.indicatorCorner
-                )
+                // 静态回退的指示器在文字后面；真实透镜覆盖标签，从组合采样里绘制标签副本。
+                if (indicatorBackdrop == null) {
+                    SlidingIndicator(
+                        leftEdge, rightEdge, itemWidth, dark, null, liquid,
+                        layout.indicatorInset, layout.indicatorCorner,
+                    )
+                }
                 BarRow(
                     items = items,
                     selectedIndex = selectedIndex,
@@ -386,8 +404,46 @@ fun LiquidGlassBottomBar(
                     dark = dark,
                     interactionSource = barInteraction,
                     layout = layout,
-                    modifier = dragModifier
+                    modifier = dragModifier,
+                    animateSelection = backdrop == null,
                 )
+                if (backdrop != null && tabsBackdrop != null) {
+                    // 与上游 LiquidBottomTabs 一样：隐藏副本仍录入图层，供透镜采样。
+                    // 副本没有点击节点或无障碍语义，避免重复标签抢走真实标签的交互。
+                    Box(
+                        Modifier.matchParentSize()
+                            .clearAndSetSemantics {}
+                            .alpha(0f)
+                            .layerBackdrop(tabsBackdrop)
+                    ) {
+                        GlassPane(
+                            backdrop = backdrop,
+                            cornerRadius = layout.pillCorner,
+                            modifier = Modifier.matchParentSize(),
+                            blur = 8.dp,
+                            refraction = 12.dp,
+                            tint = if (dark) Color(0x33101012) else Color(0x1FFFFFFF),
+                            innerShadowAlpha = if (dark) 0.10f else 0.05f,
+                            liquidProgress = liquid,
+                        )
+                        BarRow(
+                            items = items,
+                            selectedIndex = selectedIndex,
+                            onItemSelected = {},
+                            dark = dark,
+                            interactionSource = barInteraction,
+                            layout = layout,
+                            interactive = false,
+                            animateSelection = false,
+                            forceActiveColor = true,
+                            contentScale = { 1f + 0.2f * liquid() },
+                        )
+                    }
+                    SlidingIndicator(
+                        leftEdge, rightEdge, itemWidth, dark, indicatorBackdrop, liquid,
+                        layout.indicatorInset, layout.indicatorCorner,
+                    )
+                }
             }
         }
     }
@@ -411,6 +467,7 @@ internal fun NavGlassSurface(
     liquidProgress: () -> Float,
     modifier: Modifier = Modifier,
     tint: Color = if (dark) Color(0x33101012) else Color(0x1FFFFFFF),
+    touchPosition: () -> Offset? = { null },
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(corner)
@@ -445,7 +502,7 @@ internal fun NavGlassSurface(
                 backdrop = backdrop,
                 cornerRadius = corner,
                 modifier = Modifier.matchParentSize(),
-                blur = 16.dp,
+                blur = 8.dp,
                 saturation = 1.25f,
                 // 折射深度（12dp）小于胶囊到屏幕边缘的留白（手机 16dp，平板更大），
                 // 保证边缘取样不会越过屏幕边界而取到空像素。
@@ -465,6 +522,23 @@ internal fun NavGlassSurface(
         } else {
             Box(modifier = Modifier.matchParentSize().background(fill))
             Box(modifier = Modifier.matchParentSize().border(1.dp, borderBrush, shape))
+        }
+        if (backdrop != null) {
+            Box(Modifier.matchParentSize().drawBehind {
+                val position = touchPosition() ?: return@drawBehind
+                val progress = liquidProgress()
+                if (progress <= 0f) return@drawBehind
+                val radius = 140.dp.toPx()
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.14f * progress), Color.Transparent),
+                        center = position,
+                        radius = radius,
+                    ),
+                    radius = radius,
+                    center = position,
+                )
+            })
         }
         content()
     }
@@ -523,36 +597,47 @@ private fun SlidingIndicator(
                 translationX = leftPx
                 transformOrigin = TransformOrigin(0f, 0.5f)
                 // 两条边错峰运动时宽度会短暂变化，这里用横向缩放表达液态拉伸。
-                scaleX = widthPx / slotWidth.toPx()
+                scaleX = if (backdrop == null) widthPx / slotWidth.toPx() else 1f
             }
             .padding(vertical = inset + 2.dp)
     ) {
         if (backdrop != null) {
-            GlassPane(
-                backdrop = backdrop,
-                cornerRadius = corner,
-                modifier = Modifier.matchParentSize(),
-                // 轻模糊 + 强折射：选中项像一块正在放大背景的透明玻璃。
-                blur = 4.dp,
-                saturation = 1.15f,
-                refraction = 10.dp,
-                dispersion = 0f,
-                // 静止时是一块均匀的中性深色（背光阴影感，不混主题色、不带渐变）；
-                // 按压/拖动时完全透明（tintFade = 1f），只剩折射背景，即 iOS 的液态光斑。
-                tint = if (dark) Color(0x40000000) else Color(0x1A000000),
-                rimColors = if (dark) {
-                    listOf(Color(0x2EFFFFFF), Color(0x0AFFFFFF))
-                } else {
-                    listOf(Color(0xB3FFFFFF), Color(0x14000000))
-                },
-                // 均匀阴影：不做顶部内阴影渐变
-                innerShadowAlpha = 0f,
-                liquidProgress = liquidProgress,
-                // 按压/拖动时整块玻璃放大（连同折射背景一起放大，形成液态透镜感）。
-                scaleBoost = 0.10f,
-                tintFade = 1f,
-                // 静止时描边很淡，交互时才亮起来
-                rimRestAlpha = 0.35f,
+            // 透镜使用上游的光学效果，直接采样页面与放大标签的组合图层。
+            Box(
+                Modifier.matchParentSize().drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { RoundedCornerShape(corner) },
+                    effects = {
+                        val progress = liquidProgress()
+                        lens(
+                            10.dp.toPx() * progress,
+                            14.dp.toPx() * progress,
+                            chromaticAberration = true,
+                        )
+                    },
+                    highlight = { Highlight.Default.copy(alpha = liquidProgress()) },
+                    shadow = { Shadow(radius = 8.dp, alpha = liquidProgress()) },
+                    innerShadow = {
+                        InnerShadow(radius = 8.dp, alpha = liquidProgress())
+                    },
+                    layerBlock = {
+                        val progress = liquidProgress()
+                        val stretch = ((rightEdge.floatValue - leftEdge.floatValue) *
+                            itemWidth.toPx() / size.width).coerceAtLeast(0.01f)
+                        // 形变交给库的图层，库会反向补偿采样坐标，避免标签随拉伸错位。
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                        scaleX = stretch * (1f + 0.12f * progress)
+                        scaleY = 1f + 0.20f * progress
+                        translationX = -size.width * stretch * 0.06f * progress
+                    },
+                    onDrawSurface = {
+                        drawRect(
+                            if (dark) Color.White.copy(alpha = 0.10f)
+                            else Color.Black.copy(alpha = 0.10f),
+                            alpha = 1f - liquidProgress(),
+                        )
+                    },
+                )
             )
         } else {
             Box(
@@ -586,6 +671,10 @@ private fun BarRow(
     interactionSource: MutableInteractionSource,
     layout: BottomBarLayout,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
+    animateSelection: Boolean = true,
+    forceActiveColor: Boolean = false,
+    contentScale: () -> Float = { 1f },
 ) {
     Row(
         modifier = modifier.fillMaxWidth().fillMaxHeight(),
@@ -601,6 +690,14 @@ private fun BarRow(
                 interactionSource = interactionSource,
                 onClick = { onItemSelected(item) },
                 modifier = Modifier.weight(1f)
+                    .graphicsLayer {
+                        val scale = contentScale()
+                        scaleX = scale
+                        scaleY = scale
+                    },
+                interactive = interactive,
+                animateSelection = animateSelection,
+                forceActiveColor = forceActiveColor,
             )
         }
     }
@@ -615,6 +712,9 @@ private fun BarItem(
     interactionSource: MutableInteractionSource,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
+    animateSelection: Boolean = true,
+    forceActiveColor: Boolean = false,
 ) {
     val activeColor = MaterialTheme.colorScheme.primary
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (dark) 0.85f else 1f)
@@ -629,17 +729,17 @@ private fun BarItem(
     }
 
     val contentColor by animateColorAsState(
-        targetValue = if (selected) activeColor else inactiveColor,
+        targetValue = if (selected || forceActiveColor) activeColor else inactiveColor,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "itemColor"
     )
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.14f else 1f,
+        targetValue = if (selected && animateSelection) 1.14f else 1f,
         animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessLow),
         label = "iconScale"
     )
     val liftUp by animateDpAsState(
-        targetValue = if (selected) (-2).dp else 0.dp,
+        targetValue = if (selected && animateSelection) (-2).dp else 0.dp,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow),
         label = "iconLift"
     )
@@ -677,15 +777,15 @@ private fun BarItem(
 
     val itemModifier = modifier
         .fillMaxHeight()
-        .selectable(
-            selected = selected,
-            interactionSource = interactionSource,
-            indication = null,
-            role = Role.Tab,
-            onClick = onTabClick
+        .then(
+            if (interactive) Modifier.selectable(
+                selected = selected,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Tab,
+                onClick = onTabClick,
+            ).semantics { contentDescription = item.label } else Modifier
         )
-        // 显式设置 contentDescription，TalkBack 朗读一次即可（覆盖子节点的 text）
-        .semantics { contentDescription = item.label }
 
     if (layout.labelBesideIcon) {
         // 平板：图标与文字并排，胶囊更矮胖、标签更易读。

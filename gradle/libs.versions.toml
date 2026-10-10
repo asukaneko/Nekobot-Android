@@ -1,11 +1,12 @@
 [versions]
-agp = "8.9.1"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.25"
+agp = "8.10.1"
+kotlin = "2.2.21"
+ksp = "2.2.21-2.0.5"
 coreKtx = "1.13.1"
 lifecycle = "2.8.6"
 activityCompose = "1.9.2"
-composeBom = "2024.09.02"
+composeBom = "2025.11.00"
+backdrop = "1.0.0"
 navigation = "2.8.2"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
@@ -13,7 +14,7 @@ gson = "2.11.0"
 coroutines = "1.9.0"
 coil = "2.7.0"
 socketIo = "2.1.0"
-room = "2.6.1"
+room = "2.7.2"
 biometric = "1.1.0"
 work = "2.9.1"
 androidxTest = "1.6.2"
@@ -28,6 +29,7 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }

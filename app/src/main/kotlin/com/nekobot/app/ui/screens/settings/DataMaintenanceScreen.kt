@@ -616,7 +616,7 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
     }
 
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        androidx.compose.material3.Surface(
+        com.nekobot.app.ui.components.GlassDialogSurface(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp)

@@ -41,6 +41,7 @@ import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.integration.IncomingShareParser
 import com.nekobot.app.integration.NekobotShortcutManager
 import com.nekobot.app.ui.components.MemoryMigrationDialog
+import com.nekobot.app.ui.components.LiquidGlassMenuHost
 import com.nekobot.app.ui.navigation.NekobotNavGraph
 import com.nekobot.app.ui.theme.NekobotTheme
 import com.nekobot.app.widget.NekobotWidgetProvider
@@ -111,10 +112,12 @@ class MainActivity : FragmentActivity() {
                             onUnlock = ::requestAppUnlock
                         )
                     } else {
-                        NekobotNavGraph()
-                        // 记忆迁移询问与业务页面无关，且可能在任意 Profile 切换时出现，挂在这里最稳妥。
-                        // 必须放在解锁分支内：隐私锁生效时不应在锁屏之上弹出任何业务弹窗。
-                        MemoryMigrationDialog()
+                        LiquidGlassMenuHost {
+                            NekobotNavGraph()
+                            // 记忆迁移询问与业务页面无关，且可能在任意 Profile 切换时出现，挂在这里最稳妥。
+                            // 必须放在解锁分支内：隐私锁生效时不应在锁屏之上弹出任何业务弹窗。
+                            MemoryMigrationDialog()
+                        }
                     }
                 }
             }
