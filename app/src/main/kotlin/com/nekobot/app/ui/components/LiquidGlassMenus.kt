@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.components
 
+import android.view.View
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -22,6 +23,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -33,7 +35,7 @@ import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 
-private class PopupGlassSource(val backdrop: GlassBackdrop) {
+private class PopupGlassSource(val backdrop: GlassBackdrop, val windowRoot: View) {
     var consumers by mutableIntStateOf(0)
 }
 
@@ -46,7 +48,8 @@ fun LiquidGlassMenuHost(content: @Composable () -> Unit) {
     val layer = rememberGlassBackdrop()
     val coordinates = remember { mutableStateOf<LayoutCoordinates?>(null) }
     val backdrop = remember(layer) { ScreenAlignedMenuBackdrop(layer, coordinates) }
-    val source = remember(backdrop) { PopupGlassSource(backdrop) }
+    val windowRoot = LocalView.current.rootView
+    val source = remember(backdrop, windowRoot) { PopupGlassSource(backdrop, windowRoot) }
     CompositionLocalProvider(LocalPopupGlassSource provides if (available) source else null) {
         Box(
             Modifier.fillMaxSize()
@@ -59,13 +62,21 @@ fun LiquidGlassMenuHost(content: @Composable () -> Unit) {
 }
 
 @Composable
-internal fun rememberPopupGlassBackdrop(expanded: Boolean): GlassBackdrop? {
+internal fun rememberPopupGlassBackdrop(
+    expanded: Boolean,
+    sampleCurrentWindow: Boolean = false,
+): GlassBackdrop? {
     val source = LocalPopupGlassSource.current
-    DisposableEffect(source, expanded) {
-        if (expanded) source?.let { it.consumers++ }
-        onDispose { if (expanded) source?.let { it.consumers-- } }
+    val windowRoot = LocalView.current.rootView
+    // 菜单位于浏览器等独立窗口时，采样该窗口；弹窗自身的玻璃背景仍采样下层页面。
+    val useWindow = sampleCurrentWindow && source != null && source.windowRoot !== windowRoot
+    val windowBackdrop = if (useWindow) rememberWindowGlassBackdrop(expanded) else null
+    DisposableEffect(source, expanded, useWindow) {
+        val capturePage = expanded && !useWindow
+        if (capturePage) source?.let { it.consumers++ }
+        onDispose { if (capturePage) source?.let { it.consumers-- } }
     }
-    return if (expanded) source?.backdrop else null
+    return if (!expanded) null else if (useWindow) windowBackdrop else source?.backdrop
 }
 
 /** 两个窗口使用屏幕原点对齐，避免菜单里的背景与宿主页面错位。 */

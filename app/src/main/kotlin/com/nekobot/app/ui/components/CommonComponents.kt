@@ -97,7 +97,7 @@ fun GlassDropdownMenu(
     val containerColor = if (dark) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f)
     } else {
-        Color.White.copy(alpha = 0.93f)
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.93f)
     }
     val borderBrush = if (dark) {
         Brush.verticalGradient(

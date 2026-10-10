@@ -73,7 +73,7 @@ internal fun LiquidGlassMenuPopup(
     val expandedState = remember { MutableTransitionState(false) }
     expandedState.targetState = expanded
     val visible = expandedState.currentState || expandedState.targetState
-    val backdrop = rememberPopupGlassBackdrop(visible)
+    val backdrop = rememberPopupGlassBackdrop(visible, sampleCurrentWindow = true)
     if (backdrop == null) {
         fallback()
         return
