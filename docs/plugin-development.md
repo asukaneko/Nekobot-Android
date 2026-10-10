@@ -718,6 +718,116 @@ const choice = await host.ui.select({
 if (choice) await host.storage.set("style", choice.value);
 ```
 
+#### 9.5.1 页面弹窗的尺寸与滚动（创建、更新页面时必须遵守）
+
+宿主注入主题变量与 API，不会替插件调整自建 HTML 弹窗的尺寸。常见的压缩原因是：弹窗嵌在窄卡片/按钮里，百分比宽度跟随了该容器；只设 `max-width` 没有实际宽度；Flex 布局收缩面板；祖先的 `transform`/`filter`/`perspective`/`contain` 改变定位参照或配合 `overflow:hidden` 裁剪。提高 `z-index` 无法修复尺寸和裁剪。
+
+- 每个 HTML 在 `head` 中声明 `<meta name="viewport" content="width=device-width, initial-scale=1">`。
+- 提示、确认、单项输入、单选优先 `await host.ui.alert/confirm/prompt/select`，由宿主原生弹窗处理尺寸；多字段表单才自建 HTML 弹窗。
+- 自建弹窗优先用 `<dialog>` + `showModal()` 进入顶层，放在 `body` 下，与主内容并列。明确 `width:calc(100vw - 32px);max-width:560px;box-sizing:border-box`；不要只写 `max-width` 或 `width:auto/fit-content`，也不要用 `scale()`/`zoom` 缩小弹窗来适配屏幕。只给 `dialog[open]` 设置 `display:flex`，保持关闭时隐藏。
+- 自建遮罩（或 `showModal` 不可用时的回退）同样放在 `body` 下，使用 `position:fixed;inset:0;padding:16px;box-sizing:border-box`；面板 `width:100%;max-width:560px;min-width:0;flex-shrink:0`。不要放进按钮、卡片或列表项；`html/body` 不设置会限制 fixed 定位的 `transform/filter/perspective/contain`。遮罩的 `[hidden]` 状态须显式 `display:none`，避免被 Flex 样式覆盖。
+- 按视口限制面板最大高度，先写 `vh`，再用 `dvh` 覆盖以兼容旧 WebView。内容区 `min-height:0;overflow:auto`，标题与按钮区 `flex-shrink:0`；按钮可换行，输入框 `width:100%;min-width:0;box-sizing:border-box`。不要写死很小的内容高度或复用卡片的布局类名。
+
+可复用的多字段弹窗布局（按钮处理逻辑按插件需要扩展）：
+
+```html
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>编辑记录</title>
+  <style>
+    .plugin-dialog {
+      box-sizing: border-box;
+      width: calc(100vw - 32px);
+      max-width: 560px;
+      max-height: calc(100vh - 32px);
+      max-height: calc(100dvh - 32px);
+      margin: auto;
+      padding: 0;
+      border: 1px solid var(--neko-outline);
+      border-radius: var(--neko-radius);
+      background: var(--neko-surface);
+      color: var(--neko-on-surface);
+      font: 16px var(--neko-font);
+      overflow: hidden;
+    }
+    .plugin-dialog[open] { display: flex; flex-direction: column; }
+    .plugin-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+    .plugin-dialog__header,
+    .plugin-dialog__actions { flex: 0 0 auto; padding: 16px; }
+    .plugin-dialog__body {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 0 16px 16px;
+      overflow: auto;
+      overflow-wrap: anywhere;
+    }
+    .plugin-dialog__body label { display: block; margin-bottom: 12px; }
+    .plugin-dialog__body input,
+    .plugin-dialog__body textarea {
+      display: block;
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      margin-top: 4px;
+      padding: 10px;
+      font: inherit;
+    }
+    .plugin-dialog__actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .plugin-dialog__actions button {
+      flex: 0 0 auto;
+      min-height: 44px;
+      max-width: 100%;
+      padding: 8px 16px;
+      font: inherit;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    /* 横屏或键盘占用较多空间时，允许整面板滚动 */
+    @media (max-height: 360px) {
+      .plugin-dialog[open] { display: block; overflow: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main><button id="openEditor" type="button">编辑</button></main>
+  <!-- 弹窗与 main 并列，不能嵌入按钮或卡片 -->
+  <dialog id="editor" class="plugin-dialog" aria-labelledby="editorTitle">
+    <header id="editorTitle" class="plugin-dialog__header">编辑记录</header>
+    <section class="plugin-dialog__body">
+      <label>标题<input id="recordTitle"></label>
+      <label>内容<textarea id="recordContent" rows="6"></textarea></label>
+    </section>
+    <footer class="plugin-dialog__actions">
+      <button id="cancelEditor" type="button">取消</button>
+      <button id="confirmEditor" type="button">确认</button>
+    </footer>
+  </dialog>
+  <script>
+    const editor = document.getElementById("editor");
+    document.getElementById("openEditor").onclick = async () => {
+      if (typeof editor.showModal !== "function") {
+        await host.ui.alert("请更新 Android System WebView 后重试");
+        return;
+      }
+      if (!editor.open) editor.showModal();
+    };
+    document.getElementById("cancelEditor").onclick = () => editor.close("cancel");
+    document.getElementById("confirmEditor").onclick = () => editor.close("confirm");
+  </script>
+</body>
+</html>
+```
+
+交付前逐个点击页面的弹窗按钮，在 320/360/412 CSS px、横屏、长文本/多项内容和键盘弹出时检查：面板宽度正常、正文可滚动、确认/取消可见可点击、关闭后遮罩消失。窄屏或键盘占据大半屏幕时允许整面板滚动。`plugin_use check` 仅做静态检查，`execute` 只测试命令，都不会验证页面布局；无法实测时明确说明限制，不得声称弹窗已验证。
+
 ### 9.6 页面生命周期
 
 - 同时只允许打开 1 个插件页面；打开新页面会先销毁旧的。
@@ -968,7 +1078,7 @@ NekoPlugin.registerCommand("note", async (ctx) => {
 
 1. 已通读本指南，并按第 9 章实现页面（若有）。
 2. `plugin_use create` 成功；`plugin_use check` 的 `ready=true`。
-3. 至少用 `plugin_use execute` 测通一条命令；有页面时确认页面文件已写入且无 `http(s)://` 外链引用。
+3. 至少用 `plugin_use execute` 测通一条命令；有页面时确认页面文件已写入且无 `http(s)://` 外链引用，并按 9.5.1 检查每个按钮弹窗的尺寸、滚动与键盘布局。
 4. 报告内容：插件 id、可用命令、页面入口位置、**权限申请清单**、**与原插件的行为差异 / 未实现项**。
 5. 不得声称「完全兼容」，只描述实际实现的功能。
 

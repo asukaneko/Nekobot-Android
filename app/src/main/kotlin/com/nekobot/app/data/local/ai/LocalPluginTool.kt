@@ -129,11 +129,13 @@ internal class LocalPluginTool(
             }.getOrNull()
         }
         val usingBundled = !bundled.isNullOrBlank()
-        val content = (if (usingBundled) bundled else PLUGIN_DEV_GUIDE) + PLUGIN_USE_WORKFLOW
+        // 页面布局要求置于最前，工具输出截断时也能让 AI 先读到弹窗约束。
+        val content = PLUGIN_PAGE_LAYOUT_GUIDE + "\n\n" +
+            (if (usingBundled) bundled else PLUGIN_DEV_GUIDE) + PLUGIN_USE_WORKFLOW
         return success(
             "content" to content,
             "guide_source" to (if (usingBundled) PLUGIN_GUIDE_ASSET else "内置精简指南"),
-            "hint" to "请先通读本文档与附录的推荐流程，再按流程编写并安装插件；文档会随版本更新"
+            "hint" to "先读开头的页面布局要求，再通读开发指南与推荐流程；有页面时必须检查每个按钮的弹窗"
         )
     }
 
@@ -443,7 +445,7 @@ internal class LocalPluginTool(
             "unsupported_apis" to result.unsupportedApis,
             "warnings" to result.warnings,
             "hint" to if (result.ok) {
-                "静态自检通过；建议用 execute 测试命令，并告知用户页面入口与权限清单"
+                "静态自检通过；execute 测试命令，有页面时还需逐个打开按钮弹窗检查尺寸与滚动；ready=true 不代表页面布局已验证"
             } else {
                 "按上面的问题修复后重新 check；不要向用户声称完全兼容"
             }
@@ -548,6 +550,17 @@ internal class LocalPluginTool(
         /** assets 中打包的完整插件开发文档；help 动作优先返回它。 */
         const val PLUGIN_GUIDE_ASSET = "plugin-development.md"
 
+        /** 完整文档与回退指南共用的页面布局要求，优先返回给 AI。 */
+        val PLUGIN_PAGE_LAYOUT_GUIDE: String = """
+            插件页面与弹窗布局要求（create/update 有页面时必读）
+            - 每个 HTML 必须声明 <meta name="viewport" content="width=device-width, initial-scale=1">。
+            - 提示、确认、单项输入、单选优先用 host.ui.alert/confirm/prompt/select（异步，必须 await）；这些由宿主原生弹窗负责尺寸。多字段表单才自建 HTML 弹窗。
+            - 自建弹窗优先用 <dialog> + showModal()，挂在 body 下并给出明确宽度（如 width:calc(100vw - 32px);max-width:560px;box-sizing:border-box）。禁止只写 max-width、width:auto/fit-content 或通过 transform:scale()/zoom 把弹窗缩小适配屏幕；只在 [open] 时应用 display:flex。
+            - 若用自建遮罩，放在 body 下作为页面主容器的兄弟节点，position:fixed;inset:0；面板 width:100%;max-width:560px;min-width:0;flex-shrink:0。不要嵌入按钮、卡片或列表项，也不要让祖先的 transform/filter/perspective/contain 限制 fixed 定位或 overflow:hidden 裁剪弹窗；单纯提高 z-index 无法修复这些问题。
+            - 面板按视口限制最大高度（先 vh，再 dvh 兼容覆盖）；仅内容区 min-height:0;overflow:auto，标题/按钮区 flex-shrink:0，按钮允许换行，输入框 width:100%;min-width:0;box-sizing:border-box。不要给内容区写死很小的高度或沿用卡片样式。
+            - 交付前逐个点击弹窗按钮，检查 320/360/412 CSS px、横屏、长内容与键盘弹出后的宽度、滚动、关闭和确认。check/execute 不会验证 HTML 布局；无法实测时说明限制，不得声称弹窗已验证。完整模板见开发指南 9.5.1。
+        """.trimIndent()
+
         /** plugin_use 专用附录：把文档规范映射到本工具的推荐工作流。 */
         val PLUGIN_USE_WORKFLOW: String = """
 
@@ -561,8 +574,10 @@ internal class LocalPluginTool(
                 用户拒绝后不要反复重试，改为告知用户拒绝结果
             3.2 install_url（https 地址）同样会先下载并弹出第三方插件同意弹窗，用户拒绝时不要反复重试
             4. create 编写完整 manifest_json + main_js 并安装（多文件用 extra_files_json，遵守第 7 节大小限制；页面文件也放 extra_files_json）
+            4.1 有页面时遵守开头的弹窗布局要求与 9.5.1 模板；update 修改页面也必须遵守
             5. check 静态自检（清单 / 页面入口 / API 名称 / 大小），修复到 ready=true
             6. execute 逐条测试命令（用 args 模拟用户输入）
+            6.1 有页面时逐个打开按钮弹窗，检查窄屏、长内容与键盘弹出后的尺寸和滚动；静态通过不等于布局通过
             7. 出错时 view 读取实际落盘源码，update 修复后复测
             8. create/update 可带 compat（native/ported-full/ported-partial/unsupported）与 compat_note 记录移植差异
             9. enable/disable/uninstall 管理生命周期；uninstall 需用户确认；
