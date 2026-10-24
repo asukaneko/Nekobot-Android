@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="companion_prompts_title">キャラクターとプロンプト</string>
+    <string name="companion_prompts_summary">ペルソナ、話し方、思考プロンプト</string>
+    <string name="companion_prompts_scope">現在のキャラクターのみに適用されます。他のキャラクターは変更されません。</string>
+    <string name="companion_prompt_persona">ペルソナ</string>
+    <string name="companion_prompt_persona_hint">既存のキャラクター設定を編集します。プリセットのペルソナはありません</string>
+    <string name="companion_prompt_speaking">話し方</string>
+    <string name="companion_prompt_speaking_hint">冒頭の固定ルールに配置されます</string>
+    <string name="companion_prompt_thinking">思考プロンプト</string>
+    <string name="companion_prompt_thinking_hint">有効にすると、現在時刻とともにリクエストの末尾に配置されます</string>
+    <string name="companion_prompt_default">ソフトウェアの既定値</string>
+    <string name="companion_prompt_custom">カスタム済み</string>
+    <string name="companion_prompt_edit_hint">このセクションの全文を編集します。カスタム値を入力すると既定の内容が置き換わります。空欄の場合はソフトウェアの既定値を使用します。{{char}}（キャラクター名）と {{user}}（相手の名前）が使用できます。</string>
+    <string name="companion_prompt_restore_hint">既定値に戻すのは下書きのみです。保存すると反映されます。</string>
+    <string name="companion_prompt_inactive_hint">思考プロンプトは現在無効です。編集して保存できますが、スイッチが自動でオンになったり、強度が変更されたりすることはありません。</string>
+    <string name="companion_prompt_thinking_switch">思考プロンプトを有効にする</string>
+    <string name="companion_prompt_thinking_switch_hint">現在のキャラクターのみ。文面の編集は「キャラクターとプロンプト」から行えます</string>
+    <string name="companion_prompt_discard_title">保存されていない変更を破棄しますか？</string>
+    <string name="companion_prompt_discard">変更を破棄</string>
+    <string name="companion_prompt_keep_editing">編集を続ける</string>
+    <string name="companion_prompt_load_error">キャラクター設定を読み込めませんでした。もう一度お試しください。</string>
+    <string name="companion_prompt_save_error">保存に失敗しました。下書きは保持されています。もう一度お試しください。</string>
+</resources>

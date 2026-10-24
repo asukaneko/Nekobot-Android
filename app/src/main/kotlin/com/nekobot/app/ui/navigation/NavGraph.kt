@@ -68,6 +68,8 @@ import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.memory.ExperienceArchiveScreen
 import com.nekobot.app.ui.screens.memory.ExperienceSourceScreen
 import com.nekobot.app.ui.screens.memory.ChatLocationScreen
+import com.nekobot.app.ui.screens.more.MoreCategory
+import com.nekobot.app.ui.screens.more.MoreCategoryScreen
 import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.search.GlobalSearchScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
@@ -438,6 +440,7 @@ fun NekobotNavGraph() {
                     ) {
                             when (bottomRoutes[page]) {
                                 Routes.SESSIONS -> SessionsScreen(
+                                    isActive = selectedMainRoute == Routes.SESSIONS && currentRoute == Routes.SESSIONS,
                                     onOpenChat = { id ->
                                         navController.navigate(Routes.chat(id))
                                     },
@@ -627,11 +630,19 @@ fun NekobotNavGraph() {
                     MoreScreen(
                         onNavigate = { route -> navController.navigate(route) },
                         onLogout = {
-                            // 清除本地 token 并断开 socket，广播登录态变化（LaunchedEffect 会自动导航）
                             ServiceContainer.socket.disconnect()
                             ServiceContainer.repository.logoutLocal()
                             ServiceContainer.notifyLoginState(false)
                         }
+                    )
+                }
+            }
+            MoreCategory.entries.filter { it != MoreCategory.APP }.forEach { category ->
+                composable(category.route) {
+                    MoreCategoryScreen(
+                        category = category,
+                        onNavigate = { route -> navController.navigate(route) },
+                        onBack = { navController.popBackStack() }
                     )
                 }
             }
@@ -834,7 +845,7 @@ fun NekobotNavGraph() {
                 WorkspaceManagerScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.DATA_PORTABILITY) {
-                DataPortabilityScreen(onBack = { navController.popBackStack() })
+                DataPortabilityScreen(onBack = { navController.popBackStack() }, onNavigate = { navController.navigate(it) })
             }
             composable(Routes.STICKERS) {
                 StickerStoreScreen(onBack = { navController.popBackStack() })
@@ -1001,7 +1012,11 @@ fun NekobotNavGraph() {
                 DbProfileScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.DIAGNOSTIC_CENTER) {
-                DiagnosticCenterScreen(onBack = { navController.popBackStack() })
+                DiagnosticCenterScreen(onBack = { navController.popBackStack() },
+                    onExportProblem = { navController.navigate(Routes.PROBLEM_DIAGNOSTIC) })
+            }
+            composable(Routes.PROBLEM_DIAGNOSTIC) {
+                com.nekobot.app.ui.screens.settings.ProblemDiagnosticScreen(onBack = { navController.popBackStack() })
             }
             // 日志查看（等级筛选 + 关键词搜索）
             composable(Routes.LOGS) {

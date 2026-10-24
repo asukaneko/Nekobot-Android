@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,6 +52,7 @@ internal fun CharacterThinkingSettingsControls(
     val prefs = ServiceContainer.prefs
     val characterThinkingSettings by prefs.characterThinkingSettings.collectAsStateWithLifecycle()
     var promptDraft by rememberSaveable { mutableStateOf<String?>(null) }
+    var showSourceDialog by rememberSaveable { mutableStateOf(false) }
     val thinkingControlsEnabled = effort != ReasoningEffort.NONE
     LaunchedEffect(thinkingControlsEnabled) {
         if (!thinkingControlsEnabled) promptDraft = null
@@ -111,6 +113,21 @@ internal fun CharacterThinkingSettingsControls(
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
             }
         }
+        HorizontalDivider(Modifier.padding(start = if (compact) 56.dp else 68.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 72.dp)
+                .testTag("character-thinking-source-entry")
+                .clickable(role = Role.Button) { showSourceDialog = true },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            CharacterThinkingRowLabel(Icons.Outlined.Psychology,
+                textResources.getString(R.string.settings_thinking_source_title),
+                textResources.getString(R.string.settings_thinking_source_summary),
+                enabled = true, Modifier.weight(1f), compact)
+            Icon(Icons.Default.ChevronRight, null, Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
     if (thinkingControlsEnabled && promptDraft != null) {
         GlassAlertDialog(
@@ -142,6 +159,9 @@ internal fun CharacterThinkingSettingsControls(
                 }
             }
         )
+    }
+    if (showSourceDialog) {
+        ThinkingSourceSettingsDialog(onDismiss = { showSourceDialog = false })
     }
 }
 

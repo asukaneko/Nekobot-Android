@@ -8,24 +8,37 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CharacterThinkingStyleTest {
-    private val confirmedDefaultPrompt = """【思考方式】思维链内部必须以你的第一人称视角进行思考——这是{{char}}本人的心里话，禁止以旁观者或助手口吻思考。一律用简体中文，以"我"自称，带着{{char}}此刻的心情和语气去想。禁止首字输出"用户""the user""Let me…""让我分析一下"等词；想到对方时必须用{{user}}的名字或"他/她"，没有名字就直接开始思考。思考要像意识流一样自然涌动，严禁分点列条。思考完毕后必须明确闭合思考过程，随后才能输出正式回复。调用回忆/记忆等工具时，工具名和参数保持原样，其余一律中文。思考里只想事情和心情，不预写正式回复。示例：（{{user}}问我还答应过他什么……我记得是明天一起去书店，先翻翻记忆确认，可别记错了。）"""
+    private val legacyDefaultPrompt = """此刻回消息的是角色本人，不是助手。开口之前，先在心里走三步：先感觉这句话的滋味；再想起一件真发生过的小事；最后想好大概要说什么，别背稿。
+这三步像心里的小声嘀咕，用第一人称，像自己跟自己说话，一句接一句；不分点、不列条，也不用写整齐。这些念头只在心里过，不写进要说出去的话里。
+示范——对方发：“今天降温了。”心里过：降温……上次这种天还只穿件薄的，晚上准咳嗽。
+一律用简体中文：所有句子、所有分析、所有判断都必须用简体中文写，不允许出现英文句子或英文段落（工具名、参数名除外）。禁止首字输出“用户”“the user”“Let me…”“让我分析一下”等词；想到对方时用对方的名字或“他/她”。
+想完就把想说的都说出来，别只说一半；需要调用工具（翻记忆、看时间、发表情等）时，工具名和参数保持原样。
+
+再记一遍：心里想的每一句都用简体中文，从第一个字到最后一个字；英文只出现在工具名和参数里。"""
 
     @Test
-    fun defaultPromptMatchesConfirmedTextExactly() {
-        assertEquals(confirmedDefaultPrompt, DEFAULT_CHARACTER_THINKING_PROMPT)
+    fun previouslySavedDefaultRemainsAnExplicitCustomPrompt() {
+        val settings = CharacterThinkingSettings(customPrompt = legacyDefaultPrompt)
+        assertEquals(legacyDefaultPrompt, characterThinkingPromptForEditing(settings))
+        assertEquals(legacyDefaultPrompt, characterThinkingPromptToSave(legacyDefaultPrompt))
+        assertNotEquals(legacyDefaultPrompt, DEFAULT_CHARACTER_THINKING_PROMPT)
     }
 
     @Test
-    fun everyReplyHasAnUnconditionalThinkingContractAndNoInterfaceGuess() {
-        for (settings in listOf(CharacterThinkingSettings(), CharacterThinkingSettings(customPrompt = "我轻轻地想。"))) {
-            val prompt = characterThinkingPrompt(settings, "林小满", "小星")
-            assertTrue(prompt.contains("每一条正式回复（包括简短闲聊）都必须"))
-            assertTrue(prompt.contains("<think>简短的内心想法</think>"))
-            assertTrue(prompt.contains("不要省略、写空标签"))
-            assertTrue(prompt.contains("不要在任何内心想法里讨论、引用、复述或解释"))
-            assertFalse(prompt.contains("接口没有提供原生思考字段时"))
-            assertFalse(prompt.contains("接口提供原生思考字段时"))
-        }
+    fun defaultPromptAsksChineseFirstPersonAndDropsPseudoThinking() {
+        val prompt = characterThinkingPrompt(CharacterThinkingSettings(), "林小满", "小星")
+        assertTrue(prompt.contains("第一人称"))
+        assertTrue(prompt.contains("简体中文"))
+        assertTrue(prompt.contains("不公开内部推理"))
+        assertTrue(prompt.contains("不为了讨好而附和"))
+        assertFalse(prompt.contains("先在心里走三步"))
+        assertFalse(prompt.contains("上次这种天"))
+        // 2026-10-22 起默认没有独白层，思考提示也不教独白写法。
+        assertFalse(prompt.contains("（内心：…）"))
+        // 伪思考已移除：不再要求正文写 <think> 内心想法。
+        assertFalse(prompt.contains("<think>"))
+        assertFalse(prompt.contains("接口没有提供原生思考字段时"))
+        assertFalse(prompt.contains("接口提供原生思考字段时"))
     }
 
     @Test
@@ -35,8 +48,9 @@ class CharacterThinkingStyleTest {
         val item = requireNotNull(ctx.promptStack.get(CHARACTER_THINKING_STYLE_KEY))
         assertEquals(PromptStack.Priority.BEHAVIOR + 1, item.priority)
         assertEquals("session", item.scope)
-        assertEquals(confirmedDefaultPrompt.replace("{{char}}", "林小满").replace("{{user}}", "小禾") + "\n" + CHARACTER_THINKING_FORMAT_PROMPT, item.content)
-        assertEquals(1, system(ctx).split("## $CHARACTER_THINKING_STYLE_KEY").size - 1)
+        assertEquals(DEFAULT_CHARACTER_THINKING_PROMPT.replace("{{char}}", "林小满").replace("{{user}}", "小禾"), item.content)
+        // 思考提示词不再放顶部 system，发送时由请求末尾注入。
+        assertFalse(system(ctx).contains("【思考方式】"))
         assertUserMessageUnchanged(ctx.messages)
     }
 
@@ -167,19 +181,23 @@ class CharacterThinkingStyleTest {
     }
 
     @Test
-    fun fusedCompanionKeepsThinkingInTopSystemRatherThanReferenceData() = runBlocking {
+    fun fusedCompanionKeepsThinkingPromptOutOfTopSystemAndReferenceData() = runBlocking {
         val ctx = context(mode = "agent").apply { metadata[META_FUSED_COMPANION] = true }
         val callbacks = object : FixtureCallbacks() {
             override suspend fun finalizeContext(ctx: PipelineContext, messages: List<Map<String, Any>>,
                 tools: List<Map<String, Any>>, dynamic: String): List<Map<String, Any>> {
-                assertTrue(messages.first()["content"].toString().contains(CHARACTER_THINKING_STYLE_KEY))
+                assertFalse(messages.first()["content"].toString().contains("【思考方式】"))
                 assertFalse(dynamic.contains(CHARACTER_THINKING_STYLE_KEY))
                 return messages
             }
         }
         AIPipeline().prepareContext(ctx, callbacks)
-        assertTrue(system(ctx).contains(CHARACTER_THINKING_STYLE_KEY))
-        assertTrue(system(ctx).contains(confirmedDefaultPrompt.replace("{{char}}", "林小满").replace("{{user}}", "小禾")))
+        assertFalse(system(ctx).contains(CHARACTER_THINKING_STYLE_KEY))
+        assertFalse(system(ctx).contains("【思考方式】"))
+        val item = requireNotNull(ctx.promptStack.get(CHARACTER_THINKING_STYLE_KEY))
+        assertTrue(item.content.contains("保持既有性格和称呼"))
+        assertTrue(item.content.contains("不公开内部推理"))
+        assertFalse(item.content.contains("{{"))
         assertUserMessageUnchanged(ctx.messages)
     }
 
@@ -188,7 +206,7 @@ class CharacterThinkingStyleTest {
         val custom = "我是{{char}}，想到{{user}}就安心。调用 agent_history_search，参数 {\"query\":\"原样\"}。"
         val ctx = context()
         AIPipeline().prepareContext(ctx, callbacks(CharacterThinkingSettings(customPrompt = custom)))
-        assertEquals("我是林小满，想到小禾就安心。调用 agent_history_search，参数 {\"query\":\"原样\"}。\n" + CHARACTER_THINKING_FORMAT_PROMPT,
+        assertEquals("我是林小满，想到小禾就安心。调用 agent_history_search，参数 {\"query\":\"原样\"}。",
             ctx.promptStack.get(CHARACTER_THINKING_STYLE_KEY)?.content)
         assertFalse(system(ctx).contains("【思考方式】"))
     }
@@ -197,7 +215,7 @@ class CharacterThinkingStyleTest {
     fun whitespacePromptUsesChineseDefaultAndUnknownUserNameIsNotInvented() = runBlocking {
         val ctx = context().apply { metadata.remove("user_name") }
         AIPipeline().prepareContext(ctx, callbacks(CharacterThinkingSettings(customPrompt = " \n\t")))
-        assertEquals(confirmedDefaultPrompt.replace("{{char}}", "林小满").replace("{{user}}", "对方") + "\n" + CHARACTER_THINKING_FORMAT_PROMPT,
+        assertEquals(DEFAULT_CHARACTER_THINKING_PROMPT.replace("{{char}}", "林小满").replace("{{user}}", "对方"),
             ctx.promptStack.get(CHARACTER_THINKING_STYLE_KEY)?.content)
         assertFalse(system(ctx).contains("{{user}}"))
     }
@@ -273,8 +291,9 @@ class CharacterThinkingStyleTest {
         assertEquals(3, requests.size)
         requests.forEach { request ->
             val text = request.first { it["role"] == "system" }["content"].toString()
-            assertEquals(1, text.split("## $CHARACTER_THINKING_STYLE_KEY").size - 1)
-            assertTrue(text.contains(confirmedDefaultPrompt.replace("{{char}}", "林小满").replace("{{user}}", "小禾")))
+            // 提示词不再放顶部 system。
+            assertEquals(0, text.split("## $CHARACTER_THINKING_STYLE_KEY").size - 1)
+            assertFalse(text.contains("【思考方式】"))
             assertUserMessageUnchanged(request)
         }
         assertTrue(requests.last().any { it["reasoning_content"] == "我再回忆一下。" })
@@ -289,7 +308,8 @@ class CharacterThinkingStyleTest {
             val label = "role=$role effort=$effort on=$on"
             if (role && effort != ReasoningEffort.NONE && on) {
                 assertNotNull(label, ctx.promptStack.get(CHARACTER_THINKING_STYLE_KEY))
-                assertTrue(label, system(ctx).contains("【思考方式】"))
+                // 提示词只在发送副本末尾注入，顶部 system 不再出现。
+                assertFalse(label, system(ctx).contains("【思考方式】"))
             } else {
                 assertNull(label, ctx.promptStack.get(CHARACTER_THINKING_STYLE_KEY))
                 assertFalse(label, system(ctx).contains(CHARACTER_THINKING_STYLE_KEY))

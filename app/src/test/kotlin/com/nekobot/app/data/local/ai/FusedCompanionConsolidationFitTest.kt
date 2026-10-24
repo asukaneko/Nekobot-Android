@@ -8,6 +8,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FusedCompanionConsolidationFitTest {
+    @Test fun capacityCannotSplitTheLastWholeTurnEvenIfOneMessageWouldFit() {
+        val fit = FusedCompanionPolicy.fitConsolidationPayload(listOf(2), listOf(2), 2) { target, reference, existing ->
+            target + reference + existing <= 1
+        }
+        assertTrue(fit.needsLargerModel)
+        assertEquals(0, fit.targetMessages)
+    }
+
     @Test fun batchThatFitsStaysWhole() {
         val fit = FusedCompanionPolicy.fitConsolidationPayload(
             targetTurnSizes = listOf(2, 2),

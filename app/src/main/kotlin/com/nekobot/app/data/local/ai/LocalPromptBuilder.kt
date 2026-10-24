@@ -135,7 +135,7 @@ object LocalPromptBuilder {
             character.basicInfo?.takeIf { it.isNotBlank() }?.let { parts.add("【基本信息】\n$it") }
             character.personality?.takeIf { it.isNotBlank() }?.let { parts.add("【性格】\n$it") }
             character.scenario?.takeIf { it.isNotBlank() }?.let { parts.add("【场景】\n$it") }
-            character.exampleDialogues?.takeIf { it.isNotBlank() }?.let { parts.add("【对话示例】\n$it") }
+            character.exampleDialogues?.takeIf { !session.companionMode && it.isNotBlank() }?.let { parts.add("【对话示例】\n$it") }
             character.responseFormat?.takeIf { it.isNotBlank() }?.let { parts.add("【回复格式】\n$it") }
             parseStringList(character.rules).takeIf { it.isNotEmpty() }?.let {
                 parts.add("【规则】\n" + it.joinToString("\n- ", prefix = "- "))

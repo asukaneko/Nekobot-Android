@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="companion_avatar_change">Change avatar</string>
+    <string name="companion_avatar_title">Crop character avatar</string>
+    <string name="companion_avatar_hint">Drag to reposition and slide to zoom. Saving updates chat and the conversation list.</string>
+    <string name="companion_avatar_save">Save avatar</string>
+    <string name="companion_avatar_zoom">Zoom</string>
+    <string name="companion_avatar_choose">Choose another image</string>
+    <string name="companion_avatar_failed">Could not read or save the image. Choose an image and try again.</string>
+</resources>

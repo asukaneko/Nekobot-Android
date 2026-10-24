@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="problem_diag_title">문제 진단 패키지</string>
+    <string name="problem_diag_export">문제 진단 내보내기</string>
+    <string name="problem_diag_preview">진단 내용 미리 보기</string>
+    <string name="problem_diag_range">문제 범위</string>
+    <string name="problem_diag_reply">답변 한 개</string>
+    <string name="problem_diag_import">최근 가져오기</string>
+    <string name="problem_diag_runtime">최근 실행 기록</string>
+    <string name="problem_diag_choose_reply">확인할 답변 선택</string>
+    <string name="problem_diag_selected_reply">이 답변 선택됨</string>
+    <string name="problem_diag_collect">자동 수집 항목</string>
+    <string name="problem_diag_app">앱 버전 및 실행 정보</string>
+    <string name="problem_diag_model">모델 호출 및 오류</string>
+    <string name="problem_diag_recall">기억 조회 한도 및 도구 실행</string>
+    <string name="problem_diag_sources">기억 출처, 잘림 및 필터 상태</string>
+    <string name="problem_diag_optional">선택 첨부 내용</string>
+    <string name="problem_diag_include_text">문제 확인에 필요한 텍스트 첨부</string>
+    <string name="problem_diag_text_note">답변의 질문, 답변 및 확인된 자료를 첨부할 수 있습니다. 기본값은 본문 제외이며 매번 다시 선택합니다.</string>
+    <string name="problem_diag_description">추가 설명 (선택)</string>
+    <string name="problem_diag_missing_note">이전 기록이 불완전할 수 있습니다. 누락된 증거를 표시하며 과거 과정을 만들어내지 않습니다.</string>
+    <string name="problem_diag_basic">기본 진단 (본문 제외)</string>
+    <string name="problem_diag_with_text">문제 확인용 텍스트 포함</string>
+    <string name="problem_diag_checks">조회 한도 소진, 빈 검색 결과, 자료 잘림, 모델 또는 도구 오류를 확인합니다.</string>
+    <string name="problem_diag_evidence_only">확인 가능한 증거를 정리하며 원인을 자동으로 단정하지 않습니다.</string>
+    <string name="problem_diag_files">저장할 내용 (눌러서 확인)</string>
+    <string name="problem_diag_text_present">문제 확인용 텍스트가 포함됩니다. 공유하기 전에 확인하세요.</string>
+    <string name="problem_diag_text_absent">채팅 본문: 제외됨</string>
+    <string name="problem_diag_privacy">인증 정보 필드와 전체 채팅 DB는 제외됩니다. 저장 후 전송 여부를 직접 결정하세요. 첨부된 텍스트를 먼저 확인하세요.</string>
+    <string name="problem_diag_missing">기록 제한 %1$d개를 설명 파일에 표시했습니다.</string>
+    <string name="problem_diag_save">진단 패키지 저장 (ZIP)</string>
+    <string name="problem_diag_adjust">옵션 수정</string>
+    <string name="problem_diag_saved">진단 패키지를 저장했습니다. 전송 여부를 직접 선택하세요.</string>
+    <string name="problem_diag_failed">완료하지 못했습니다. 선택한 답변과 DB가 바뀌지 않았는지 확인 후 다시 시도하세요. 저장 실패 파일은 불완전할 수 있습니다.</string>
+    <string name="problem_diag_no_replies">최근 답변이 없습니다. 채팅에서 답변을 길게 눌러 열 수도 있습니다.</string>
+</resources>

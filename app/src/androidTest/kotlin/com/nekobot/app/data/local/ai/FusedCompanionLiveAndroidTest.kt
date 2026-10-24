@@ -127,23 +127,22 @@ class FusedCompanionLiveAndroidTest {
             val correction=say("correction","之前怕辣是老习惯了，现在我已经改成喜欢吃辣。")
             val invented=say("invented","还记得去年我们一起去了海边吗？","assistant")
             val denial=say("denial","你记错了，我们从来没有一起去过海边。")
-            val material=gson.toJson(mapOf("target" to listOf(correction,invented,denial).map {
-                mapOf("id" to it.id,"role" to it.role,"text" to it.content) },"reference" to emptyList<Any>(),
-                "existing" to facts.map { mapOf("key" to it.factKey,"content" to it.content,"category" to it.category,"locked" to false) }))
-            val changes=JsonParser.parseString(call(endpoint,listOf(mapOf("role" to "system","content" to FusedCompanionPolicy.extractionPrompt),
-                mapOf("role" to "user","content" to material)))).asJsonObject["changes"].asJsonArray
-            assertTrue("Real model must identify the old diet key for correction",changes.any {
-                val x=it.asJsonObject; x["target_key"]?.asString==diet.factKey && x["operation"]?.asString=="update" })
-            assertFalse("Denied seaside event cannot become a new episode",changes.any {
-                val x=it.asJsonObject; x["category"]?.asString=="episode" && x["operation"]?.asString in listOf("add","update") &&
-                    x["content"]?.asString.orEmpty().contains("海边") })
-            for (change in changes) {
-                // Production extraction treats null optional fields as absent (parseDrafts.text).
-                val fields=gson.fromJson(change,Map::class.java).entries.mapNotNull { entry ->
-                    entry.value?.let { entry.key.toString() to it }
-                }.toMap()
-                store.fusedTool(session,"agent_memory_update",fields,change.asJsonObject["source_id"].asString)
-            }
+            store.convertBatch(session,listOf(correction,invented,denial),emptyList(),emptyList(),16000,
+                generate={system,material ->
+                    val old=JsonParser.parseString(material).asJsonObject["existing"].asJsonArray
+                        .single { it.asJsonObject["content"].asString==diet.content }.asJsonObject["no"].asString
+                    val response=call(endpoint,listOf(mapOf("role" to "system","content" to system),
+                        mapOf("role" to "user","content" to material)))
+                    val lines=response.lineSequence().filter { it.isNotBlank() }.map(FusedMemoryValidation::parseLine).toList()
+                    assertFalse("Real extraction must return valid JSONL",lines.any { it is FusedMemoryLine.Rejected })
+                    assertTrue("Real extraction must finish explicitly",lines.lastOrNull() is FusedMemoryLine.Done)
+                    val changes=lines.filterIsInstance<FusedMemoryLine.Operation>().map { it.value }
+                    assertTrue("Real model must identify the old diet number for correction",changes.any {
+                        it.target==old && it.op=="update" })
+                    assertFalse("Denied seaside event cannot become a new episode",changes.any {
+                        it.category=="episode" && it.op in listOf("add","update") && it.content.contains("海边") })
+                    response
+                })
             facts=store.validatedMemories(store.ensureScope(session)).filter { it.current }
             assertTrue(facts.any { it.content.contains("喜欢") && it.content.contains("辣") })
             assertFalse(facts.any { it.category=="episode" && it.content.contains("海边") })

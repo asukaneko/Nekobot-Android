@@ -2,8 +2,8 @@
 <resources>
     <string name="single_role_character_perspective_thinking_beta">Character-perspective thinking Beta</string>
     <string name="single_role_think_in_chinese_in_the_character_s_first_person_voice">Think in Chinese, in the character’s first-person voice.</string>
-    <string name="single_role_custom_thinking_prompt_beta">Custom thinking prompt Beta</string>
-    <string name="single_role_leave_blank_to_use_the_default">Leave blank to use the default.</string>
+    <string name="single_role_custom_thinking_prompt_beta">Thinking prompt</string>
+    <string name="single_role_leave_blank_to_use_the_default">This text is sent at the very end of every request and controls how the character thinks in first person, in Simplified Chinese. Leave blank to use the default.</string>
     <string name="single_role_thinking_prompt">Thinking prompt</string>
     <string name="single_role_manage_providers_and_models_here_characters_can_select_and_reorde">Manage providers and models here. Characters can select and reorder them under Chat models; otherwise, they use the default queue.</string>
     <string name="single_role_primary_model_in_default_queue">Primary model in default queue</string>
@@ -85,7 +85,7 @@
     <string name="single_role_only_affects_this_conversation">Only affects this conversation</string>
     <string name="single_role_chat_usage">Chat usage</string>
     <string name="single_role_view_content_included_in_the_last_request">View content included in the last request</string>
-    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">Enable both thinking display and character-perspective thinking to expand inner thoughts Beta in messages. Inner monologue in message text has a separate switch.</string>
+    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">Enable both thinking display and character-perspective thinking to expand inner thoughts Beta in messages.</string>
     <string name="single_role_context_breakdown_chart_locally_estimated_at_1_s_tokens">Context breakdown chart, locally estimated at %1$s tokens</string>
     <string name="single_role_select_1_s">Select %1$s</string>
     <string name="single_role_no_requests_recorded">No requests recorded</string>
@@ -225,7 +225,7 @@
     <string name="single_role_earlier_content">Earlier content</string>
     <string name="single_role_this_content_was_deleted">This content was deleted</string>
     <string name="single_role_saved_manually">Saved manually</string>
-    <string name="single_role_organized_automatically">Organized automatically</string>
+    <string name="single_role_organized_automatically">Summarized automatically</string>
     <string name="single_role_save_time_not_recorded">Save time not recorded</string>
     <string name="single_role_original_messages_for_this_memory">Original messages for this memory</string>
     <string name="single_role_no_original_messages_to_locate">No original messages to locate.</string>
@@ -241,7 +241,7 @@
     <string name="single_role_keep_memory">Keep memory</string>
     <string name="single_role_deleting">Deleting…</string>
     <string name="single_role_not_deleted_yet">Not deleted yet</string>
-    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">This memory and its revisions will be removed. Organization progress stays the same; new explicit statements may create new memories later.</string>
+    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">This memory will be voided and can be restored from revision history. Summary progress stays unchanged; new statements may create new memories.</string>
     <string name="single_role_memory_settings">Memory settings</string>
     <string name="single_role_retrieval_settings_all_single_session_characters">Retrieval settings · All single-session characters</string>
     <string name="single_role_keyword_search">Keyword search</string>
@@ -303,7 +303,7 @@
     <string name="single_role_these_memories_are_included_in_every_chat_use_the_top_right_menu">These memories are included in every chat. Use the top-right menu on a memory to remove it from core without deleting it. The model selects and updates them while organizing older chats; your manual choices take priority.</string>
     <string name="single_role_review_and_adjust_important_names_relationships_and_habits_at_any">Review and adjust important names, relationships, and habits at any time.</string>
     <string name="single_role_about_1_s_tokens_does_not_use_recall_quota">About %1$d tokens · Does not use recall quota</string>
-    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">Core memories exceed the target size and will still be included in full. Shorten or remove some before adding more.</string>
+    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">About 1000 tokens is a suggestion. You can keep or add memories and decide what to trim. Sending still depends on the model context limit.</string>
     <string name="single_role_memories_temporarily_unavailable">Memories temporarily unavailable</string>
     <string name="single_role_this_action_did_not_complete">This action did not complete</string>
     <string name="single_role_no_core_memories_yet_return_to_all_memories_and_choose_set_as_cor">No core memories yet. Return to all memories and choose Set as core memory from an item’s menu, or let the model select them during future organization.</string>

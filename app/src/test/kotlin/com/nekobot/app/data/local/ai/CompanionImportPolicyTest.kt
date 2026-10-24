@@ -23,5 +23,8 @@ class CompanionImportPolicyTest {
         assertTrue(CompanionImportPolicy.evidence(imported).contains("未验证"))
         assertFalse(imported.manual)
         assertEquals("玩家手动记录", CompanionImportPolicy.evidence(imported.copy(manual = true)))
+        val verified = imported.copy(provenance = CompanionImportPolicy.IMPORTED_VERIFIED)
+        assertTrue(CompanionImportPolicy.evidence(verified).contains("可核验"))
+        assertFalse(CompanionImportPolicy.evidence(verified).contains("玩家手动"))
     }
 }

@@ -15,18 +15,24 @@ internal data class CompanionRequestSnapshot(
 
 internal object CompanionRequestUsage {
     const val META = "_companion_accounting"
+    const val SYSTEM_SECTIONS = "_companion_system_sections"
     private val gson = Gson()
 
-    fun clean(message: Map<String, Any>): Map<String, Any> = message - META - CompanionRecallBudget.SOURCE_META
+    fun clean(message: Map<String, Any>): Map<String, Any> = message - META - SYSTEM_SECTIONS - CompanionRecallBudget.SOURCE_META -
+        CompanionReferences.META - CHARACTER_TURN_CONTEXT - CHARACTER_THINKING_RULE
 
     // 只给软件生成的辅助消息标记；用户仿写同样正文也仍属于用户消息。
     fun auxiliary(text: String): Map<String, Any> {
         fun section(header: String): Map<String, Int> {
-            val line = text.substringAfter(header, "").lineSequence().firstOrNull().orEmpty()
-            val count = runCatching { JsonParser.parseString(line).asJsonArray.size() }.getOrDefault(0)
-            return mapOf("tokens" to if (count == 0) 0 else estimateLocalTextTokens(line), "count" to count)
+            val block = text.substringAfter(header, "").substringBefore("\n\n")
+                .substringBefore("\n本轮相关记忆：").trim()
+            val legacy = runCatching { JsonParser.parseString(block.lineSequence().first()).asJsonArray }.getOrNull()
+            val body = if (legacy != null) block.lineSequence().first() else block
+            val count = runCatching { requireNotNull(legacy).size() }
+                .getOrElse { block.lineSequence().count(String::isNotBlank) }
+            return mapOf("tokens" to if (count == 0) 0 else estimateLocalTextTokens(body), "count" to count)
         }
-        return mapOf("role" to "user", "content" to text, META to mapOf(
+        return mapOf("role" to "system", "content" to text, META to mapOf(
             "core" to section("每次提供的核心记忆：\n"),
             "recall" to section("本轮相关记忆：\n")
         ))

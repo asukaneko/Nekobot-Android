@@ -77,9 +77,9 @@ class CompanionRecallStatusTest {
         assertEquals(FusedCompanionTools.READ_LIMIT, picked.size)
     }
 
-    @Test fun rulesExplainStatusWithoutScriptingWords() {
+    @Test fun rulesUseNaturalRecallWithoutTechnicalWords() {
         val rules = CompanionRecallBudget.QUERY_RULES
-        for (word in listOf("status", "rounds_left", "tokens_left", "quota_exhausted")) assertTrue(word, rules.contains(word))
+        for (word in listOf("status", "rounds_left", "tokens_left", "quota_exhausted")) assertFalse(word, rules.contains(word))
         assertFalse(rules.contains("本轮回查已结束"))
     }
 }

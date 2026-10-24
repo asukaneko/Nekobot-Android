@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="problem_diag_title">问题诊断包</string>
+    <string name="problem_diag_export">导出问题诊断包</string>
+    <string name="problem_diag_preview">预览诊断包</string>
+    <string name="problem_diag_range">问题范围</string>
+    <string name="problem_diag_reply">这条回复</string>
+    <string name="problem_diag_import">最近一次导入</string>
+    <string name="problem_diag_runtime">最近运行记录</string>
+    <string name="problem_diag_choose_reply">选择需要排查的回复</string>
+    <string name="problem_diag_selected_reply">已选择这条回复</string>
+    <string name="problem_diag_collect">自动整理</string>
+    <string name="problem_diag_app">应用版本与运行信息</string>
+    <string name="problem_diag_model">本次模型调用与错误</string>
+    <string name="problem_diag_recall">回查额度与工具执行</string>
+    <string name="problem_diag_sources">记忆来源、截断与筛选状态</string>
+    <string name="problem_diag_optional">可选附带内容</string>
+    <string name="problem_diag_include_text">附带本次排查所需文字</string>
+    <string name="problem_diag_text_note">回复范围可附带本次问答及已核对的资料；默认不附带正文，每次需重新选择。</string>
+    <string name="problem_diag_description">补充说明（选填）</string>
+    <string name="problem_diag_missing_note">旧记录可能不完整；缺少的证据会标明，不补造过去的过程。</string>
+    <string name="problem_diag_basic">基础诊断（未附带正文）</string>
+    <string name="problem_diag_with_text">已选择附带排查文字</string>
+    <string name="problem_diag_checks">帮助检查额度耗尽、查询为空、资料截断，以及模型或工具报错。</string>
+    <string name="problem_diag_evidence_only">这里整理可核对的证据，不自动断定问题原因。</string>
+    <string name="problem_diag_files">即将保存的内容（点击查看）</string>
+    <string name="problem_diag_text_present">已附带本次排查文字，请检查内容后分享。</string>
+    <string name="problem_diag_text_absent">本次聊天正文：未附带</string>
+    <string name="problem_diag_privacy">密钥与登录字段不导出，也不附带整库聊天。保存后由你决定是否发送；附带文字时请先检查。</string>
+    <string name="problem_diag_missing">有 %1$d 项记录限制，已列入“问题说明.txt”。</string>
+    <string name="problem_diag_save">保存诊断包（ZIP）</string>
+    <string name="problem_diag_adjust">返回调整</string>
+    <string name="problem_diag_saved">诊断包已保存；由你选择是否发送。</string>
+    <string name="problem_diag_failed">暂时无法完成。请确认所选回复和资料库未变化后重试；保存失败的文件可能不完整。</string>
+    <string name="problem_diag_no_replies">近期没有可选择的回复。也可在聊天里长按某条回复进入。</string>
+</resources>

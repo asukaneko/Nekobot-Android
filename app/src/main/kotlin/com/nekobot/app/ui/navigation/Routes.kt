@@ -20,6 +20,10 @@ object Routes {
     const val TOKENS = "tokens"
     const val MORE = "more"
     const val GLOBAL_SEARCH = "global_search"
+    const val MORE_MEMORY = "more_memory"
+    const val MORE_APPEARANCE = "more_appearance"
+    const val MORE_AI = "more_ai"
+    const val MORE_MAINTENANCE = "more_maintenance"
 
     // 详情页
     const val CHAT = "chat/{sessionId}"
@@ -173,6 +177,7 @@ object Routes {
 
     /** 运行诊断中心 */
     const val DIAGNOSTIC_CENTER = "diagnostic_center"
+    const val PROBLEM_DIAGNOSTIC = "problem_diagnostic"
 }
 
 data class BottomItem(

@@ -438,17 +438,22 @@ fun restoreContinueMessages(
     var markerMessage: Map<String, Any>? = null
 
     // 场景1：最后是 user "继续"，倒数第二是 can_continue 的 assistant
-    if (working.size >= 2) {
-        val last = working.last()
-        val secondLast = working[working.size - 2]
+    val conversationalIndices = working.indices.filter { index ->
+        !working[index].containsKey(CompanionRequestUsage.META) && !working[index].containsKey(CHARACTER_TURN_CONTEXT)
+    }
+    if (conversationalIndices.size >= 2) {
+        val lastIndex = conversationalIndices.last()
+        val previousIndex = conversationalIndices[conversationalIndices.lastIndex - 1]
+        val last = working[lastIndex]
+        val secondLast = working[previousIndex]
         if (last["role"] == "user" &&
             (last["content"] as? String ?: "").trim() == userContent.trim() &&
             secondLast["can_continue"] == true &&
             secondLast["tool_call_history"] != null
         ) {
             markerMessage = secondLast
-            working.removeAt(working.size - 1)
-            working.removeAt(working.size - 1)
+            working.removeAt(lastIndex)
+            working.removeAt(previousIndex)
         }
     }
 

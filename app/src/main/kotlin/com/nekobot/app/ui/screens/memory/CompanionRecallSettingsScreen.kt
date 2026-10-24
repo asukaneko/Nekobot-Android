@@ -145,9 +145,9 @@ internal fun CompanionRecallSettingsScreen(
             Spacer(Modifier.height(4.dp))
             // 显示和保存用户偏好；向量是否就绪只影响可操作性，运行时仍可回退关键词。
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(textResources.getString(R.string.single_role_memory_organization), style = MaterialTheme.typography.titleSmall)
-                InfoPopoverButton(textResources.getString(R.string.single_role_about_memory_organization), "consolidation-info", listOf(
-                    textResources.getString(R.string.single_role_organization_summarize_older_chats_into_memories), textResources.getString(R.string.single_role_recent_messages_are_reference_only_and_are_not_organized_yet), textResources.getString(R.string.single_role_organization_runs_in_the_background_without_interrupting_chat)))
+                Text(textResources.getString(R.string.memory_v2_batch_title), style = MaterialTheme.typography.titleSmall)
+                InfoPopoverButton(textResources.getString(R.string.memory_v2_batch_title), "consolidation-info", listOf(
+                    textResources.getString(R.string.memory_v2_batch_description)))
             }
             Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
                 Column {
@@ -163,12 +163,12 @@ internal fun CompanionRecallSettingsScreen(
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     LimitRow(textResources.getString(R.string.single_role_keep_recent_original_messages), "$recentLimit Token", !busy) { draftLimit = recentLimit.toString(); editingLimit = "recent" }
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    LimitRow(textResources.getString(R.string.single_role_organization_threshold), "$triggerLimit Token", !busy) { draftLimit = triggerLimit.toString(); editingLimit = "trigger" }
+                    LimitRow(textResources.getString(R.string.memory_v2_batch_title), "$triggerLimit Token", !busy) { draftLimit = triggerLimit.toString(); editingLimit = "trigger" }
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     LimitRow(textResources.getString(R.string.single_role_previous_memory_reference_limit), "$existingLimit Token", !busy) { draftLimit = existingLimit.toString(); editingLimit = "existing" }
                 }
             }
-            Text(textResources.getString(R.string.single_role_organization_runs_in_the_background_without_interrupting_chat_324), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(textResources.getString(R.string.memory_v2_batch_description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let { CompanionMemoryNotice(textResources.getString(R.string.single_role_settings_not_saved_yet), it) }
         }
     }
@@ -200,7 +200,7 @@ internal fun CompanionRecallSettingsScreen(
             else -> 256..64000
         }
         val number = draftLimit.toIntOrNull()
-        AlertDialog(onDismissRequest = { editingLimit = null }, title = { Text(when (kind) { "rounds" -> textResources.getString(R.string.single_role_maximum_recall_rounds); "perCall" -> textResources.getString(R.string.single_role_per_read_limit); "recent" -> textResources.getString(R.string.single_role_keep_recent_original_messages); "trigger" -> textResources.getString(R.string.single_role_organization_threshold); "existing" -> textResources.getString(R.string.single_role_previous_memory_reference_limit); else -> textResources.getString(R.string.single_role_total_material_limit) }) },
+        AlertDialog(onDismissRequest = { editingLimit = null }, title = { Text(when (kind) { "rounds" -> textResources.getString(R.string.single_role_maximum_recall_rounds); "perCall" -> textResources.getString(R.string.single_role_per_read_limit); "recent" -> textResources.getString(R.string.single_role_keep_recent_original_messages); "trigger" -> textResources.getString(R.string.memory_v2_batch_title); "existing" -> textResources.getString(R.string.single_role_previous_memory_reference_limit); else -> textResources.getString(R.string.single_role_total_material_limit) }) },
             text = { OutlinedTextField(draftLimit, { if (it.length <= 5 && it.all { c -> c in '0'..'9' }) draftLimit = it },
                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 isError = number == null || number !in range, supportingText = { Text(textResources.getString(R.string.single_role_enter_an_integer_from_1_s_to_2_s, range.first, range.last)) }) },

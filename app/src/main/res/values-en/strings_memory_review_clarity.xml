@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memory_review_partial">Some content needs verification</string>
+    <string name="memory_review_unlinked">No original messages linked</string>
+    <string name="memory_review_imported_origin">Imported data</string>
+</resources>

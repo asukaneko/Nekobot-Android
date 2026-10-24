@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_category_memory">Memory &amp; history</string>
+    <string name="more_category_memory_summary">Character memory, shared memory and state history</string>
+    <string name="more_category_appearance">Appearance &amp; stickers</string>
+    <string name="more_category_appearance_summary">Styles, relationship skins and stickers</string>
+    <string name="more_category_ai">AI &amp; extensions</string>
+    <string name="more_category_ai_summary">Models, accounts, generation and extensions</string>
+    <string name="more_category_app">App settings</string>
+    <string name="more_category_app_summary">Language, privacy, permissions, runtime and account</string>
+    <string name="more_category_maintenance">Maintenance tools</string>
+    <string name="more_category_maintenance_summary">Import, export, backups, databases and diagnostics</string>
+    <string name="more_ai_configuration">AI configuration</string>
+    <string name="more_ai_modules">Extensions</string>
+    <string name="more_extensions_summary">Automation, plugins, tools and playgrounds</string>
+    <string name="more_permissions_summary">Accessibility, notification and media permissions</string>
+    <string name="more_maintenance_diagnostics">Logs &amp; diagnostics</string>
+    <string name="more_maintenance_advanced">Advanced maintenance</string>
+    <string name="more_database_summary">Switch, import and manage local databases</string>
+    <string name="more_system_json_summary">Edit server system configuration JSON</string>
+</resources>

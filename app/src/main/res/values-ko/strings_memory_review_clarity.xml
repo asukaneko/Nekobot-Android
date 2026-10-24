@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memory_review_partial">일부 내용 확인 필요</string>
+    <string name="memory_review_unlinked">연결된 원문 없음</string>
+    <string name="memory_review_imported_origin">가져온 자료</string>
+</resources>

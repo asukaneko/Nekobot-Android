@@ -122,6 +122,9 @@ data class Session(
     val longConversationEnabled: Boolean? = null,
     @SerializedName(value = "companion_mode", alternate = ["companionMode"])
     val companionMode: Boolean? = null,
+    @SerializedName("companion_speaking_prompt") val companionSpeakingPrompt: String? = null,
+    @SerializedName("companion_thinking_prompt") val companionThinkingPrompt: String? = null,
+    @SerializedName("companion_thinking_enabled") val companionThinkingEnabled: Boolean? = null,
     /** 本地会话是否启用延迟回复。 */
     @SerializedName(value = "delay_reply_enabled", alternate = ["delayReplyEnabled"])
     val delayReplyEnabled: Boolean? = null,
@@ -135,6 +138,9 @@ data class Session(
         ?: name?.takeIf { it.isNotBlank() } ?: "未命名会话"
     /** 角色立绘 URL：优先 portrait，回退 characterAvatar */
     val portraitUrl: String? get() = portrait ?: characterAvatar
+
+    /** Role identity image, distinct from portraitUrl used by large artwork. */
+    val avatarUrl: String? get() = characterAvatarPath(characterAvatar, portrait)
 }
 
 data class CreateSessionRequest(

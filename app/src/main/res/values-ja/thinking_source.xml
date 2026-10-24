@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_thinking_source_title">思考フィールド</string>
+    <string name="settings_thinking_source_summary">思考を読み取る位置を指定</string>
+    <string name="thinking_source_intro">モデルによって思考の置き場所は異なります。専用フィールドに入れるものもあれば、返信本文に書き込むものもあります。そのモデルが使うフィールド名を入力してください。両方のマーカーを入力した場合のみ本文から思考を切り出します。空欄なら切り出しません。フィールドがすべて空欄の場合は既定の候補を使用します。</string>
+    <string name="thinking_source_fields_label">思考フィールド（カンマ区切り）</string>
+    <string name="thinking_source_fields_hint">順番に試します。例: reasoning_content, thinking_content, reasoning, thinking</string>
+    <string name="thinking_source_marker_start_label">開始マーカー</string>
+    <string name="thinking_source_marker_end_label">終了マーカー</string>
+    <string name="thinking_source_marker_hint">両方入力した場合のみ有効になります。本文の冒頭付近だけを照合し、見つからない場合はそのまま本文として扱います。</string>
+    <string name="thinking_source_save">保存</string>
+    <string name="thinking_source_reset">既定値に戻す</string>
+    <string name="thinking_source_saved">保存しました。次回のリクエストから反映されます</string>
+    <string name="thinking_source_reset_done">既定値に戻しました</string>
+</resources>

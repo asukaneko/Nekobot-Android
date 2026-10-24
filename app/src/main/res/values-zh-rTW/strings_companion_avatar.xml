@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="companion_avatar_change">更換頭像</string>
+    <string name="companion_avatar_title">裁剪角色頭像</string>
+    <string name="companion_avatar_hint">拖曳圖片調整位置，滑動縮放。儲存後同步聊天和會話清單。</string>
+    <string name="companion_avatar_save">儲存頭像</string>
+    <string name="companion_avatar_zoom">縮放</string>
+    <string name="companion_avatar_choose">重新選擇圖片</string>
+    <string name="companion_avatar_failed">無法讀取或儲存圖片，請重新選擇後重試。</string>
+</resources>

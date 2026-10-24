@@ -32,7 +32,7 @@ import com.nekobot.app.data.local.ai.CompanionCoreMemory
 import com.nekobot.app.data.local.ai.MemoryTags
 import com.nekobot.app.data.local.ai.estimateLocalTextTokens
 import com.nekobot.app.data.local.db.CompanionMemoryEntity
-import com.nekobot.app.data.local.db.CompanionSourceEntity
+import com.nekobot.app.data.local.ai.CompanionMemorySourceView
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -49,7 +49,7 @@ private fun MemoryPanel(
         dismissOnBackPress = !busy, dismissOnClickOutside = !busy,
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
-            .imePadding().padding(12.dp), contentAlignment = Alignment.Center) {
+            .imePadding().padding(20.dp), contentAlignment = Alignment.Center) {
             Surface(Modifier.widthIn(max = 600.dp).fillMaxWidth().heightIn(max = maxHeight),
                 shape = RoundedCornerShape(26.dp), color = MaterialTheme.colorScheme.surface) {
                 Column {
@@ -143,11 +143,14 @@ private fun MemoryOption(title: String, description: String, checked: Boolean, e
 }
 
 @Composable
-internal fun CompanionMemoryChanges(rows: List<CompanionMemoryEntity>, onDismiss: () -> Unit) {
+internal fun CompanionMemoryChanges(rows: List<CompanionMemoryEntity>, busy: Boolean, error: String?,
+    onDismiss: () -> Unit, onRestore: (CompanionMemoryEntity) -> Unit, onSource: (CompanionMemoryEntity) -> Unit) {
     val textResources = LocalResources.current
-    MemoryPanel(textResources.getString(R.string.single_role_revision_history), textResources.getString(R.string.single_role_view_earlier_versions_of_this_memory_opening_this_page_does_not_c), onDismiss = onDismiss,
-        actions = { TextButton(onClick = onDismiss) { Text(textResources.getString(R.string.character_got_it)) } }) { body ->
+    MemoryPanel(textResources.getString(R.string.single_role_revision_history), textResources.getString(R.string.single_role_view_earlier_versions_of_this_memory_opening_this_page_does_not_c), busy = busy, onDismiss = onDismiss,
+        actions = { TextButton(onClick = onDismiss, enabled = !busy) { Text(textResources.getString(R.string.character_got_it)) } }) { body ->
         LazyColumn(body.fillMaxWidth(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (busy) item("busy") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            error?.let { item("error") { Text(it, color = MaterialTheme.colorScheme.error) } }
             if (rows.isEmpty()) item { Text(textResources.getString(R.string.single_role_no_revision_history_available_yet)) }
             items(rows, key = { it.id }) { row ->
                 Surface(shape = RoundedCornerShape(18.dp), color = if (row.current)
@@ -155,6 +158,7 @@ internal fun CompanionMemoryChanges(rows: List<CompanionMemoryEntity>, onDismiss
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(when {
+                            row.voided -> textResources.getString(R.string.memory_v2_voided)
                             row.current -> textResources.getString(R.string.single_role_current_content)
                             row.status == "conflict" -> textResources.getString(R.string.single_role_content_awaiting_verification)
                             row.status == "locked_conflict" -> textResources.getString(R.string.single_role_content_awaiting_your_edits)
@@ -164,11 +168,35 @@ internal fun CompanionMemoryChanges(rows: List<CompanionMemoryEntity>, onDismiss
                         SelectionContainer { Text(row.content.ifBlank { textResources.getString(R.string.single_role_this_content_was_deleted) }, style = MaterialTheme.typography.bodyLarge) }
                         Text("${memorySavedTime(row.updatedAt, textResources.getString(R.string.single_role_save_time_not_recorded))} · ${if (row.manual) textResources.getString(R.string.single_role_saved_manually) else textResources.getString(R.string.single_role_organized_automatically)}",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (row.voided) {
+                            Text("${textResources.getString(R.string.memory_v2_void_reason)} · ${textResources.getString(memoryVoidReason(row.voidedReason))}",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${textResources.getString(R.string.memory_v2_void_time)} · ${memorySavedTime(row.voidedAt.orEmpty(), textResources.getString(R.string.single_role_save_time_not_recorded))}",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FilledTonalButton(onClick = { onRestore(row) }, enabled = !busy && row.content.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text(textResources.getString(R.string.memory_v2_restore))
+                            }
+                        }
+                        TextButton(onClick = { onSource(row) }, enabled = !busy) {
+                            Text(textResources.getString(R.string.memory_v2_source_title))
+                        }
                     }
                 }
             }
         }
     }
+}
+
+internal fun memoryVoidReason(reason: String?): Int = when (reason) {
+    "update" -> R.string.memory_v2_reason_update
+    "cancel" -> R.string.memory_v2_reason_cancel
+    "complete" -> R.string.memory_v2_reason_complete
+    "retract" -> R.string.memory_v2_reason_retract
+    "source_deleted" -> R.string.memory_v2_reason_source_deleted
+    "source_edited" -> R.string.memory_v2_reason_source_edited
+    "uncertain_confirmed" -> R.string.memory_v2_reason_uncertain_confirmed
+    else -> R.string.memory_v2_reason_user
 }
 
 private fun memorySavedTime(value: String, unrecorded: String): String = runCatching {
@@ -177,11 +205,11 @@ private fun memorySavedTime(value: String, unrecorded: String): String = runCatc
 
 @Composable
 internal fun CompanionMemorySources(
-    rows: List<CompanionSourceEntity>, memory: CompanionMemoryEntity?, ownerName: String,
+    rows: List<CompanionMemorySourceView>, memory: CompanionMemoryEntity?, ownerName: String,
     onDismiss: () -> Unit, onLocate: (String) -> Unit
 ) {
     val textResources = LocalResources.current
-    MemoryPanel(textResources.getString(R.string.single_role_original_messages_for_this_memory), if (rows.isEmpty()) textResources.getString(R.string.single_role_no_original_messages_to_locate)
+    MemoryPanel(textResources.getString(R.string.memory_v2_source_title), if (rows.isEmpty()) textResources.getString(R.string.single_role_no_original_messages_to_locate)
         else textResources.getString(R.string.single_role_this_memory_refers_to_1_s_original_messages_open_each_to_view_the, rows.size), onDismiss = onDismiss,
         actions = { TextButton(onClick = onDismiss) { Text(textResources.getString(R.string.common_close)) } }) { body ->
         LazyColumn(body.fillMaxWidth(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -190,6 +218,14 @@ internal fun CompanionMemorySources(
                 Text(it.content, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } }
+            if (rows.isNotEmpty() && memory?.provenance == CompanionImportPolicy.IMPORTED_UNVERIFIED) item("partial-sources") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(textResources.getString(R.string.imported_history_partial_sources_title),
+                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(textResources.getString(R.string.imported_history_partial_sources_message),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             if (rows.isEmpty()) item("empty") {
                 CompanionMemoryIntro(textResources.getString(R.string.single_role_no_original_messages_linked_yet), when {
                     memory?.manual == true -> textResources.getString(R.string.single_role_you_entered_this_memory_manually_it_has_no_linked_chat_sources)
@@ -197,7 +233,8 @@ internal fun CompanionMemorySources(
                     else -> textResources.getString(R.string.single_role_no_verifiable_chat_source_found_check_that_the_memory_is_accurate)
                 })
             }
-            items(rows, key = { it.messageId }) { source ->
+            items(rows, key = { it.source.messageId }) { view ->
+                val source = view.source
                 val isUser = source.role in setOf("user", "human")
                 Surface(shape = RoundedCornerShape(18.dp), color = if (isUser)
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
@@ -205,13 +242,17 @@ internal fun CompanionMemorySources(
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(if (isUser) textResources.getString(R.string.live_you) else ownerName.ifBlank { textResources.getString(R.string.nav_characters) },
                             style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = memoryAccent())
-                        SelectionContainer { Text(source.quote, style = MaterialTheme.typography.bodyLarge) }
-                        source.spokenDate?.takeIf(String::isNotBlank)?.let { Text(textResources.getString(R.string.single_role_message_date_1_s, it),
+                        if (view.originalDeleted) Text(textResources.getString(R.string.memory_v2_source_deleted),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (view.snapshot) Text(textResources.getString(R.string.memory_v2_source_snapshot),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SelectionContainer { Text(view.content, style = MaterialTheme.typography.bodyLarge) }
+                        source.spokenDate?.takeIf(String::isNotBlank)?.let { Text(textResources.getString(R.string.single_role_message_date_1_s, memoryDisplayDate(it)),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        TextButton(onClick = { onLocate(source.messageId) }, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                        if (!view.originalDeleted) TextButton(onClick = { onLocate(source.messageId) }, contentPadding = PaddingValues(horizontal = 0.dp)) {
                             Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(17.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(textResources.getString(R.string.single_role_go_to_this_message))
+                            Text(textResources.getString(R.string.memory_v2_source_locate))
                         }
                     }
                 }

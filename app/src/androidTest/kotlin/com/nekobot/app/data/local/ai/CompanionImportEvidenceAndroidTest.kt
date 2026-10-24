@@ -9,6 +9,30 @@ import org.junit.Test
 import java.time.Instant
 
 class CompanionImportEvidenceAndroidTest {
+    @Test fun verifiedImportedMemoryRequiresUnchangedSourceAndKeepsCoreFlag() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), NekobotDatabase::class.java).build()
+        try {
+            val stamp = "2026-01-01T00:00:00Z"
+            val session = LocalSessionEntity("source-session", "合成来源测试", characterId = "character", sessionMode = "agent",
+                inheritCharacter = true, longConversationEnabled = true, companionMode = true, createdAt = stamp, updatedAt = stamp)
+            db.sessionDao().upsert(session)
+            val store = CompanionMemoryStore(db)
+            val scope = store.ensureScope(session)
+            val message = LocalMessageEntity("source-message", session.id, "user", "合成原话：我喜欢茉莉茶。", timestamp = stamp, createdAt = stamp)
+            db.messageDao().upsert(message)
+            val memory = CompanionMemoryEntity("verified-memory", scope.id, "tea", 1, "fact", "玩家", "喜欢茉莉茶", "active",
+                alwaysProvide = true, provenance = CompanionImportPolicy.IMPORTED_VERIFIED, createdAt = stamp, updatedAt = stamp)
+            db.companionMemoryDao().saveMemory(memory)
+            assertTrue(store.validatedMemories(store.ensureScope(session)).isEmpty())
+            db.companionMemoryDao().saveSources(listOf(CompanionSourceEntity(memory.id, message.id,
+                CompanionMemoryPolicy.fingerprint(message), "我喜欢茉莉茶", "2026-01-01", "user")))
+            assertEquals(listOf(memory), store.validatedMemories(store.ensureScope(session)))
+            assertTrue(CompanionCoreMemory.contains(memory))
+            db.messageDao().upsert(message.copy(content = "后来修改了合成原话。"))
+            assertTrue(store.validatedMemories(store.ensureScope(session)).isEmpty())
+            assertTrue(requireNotNull(db.companionMemoryDao().versions(scope.id, "tea").singleOrNull()).alwaysProvide)
+        } finally { db.close() }
+    }
     @Test fun unverifiedTextIsIndependentLabeledAndExpiryRetiresCachedContext() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), NekobotDatabase::class.java).build()
         try {

@@ -1,0 +1,61 @@
+{"number": 1, "language": "zh", "text": "今天", "spoken": "2026-10-23", "expected": "2026-10-23", "originalExpected": "2026-10-23", "adjustment": null}
+{"number": 2, "language": "zh", "text": "明天", "spoken": "2026-10-23", "expected": "2026-10-24", "originalExpected": "2026-10-24", "adjustment": null}
+{"number": 3, "language": "zh", "text": "后天", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 4, "language": "zh", "text": "大后天", "spoken": "2026-10-23", "expected": "2026-10-26", "originalExpected": "2026-10-26", "adjustment": null}
+{"number": 5, "language": "zh", "text": "昨天", "spoken": "2026-10-23", "expected": "2026-10-22", "originalExpected": "2026-10-22", "adjustment": null}
+{"number": 6, "language": "zh", "text": "前天", "spoken": "2026-10-23", "expected": "2026-10-21", "originalExpected": "2026-10-21", "adjustment": null}
+{"number": 7, "language": "zh", "text": "下周三", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 8, "language": "zh", "text": "下星期三", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 9, "language": "zh", "text": "下礼拜三", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 10, "language": "zh", "text": "上周五", "spoken": "2026-10-23", "expected": "2026-10-16", "originalExpected": "2026-10-16", "adjustment": null}
+{"number": 11, "language": "zh", "text": "本周日", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 12, "language": "zh", "text": "这周六", "spoken": "2026-10-23", "expected": "2026-10-24", "originalExpected": "2026-10-24", "adjustment": null}
+{"number": 13, "language": "zh", "text": "下下周一", "spoken": "2026-10-23", "expected": "2026-11-02", "originalExpected": "2026-11-02", "adjustment": null}
+{"number": 14, "language": "zh", "text": "月底", "spoken": "2026-10-23", "expected": null, "originalExpected": "2026-10-31", "adjustment": "按改动文档：月末范围返回Unresolved"}
+{"number": 15, "language": "zh", "text": "下个月5号", "spoken": "2026-10-23", "expected": "2026-11-05", "originalExpected": "2026-11-05", "adjustment": null}
+{"number": 16, "language": "zh", "text": "10月12号", "spoken": "2026-10-23", "expected": "2026-10-12", "originalExpected": "2026-10-12", "adjustment": null}
+{"number": 17, "language": "zh", "text": "11月1日", "spoken": "2026-10-23", "expected": "2026-11-01", "originalExpected": "2026-11-01", "adjustment": null}
+{"number": 18, "language": "zh", "text": "3天后", "spoken": "2026-10-23", "expected": "2026-10-26", "originalExpected": "2026-10-26", "adjustment": null}
+{"number": 19, "language": "zh", "text": "两天前", "spoken": "2026-10-23", "expected": "2026-10-21", "originalExpected": "2026-10-21", "adjustment": null}
+{"number": 20, "language": "zh", "text": "2026年12月25日", "spoken": "2026-10-23", "expected": "2026-12-25", "originalExpected": "2026-12-25", "adjustment": null}
+{"number": 21, "language": "en", "text": "today", "spoken": "2026-10-23", "expected": "2026-10-23", "originalExpected": "2026-10-23", "adjustment": null}
+{"number": 22, "language": "en", "text": "tomorrow", "spoken": "2026-10-23", "expected": "2026-10-24", "originalExpected": "2026-10-24", "adjustment": null}
+{"number": 23, "language": "en", "text": "yesterday", "spoken": "2026-10-23", "expected": "2026-10-22", "originalExpected": "2026-10-22", "adjustment": null}
+{"number": 24, "language": "en", "text": "the day after tomorrow", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 25, "language": "en", "text": "next Wednesday", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 26, "language": "en", "text": "last Friday", "spoken": "2026-10-23", "expected": "2026-10-16", "originalExpected": "2026-10-16", "adjustment": null}
+{"number": 27, "language": "en", "text": "this Sunday", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 28, "language": "en", "text": "in 3 days", "spoken": "2026-10-23", "expected": "2026-10-26", "originalExpected": "2026-10-26", "adjustment": null}
+{"number": 29, "language": "en", "text": "2 days ago", "spoken": "2026-10-23", "expected": "2026-10-21", "originalExpected": "2026-10-21", "adjustment": null}
+{"number": 30, "language": "en", "text": "October 12", "spoken": "2026-10-23", "expected": "2026-10-12", "originalExpected": "2026-10-12", "adjustment": null}
+{"number": 31, "language": "en", "text": "Nov 5th", "spoken": "2026-10-23", "expected": "2026-11-05", "originalExpected": "2026-11-05", "adjustment": null}
+{"number": 32, "language": "en", "text": "end of the month", "spoken": "2026-10-23", "expected": null, "originalExpected": "2026-10-31", "adjustment": "按改动文档：月末范围返回Unresolved"}
+{"number": 33, "language": "en", "text": "12/25/2026", "spoken": "2026-10-23", "expected": "2026-12-25", "originalExpected": "2026-12-25", "adjustment": null}
+{"number": 34, "language": "ja", "text": "今日", "spoken": "2026-10-23", "expected": "2026-10-23", "originalExpected": "2026-10-23", "adjustment": null}
+{"number": 35, "language": "ja", "text": "明日", "spoken": "2026-10-23", "expected": "2026-10-24", "originalExpected": "2026-10-24", "adjustment": null}
+{"number": 36, "language": "ja", "text": "明後日", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 37, "language": "ja", "text": "昨日", "spoken": "2026-10-23", "expected": "2026-10-22", "originalExpected": "2026-10-22", "adjustment": null}
+{"number": 38, "language": "ja", "text": "一昨日", "spoken": "2026-10-23", "expected": "2026-10-21", "originalExpected": "2026-10-21", "adjustment": null}
+{"number": 39, "language": "ja", "text": "来週の水曜日", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 40, "language": "ja", "text": "来週水曜日", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 41, "language": "ja", "text": "先週の金曜日", "spoken": "2026-10-23", "expected": "2026-10-16", "originalExpected": "2026-10-16", "adjustment": null}
+{"number": 42, "language": "ja", "text": "今週の日曜日", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 43, "language": "ja", "text": "10月12日", "spoken": "2026-10-23", "expected": "2026-10-12", "originalExpected": "2026-10-12", "adjustment": null}
+{"number": 44, "language": "ja", "text": "3日後", "spoken": "2026-10-23", "expected": "2026-10-26", "originalExpected": "2026-10-26", "adjustment": null}
+{"number": 45, "language": "ja", "text": "2日前", "spoken": "2026-10-23", "expected": "2026-10-21", "originalExpected": "2026-10-21", "adjustment": null}
+{"number": 46, "language": "ja", "text": "月末", "spoken": "2026-10-23", "expected": null, "originalExpected": "2026-10-31", "adjustment": "按改动文档：月末范围返回Unresolved"}
+{"number": 47, "language": "ja", "text": "来月5日", "spoken": "2026-10-23", "expected": "2026-11-05", "originalExpected": "2026-11-05", "adjustment": null}
+{"number": 48, "language": "ko", "text": "오늘", "spoken": "2026-10-23", "expected": "2026-10-23", "originalExpected": "2026-10-23", "adjustment": null}
+{"number": 49, "language": "ko", "text": "내일", "spoken": "2026-10-23", "expected": "2026-10-24", "originalExpected": "2026-10-24", "adjustment": null}
+{"number": 50, "language": "ko", "text": "모레", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 51, "language": "ko", "text": "어제", "spoken": "2026-10-23", "expected": "2026-10-22", "originalExpected": "2026-10-22", "adjustment": null}
+{"number": 52, "language": "ko", "text": "그저께", "spoken": "2026-10-23", "expected": "2026-10-21", "originalExpected": "2026-10-21", "adjustment": null}
+{"number": 53, "language": "ko", "text": "다음 주 수요일", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 54, "language": "ko", "text": "다음주 수요일", "spoken": "2026-10-23", "expected": "2026-10-28", "originalExpected": "2026-10-28", "adjustment": null}
+{"number": 55, "language": "ko", "text": "지난주 금요일", "spoken": "2026-10-23", "expected": "2026-10-16", "originalExpected": "2026-10-16", "adjustment": null}
+{"number": 56, "language": "ko", "text": "이번 주 일요일", "spoken": "2026-10-23", "expected": "2026-10-25", "originalExpected": "2026-10-25", "adjustment": null}
+{"number": 57, "language": "ko", "text": "10월 12일", "spoken": "2026-10-23", "expected": "2026-10-12", "originalExpected": "2026-10-12", "adjustment": null}
+{"number": 58, "language": "ko", "text": "3일 후", "spoken": "2026-10-23", "expected": "2026-10-26", "originalExpected": "2026-10-26", "adjustment": null}
+{"number": 59, "language": "ko", "text": "2일 전", "spoken": "2026-10-23", "expected": "2026-10-21", "originalExpected": "2026-10-21", "adjustment": null}
+{"number": 60, "language": "ko", "text": "월말", "spoken": "2026-10-23", "expected": null, "originalExpected": "2026-10-31", "adjustment": "按改动文档：月末范围返回Unresolved"}
+{"number": 61, "language": "ko", "text": "다음 달 5일", "spoken": "2026-10-23", "expected": "2026-11-05", "originalExpected": "2026-11-05", "adjustment": null}

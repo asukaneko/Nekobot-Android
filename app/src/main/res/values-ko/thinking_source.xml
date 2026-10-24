@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_thinking_source_title">사고 필드</string>
+    <string name="settings_thinking_source_summary">사고를 읽어올 위치 지정</string>
+    <string name="thinking_source_intro">모델마다 사고를 두는 위치가 다릅니다. 전용 필드에 넣는 모델도 있고, 답변 본문에 적는 모델도 있습니다. 해당 모델이 사용하는 필드 이름을 입력하세요. 두 마커를 모두 입력해야 본문에서 사고를 잘라냅니다. 비워 두면 잘라내지 않습니다. 필드를 모두 비우면 기본 후보를 사용합니다.</string>
+    <string name="thinking_source_fields_label">사고 필드(쉼표로 구분)</string>
+    <string name="thinking_source_fields_hint">순서대로 시도합니다. 예: reasoning_content, thinking_content, reasoning, thinking</string>
+    <string name="thinking_source_marker_start_label">시작 마커</string>
+    <string name="thinking_source_marker_end_label">끝 마커</string>
+    <string name="thinking_source_marker_hint">둘 다 입력해야 활성화됩니다. 본문 시작 부분 근처에서만 일치하며, 찾지 못하면 그대로 본문으로 표시합니다.</string>
+    <string name="thinking_source_save">저장</string>
+    <string name="thinking_source_reset">기본값 복원</string>
+    <string name="thinking_source_saved">저장했습니다. 다음 요청부터 적용됩니다</string>
+    <string name="thinking_source_reset_done">기본값으로 복원했습니다</string>
+</resources>

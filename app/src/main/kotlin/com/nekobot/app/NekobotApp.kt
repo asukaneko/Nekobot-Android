@@ -15,6 +15,7 @@ import com.nekobot.app.data.local.recoverPendingLocalWebDavRestore
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
+import com.nekobot.app.data.local.ai.ThinkingSourceSettings
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.plugin.PluginGrants
@@ -296,6 +297,9 @@ object ServiceContainer {
     fun init(app: Application) {
         appContext = app.applicationContext
         prefs = PrefsManager(app)
+        // 「思考内容来源」配置由设置页写入 PrefsManager，协议解析层通过这里读取。
+        ThinkingSourceSettings.install { prefs.thinkingSourceConfig() }
+        com.nekobot.app.data.local.recoverPendingPortableImport(app)
         realtimeCredentialStore = RealtimeCredentialStore(app)
         bindGlobalAgentMemory(app, prefs.activeDbName)
         prefs.migrateSensitivePreferences()
@@ -389,7 +393,8 @@ object ServiceContainer {
     }
 
     /** 切换本地 db profile：重建 LocalRepository/UnifiedRepository，广播全局刷新。 */
-    fun switchLocalDb(profileName: String) {
+    fun switchLocalDb(profileName: String, portableImportOwner: Boolean = false) {
+        com.nekobot.app.data.local.PortableImportGate.requireSwitchAllowed(profileName, portableImportOwner)
         appContext?.let { ctx ->
             prefs.activeDbName = profileName
             localAutomationSyncJob?.cancel()

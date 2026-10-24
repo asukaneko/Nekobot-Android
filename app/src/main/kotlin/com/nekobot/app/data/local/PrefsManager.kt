@@ -10,6 +10,8 @@ import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.BrowserUserAgentMode
 import com.nekobot.app.data.local.ai.CustomToolSetModeRecord
 import com.nekobot.app.data.local.ai.LocalBrowserConfig
+import com.nekobot.app.data.local.ai.ThinkingSourceConfig
+import com.nekobot.app.data.local.ai.parseThinkingSourceFields
 import com.nekobot.app.data.local.ai.ToolSetModeCatalog
 import com.nekobot.app.data.local.ai.decodeToolSet
 import com.nekobot.app.data.local.ai.encodeToolSet
@@ -1455,12 +1457,26 @@ class PrefsManager(context: Context) {
         prefs.edit().putBoolean(companionRecallKey(profile, sessionId) + ":show_reasoning", show).apply()
     }
 
-    /** Display only: hides （内心：...） blocks in bubbles; default shown, never changes prompts or message text. */
+    /**
+     * 2026-10-22 用户决定：取消“隐藏内心独白”，恒定显示。
+     *
+     * 返回值恒为 true。旧配置里 `:show_inner_monologue` 存的 true / false / 缺失、
+     * 甚至被外部改坏成别的类型，都不再影响显示，也不迁移、不清理、不报错。
+     * 读取只是为了兼容旧设置文件的读取路径（读不出来就当作没有旧值），不会改变结果。
+     */
     internal fun companionShowInnerMonologue(profile: String, sessionId: String): Boolean =
-        prefs.getBoolean(companionRecallKey(profile, sessionId) + ":show_inner_monologue", true)
+        innerMonologueAlwaysVisible(
+            runCatching {
+                prefs.getBoolean(companionRecallKey(profile, sessionId) + ":show_inner_monologue", true)
+            }.getOrNull()
+        )
 
-    internal fun setCompanionShowInnerMonologue(profile: String, sessionId: String, show: Boolean) {
-        prefs.edit().putBoolean(companionRecallKey(profile, sessionId) + ":show_inner_monologue", show).apply()
+    /** “对话示例已停用”提示只显示一次；用户点“不再提示”后永久隐藏。 */
+    internal fun companionExamplesNoticeDismissed(profile: String, sessionId: String): Boolean =
+        prefs.getBoolean(companionRecallKey(profile, sessionId) + ":examples_notice_dismissed", false)
+
+    internal fun setCompanionExamplesNoticeDismissed(profile: String, sessionId: String, dismissed: Boolean) {
+        prefs.edit().putBoolean(companionRecallKey(profile, sessionId) + ":examples_notice_dismissed", dismissed).apply()
     }
 
     internal fun companionRelationshipNoticeToken(profile: String, sessionId: String): String? =
@@ -1506,8 +1522,52 @@ class PrefsManager(context: Context) {
             .apply()
     }
 
+    // ==================== 思考内容来源 ====================
+
+    /**
+     * 读取「思考内容来源」全局配置。
+     *
+     * 字段按英文逗号切分并 trim、去空、去重；全空回退默认候选。
+     * 两个标记只做 trim，保留原文（不去引号），玩家填什么就按什么匹配。
+     */
+    fun thinkingSourceConfig(): ThinkingSourceConfig {
+        val defaultFields = ThinkingSourceConfig.DEFAULT_FIELDS
+        val rawFields = prefs.getString(
+            KEY_THINKING_SOURCE_FIELDS,
+            defaultFields.joinToString(",")
+        ).orEmpty()
+        return ThinkingSourceConfig(
+            fields = parseThinkingSourceFields(rawFields),
+            markerStart = prefs.getString(KEY_THINKING_SOURCE_MARKER_START, "").orEmpty().trim(),
+            markerEnd = prefs.getString(KEY_THINKING_SOURCE_MARKER_END, "").orEmpty().trim()
+        )
+    }
+
+    fun saveThinkingSourceConfig(config: ThinkingSourceConfig) {
+        prefs.edit()
+            .putString(KEY_THINKING_SOURCE_FIELDS, config.fields.joinToString(","))
+            .putString(KEY_THINKING_SOURCE_MARKER_START, config.markerStart.trim())
+            .putString(KEY_THINKING_SOURCE_MARKER_END, config.markerEnd.trim())
+            .apply()
+    }
+
+    /** 恢复默认：删除三个键，读取时自动回落到默认候选与空标记。 */
+    fun resetThinkingSourceConfig() {
+        prefs.edit()
+            .remove(KEY_THINKING_SOURCE_FIELDS)
+            .remove(KEY_THINKING_SOURCE_MARKER_START)
+            .remove(KEY_THINKING_SOURCE_MARKER_END)
+            .apply()
+    }
+
     companion object {
         private const val PREF_NAME = "nekobot_prefs"
+
+        internal fun readLegacyCharacterThinking(context: Context) =
+            CharacterThinkingPreferences(context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)).read()
+        private const val KEY_THINKING_SOURCE_FIELDS = "thinking_source_fields"
+        private const val KEY_THINKING_SOURCE_MARKER_START = "thinking_source_marker_start"
+        private const val KEY_THINKING_SOURCE_MARKER_END = "thinking_source_marker_end"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_TOKEN = "auth_token"
         private const val KEY_USERNAME = "username"
@@ -1801,3 +1861,12 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_LANGUAGE, value).apply()
         }
 }
+
+/**
+ * 正文内心独白的显示判定（2026-10-22 用户决定：取消开关，恒定显示）。
+ *
+ * 旧的「显示内心独白」偏好值（true / false / 缺失 / 读不出来）一律忽略，结果恒为 true；
+ * 不做数据迁移、不清理旧键、不把旧值当错误。参数保留只为说明“旧值不影响结果”。
+ */
+@Suppress("UNUSED_PARAMETER")
+internal fun innerMonologueAlwaysVisible(legacyStored: Boolean?): Boolean = true

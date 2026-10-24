@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="problem_diag_title">問題診斷包</string>
+    <string name="problem_diag_export">匯出問題診斷包</string>
+    <string name="problem_diag_preview">預覽診斷包</string>
+    <string name="problem_diag_range">問題範圍</string>
+    <string name="problem_diag_reply">這則回覆</string>
+    <string name="problem_diag_import">最近一次匯入</string>
+    <string name="problem_diag_runtime">最近執行記錄</string>
+    <string name="problem_diag_choose_reply">選擇需要排查的回覆</string>
+    <string name="problem_diag_selected_reply">已選擇這則回覆</string>
+    <string name="problem_diag_collect">自動整理</string>
+    <string name="problem_diag_app">應用程式版本與執行資訊</string>
+    <string name="problem_diag_model">本次模型呼叫與錯誤</string>
+    <string name="problem_diag_recall">回查額度與工具執行</string>
+    <string name="problem_diag_sources">記憶來源、截斷與篩選狀態</string>
+    <string name="problem_diag_optional">可選附帶內容</string>
+    <string name="problem_diag_include_text">附帶本次排查所需文字</string>
+    <string name="problem_diag_text_note">回覆範圍可附帶本次問答及已核對的資料；預設不附帶正文，每次需重新選擇。</string>
+    <string name="problem_diag_description">補充說明（選填）</string>
+    <string name="problem_diag_missing_note">舊記錄可能不完整；缺少的證據會標明，不補造過去的過程。</string>
+    <string name="problem_diag_basic">基礎診斷（未附帶正文）</string>
+    <string name="problem_diag_with_text">已選擇附帶排查文字</string>
+    <string name="problem_diag_checks">協助檢查額度耗盡、查詢為空、資料截斷，以及模型或工具錯誤。</string>
+    <string name="problem_diag_evidence_only">這裡整理可核對的證據，不自動斷定問題原因。</string>
+    <string name="problem_diag_files">即將儲存的內容（點擊查看）</string>
+    <string name="problem_diag_text_present">已附帶本次排查文字，請檢查內容後分享。</string>
+    <string name="problem_diag_text_absent">本次聊天正文：未附帶</string>
+    <string name="problem_diag_privacy">金鑰與登入欄位不匯出，也不附帶整庫聊天。儲存後由你決定是否傳送；附帶文字時請先檢查。</string>
+    <string name="problem_diag_missing">有 %1$d 項記錄限制，已列入「問題說明.txt」。</string>
+    <string name="problem_diag_save">儲存診斷包（ZIP）</string>
+    <string name="problem_diag_adjust">返回調整</string>
+    <string name="problem_diag_saved">診斷包已儲存；由你選擇是否傳送。</string>
+    <string name="problem_diag_failed">暫時無法完成。請確認所選回覆和資料庫未變化後重試；儲存失敗的檔案可能不完整。</string>
+    <string name="problem_diag_no_replies">近期沒有可選擇的回覆。也可在聊天裡長按某則回覆進入。</string>
+</resources>

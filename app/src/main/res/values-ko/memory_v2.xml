@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memory_v2_summarizing">기억을 요약하는 중…</string>
+    <string name="memory_v2_batch_title">기억 요약 묶음 크기</string>
+    <string name="memory_v2_batch_description">요약하지 않은 메시지를 담을 공간이 부족하면 가장 오래된 대화 턴부터 이 토큰 수를 기준으로 요약합니다.</string>
+    <string name="memory_v2_source_title">원본 메시지</string>
+    <string name="memory_v2_source_deleted">원본 메시지가 삭제되었습니다</string>
+    <string name="memory_v2_source_snapshot">저장된 원본 메시지 사본</string>
+    <string name="memory_v2_source_locate">원본 메시지 보기</string>
+    <string name="memory_v2_voided">무효화된 기억</string>
+    <string name="memory_v2_void_reason">무효화 사유</string>
+    <string name="memory_v2_void_time">무효화 시각</string>
+    <string name="memory_v2_restore">복원</string>
+    <string name="memory_v2_reason_update">새 버전으로 업데이트됨</string>
+    <string name="memory_v2_reason_cancel">취소됨</string>
+    <string name="memory_v2_reason_complete">완료됨</string>
+    <string name="memory_v2_reason_retract">철회됨</string>
+    <string name="memory_v2_reason_source_deleted">출처 메시지가 삭제됨</string>
+    <string name="memory_v2_reason_source_edited">출처 메시지가 수정됨</string>
+    <string name="memory_v2_reason_uncertain_confirmed">새 내용이 확인됨</string>
+    <string name="memory_v2_reason_user">사용자가 수정하거나 삭제함</string>
+    <string name="memory_v2_linked_title">연결된 기억</string>
+    <string name="memory_v2_delete_question">이 메시지에 연결된 기억도 함께 삭제할까요?</string>
+    <string name="memory_v2_edit_question">메시지가 수정되었습니다. 연결된 기억도 함께 삭제할까요?</string>
+    <string name="memory_v2_regenerate_question">이 메시지와 이후 대화에 연결된 기억도 함께 삭제할까요?</string>
+    <string name="memory_v2_delete_together">함께 삭제</string>
+    <string name="memory_v2_keep_delete">메시지만 삭제하고 기억 유지</string>
+    <string name="memory_v2_keep_edit">기억을 유지하고 계속 수정</string>
+    <string name="memory_v2_cancel">취소</string>
+    <string name="memory_v2_more">%1$d개 더 보기</string>
+    <string name="memory_v2_collapse">목록 접기</string>
+    <string name="memory_v2_bulk_delete_question">선택한 메시지에 연결된 기억도 함께 삭제할까요?</string>
+    <string name="memory_v2_review_title">직접 확인해 주세요</string>
+    <string name="memory_v2_review_question">잠긴 기억이 새로 확인된 내용과 다릅니다. 어떻게 처리할까요?</string>
+    <string name="memory_v2_locked">나만 수정 가능</string>
+    <string name="memory_v2_confirmed">새로 확인된 기억</string>
+    <string name="memory_v2_edit">수정</string>
+    <string name="memory_v2_delete_locked">이 잠긴 기억 삭제</string>
+    <string name="memory_v2_keep">그대로 유지</string>
+    <string name="memory_v2_save">변경 사항 저장</string>
+    <string name="memory_v2_cancel_edit">수정 취소</string>
+</resources>

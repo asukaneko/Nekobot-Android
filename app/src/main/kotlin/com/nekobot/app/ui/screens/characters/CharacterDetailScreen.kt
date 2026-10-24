@@ -76,6 +76,12 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
 
     private val _character = MutableStateFlow<CharacterPreset?>(null)
     val character: StateFlow<CharacterPreset?> = _character.asStateFlow()
+    internal val examplePairs = MutableStateFlow<List<com.nekobot.app.data.local.ai.CompanionExample>>(emptyList())
+    internal val examplesState = MutableStateFlow("disabled")
+    internal val examplesVisible = MutableStateFlow(false)
+    private var savedExamplePairs = emptyList<com.nekobot.app.data.local.ai.CompanionExample>()
+    private var examplesSessionId: String? = null
+    private var examplesJob: kotlinx.coroutines.Job? = null
     val companionRole = MutableStateFlow<Boolean?>(if (isNew) false else null)
     private var originalInitialState: com.google.gson.JsonObject? = null
 
@@ -114,7 +120,24 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
         companionRole.value = null
         launchResult(
             block = {
-                val companion = isLocalMode && ServiceContainer.localRepository.companionSessionForCharacter(id) != null
+                val ownedSession = if (isLocalMode) ServiceContainer.localRepository.companionSessionForCharacter(id) else null
+                val companion = ownedSession != null
+                examplesSessionId = ownedSession
+                val examples = ownedSession?.let { ServiceContainer.localRepository.companionExamples(it) }
+                examplePairs.value = examples?.let { com.nekobot.app.data.local.ai.CompanionExamplesPolicy.read(it.pairsJson) }.orEmpty()
+                examplesState.value = examples?.state ?: "disabled"
+                examplesVisible.value = com.nekobot.app.data.local.ai.CompanionExamplesPolicy.editorVisible(examples)
+                savedExamplePairs = examplePairs.value
+                examplesJob?.cancel()
+                examplesJob = ownedSession?.let { sessionId -> viewModelScope.launch {
+                    ServiceContainer.localRepository.observeCompanionExamples(sessionId).collect { current ->
+                        val pairs = current?.let { com.nekobot.app.data.local.ai.CompanionExamplesPolicy.read(it.pairsJson) }.orEmpty()
+                        if (examplePairs.value == savedExamplePairs) examplePairs.value = pairs
+                        savedExamplePairs = pairs
+                        examplesState.value = current?.state ?: "disabled"
+                        examplesVisible.value = com.nekobot.app.data.local.ai.CompanionExamplesPolicy.editorVisible(current)
+                    }
+                } }
                 unified.getCharacter(id).also { if (it is Resource.Success) companionRole.value = companion }
             },
             onSuccess = { c ->
@@ -205,7 +228,14 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
         } else {
             val id = _character.value?.id ?: return
             launchResult(
-                block = { unified.updateCharacter(id, json) },
+                block = {
+                    val result = unified.updateCharacter(id, json)
+                    if (result is Resource.Success && examplesVisible.value && examplePairs.value != savedExamplePairs) examplesSessionId?.let {
+                        ServiceContainer.localRepository.saveCompanionExamples(it, examplePairs.value)
+                        savedExamplePairs = examplePairs.value
+                    }
+                    result
+                },
                 onSuccess = {
                     portrait.value = portraitToSave
                     _generatedPortrait.value = null
@@ -401,6 +431,9 @@ fun CharacterDetailScreen(
     val firstMessage by vm.firstMessage.collectAsStateWithLifecycle()
     val scenario by vm.scenario.collectAsStateWithLifecycle()
     val dialogExamples by vm.dialogExamples.collectAsStateWithLifecycle()
+    val examplePairs by vm.examplePairs.collectAsStateWithLifecycle()
+    val examplesState by vm.examplesState.collectAsStateWithLifecycle()
+    val examplesVisible by vm.examplesVisible.collectAsStateWithLifecycle()
     val responseFormat by vm.responseFormat.collectAsStateWithLifecycle()
     val rulesText by vm.rulesText.collectAsStateWithLifecycle()
     val systemPrompt by vm.systemPrompt.collectAsStateWithLifecycle()
@@ -592,8 +625,10 @@ fun CharacterDetailScreen(
                     label = stringResource(R.string.character_scenario), value = scenario, onValueChange = { vm.scenario.value = it },
                     singleLine = false
                 )
-                // 对话示例
-                LabeledField(
+                // 单会话示例独立保存，普通角色保留原有自由文本。
+                if (companionRole == true) {
+                    if (examplesVisible) com.nekobot.app.ui.screens.chat.CompanionExamplesEditor(name, examplePairs, examplesState) { vm.examplePairs.value = it }
+                } else LabeledField(
                     label = stringResource(R.string.character_dialog_examples_label),
                     value = dialogExamples, onValueChange = { vm.dialogExamples.value = it },
                     singleLine = false

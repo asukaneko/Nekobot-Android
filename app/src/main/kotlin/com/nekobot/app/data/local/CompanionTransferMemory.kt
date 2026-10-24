@@ -1,6 +1,5 @@
 package com.nekobot.app.data.local
 
-import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.nekobot.app.data.local.ai.*
 import com.nekobot.app.data.local.db.*
@@ -8,6 +7,10 @@ import java.io.File
 import java.time.Instant
 
 internal data class TransferMemorySelection(val accepted: Int, val skipped: Map<String, Int>)
+
+/** 新版迁入保留所有历史行，current/voided决定是否参与回复，不再物理丢弃旧版本。 */
+internal fun retainedCompanionMemoryIds(rows: Collection<JsonObject>): Set<String> =
+    rows.map { requireNotNull(it.text("id")) }.toSet()
 
 /** 只写新范围的独立正文；旧路径和旧 ID 留在备份，不参与运行时召回。 */
 internal class CompanionTransferMemory(private val db: NekobotDatabase, private val sourceDb: NekobotDatabase = db) {
@@ -37,13 +40,14 @@ internal class CompanionTransferMemory(private val db: NekobotDatabase, private 
         val sql = db.openHelper.writableDatabase
         val memoryRows = transferRows(directory, "companion_memories").associateBy { requireNotNull(it.text("id")) }
         val sourceRows = transferRows(directory, "companion_sources").groupBy { requireNotNull(it.text("memoryId")) }
-        val gson = Gson()
-        for ((oldId, original) in memoryRows) {
+        val retainedIds = retainedCompanionMemoryIds(memoryRows.values)
+        for ((oldId, original) in memoryRows.filterKeys { it in retainedIds }) {
             val row = rewrite(original, snapshot.sourceId)
             val copiedId = id("memory", oldId)
             val oldScopeId = requireNotNull(row.text("scopeId"))
             row.addProperty("id", copiedId); row.addProperty("scopeId", scope.id)
             row.addProperty("factKey", "${id("scope", oldScopeId)}:${row.text("factKey")}")
+            for (column in listOf("supersededById", "uncertainTargetId")) row.text(column)?.let { row.addProperty(column, id("memory", it)) }
             var evidenceValid = row.flag("manual") || row.text("provenance") == CompanionImportPolicy.IMPORTED_UNVERIFIED
             val sources = sourceRows[oldId].orEmpty()
             if (sources.isNotEmpty()) evidenceValid = true
@@ -51,16 +55,22 @@ internal class CompanionTransferMemory(private val db: NekobotDatabase, private 
             for (source in sources) {
                 val originalMessage = source.text("messageId")?.let { sourceDb.messageDao().getById(it) }
                 val newMessage = source.text("messageId")?.let { db.messageDao().getById(id("message", it)) }
-                val quote = rewrite(source, originalMessage?.sessionId ?: snapshot.sourceId).text("quote").orEmpty()
+                val rewritten = rewrite(source, originalMessage?.sessionId ?: snapshot.sourceId)
+                val quote = rewritten.text("quote").orEmpty()
+                val originalSnapshot = source.text("messageSnapshot")
+                val copiedSnapshot = rewritten.text("messageSnapshot")
+                val evidence = originalSnapshot ?: originalMessage?.content
                 if (originalMessage == null || newMessage == null || originalMessage.sessionId !in snapshot.sessionIds ||
-                    originalMessage.deleted || originalMessage.role != source.text("role") ||
-                    CompanionMemoryPolicy.fingerprint(originalMessage) != source.text("fingerprint") ||
-                    !originalMessage.content.contains(source.text("quote").orEmpty()) || quote.isBlank() || !newMessage.content.contains(quote)) {
+                    originalMessage.role != source.text("role") || evidence == null ||
+                    CompanionMemoryPolicy.fingerprint(originalMessage.copy(content = evidence, deleted = false)) != source.text("fingerprint") ||
+                    (originalSnapshot == null && (originalMessage.deleted || quote.isBlank() || !newMessage.content.contains(quote)))) {
                     evidenceValid = false
                     continue
                 }
-                newSources += CompanionSourceEntity(copiedId, newMessage.id, CompanionMemoryPolicy.fingerprint(newMessage),
-                    quote, source.text("spokenDate"), newMessage.role)
+                val snapshotBody = copiedSnapshot ?: newMessage.content
+                newSources += CompanionSourceEntity(copiedId, newMessage.id,
+                    CompanionMemoryPolicy.fingerprint(newMessage.copy(content = snapshotBody, deleted = false)),
+                    quote, source.text("spokenDate"), newMessage.role, snapshotBody)
             }
             if (!evidenceValid && !row.flag("manual")) row.addProperty("valid", 0)
             sql.insertTransfer("companion_memories", row)
@@ -87,12 +97,22 @@ internal class CompanionTransferMemory(private val db: NekobotDatabase, private 
             if (db.messageDao().getById(messageId) != null) dao.saveForgotten(listOf(CompanionForgottenSourceEntity(scope.id, messageId)))
         }
         for (row in transferRows(directory, "companion_clarifications")) {
+            if (row.text("memoryId") !in retainedIds) continue
             val oldMemory = memoryRows[row.text("memoryId")] ?: continue
             row.addProperty("scopeId", scope.id)
             row.addProperty("factKey", "${id("scope", requireNotNull(oldMemory.text("scopeId")))}:${oldMemory.text("factKey")}")
             row.addProperty("memoryId", id("memory", requireNotNull(row.text("memoryId"))))
             row.text("questionMessageId")?.let { row.addProperty("questionMessageId", id("message", it)) }
             sql.insertTransfer("companion_clarifications", row)
+        }
+        for (row in transferRows(directory, "companion_locked_reviews")) {
+            if (row.text("lockedMemoryId") !in retainedIds || row.text("confirmedMemoryId") !in retainedIds) {
+                row.addProperty("resolvedAt", Instant.now().toString()); row.addProperty("resolution", "obsolete")
+            }
+            row.addProperty("id", id("locked-review", requireNotNull(row.text("id"))))
+            row.addProperty("scopeId", scope.id); row.addProperty("sessionId", target.id)
+            for (column in listOf("lockedMemoryId", "confirmedMemoryId")) row.addProperty(column, id("memory", requireNotNull(row.text(column))))
+            sql.insertTransfer("companion_locked_reviews", row)
         }
         // 这是迁入基线，不是模型抽取回执。历史可以检索，新消息仍由插入触发器入队。
         sql.execSQL("DELETE FROM companion_pending WHERE scopeId=?", arrayOf(scope.id))

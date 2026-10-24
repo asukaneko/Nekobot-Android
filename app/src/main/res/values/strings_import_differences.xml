@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_difference_notice">逐项对比后选择保留或覆盖。保存选择不会写入资料。</string>
+    <string name="import_difference_save">保存选择</string>
+    <string name="import_difference_keep">保留软件中的内容（默认）</string>
+    <string name="import_difference_replace">使用数据包中的内容，覆盖这一项</string>
+    <string name="import_difference_file">附件文件</string>
+    <string name="import_difference_current">软件中的内容</string>
+    <string name="import_difference_incoming">数据包中的内容</string>
+    <string name="import_difference_type">文件类型（按扩展名）：%1$s</string>
+    <string name="import_difference_unknown_type">无扩展名</string>
+    <string name="import_difference_unknown_size">大小未知</string>
+    <string name="import_difference_checksum">内容校验：%1$s</string>
+    <string name="import_difference_character">角色：%1$s</string>
+    <string name="import_difference_session">会话：%1$s</string>
+    <string name="import_difference_shared">共享工作区</string>
+    <string name="import_difference_show_path">显示完整路径</string>
+    <string name="import_difference_hide_path">收起完整路径</string>
+    <string name="portability_ui_confirm_hint">核对本次新增与覆盖，需要时处理差异。</string>
+    <string name="portability_group_content">内容与记忆</string>
+    <string name="portability_group_tools">模型与工具</string>
+    <string name="portability_group_files">文件与应用</string>
+</resources>

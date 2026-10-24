@@ -142,7 +142,8 @@ internal fun JsonObject.favoriteText(key: String): String? = get(key)?.takeUnles
 @Composable
 internal fun CompanionFavoritesReading(
     favorites: List<JsonObject>, loading: Boolean, selected: JsonObject?, characterName: String?,
-    onBack: () -> Unit, onSelect: (JsonObject) -> Unit, onDelete: (JsonObject) -> Unit
+    onBack: () -> Unit, onSelect: (JsonObject) -> Unit, onDelete: (JsonObject) -> Unit,
+    importedSnapshots: (@Composable () -> Unit)? = null
 ) {
     val textResources = LocalResources.current
     val messages = selected?.getAsJsonArray("messages")?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }.orEmpty()
@@ -151,6 +152,7 @@ internal fun CompanionFavoritesReading(
         if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (selected == null) {
+                item { importedSnapshots?.invoke() }
                 item { CompanionReadingHint(textResources.getString(R.string.single_role_saved_items_in_this_conversation)) }
                 if (favorites.isEmpty()) item { CompanionReadingHint(textResources.getString(R.string.single_role_no_saved_messages_yet_long_press_a_chat_message_to_save_it)) }
                 itemsIndexed(favorites, key = { index, item -> item.favoriteText("id")?.takeIf(String::isNotBlank)

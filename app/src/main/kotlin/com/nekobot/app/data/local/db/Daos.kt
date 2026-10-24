@@ -32,6 +32,21 @@ interface SessionDao {
     @Query("SELECT * FROM local_sessions WHERE id = :id")
     suspend fun getById(id: String): LocalSessionEntity?
 
+    @Query("SELECT * FROM local_sessions WHERE id = :id")
+    fun observeById(id: String): Flow<LocalSessionEntity?>
+
+    @Query("UPDATE local_sessions SET companion_speaking_prompt = COALESCE(companion_speaking_prompt, ''), companion_thinking_prompt = COALESCE(companion_thinking_prompt, :prompt), companion_thinking_enabled = COALESCE(companion_thinking_enabled, :enabled) WHERE companion_mode = 1 AND (companion_speaking_prompt IS NULL OR companion_thinking_prompt IS NULL OR companion_thinking_enabled IS NULL)")
+    suspend fun initializeCompanionPrompts(prompt: String, enabled: Boolean)
+
+    @Query("UPDATE local_sessions SET companion_speaking_prompt = :prompt WHERE id = :id AND companion_mode = 1")
+    suspend fun updateCompanionSpeakingPrompt(id: String, prompt: String): Int
+
+    @Query("UPDATE local_sessions SET companion_thinking_prompt = :prompt WHERE id = :id AND companion_mode = 1")
+    suspend fun updateCompanionThinkingPrompt(id: String, prompt: String): Int
+
+    @Query("UPDATE local_sessions SET companion_thinking_enabled = :enabled WHERE id = :id AND companion_mode = 1")
+    suspend fun updateCompanionThinkingEnabled(id: String, enabled: Boolean): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(session: LocalSessionEntity)
 
@@ -89,6 +104,9 @@ interface SessionDao {
      */
     @Query("UPDATE local_sessions SET character_avatar = :characterAvatar, portrait = CASE WHEN :portrait IS NULL OR :portrait = '' THEN portrait ELSE :portrait END WHERE character_id = :characterId")
     suspend fun updatePortraitsByCharacterId(characterId: String, portrait: String?, characterAvatar: String?)
+
+    @Query("UPDATE local_sessions SET character_avatar = :avatar WHERE character_id = :characterId")
+    suspend fun updateCharacterAvatar(characterId: String, avatar: String)
 
     /** Agent 任务列表（todo_write 工具）持久化；不触碰 updated_at，避免影响会话排序。 */
     @Query("UPDATE local_sessions SET agent_todos = :todosJson WHERE id = :id")
@@ -207,6 +225,12 @@ interface MessageDao {
     @Query("SELECT * FROM local_messages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): LocalMessageEntity?
 
+    @Query("SELECT * FROM local_messages WHERE deleted = 0 AND role = 'assistant' AND (:sessionId IS NULL OR session_id = :sessionId) ORDER BY rowid DESC LIMIT 30")
+    suspend fun diagnosticReplies(sessionId: String?): List<LocalMessageEntity>
+
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND deleted = 0 AND role = 'user' AND rowid < (SELECT rowid FROM local_messages WHERE id = :replyId AND session_id = :sessionId) ORDER BY rowid DESC LIMIT 1")
+    suspend fun diagnosticParent(sessionId: String, replyId: String): LocalMessageEntity?
+
     @Query(
         "SELECT * FROM local_messages " +
             "WHERE deleted = 0 AND (instr(lower(content), lower(:query)) > 0 OR instr(lower(reasoning_content), lower(:query)) > 0) " +
@@ -228,6 +252,8 @@ interface MessageDao {
 
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND role = 'user' AND deleted = 0 ORDER BY created_at DESC LIMIT 1")
     suspend fun latestUserBySession(sessionId: String): LocalMessageEntity?
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND deleted = 0 AND role IN ('user','assistant') ORDER BY created_at DESC, rowid DESC LIMIT 1")
+    suspend fun latestCompanionDialogue(sessionId: String): LocalMessageEntity?
 
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND source = :source AND deleted = 0 ORDER BY created_at DESC LIMIT 1")
     suspend fun latestBySource(sessionId: String, source: String): LocalMessageEntity?
@@ -442,6 +468,8 @@ interface MessageImageDao {
  */
 @Dao
 interface MessageVariantDao {
+    @Query("SELECT v.* FROM local_message_variants v JOIN local_messages m ON m.id=v.message_id AND m.session_id=v.session_id WHERE v.session_id=:sessionId AND m.deleted=0 AND m.role='assistant' ORDER BY v.created_at DESC,v.rowid DESC LIMIT 1")
+    suspend fun latestCompanionVariant(sessionId: String): LocalMessageVariantEntity?
     @Query("SELECT * FROM local_message_variants WHERE message_id = :messageId ORDER BY variant_index ASC")
     suspend fun listByMessage(messageId: String): List<LocalMessageVariantEntity>
 
@@ -662,6 +690,9 @@ interface AgentToolMessageDao {
 
 @Dao
 interface CharacterDao {
+    @Query("UPDATE local_characters SET avatar = :avatar, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateAvatar(id: String, avatar: String, updatedAt: String): Int
+
     @Query("UPDATE local_characters SET chat_model_queue = :queue WHERE id = :id")
     suspend fun updateChatModelQueue(id: String, queue: String?): Int
 

@@ -16,6 +16,8 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
+internal fun companionTransferName(characterName: String): String = characterName
+
 internal data class CompanionTransferPreview(
     val jobId: String, val name: String, val sourceName: String, val messages: Long, val variants: Long,
     val memories: Int, val skippedMemories: Long, val reviewNotes: List<String>, val attachments: Int,
@@ -53,7 +55,7 @@ internal class CompanionTransferService(
             return@withLock toPreview(existing)
         }
         val memory = CompanionTransferMemory(db).selection(directory, snapshot)
-        val name = "${snapshot.characterName}（Agent）"
+        val name = companionTransferName(snapshot.characterName)
         val report = CompanionTransferReport(snapshot, media, memory, db.sessionDao().getById(sourceId)?.name.orEmpty())
         val now = Instant.now().toString()
         val job = CompanionTransferJobEntity(jobId, db.dbName, sourceId, fingerprint,
@@ -107,7 +109,10 @@ internal class CompanionTransferService(
                 stage.run(job, conversion.copy(generate = { system, material ->
                     guard(report.snapshot.sessionIds)
                     conversion.generate(system, material).also { guard(report.snapshot.sessionIds) }
-                }), progress)
+                }, generateStream = conversion.generateStream?.let { stream -> { system, material, callbacks ->
+                    guard(report.snapshot.sessionIds)
+                    stream(system, material, callbacks).also { guard(report.snapshot.sessionIds) }
+                } }), progress)
                 report = report.copy(conversion = report.conversion!!.copy(memories = stage.count(job)))
                 job = job.copy(reportJson = gson.toJson(report))
                 checkpoint("converted")
@@ -324,7 +329,8 @@ internal class CompanionTransferService(
             characterId = job.targetCharacterId, characterName = job.targetName,
             characterAvatar = character.text("avatar"), portrait = character.text("portrait"),
             senderAvatar = sessionMedia.text("sender_avatar"),
-            firstMessage = null, archiveSessionId = null, sessionMode = "agent", companionMode = true,
+            firstMessage = null, archiveSessionId = null, sessionMode = "agent", companionMode = true, userPersona = null,
+            companionSpeakingPrompt = "", companionThinkingPrompt = null, companionThinkingEnabled = null,
             inheritCharacter = true, inheritCharacterGreeting = false, longConversationEnabled = true,
             longConversationTailUntilId = null, groupId = null, characterIds = null, groupConfig = null,
             groupActiveSpeaker = null, groupTurnCount = 0,
@@ -366,6 +372,10 @@ internal class CompanionTransferService(
         copyState(directory, target, snapshot, ::id)
         progress(CompanionTransferProgress("正在复制独立记忆"))
         CompanionTransferMemory(db, sourceDb).copy(directory, snapshot, target, ::id, ::rewrite)
+        val targetScope = CompanionMemoryStore(db).ensureScope(target)
+        CompanionUserProfile.converted(original.userPersona, targetScope.id, target.createdAt)?.let {
+            db.companionMemoryDao().saveMemory(it)
+        }
         sql.query("SELECT COUNT(*) FROM local_messages WHERE session_id=?", arrayOf(target.id)).use {
             require(it.moveToFirst() && it.getLong(0) == snapshot.counts.getValue("local_messages")) { "原话数量校验失败" }
         }

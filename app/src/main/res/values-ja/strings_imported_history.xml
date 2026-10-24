@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="imported_history_favorites_title">取り込んだお気に入りの記録</string>
+    <string name="imported_history_favorites_summary">%1$d件 · 元のチャットは未照合、閲覧専用</string>
+    <string name="imported_history_favorites_read_only">元のお気に入りの内容と時刻を保持しています。元のチャットは照合できていません。</string>
+    <string name="imported_history_favorites_unreadable">取り込んだお気に入りの記録を読み込めません。</string>
+    <string name="imported_history_original_persona_unknown">元のキャラクターは未記録</string>
+    <string name="imported_history_favorite_time">保存時刻：%1$s</string>
+    <string name="imported_history_message_time">メッセージ時刻：%1$s</string>
+    <string name="imported_history_message_content">メッセージ内容</string>
+    <string name="imported_history_forwarded_content">転送内容</string>
+    <string name="imported_history_read_full">全文を読む</string>
+    <string name="imported_history_back_to_snapshots">記録に戻る</string>
+    <string name="imported_history_image_description">元のプロンプトと説明</string>
+    <string name="imported_history_partial_sources_title">原話を関連付け済み · 一部の内容は確認待ち</string>
+    <string name="imported_history_partial_sources_message">以下の原話は記憶の一部を裏付けます。ほかの詳細は引き続き確認が必要です。</string>
+</resources>

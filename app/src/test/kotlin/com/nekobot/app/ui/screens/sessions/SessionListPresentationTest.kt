@@ -9,6 +9,20 @@ import org.junit.Test
 
 class SessionListPresentationTest {
 
+    @Test fun companionListUsesCurrentRoleAvatarAndDoesNotChangeOrdinaryPortraits() {
+        val role = CharacterPreset(id = "role", avatar = "/new-avatar.png", portrait = "/portrait.png")
+        val single = Session(id = "single", characterId = "role", sessionMode = "agent", companionMode = true,
+            characterAvatar = "/old-avatar.png", portrait = "/portrait.png")
+        val ordinary = single.copy(id = "ordinary", sessionMode = "character", companionMode = false)
+        val rows = buildSessionListRows(listOf(single, ordinary), listOf(role))
+        assertEquals("/new-avatar.png", rows[0].portraitUrl)
+        assertEquals("/portrait.png", rows[1].portraitUrl)
+        val fallback = buildSessionListRows(listOf(single.copy(characterAvatar = "fas fa-cat")), emptyList())
+        assertEquals("/portrait.png", fallback.single().portraitUrl)
+        val legacy = buildSessionListRows(listOf(single.copy(sessionMode = null)), listOf(role))
+        assertEquals("/new-avatar.png", legacy.single().portraitUrl)
+    }
+
     @Test
     fun formatSessionListDate_compactsIsoTimestampWithoutTruncatingDate() {
         assertEquals("2026-07-27", formatSessionListDate("2026-07-27T18:36:42.123+08:00"))

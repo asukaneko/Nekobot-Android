@@ -339,6 +339,30 @@ class ChatViewModel : BaseViewModel() {
     private val _ttsStates: MutableStateFlow<Map<String, MessageTtsUiState>>
         get() = runtime.ttsStates
 
+    internal val companionExamples = MutableStateFlow<com.nekobot.app.data.local.db.CompanionExamplesEntity?>(null)
+    private var companionExamplesJob: kotlinx.coroutines.Job? = null
+    /** “对话示例已停用”提示是否已被用户永久关闭（仅界面偏好，不改数据库与提示词）。 */
+    internal val companionExamplesNoticeDismissed = MutableStateFlow(false)
+
+    fun dismissCompanionExamplesNotice() {
+        val id = currentSessionId
+        if (id.isBlank() || !isLocalMode) return
+        companionExamplesNoticeDismissed.value = true
+        ServiceContainer.localRepository.setCompanionExamplesNoticeDismissed(id, true)
+    }
+
+    fun declineCompanionExamples() {
+        val id = currentSessionId
+        viewModelScope.launch { ServiceContainer.localRepository.declineCompanionExamples(id) }
+    }
+    fun selectCompanionExamples() {
+        val id = currentSessionId
+        ServiceContainer.applicationScope.launch {
+            try { ServiceContainer.localRepository.selectCompanionExamples(id) }
+            catch (_: Exception) { showToast(string(R.string.companion_examples_failed)) }
+        }
+    }
+
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session.asStateFlow()
 
@@ -368,6 +392,209 @@ class ChatViewModel : BaseViewModel() {
         sending || (sid.isNotBlank() && sid in generating)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     private val _editingMessage = MutableStateFlow(false)
+    internal val memoryMessageDecision = MutableStateFlow<CompanionMessageDecisionState?>(null)
+    internal val memoryMessageDecisionBusy = MutableStateFlow(false)
+    internal val memoryMessageDecisionError = MutableStateFlow<String?>(null)
+    private var memoryDecision: CompanionMessageDecision? = null
+    private var memoryDecisionRepository: com.nekobot.app.data.local.LocalRepository? = null
+    private var memoryDecisionJob: kotlinx.coroutines.Job? = null
+    private var memoryChangeFinished: (CompanionMessageDecisionState) -> Unit = {}
+    internal val lockedMemoryReview = MutableStateFlow<com.nekobot.app.data.local.ai.CompanionLockedReviewItem?>(null)
+    internal val lockedMemoryReviewBusy = MutableStateFlow(false)
+    internal val lockedMemoryReviewError = MutableStateFlow<String?>(null)
+    internal val memoryChatForeground = MutableStateFlow(false)
+    private val lockedReviewQueue = com.nekobot.app.data.local.ai.CompanionLockedReviewQueue()
+    private var lockedReviewBoundary = ""
+    private var lockedReviewJob: kotlinx.coroutines.Job? = null
+    private var lockedReviewRepository: com.nekobot.app.data.local.LocalRepository? = null
+
+    private fun memoryReviewReady(): Boolean = isChatVisible && isLocalMode && _session.value?.companionMode == true &&
+        !_sending.value && !sessionGenerating.value && !runtime.hasBlockingLocalChatJob() &&
+        !_editingMessage.value && !generationStopRequested &&
+        runtime.inlineNoticeOrNull<ContextCompressionUiState>()?.running != true
+
+    internal fun refreshLockedMemoryReview() {
+        if (memoryDecisionRepository != null && memoryDecisionRepository !== ServiceContainer.localRepository) resetMemoryMessageDecision()
+        if (lockedReviewRepository != null && lockedReviewRepository !== ServiceContainer.localRepository) {
+            lockedMemoryReview.value = null
+            lockedMemoryReviewBusy.value = false
+            lockedMemoryReviewError.value = null
+        }
+        if (lockedMemoryReviewBusy.value) return
+        lockedReviewJob?.cancel()
+        if (!memoryReviewReady()) { lockedMemoryReview.value = null; return }
+        val sid = currentSessionId
+        val target = runtime
+        val repo = ServiceContainer.localRepository
+        lockedReviewJob = viewModelScope.launch {
+            try {
+                val items = repo.pendingLockedReviews(sid)
+                val reply = repo.savedCompanionReviewReply(sid)
+                if (currentSessionId != sid || runtime !== target || repo !== ServiceContainer.localRepository || !memoryReviewReady()) return@launch
+                val state = com.nekobot.app.data.local.ai.CompanionLockedReviewQueue.State(sid, isChatVisible,
+                    generating = target.sending.value || sessionGenerating.value,
+                    summarizing = target.inlineNoticeOrNull<ContextCompressionUiState>()?.running == true,
+                    replySaved = reply != null, generationFinished = !target.hasBlockingLocalChatJob(),
+                    boundary = reply?.boundary.orEmpty())
+                val next = lockedReviewQueue.next(state, items.filter { reply?.includes(it.review) == true }.map { it.review })
+                lockedReviewBoundary = state.boundary
+                lockedReviewRepository = repo
+                lockedMemoryReview.value = items.firstOrNull { it.review.id == next?.id }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                if (currentSessionId == sid && runtime === target) {
+                    lockedMemoryReview.value = null
+                    showError(failure.message ?: string(R.string.single_role_this_action_did_not_complete_please_try_again))
+                }
+            }
+        }
+    }
+
+    internal fun dismissLockedMemoryReview() {
+        if (lockedMemoryReviewBusy.value) return
+        lockedMemoryReview.value?.let { lockedReviewQueue.dismiss(it.review.id, lockedReviewBoundary) }
+        lockedMemoryReview.value = null
+        lockedMemoryReviewError.value = null
+    }
+
+    internal fun resolveLockedMemoryReview(resolution: String, content: String?) {
+        val item = lockedMemoryReview.value ?: return
+        val repo = lockedReviewRepository ?: return
+        val sid = currentSessionId
+        if (lockedMemoryReviewBusy.value || !memoryReviewReady() || item.review.sessionId != sid) return
+        if (repo !== ServiceContainer.localRepository) { lockedMemoryReview.value = null; return }
+        val target = runtime
+        lockedMemoryReviewBusy.value = true
+        lockedMemoryReviewError.value = null
+        viewModelScope.launch {
+            var resolved = false
+            try {
+                repo.resolveLockedReview(sid, item.review.id, resolution, content)
+                resolved = true
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                if (currentSessionId == sid && runtime === target) lockedMemoryReviewError.value =
+                    failure.message ?: string(R.string.single_role_this_action_did_not_complete_please_try_again)
+            } finally {
+                if (currentSessionId == sid && runtime === target) {
+                    lockedMemoryReviewBusy.value = false
+                    if (resolved) { lockedMemoryReview.value = null; refreshLockedMemoryReview() }
+                }
+            }
+        }
+    }
+
+    private fun resetMemoryMessageDecision() {
+        memoryDecisionJob?.cancel()
+        memoryDecision = null
+        memoryDecisionRepository = null
+        memoryMessageDecision.value = null
+        memoryMessageDecisionBusy.value = false
+        memoryMessageDecisionError.value = null
+        _editingMessage.value = false
+    }
+
+    private fun beginCompanionMessageChange(change: CompanionMessageChange, onSuccess: () -> Unit = {}) {
+        if (memoryDecisionJob?.isActive == true || memoryMessageDecision.value != null || _sending.value ||
+            sessionGenerating.value || runtime.hasBlockingLocalChatJob()) return
+        val repo = ServiceContainer.localRepository
+        val target = runtime
+        fun stillHere() = currentSessionId == change.sessionId && runtime === target &&
+            repo === ServiceContainer.localRepository && isLocalMode
+        fun checkOwner() { check(stillHere()) { string(R.string.single_role_the_data_profile_changed_reopen_this_page) } }
+        val controller = CompanionMessageDecision(query = { request ->
+            checkOwner()
+            val ids = if (request.selectedIds.isNotEmpty()) repo.fusedSelectedMessageIds(request.sessionId, request.selectedIds)
+                else repo.memoryMutationMessageIds(request.sessionId, request.messageId, request.regenerate)
+            val attached = repo.memoriesAttachedTo(request.sessionId, ids)
+            checkOwner()
+            CompanionMessageDecisionState(request, ids, attached)
+        }, apply = { state, keep ->
+            checkOwner()
+            check(!target.sending.value && !sessionGenerating.value && !target.hasBlockingLocalChatJob()) { string(R.string.chat_edit_message_failed) }
+            val expected = com.nekobot.app.data.local.ai.CompanionSourceExpectation(state.messageIds, state.memories.map { it.id }.toSet())
+            when {
+                change.selectedIds.isNotEmpty() -> repo.deleteFusedMessages(change.sessionId, state.messageIds, keep, expected)
+                change.regenerate -> repo.editFusedMessageAndTruncate(change.sessionId, change.messageId, requireNotNull(change.content), keep, expected)
+                change.content != null -> repo.updateMessageContent(change.sessionId, change.messageId, change.content, keep, expected)
+                else -> repo.deleteMessage(change.sessionId, change.messageId, keep, expected)
+            }
+        }, cancel = { state -> if (stillHere()) repo.cancelFusedMessageMutation(change.sessionId, state.messageIds) })
+        memoryDecision = controller
+        memoryDecisionRepository = repo
+        memoryChangeFinished = { state ->
+            if (stillHere()) {
+                val deleted = when {
+                    change.content == null -> state.messageIds.toSet()
+                    change.regenerate -> state.messageIds.drop(1).toSet()
+                    else -> emptySet()
+                }
+                target.deletedMessageIds.addAll(deleted)
+                target.messages.value = target.messages.value.filterNot { it.id in deleted }.map {
+                    if (it.id == change.messageId && change.content != null) it.copy(content = change.content) else it
+                }
+                loadMessages()
+                onSuccess()
+                if (change.regenerate) replyToEditedCompanionMessage(change, repo)
+            }
+        }
+        runMemoryMessageDecision(controller, change) { controller.start(change) }
+    }
+
+    internal fun chooseMessageMemories(keep: Boolean?) {
+        val controller = memoryDecision ?: return
+        val change = controller.pending?.change ?: return
+        if (memoryMessageDecisionBusy.value) return
+        runMemoryMessageDecision(controller, change) { controller.choose(keep) }
+    }
+
+    private fun runMemoryMessageDecision(controller: CompanionMessageDecision, change: CompanionMessageChange,
+        action: suspend () -> CompanionMessageDecisionState?) {
+        _editingMessage.value = true
+        memoryMessageDecisionBusy.value = true
+        memoryMessageDecisionError.value = null
+        val finished = memoryChangeFinished
+        memoryDecisionJob = viewModelScope.launch {
+            var applied: CompanionMessageDecisionState? = null
+            try { applied = action() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (needsChoice: com.nekobot.app.data.local.ai.MemoryAttachmentDecisionRequired) {
+                try { controller.refresh(change) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (failure: Exception) { if (memoryDecision === controller) showError(failure.message ?: string(R.string.chat_edit_message_failed)) }
+            }
+            catch (error: Exception) {
+                if (memoryDecision === controller) {
+                    memoryMessageDecisionError.value = error.message ?: string(R.string.chat_edit_message_failed)
+                    if (controller.pending == null) showError(requireNotNull(memoryMessageDecisionError.value))
+                }
+            }
+            finally {
+                if (memoryDecision === controller) {
+                    memoryMessageDecision.value = controller.pending
+                    memoryMessageDecisionBusy.value = false
+                    _editingMessage.value = controller.pending != null
+                }
+            }
+            if (memoryDecision === controller && applied != null) finished(applied!!)
+        }
+    }
+
+    /** 编辑截断已经保存过用户原话，继续管线时必须复用该ID和回执。 */
+    private fun replyToEditedCompanionMessage(change: CompanionMessageChange, repo: com.nekobot.app.data.local.LocalRepository) {
+        generationStopRequested = false
+        _sending.value = true
+        startLocalChatCollection { chatJob ->
+            try {
+                val model = repo.getRoutedModel(change.sessionId, requireNotNull(change.content))
+                    ?: error(string(R.string.chat_edit_message_failed))
+                repo.chatWithPipeline(change.sessionId, change.content, model, persistUserMessage = false,
+                    existingParentMessageId = change.messageId, reasoningEffort = currentReasoningEffort())
+                    .collect { event -> handleRealtimeEvent(event, chatJob) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { showError(error.message ?: string(R.string.chat_edit_message_failed)) }
+        }
+    }
 
     /**
      * 所有会话内联提示（上下文压缩 / 技能沉淀 / 长期记忆，以及后续新增类型）。
@@ -677,6 +904,8 @@ class ChatViewModel : BaseViewModel() {
     /** 标记聊天界面可见性（由 ChatScreen 的 onResume/onPause 调用） */
     fun setChatVisible(visible: Boolean) {
         isChatVisible = visible
+        memoryChatForeground.value = visible
+        refreshLockedMemoryReview()
         // 回到聊天界面时补一次等待项恢复：从通知点进来、后台期间事件未送达等
         // 情况下，重新进入会话即可看到授权/提问弹窗，而不是一直等到超时。
         if (visible) restorePendingAttention(currentSessionId)
@@ -722,6 +951,11 @@ class ChatViewModel : BaseViewModel() {
     /** 初始化：加载会话信息与消息列表；服务器模式额外连接 Socket.IO。 */
     fun init(sessionId: String) {
         if (sessionId == currentSessionId && _session.value != null) return
+        resetMemoryMessageDecision()
+        lockedReviewJob?.cancel()
+        lockedMemoryReview.value = null
+        lockedMemoryReviewBusy.value = false
+        lockedMemoryReviewError.value = null
         // 切换会话时释放旧 runtime 引用
         if (currentSessionId.isNotBlank() && currentSessionId != sessionId) {
             // 同一 VM 切到其它会话时，不能让旧计时器在后台先消费批次、再因会话不匹配而丢弃。
@@ -730,6 +964,16 @@ class ChatViewModel : BaseViewModel() {
             ChatSessionManager.release(currentSessionId)
         }
         currentSessionId = sessionId
+        companionExamplesJob?.cancel()
+        companionExamples.value = null
+        companionExamplesNoticeDismissed.value = if (isLocalMode) {
+            ServiceContainer.localRepository.companionExamplesNoticeDismissed(sessionId)
+        } else false
+        if (isLocalMode) companionExamplesJob = viewModelScope.launch {
+            ServiceContainer.localRepository.observeCompanionExamples(sessionId).collect {
+                if (currentSessionId == sessionId) companionExamples.value = it
+            }
+        }
         messageImagesJob?.cancel()
         messageImagesJob = viewModelScope.launch {
             unified.observeMessageImages(sessionId).collect { images ->
@@ -1256,7 +1500,8 @@ class ChatViewModel : BaseViewModel() {
                 if (event.sessionId == currentSessionId) {
                     runtime.applyContextCompressionNotice(
                         inProgress = event.inProgress,
-                        anchorContent = event.anchorContent
+                        anchorContent = event.anchorContent,
+                        memorySummarizing = event.memorySummarizing
                     )
                     if (!event.inProgress && event.compressed) loadMessages()
                 }
@@ -2571,6 +2816,7 @@ class ChatViewModel : BaseViewModel() {
         reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE,
         allowDelay: Boolean = true
     ) {
+        if (_editingMessage.value) return
         val content = text.trim()
         val messageContent = buildChatMessageContent(content, attachments)
         if (messageContent.isBlank()) return
@@ -3022,6 +3268,7 @@ class ChatViewModel : BaseViewModel() {
     }
 
     private fun regenerateMessageById(messageId: String) {
+        if (_editingMessage.value) return
         if (blockHistoryMutationWhileDelayPending()) return
         if (_sending.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
         // 流式占位直接落在被重抽的气泡位置，而不是永远追加到列表末尾。
@@ -3273,6 +3520,9 @@ class ChatViewModel : BaseViewModel() {
             return
         }
         generationStopRequested = true
+        if (runtime.inlineNoticeOrNull<ContextCompressionUiState>()?.memorySummarizing == true) {
+            runtime.applyContextCompressionNotice(inProgress = false)
+        }
 
         _execConfirmation.value?.let { request ->
             val confirmationSessionId = request.sessionId.ifBlank { sessionId }
@@ -3704,6 +3954,11 @@ class ChatViewModel : BaseViewModel() {
     /** 删除单条消息，成功后回调 [onSuccess]。 */
     fun deleteMessage(sessionId: String, messageId: String, onSuccess: () -> Unit = {}) {
         if (blockHistoryMutationWhileDelayPending()) return
+        if (_editingMessage.value) return
+        if (isLocalMode && _session.value?.companionMode == true) {
+            if (sessionId == currentSessionId) beginCompanionMessageChange(CompanionMessageChange(sessionId, messageId), onSuccess)
+            return
+        }
         // 先从列表移除：孤儿 assistant 保留逻辑会跳过这里记录的 id，
         // 避免随后的 loadMessages 把刚删除的消息当作未落库的孤儿重新加回。
         runtime.deletedMessageIds.add(messageId)
@@ -3753,6 +4008,11 @@ class ChatViewModel : BaseViewModel() {
         val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return
         val messageId = message.id?.takeIf(String::isNotBlank) ?: return
         if (!message.isUser) return
+
+        if (isLocalMode && _session.value?.companionMode == true) {
+            beginCompanionMessageChange(CompanionMessageChange(sessionId, messageId, content, regenerateAfter))
+            return
+        }
 
         // 仅保存：更新正文，其余历史不动。
         if (!regenerateAfter) {
@@ -3848,6 +4108,11 @@ class ChatViewModel : BaseViewModel() {
         if (_sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob()) return
         val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return
         val messageId = message.id?.takeIf(String::isNotBlank) ?: return
+
+        if (isLocalMode && _session.value?.companionMode == true) {
+            beginCompanionMessageChange(CompanionMessageChange(sessionId, messageId, content))
+            return
+        }
 
         viewModelScope.launch {
             _editingMessage.value = true
@@ -3989,9 +4254,14 @@ class ChatViewModel : BaseViewModel() {
     /** 删除所有选中的消息，完成后退出多选模式并刷新列表。 */
     fun deleteSelectedMessages() {
         if (blockHistoryMutationWhileDelayPending()) return
+        if (_editingMessage.value) return
         val ids = _selectedMessageIds.value.toList()
         if (ids.isEmpty()) return
         val sid = currentSessionId
+        if (isLocalMode && _session.value?.companionMode == true) {
+            beginCompanionMessageChange(CompanionMessageChange(sid, ids.first(), selectedIds = ids)) { exitSelectionMode() }
+            return
+        }
         // 与单条删除一致：先登记，防止 loadMessages 的孤儿保留逻辑复活已删消息。
         runtime.deletedMessageIds.addAll(ids)
         viewModelScope.launch {

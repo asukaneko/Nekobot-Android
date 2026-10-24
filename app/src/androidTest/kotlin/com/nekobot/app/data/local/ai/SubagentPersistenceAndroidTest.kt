@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.ai
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -11,6 +12,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SubagentPersistenceAndroidTest {
+    @Test fun bindOnMainThreadRestoresInterruptedTasksWithoutRoomThreadViolation() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "subagent-main-thread-restore.db"
+        context.deleteDatabase(name)
+        fun open() = Room.databaseBuilder(context, NekobotDatabase::class.java, name).build()
+        var db = open()
+        try {
+            db.sessionDao().upsert(LocalSessionEntity("main-thread-session", "Synthetic", sessionMode = "agent",
+                createdAt = "now", updatedAt = "now"))
+            SubagentTaskStore.bind(db.localSubagentTaskDao())
+            val task = SubagentTaskStore.register("main-thread-session", "root", "Test", "Synthetic only", 1, null)
+            db.close()
+            db = open()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                SubagentTaskStore.bind(db.localSubagentTaskDao())
+            }
+            assertEquals(SubagentTaskStatus.INTERRUPTED, requireNotNull(SubagentTaskStore.get(task.id)).status)
+            assertEquals("interrupted", db.localSubagentTaskDao().get(task.id)!!.status)
+        } finally {
+            SubagentTaskStore.bind(NekobotDatabase.get(context, ServiceContainer.prefs.activeDbName).localSubagentTaskDao())
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
     @Test fun reopeningRestoresCheckpointsPauseResumeAndRetryLineage() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "upstream-083-subagent-proof.db"

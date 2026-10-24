@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="problem_diag_title">Problem diagnostics</string>
+    <string name="problem_diag_export">Export problem diagnostics</string>
+    <string name="problem_diag_preview">Preview diagnostics</string>
+    <string name="problem_diag_range">Problem scope</string>
+    <string name="problem_diag_reply">A reply</string>
+    <string name="problem_diag_import">Latest import</string>
+    <string name="problem_diag_runtime">Recent activity</string>
+    <string name="problem_diag_choose_reply">Choose the affected reply</string>
+    <string name="problem_diag_selected_reply">This reply is selected</string>
+    <string name="problem_diag_collect">Collected automatically</string>
+    <string name="problem_diag_app">App version and activity</string>
+    <string name="problem_diag_model">Model calls and errors</string>
+    <string name="problem_diag_recall">Recall limits and tool activity</string>
+    <string name="problem_diag_sources">Memory sources, truncation and filtering</string>
+    <string name="problem_diag_optional">Optional content</string>
+    <string name="problem_diag_include_text">Include text needed for this investigation</string>
+    <string name="problem_diag_text_note">For a reply, include its question, answer and verified material. Text is excluded by default; choose separately each time.</string>
+    <string name="problem_diag_description">Problem description (optional)</string>
+    <string name="problem_diag_missing_note">Older records may be incomplete. Missing evidence is identified, never reconstructed as fact.</string>
+    <string name="problem_diag_basic">Basic diagnostics (text excluded)</string>
+    <string name="problem_diag_with_text">Investigation text included</string>
+    <string name="problem_diag_checks">Helps check exhausted recall limits, empty searches, truncated material, and model or tool errors.</string>
+    <string name="problem_diag_evidence_only">This package collects verifiable evidence. It does not automatically determine a cause.</string>
+    <string name="problem_diag_files">Files to save (tap to inspect)</string>
+    <string name="problem_diag_text_present">Investigation text is included. Review before sharing.</string>
+    <string name="problem_diag_text_absent">Chat text: excluded</string>
+    <string name="problem_diag_privacy">Credential fields and the full chat database are excluded. You decide whether to send the saved file. Review any included text first.</string>
+    <string name="problem_diag_missing">%1$d record limitations are listed in the explanation file.</string>
+    <string name="problem_diag_save">Save diagnostics (ZIP)</string>
+    <string name="problem_diag_adjust">Adjust options</string>
+    <string name="problem_diag_saved">Diagnostics saved. You decide whether to send them.</string>
+    <string name="problem_diag_failed">Could not complete. Check that the selected reply and database have not changed, then retry. A failed save may leave an incomplete file.</string>
+    <string name="problem_diag_no_replies">No recent replies. You can also long-press a reply in chat.</string>
+</resources>

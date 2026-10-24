@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_home_common">Everyday settings</string>
+    <string name="settings_home_privacy_experience">Privacy and experience</string>
+    <string name="settings_home_data_backup">Data and backups</string>
+    <string name="settings_home_advanced">Advanced settings</string>
+    <string name="settings_home_support_about">Support and about</string>
+    <string name="settings_home_connection">Mode and connection</string>
+    <string name="settings_home_models_summary">Providers, models and connection tests</string>
+    <string name="settings_home_open_latest">Open the latest session on launch</string>
+    <string name="settings_home_include_archived">Show archived sessions in recent sessions</string>
+    <string name="settings_home_lock_summary">Unlock with a fingerprint and hide background previews. Disables screenshots and recording.</string>
+    <string name="settings_home_image_prompt_summary">Use the chat model to refine image descriptions and reduce character text in images</string>
+    <string name="settings_home_portability_summary">Import, export and review data by category</string>
+    <string name="settings_home_agent_summary">Session runtime parameters and tools</string>
+    <string name="settings_home_diagnostics_summary">Check issues and export diagnostic information</string>
+</resources>

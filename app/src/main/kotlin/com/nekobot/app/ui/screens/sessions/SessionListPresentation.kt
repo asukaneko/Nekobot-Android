@@ -42,7 +42,8 @@ data class SessionListRow(
     /** 群聊会话：列表项无立绘时回退到群聊图标而非默认聊天图标。 */
     val isGroupSession: Boolean = false,
     val modeLabel: SessionModeLabel = SessionModeLabel.CHARACTER,
-    val listTitleOverride: String? = null
+    val listTitleOverride: String? = null,
+    val avatarFallbackUrl: String? = null
 ) {
     /** Tool chats are tasks; companion and character chats are people. */
     val listTitle: String get() = com.nekobot.app.data.model.sessionTitle(listTitleOverride, when (modeLabel) {
@@ -168,8 +169,12 @@ fun buildSessionListRows(
         }
 
         val fallbackCharacter = session.characterId?.let(characterById::get)
-        val rawPortraitUrl = session.portraitUrl
-            ?.takeIf { it.isNotBlank() }
+        val rawPortraitUrl = if (session.companionMode == true) {
+            com.nekobot.app.data.model.characterAvatarPath(
+                fallbackCharacter?.avatar ?: session.characterAvatar,
+                fallbackCharacter?.portrait ?: session.portrait
+            )
+        } else session.portraitUrl?.takeIf { it.isNotBlank() }
             ?: fallbackCharacter?.avatarUrl?.takeIf { it.isNotBlank() }
         val sessionId = session.id?.takeIf { it.isNotBlank() }
 
@@ -181,6 +186,8 @@ fun buildSessionListRows(
             displayName = session.displayName,
             listTitleOverride = session.listTitleOverride,
             portraitUrl = rawPortraitUrl?.let(portraitUrlResolver),
+            avatarFallbackUrl = if (session.companionMode == true)
+                com.nekobot.app.data.model.characterAvatarPath(null, fallbackCharacter?.portrait ?: session.portrait)?.let(portraitUrlResolver) else null,
             characterLabel = characterLabel,
             updatedAt = formatSessionListDate(session.updatedAt),
             lastMessage = session.lastMessage?.takeIf { it.isNotBlank() },

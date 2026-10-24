@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_home_common">자주 사용</string>
+    <string name="more_home_memory">캐릭터와 기억</string>
+    <string name="more_home_appearance_chat">화면과 채팅</string>
+    <string name="more_home_extensions_management">확장과 관리</string>
+    <string name="more_home_role_memory_scope">나와 사건에 대한 기억을 캐릭터별로 관리</string>
+    <string name="more_home_session_memory_scope">각 대화의 독립된 경험과 약속</string>
+    <string name="more_home_global_memory_scope">현재 데이터베이스에서 대화 간 공유</string>
+</resources>

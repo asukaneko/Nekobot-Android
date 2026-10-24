@@ -1,6 +1,8 @@
 package com.nekobot.app.ui.screens.settings
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.testTag
+import com.nekobot.app.ui.screens.more.rememberMoreNavigateOnce
 
 import android.app.Activity
 import android.content.Context
@@ -12,6 +14,8 @@ import android.widget.Toast
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,8 +103,8 @@ import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.update.UpdateChecker
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorToast
-import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.theme.BgDark
@@ -279,6 +283,7 @@ sealed class DownloadUiState {
 @Composable
 fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: () -> Unit = onLogout) {
     val vm: SettingsViewModel = viewModel()
+    val navigateOnce = rememberMoreNavigateOnce(onNavigate)
     val settingsJson by vm.settingsJson.collectAsStateWithLifecycle()
     val loggedOut by vm.loggedOut.collectAsStateWithLifecycle()
     val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
@@ -394,6 +399,8 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
         }
     }
 
+    ErrorToast(message = error, onShown = vm::clearError)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -405,7 +412,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.testTag("settings-list-back")) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.common_back),
@@ -429,16 +436,13 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
         ) {
             Column(
                 modifier = Modifier
+                    .testTag("settings-list")
                     .widthIn(max = 720.dp)
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                error?.let {
-                    ErrorToast(message = it, onShown = { vm.clearError() })
-                }
-
                 // 0. 运行模式切换
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     SettingsSectionHeader(title = stringResource(R.string.settings_run_mode))
@@ -471,7 +475,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     if (appMode == AppMode.LOCAL) {
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
-                            onClick = { onNavigate("local_ai_models") },
+                            onClick = { navigateOnce("local_ai_models") },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Filled.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -539,7 +543,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             iconColor = MaterialTheme.colorScheme.primary,
                             title = stringResource(R.string.settings_system_settings),
                             subtitle = stringResource(R.string.settings_system_settings_desc)
-                        ) { onNavigate("system_settings") }
+                        ) { navigateOnce("system_settings") }
                     }
                 }
 
@@ -618,7 +622,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             iconColor = MaterialTheme.colorScheme.primary,
                             title = stringResource(R.string.settings_feature_switches),
                             subtitle = stringResource(R.string.settings_feature_switches_desc)
-                        ) { onNavigate("feature_switches") }
+                        ) { navigateOnce("feature_switches") }
                     }
                     SettingDivider()
                     SettingNavRow(
@@ -626,14 +630,14 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         iconColor = MaterialTheme.colorScheme.secondary,
                         title = stringResource(R.string.settings_data_portability),
                         subtitle = stringResource(R.string.settings_data_portability_desc)
-                    ) { onNavigate("data_portability") }
+                    ) { navigateOnce("data_portability") }
                     SettingDivider()
                     SettingNavRow(
                         icon = Icons.Filled.Build,
                         iconColor = MaterialTheme.colorScheme.tertiary,
                         title = stringResource(R.string.settings_data_maintenance),
                         subtitle = stringResource(R.string.settings_data_maintenance_desc)
-                    ) { onNavigate("data_maintenance") }
+                    ) { navigateOnce("data_maintenance") }
                     if (appMode != AppMode.LOCAL) {
                         SettingDivider()
                         SettingNavRow(
@@ -641,7 +645,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             iconColor = MaterialTheme.colorScheme.secondary,
                             title = stringResource(R.string.settings_config_transfer),
                             subtitle = stringResource(R.string.settings_config_transfer_desc)
-                        ) { onNavigate("config_transfer") }
+                        ) { navigateOnce("config_transfer") }
                     }
                     SettingDivider()
                     SettingNavRow(
@@ -649,7 +653,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         iconColor = MaterialTheme.colorScheme.primary,
                         title = stringResource(R.string.settings_webdav_backup),
                         subtitle = stringResource(R.string.settings_webdav_backup_desc)
-                    ) { onNavigate("webdav_backup") }
+                    ) { navigateOnce("webdav_backup") }
                 }
 
                 // 4.6 Agent 设置（Agent 会话运行参数）
@@ -664,7 +668,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         iconColor = MaterialTheme.colorScheme.primary,
                         title = stringResource(R.string.agent_settings_title),
                         subtitle = stringResource(R.string.settings_agent_settings_desc)
-                    ) { onNavigate("agent_settings") }
+                    ) { navigateOnce("agent_settings") }
                 }
 
                 // 5. 日志与诊断（日志查看为独立页面：等级筛选 + 搜索 + 复制/清空）
@@ -679,14 +683,14 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         iconColor = MaterialTheme.colorScheme.primary,
                         title = if (appMode == AppMode.LOCAL) stringResource(R.string.settings_local_logs) else stringResource(R.string.settings_logs_view),
                         subtitle = stringResource(R.string.settings_logs_desc)
-                    ) { onNavigate("logs") }
+                    ) { navigateOnce("logs") }
                     SettingDivider()
                     SettingNavRow(
                         icon = Icons.Filled.BugReport,
                         iconColor = MaterialTheme.colorScheme.tertiary,
                         title = stringResource(R.string.diagnostic_center_title),
                         subtitle = stringResource(R.string.diagnostic_center_desc)
-                    ) { onNavigate("diagnostic_center") }
+                    ) { navigateOnce("diagnostic_center") }
                 }
 
                 // 6. 账号（仅服务器模式，本地模式无需登录）
@@ -736,7 +740,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         iconColor = MaterialTheme.colorScheme.primary,
                         title = stringResource(R.string.settings_about),
                         subtitle = "v${getAppVersion(context)}"
-                    ) { onNavigate("about") }
+                    ) { navigateOnce("about") }
                 }
             }
 
@@ -960,7 +964,7 @@ private fun SettingSwitchRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             .heightIn(min = 64.dp)
             .padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -985,7 +989,7 @@ private fun SettingSwitchRow(
         Switch(
             checked = checked,
             enabled = enabled,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = null
         )
     }
 }

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="imported_history_favorites_title">迁入的收藏快照</string>
+    <string name="imported_history_favorites_summary">%1$d 条 · 原聊天未匹配，仅供阅读</string>
+    <string name="imported_history_favorites_read_only">保留原收藏的内容与时间。原聊天未匹配。</string>
+    <string name="imported_history_favorites_unreadable">迁入的收藏快照暂时无法读取。</string>
+    <string name="imported_history_original_persona_unknown">原角色未记录</string>
+    <string name="imported_history_favorite_time">收藏时间：%1$s</string>
+    <string name="imported_history_message_time">消息时间：%1$s</string>
+    <string name="imported_history_message_content">消息内容</string>
+    <string name="imported_history_forwarded_content">转发内容</string>
+    <string name="imported_history_read_full">阅读全文</string>
+    <string name="imported_history_back_to_snapshots">返回快照</string>
+    <string name="imported_history_image_description">原始提示与说明</string>
+    <string name="imported_history_partial_sources_title">已关联原话 · 部分内容待核实</string>
+    <string name="imported_history_partial_sources_message">以下原话支持记忆中的部分内容，其他细节仍待核实。</string>
+</resources>

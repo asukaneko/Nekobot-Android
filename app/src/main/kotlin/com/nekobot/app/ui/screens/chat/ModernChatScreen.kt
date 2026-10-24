@@ -285,9 +285,8 @@ fun ModernChatScreen(
     }
     val savedContext = LocalContext.current
     val savedNotice = remember(savedContext) { Toast.makeText(savedContext, textResources.getString(R.string.localai_saved), Toast.LENGTH_SHORT) }
-    var showInnerMonologue by remember(sessionId) {
-        mutableStateOf(ServiceContainer.localRepository.companionShowInnerMonologue(sessionId))
-    }
+    // 2026-10-22 用户决定：取消“显示内心独白”开关，正文里的（内心：…）恒定按可折叠样式显示。
+    val showInnerMonologue = true
     var companionUtilityRequest by remember(sessionId) { mutableStateOf<CompanionChatUtility?>(null) }
     val isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true)
     val yoloAvailable = isAgentSession && ServiceContainer.prefs.isLocalMode
@@ -306,7 +305,9 @@ fun ModernChatScreen(
     CompositionLocalProvider(
         LocalStickerLookup provides stickerLookup,
         LocalCompanionChatName provides companionName,
-        LocalCompanionShowReasoning provides companionThoughtsEnabled(companionShowReasoning, characterThinkingSettings.enabled),
+        LocalCompanionAvatarFallback provides session?.portrait,
+        LocalCompanionShowReasoning provides companionThoughtsEnabled(companionShowReasoning,
+            session?.companionThinkingEnabled ?: characterThinkingSettings.enabled),
         com.nekobot.app.ui.components.LocalShowInnerMonologue provides showInnerMonologue,
         com.nekobot.app.ui.components.LocalCompactInnerMonologue provides (companionName != null),
         LocalOpenCompanionMemory provides if (companionName != null) ({ onOpenCompanionMemory(sessionId) }) else null
@@ -326,6 +327,7 @@ fun ModernChatScreen(
     externalListState = listState,
     onOpenCompanionSettings = { settingsKeyboard?.hide(); companionSettingsOpen = true },
     companionUtilityRequest = companionUtilityRequest,
+    interactionVisible = !companionSettingsOpen,
     onCompanionUtilityHandled = { companionUtilityRequest = null },
     embeddedBottomBarClearance = embeddedBottomBarClearance,
     customBottomBar = {
@@ -410,8 +412,10 @@ fun ModernChatScreen(
     }
     if (companionName != null && companionSettingsOpen) {
         CompanionSettingsScreen(
+            sessionId = sessionId,
+            characterId = session?.characterId,
             characterName = companionName,
-            portraitUrl = session?.portraitUrl,
+            portraitUrl = session?.avatarUrl,
             checked = companionShowReasoning,
             onCheckedChange = { show ->
                 ServiceContainer.localRepository.setCompanionShowReasoning(sessionId, show)
@@ -422,11 +426,6 @@ fun ModernChatScreen(
             onSearch = { companionSearchRequest++ },
             onFavorites = { companionFavoritesRequest++ },
             onUsage = { onOpenContextAnalysis(sessionId) },
-            showInnerMonologue = showInnerMonologue,
-            onShowInnerMonologueChange = { show ->
-                ServiceContainer.localRepository.setCompanionShowInnerMonologue(sessionId, show)
-                showInnerMonologue = show
-            },
             reasoningEffort = companionEffort,
             customReasoning = ServiceContainer.localRepository.companionCustomReasoning(sessionId),
             onReasoningEffortChange = { ServiceContainer.localRepository.setCompanionReasoningEffort(sessionId, it) },
@@ -1649,7 +1648,7 @@ private fun ModernChatComposer(
                         companionReasoningRepository?.setCompanionCustomReasoning(sessionId, it)
                             ?: reasoningPrefs.setCustomReasoning(isAgentSession, it)
                     },
-                    showCharacterThinkingSettings = isCharacterThinkingSession(session),
+                    showCharacterThinkingSettings = session?.companionMode != true && isCharacterThinkingSession(session),
                     onToggleYolo = onToggleYolo,
                     onOpenToolSet = {
                         if (companionChat) onDismissCompanionSettings()
@@ -3956,7 +3955,8 @@ private fun ModernFavoritesDialog(
     if (companion) {
         CompanionFavoritesReading(favorites, loading, selectedCollection, characterName,
             onBack = { if (selectedCollection != null) selectedCollection = null else onDismiss() },
-            onSelect = { selectedCollection = it }, onDelete = { deletingCollection = it })
+            onSelect = { selectedCollection = it }, onDelete = { deletingCollection = it },
+            importedSnapshots = { ImportedFavoriteSnapshotsEntry(sessionId) })
         return
     }
 
@@ -4011,18 +4011,20 @@ private fun ModernFavoritesDialog(
                     }
                 }
             }
-        } else if (favorites.isEmpty()) {
-            Text(
-                stringResource(R.string.chat_no_favorites_content),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(16.dp)
-            )
         } else {
             // 第一层：收藏夹列表
             LazyColumn(
                 modifier = Modifier.heightIn(max = 420.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                item { ImportedFavoriteSnapshotsEntry(sessionId) }
+                if (favorites.isEmpty()) item {
+                    Text(
+                        stringResource(R.string.chat_no_favorites_content),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
                 itemsIndexed(favorites, key = { index, item ->
                     item.get("id")?.takeIf { !it.isJsonNull }?.asString?.takeIf(String::isNotBlank)
                         ?: item.get("collection_id")?.takeIf { !it.isJsonNull }?.asString?.takeIf(String::isNotBlank)

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="companion_avatar_change">아바타 변경</string>
+    <string name="companion_avatar_title">캐릭터 아바타 자르기</string>
+    <string name="companion_avatar_hint">드래그로 위치를, 슬라이더로 크기를 조정하세요. 저장하면 채팅과 대화 목록에 반영됩니다.</string>
+    <string name="companion_avatar_save">아바타 저장</string>
+    <string name="companion_avatar_zoom">확대/축소</string>
+    <string name="companion_avatar_choose">다른 이미지 선택</string>
+    <string name="companion_avatar_failed">이미지를 읽거나 저장할 수 없습니다. 이미지를 다시 선택해 주세요.</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_home_common">常用</string>
+    <string name="more_home_memory">角色與記憶</string>
+    <string name="more_home_appearance_chat">外觀與聊天</string>
+    <string name="more_home_extensions_management">擴充與管理</string>
+    <string name="more_home_role_memory_scope">按角色管理對你和事件的記憶</string>
+    <string name="more_home_session_memory_scope">各對話獨立的經歷與約定</string>
+    <string name="more_home_global_memory_scope">目前資料庫內跨對話共用</string>
+</resources>

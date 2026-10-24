@@ -12,6 +12,10 @@ internal object CompanionRelationshipPolicy {
     val dimensions = linkedMapOf("affection" to "亲近", "trust" to "信任", "familiarity" to "熟悉",
         "dependency" to "依赖", "security" to "安全感", "jealousy" to "嫉妒")
     val initial = mapOf("affection" to 50, "trust" to 50, "familiarity" to 30, "dependency" to 30, "security" to 50, "jealousy" to 0)
+    /** 完整历史补评已覆盖到当前末轮时，旧的等待标记不再代表仍有内容待补评。 */
+    fun backfillComplete(state: CompanionRelationshipEntity, narrative: RelationshipNarrative?, pending: Int?): Boolean =
+        state.awaitingHistory && !state.historyReviewRequired && state.cursorId != null && pending == 0 &&
+            dimensions.keys.all { narrative?.relationships?.get(it)?.score != null }
     fun hash(row: LocalMessageEntity) = CompanionMemoryPolicy.fingerprint(row)
     fun values(json: String): Map<String, Int> {
         val obj = JsonParser.parseString(json).asJsonObject

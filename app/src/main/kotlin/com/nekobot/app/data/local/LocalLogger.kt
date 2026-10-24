@@ -193,7 +193,7 @@ object LocalLogger {
 
 /** 供日志系统和 JVM 单元测试复用的保守脱敏规则。 */
 internal fun redactForLocalLog(message: String): String {
-    val withoutCredentials = message
+    val withoutCredentials = redactJsonLogCredentials(message)
         .replace(
             Regex("(?i)(authorization|x-auth-token|api[_-]?key|password|token|secret)\\s*[:=]\\s*(?:bearer\\s+)?[^\\s,;]+"),
             "\$1=<redacted>"

@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.nekobot.app.R
 import com.nekobot.app.data.local.LocalLogger
+import com.nekobot.app.data.local.diagnostics.wrap
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.oauth.LocalOAuthProviders
 import com.nekobot.app.data.local.oauth.OAuthRuntimeCredential
@@ -110,6 +111,49 @@ internal class LocalToolCallStreamAccumulator {
             "arguments" to arguments
         )
     }
+}
+
+/**
+ * 流式聊天期间的「正文标记 → 思考」适配器。
+ *
+ * 思考字段先到时按「字段优先」放弃标记提取，并把尚未决定归属的缓存原样还给正文。
+ */
+private class ThinkingMarkerStreamState(config: ThinkingSourceConfig) {
+    private var extractor: ThinkingMarkerExtractor? =
+        if (config.markerEnabled) ThinkingMarkerExtractor(config) else null
+
+    /** 本回复是否已从正文标记里提取到思考。 */
+    val didExtract: Boolean get() = extractor?.didExtract == true
+
+    fun feedContent(chunk: String): List<ExtractEvent> =
+        extractor?.feed(chunk) ?: listOf(ExtractEvent.Content(chunk))
+
+    fun feedThinkingField(chunk: String): List<ExtractEvent> {
+        val active = extractor ?: return listOf(ExtractEvent.Thinking(chunk))
+        if (active.didExtract) return listOf(ExtractEvent.Thinking(chunk))
+        extractor = null
+        return active.abandon() + ExtractEvent.Thinking(chunk)
+    }
+
+    fun finish(): List<ExtractEvent> {
+        val active = extractor ?: return emptyList()
+        extractor = null
+        return active.finish()
+    }
+}
+
+/** 非流式响应：字段没取到思考时，从正文标记里补提取（字段优先）。 */
+private fun applyThinkingMarkerExtraction(response: LocalModelResponse): LocalModelResponse {
+    if (response.thinkingContent.isNotBlank()) return response
+    val config = ThinkingSourceSettings.current()
+    if (!config.markerEnabled) return response
+    val (content, thinking) = extractThinkingFromMarkedContent(
+        config,
+        response.content,
+        response.thinkingContent
+    )
+    if (content == response.content && thinking == response.thinkingContent) return response
+    return response.copy(content = content, thinkingContent = thinking)
 }
 
 /** 合并 Responses API 的多个终态事件（item.done / text.done / response.completed）。 */
@@ -246,6 +290,43 @@ class LocalAiClient(
         val fullThinking = StringBuilder()
         var terminal: LocalModelResponse? = null
         var response: Response? = null
+        val markerState = ThinkingMarkerStreamState(ThinkingSourceSettings.current())
+        var sawContentChunk = false
+        var sawThinkingChunk = false
+
+        suspend fun emitThinkingText(text: String) {
+            if (text.isEmpty()) return
+            fullThinking.append(text)
+            emit(RealtimeEvent.ReasoningChunk(text))
+        }
+
+        suspend fun emitContentText(text: String) {
+            if (text.isEmpty()) return
+            fullContent.append(text)
+            emit(RealtimeEvent.StreamChunk(text))
+        }
+
+        suspend fun emitMarkerEvents(events: List<ExtractEvent>) {
+            events.forEach { event ->
+                when (event) {
+                    is ExtractEvent.Content -> emitContentText(event.text)
+                    is ExtractEvent.Thinking -> emitThinkingText(event.text)
+                }
+            }
+        }
+
+        suspend fun onStreamContent(chunk: String) {
+            if (chunk.isEmpty()) return
+            sawContentChunk = true
+            emitMarkerEvents(markerState.feedContent(chunk))
+        }
+
+        suspend fun onStreamThinkingField(chunk: String) {
+            if (chunk.isEmpty()) return
+            sawThinkingChunk = true
+            emitMarkerEvents(markerState.feedThinkingField(chunk))
+        }
+
         try {
             val (runtimeModel, credential) = resolveRuntimeModel(model)
             val protocol = LocalProtocols.get(runtimeModel.protocol)
@@ -278,14 +359,13 @@ class LocalAiClient(
                 return@flow
             }
 
-            parseBufferedJsonResponse(response, protocol)?.let { parsed ->
+            parseBufferedJsonResponse(response, protocol)?.let { rawParsed ->
+                val parsed = applyThinkingMarkerExtraction(rawParsed)
                 parsed.thinkingContent.takeIf(String::isNotBlank)?.let {
-                    fullThinking.append(it)
-                    emit(RealtimeEvent.ReasoningChunk(it))
+                    emitThinkingText(it)
                 }
                 parsed.content.takeIf(String::isNotBlank)?.let {
-                    fullContent.append(it)
-                    emit(RealtimeEvent.StreamChunk(it))
+                    emitContentText(it)
                 }
                 parsed.usage.takeIf { it.isNotEmpty() }?.let { usage ->
                     val detail = usageMapToDetail(usage)
@@ -317,8 +397,10 @@ class LocalAiClient(
                 }
 
             var streamErrorMessage: String? = null
+            val completion = LocalStreamCompletion(protocol)
             BufferedReader(InputStreamReader(src, Charsets.UTF_8)).use { reader ->
                 readSseEvents(reader) { data ->
+                    completion.observe(data)
                     if (data == "[DONE]") return@readSseEvents false
                     // 尝试解析 usage（OpenAI 在最后 chunk、Anthropic 在 message_delta）
                     protocol.parseStreamUsageDetail(data)?.let { detail ->
@@ -339,21 +421,16 @@ class LocalAiClient(
                         return@readSseEvents false
                     }
                     protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
-                        fullThinking.append(it)
-                        emit(RealtimeEvent.ReasoningChunk(it))
+                        onStreamThinkingField(it)
                     }
                     protocol.parseStreamFinalResponse(data)?.let { parsed ->
                         terminal = mergeStreamTerminalResponse(terminal, parsed)
                         parsed.thinkingContent
-                            .takeIf { it.isNotBlank() && fullThinking.isEmpty() }
-                            ?.let {
-                                fullThinking.append(it)
-                                emit(RealtimeEvent.ReasoningChunk(it))
-                            }
+                            .takeIf { it.isNotBlank() && !sawThinkingChunk }
+                            ?.let { onStreamThinkingField(it) }
                     }
                     protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
-                        fullContent.append(chunk)
-                        emit(RealtimeEvent.StreamChunk(chunk))
+                        onStreamContent(chunk)
                     }
                     true
                 }
@@ -363,12 +440,11 @@ class LocalAiClient(
                 emit(RealtimeEvent.StreamEnd(null))
                 return@flow
             }
+            completion.requireComplete()
             terminal?.content
-                ?.takeIf { it.isNotBlank() && fullContent.isEmpty() }
-                ?.let {
-                    fullContent.append(it)
-                    emit(RealtimeEvent.StreamChunk(it))
-                }
+                ?.takeIf { it.isNotBlank() && !sawContentChunk }
+                ?.let { onStreamContent(it) }
+            emitMarkerEvents(markerState.finish())
             if (fullContent.isEmpty() && !(extra[CHARACTER_THINKING_EXTRA] == true && fullThinking.isNotBlank())) {
                 emit(RealtimeEvent.Error("模型返回了空响应"))
             }
@@ -436,7 +512,7 @@ class LocalAiClient(
                 val raw = resp.body?.string().orEmpty()
                 @Suppress("UNCHECKED_CAST")
                 val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
-                val parsed = protocol.parseNonStreamResponse(data)
+                val parsed = applyThinkingMarkerExtraction(protocol.parseNonStreamResponse(data))
                 if (
                     parsed.toolCalls.isEmpty() &&
                     shouldFailoverForAssistantContent(parsed.content)
@@ -548,8 +624,49 @@ class LocalAiClient(
                     streamCallbacks.onContentChunk(it.toString())
                 }
             }
-            val buffered = parseBufferedJsonResponse(response, protocol)
-            if (buffered != null) {
+            val markerState = ThinkingMarkerStreamState(ThinkingSourceSettings.current())
+            var markerExtractedThinking = false
+
+            fun deliverMarkerEvents(events: List<ExtractEvent>) {
+                events.forEach { event ->
+                    when (event) {
+                        is ExtractEvent.Content -> {
+                            if (event.text.isEmpty()) return@forEach
+                            content.append(event.text)
+                            if (callbacksReleased) {
+                                streamCallbacks?.onContentChunk?.invoke(event.text)
+                            } else if (!shouldBufferAssistantPrefix(content.toString())) {
+                                releaseBufferedCallbacks()
+                            }
+                        }
+                        is ExtractEvent.Thinking -> {
+                            if (event.text.isEmpty()) return@forEach
+                            thinking.append(event.text)
+                            if (thinkingReleased) {
+                                streamCallbacks?.onThinkingChunk?.invoke(event.text)
+                            } else {
+                                releaseThinkingCallbacks()
+                            }
+                        }
+                    }
+                }
+            }
+
+            fun onStreamContent(chunk: String) {
+                if (chunk.isEmpty()) return
+                val events = markerState.feedContent(chunk)
+                if (events.any { it is ExtractEvent.Thinking }) markerExtractedThinking = true
+                deliverMarkerEvents(events)
+            }
+
+            fun onStreamThinkingField(chunk: String) {
+                if (chunk.isEmpty()) return
+                deliverMarkerEvents(markerState.feedThinkingField(chunk))
+            }
+
+            val rawBuffered = parseBufferedJsonResponse(response, protocol)
+            if (rawBuffered != null) {
+                val buffered = applyThinkingMarkerExtraction(rawBuffered)
                 if (buffered.content.isBlank() && buffered.toolCalls.isEmpty() &&
                     !(extra[CHARACTER_THINKING_EXTRA] == true && buffered.thinkingContent.isNotBlank())) {
                     throw IllegalStateException("模型返回了空响应")
@@ -583,10 +700,12 @@ class LocalAiClient(
             }
             val source = response.body?.byteStream()
                 ?: throw IllegalStateException("响应体为空")
+            val completion = LocalStreamCompletion(protocol)
             BufferedReader(InputStreamReader(source, Charsets.UTF_8)).use { reader ->
                 readSseEvents(reader) { data ->
                     streamCallbacks?.onStreamObserved?.invoke()
-                    if (data == "[DONE]") return@readSseEvents true
+                    completion.observe(data)
+                    if (data == "[DONE]") return@readSseEvents false
                     protocol.parseStreamUsageDetail(data)?.let { detail ->
                         usage = detail.toUsageMap()
                     }
@@ -599,35 +718,40 @@ class LocalAiClient(
                     protocol.parseStreamFinishReason(data)?.let { finishReason = it }
                     protocol.parseStreamToolCallDeltas(data).forEach(toolCallAccumulator::add)
                     protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
-                        thinking.append(chunk)
                         // 思考正文到达即放行：首个分片触发 onStart 并交付已累积思考，
                         // 之后每个分片都必须立即转发，思考卡片才能逐字增长。
                         // 旧实现只在 callbacksReleased（正文超过阈值）之后才逐块转发，
                         // 于是首个分片之后思考停更，直到正文放行或流结束才整段出现。
-                        if (thinkingReleased) {
-                            streamCallbacks?.onThinkingChunk?.invoke(chunk)
-                        } else {
-                            releaseThinkingCallbacks()
-                        }
+                        onStreamThinkingField(chunk)
                     }
                     protocol.parseStreamThinkingSignature(data)?.takeIf(String::isNotEmpty)?.let {
                         thinkingSignature.append(it)
                     }
                     protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
-                        content.append(chunk)
-                        if (callbacksReleased) {
-                            streamCallbacks?.onContentChunk?.invoke(chunk)
-                        } else if (!shouldBufferAssistantPrefix(content.toString())) {
-                            releaseBufferedCallbacks()
-                        }
+                        onStreamContent(chunk)
                     }
                     true
                 }
             }
+            completion.requireComplete()
+            deliverMarkerEvents(markerState.finish())
             val parsed = terminal
             val streamedToolCalls = toolCallAccumulator.build()
-            val finalContent = parsed?.content?.takeIf(String::isNotEmpty) ?: content.toString()
-            val finalThinking = parsed?.thinkingContent?.takeIf(String::isNotEmpty) ?: thinking.toString()
+            var finalContent = parsed?.content?.takeIf(String::isNotEmpty) ?: content.toString()
+            var finalThinking = parsed?.thinkingContent?.takeIf(String::isNotEmpty) ?: thinking.toString()
+            val markerConfig = ThinkingSourceSettings.current()
+            if (markerConfig.markerEnabled) {
+                if (markerExtractedThinking) {
+                    // 流式阶段已剪过标记，终态正文可能是同一份原文，再剪一次避免标记回显。
+                    finalContent = stripThinkingMarkers(markerConfig, finalContent)
+                } else if (finalThinking.isBlank()) {
+                    val extracted = extractThinkingFromMarkedContent(
+                        markerConfig, finalContent, finalThinking
+                    )
+                    finalContent = extracted.first
+                    finalThinking = extracted.second
+                }
+            }
             val toolCalls = parsed?.toolCalls?.takeIf(List<*>::isNotEmpty) ?: streamedToolCalls
             if (finalContent.isBlank() && toolCalls.isEmpty() &&
                 !(extra[CHARACTER_THINKING_EXTRA] == true && finalThinking.isNotBlank())) {
@@ -857,6 +981,30 @@ class LocalAiClient(
                 .build()
         }
 
+        val traceContext = kotlin.coroutines.coroutineContext[com.nekobot.app.data.local.diagnostics.DiagnosticTraceContext]
+        suspend fun send(transport: OkHttpClient, request: Request, bufferBody: Boolean = false): Response {
+            val secrets = listOf(model.apiKey) + headers.filterKeys {
+                it.contains(Regex("(?i)authorization|api.?key|cookie|token|secret"))
+            }.values
+            val trace = traceContext?.request(mapOf(
+                "model" to model.model, "model_name" to model.name, "provider" to model.provider,
+                "protocol" to protocol.name, "endpoint" to url, "stream" to stream,
+                "max_context" to model.maxContextLength, "configured_max_tokens" to model.maxTokens,
+                "timeout_ms" to transport.callTimeoutMillis,
+                "content_type" to request.body?.contentType()?.toString()
+            ), JsonParser.parseString(okio.Buffer().also { request.body?.writeTo(it) }.readUtf8()), secrets)
+            return try {
+                val response = transport.newCall(request).awaitResponse(bufferBody = bufferBody)
+                val body = response.body
+                if (trace == null) response else if (body == null) {
+                    trace.finish(response.code, "", true)
+                    response
+                } else response.newBuilder().body(trace.wrap(body, response.code)).build()
+            } catch (error: Exception) {
+                trace?.finish(null, "", false, error.javaClass.simpleName + ": " + error.message.orEmpty())
+                throw error
+            }
+        }
         val normalizedExtra = normalizeProtocolExtra(model, extra)
         val evaluation = extra[CompanionRelationshipRequest.EVALUATION_EXTRA] == true
         val transport = if (evaluation) clientFor(model).newBuilder()
@@ -876,7 +1024,7 @@ class LocalAiClient(
             val safeModel = model.model.filter { it.isLetterOrDigit() || it in "-._/:" }.take(100)
             LocalLogger.i("RelationshipHttp", "tag=$requestTag，model=$safeModel，协议=${protocol.name}，输出字段=$budgetField，输出上限=${extra["max_tokens"]}，关闭思考=${extra["_disable_thinking"] == true || extra["reasoning_effort"] == "none" || extra["enable_thinking"] == false}，stream=$stream，硬超时毫秒=${transport.callTimeoutMillis}")
         }
-        val response = transport.newCall(request).awaitResponse(bufferBody = evaluation)
+        val response = send(transport, request, bufferBody = evaluation)
         if (response.code != 400 || protocol.name !in OPENAI_COMPATIBILITY_PROTOCOLS || extra[NO_COMPATIBILITY_RETRY_EXTRA] == true) {
             return response
         }
@@ -902,7 +1050,7 @@ class LocalAiClient(
         (fallbackExtra[com.nekobot.app.data.model.CustomReasoningParam.EXTRA_KEY] as? com.nekobot.app.data.model.CustomReasoningParam)?.let {
             runCatching { LocalLogger.w(TAG, "400 重试仍保留自定义思考参数：${it.path}") }
         }
-        return clientFor(model).newCall(buildRequest(fallbackExtra)).awaitResponse()
+        return send(clientFor(model), buildRequest(fallbackExtra))
     }
 
     /** 某些兼容端点即使收到 stream=true 仍返回完整 JSON；不能按 SSE 逐行直接丢弃。 */
@@ -1297,6 +1445,55 @@ class LocalAiClient(
             // 思考正文已在流式期间逐块转发（不参与拒答占位判定），结束时不再整段补发
             var thinkingReleased = false
             var streamErrorMessage: String? = null
+            val markerState = ThinkingMarkerStreamState(ThinkingSourceSettings.current())
+            var sawThinkingChunk = false
+            var sawContentChunk = false
+
+            suspend fun appendContentDelta(text: String) {
+                if (text.isEmpty()) return
+                fullContent.append(text)
+                if (contentReleased) {
+                    emit(RealtimeEvent.StreamChunk(text))
+                } else if (!shouldBufferAssistantPrefix(fullContent.toString())) {
+                    // 思考若已逐块转发，这里不再整段补发，避免 UI 重复累积
+                    if (!thinkingReleased) {
+                        fullThinking.takeIf { it.isNotEmpty() }?.let {
+                            emit(RealtimeEvent.ReasoningChunk(it.toString()))
+                        }
+                    }
+                    emit(RealtimeEvent.StreamChunk(fullContent.toString()))
+                    contentReleased = true
+                }
+            }
+
+            suspend fun deliverMarkerEvents(events: List<ExtractEvent>) {
+                events.forEach { event ->
+                    when (event) {
+                        is ExtractEvent.Content -> appendContentDelta(event.text)
+                        is ExtractEvent.Thinking -> {
+                            if (event.text.isEmpty()) return@forEach
+                            fullThinking.append(event.text)
+                            // 思考正文到达即转发，不再等正文阈值放行：
+                            // 思考内容不参与「短篇拒答占位」判定，实时展示不影响故障转移。
+                            thinkingReleased = true
+                            emit(RealtimeEvent.ReasoningChunk(event.text))
+                        }
+                    }
+                }
+            }
+
+            suspend fun onStreamContent(chunk: String) {
+                if (chunk.isEmpty()) return
+                sawContentChunk = true
+                val events = markerState.feedContent(chunk)
+                deliverMarkerEvents(events)
+            }
+
+            suspend fun onStreamThinkingField(chunk: String) {
+                if (chunk.isEmpty()) return
+                sawThinkingChunk = true
+                deliverMarkerEvents(markerState.feedThinkingField(chunk))
+            }
 
             // 直接复用 chatStream 的内部逻辑（避免嵌套 Flow）
             val protocol = LocalProtocols.get(runtimeModel.protocol)
@@ -1334,8 +1531,9 @@ class LocalAiClient(
                     response.close()
                     continue
                 }
-                val buffered = parseBufferedJsonResponse(response, protocol)
-                if (buffered != null) {
+                val rawBuffered = parseBufferedJsonResponse(response, protocol)
+                if (rawBuffered != null) {
+                    val buffered = applyThinkingMarkerExtraction(rawBuffered)
                     if (buffered.content.isBlank() && buffered.toolCalls.isEmpty() &&
                         !(extra[CHARACTER_THINKING_EXTRA] == true && buffered.thinkingContent.isNotBlank())) {
                         lastErrorMsg = "模型返回了空响应"
@@ -1388,8 +1586,10 @@ class LocalAiClient(
                     response.close()
                     continue
                 }
+                val completion = LocalStreamCompletion(protocol)
                 BufferedReader(InputStreamReader(src, Charsets.UTF_8)).use { reader ->
                     readSseEvents(reader) { data ->
+                        completion.observe(data)
                         if (data == "[DONE]") return@readSseEvents false
                         protocol.parseStreamUsageDetail(data)?.let { detail ->
                             inputTokens = detail.promptTokens
@@ -1403,34 +1603,16 @@ class LocalAiClient(
                             return@readSseEvents false
                         }
                         protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
-                            fullThinking.append(it)
-                            // 思考正文到达即转发，不再等正文阈值放行：
-                            // 思考内容不参与「短篇拒答占位」判定，实时展示不影响故障转移。
-                            thinkingReleased = true
-                            emit(RealtimeEvent.ReasoningChunk(it))
+                            onStreamThinkingField(it)
                         }
                         protocol.parseStreamFinalResponse(data)?.let { parsed ->
                             terminal = mergeStreamTerminalResponse(terminal, parsed)
                             parsed.thinkingContent
-                                .takeIf { it.isNotBlank() && fullThinking.isEmpty() }
-                                ?.let {
-                                    fullThinking.append(it)
-                                }
+                                .takeIf { it.isNotBlank() && !sawThinkingChunk }
+                                ?.let { onStreamThinkingField(it) }
                         }
                         protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
-                            fullContent.append(chunk)
-                            if (contentReleased) {
-                                emit(RealtimeEvent.StreamChunk(chunk))
-                            } else if (!shouldBufferAssistantPrefix(fullContent.toString())) {
-                                // 思考若已逐块转发，这里不再整段补发，避免 UI 重复累积
-                                if (!thinkingReleased) {
-                                    fullThinking.takeIf { it.isNotEmpty() }?.let {
-                                        emit(RealtimeEvent.ReasoningChunk(it.toString()))
-                                    }
-                                }
-                                emit(RealtimeEvent.StreamChunk(fullContent.toString()))
-                                contentReleased = true
-                            }
+                            onStreamContent(chunk)
                         }
                         true
                     }
@@ -1443,11 +1625,11 @@ class LocalAiClient(
                     response.close()
                     continue
                 }
+                completion.requireComplete()
                 terminal?.content
-                    ?.takeIf { it.isNotBlank() && fullContent.isEmpty() }
-                    ?.let {
-                        fullContent.append(it)
-                    }
+                    ?.takeIf { it.isNotBlank() && !sawContentChunk }
+                    ?.let { onStreamContent(it) }
+                deliverMarkerEvents(markerState.finish())
                 if (fullContent.isEmpty() && !(extra[CHARACTER_THINKING_EXTRA] == true && fullThinking.isNotBlank())) {
                     lastErrorMsg = "模型返回了空响应"
                     failed = true

@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -77,6 +79,8 @@ fun MoreScreen(
     onNavigate: (String) -> Unit,
     onLogout: () -> Unit
 ) {
+    val navigateOnce = rememberMoreNavigateOnce(onNavigate)
+    val listState = rememberLazyListState()
     val textResources = LocalResources.current
     // 订阅全局 appMode Flow，模式切换时自动重组
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
@@ -98,7 +102,9 @@ fun MoreScreen(
             contentAlignment = Alignment.TopCenter
         ) {
             LazyColumn(
+            state = listState,
             modifier = Modifier
+                .testTag("more-list")
                 .widthIn(max = 720.dp)
                 .fillMaxSize(),
             contentPadding = PaddingValues(
@@ -119,7 +125,7 @@ fun MoreScreen(
                     tint = accentWarning(),
                     title = stringResource(R.string.more_style_settings),
                     desc = stringResource(R.string.more_style_settings_desc),
-                    onClick = { onNavigate("style_settings") }
+                    onClick = { navigateOnce("style_settings") }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 52.dp),
@@ -130,7 +136,7 @@ fun MoreScreen(
                     tint = MaterialTheme.colorScheme.primary,
                     title = textResources.getString(R.string.single_role_relationship_page_skins),
                     desc = textResources.getString(R.string.single_role_seven_sets_of_backgrounds_buttons_and_icons_independent_of_theme),
-                    onClick = { onNavigate(Routes.RELATIONSHIP_BACKGROUND) }
+                    onClick = { navigateOnce(Routes.RELATIONSHIP_BACKGROUND) }
                 )
             }
 
@@ -145,7 +151,7 @@ fun MoreScreen(
                     tint = accentTertiary(),
                     title = stringResource(R.string.more_ai_config_center),
                     desc = if (appMode == AppMode.LOCAL) stringResource(R.string.more_ai_config_desc_local) else stringResource(R.string.more_ai_config_desc_server),
-                    onClick = { onNavigate("ai_config_center") }
+                    onClick = { navigateOnce("ai_config_center") }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 52.dp),
@@ -156,7 +162,7 @@ fun MoreScreen(
                     tint = MaterialTheme.colorScheme.primary,
                     title = stringResource(R.string.more_role_memory),
                     desc = stringResource(R.string.more_role_memory_desc),
-                    onClick = { onNavigate("memory") }
+                    onClick = { navigateOnce("memory") }
                 )
                 if (appMode == AppMode.LOCAL) {
                     HorizontalDivider(
@@ -168,7 +174,7 @@ fun MoreScreen(
                         tint = accentTertiary(),
                         title = stringResource(R.string.agent_character_memory_title),
                         desc = stringResource(R.string.agent_character_memory_desc),
-                        onClick = { onNavigate(Routes.AGENT_CHARACTER_MEMORY) }
+                        onClick = { navigateOnce(Routes.AGENT_CHARACTER_MEMORY) }
                     )
                 }
                 HorizontalDivider(
@@ -180,7 +186,7 @@ fun MoreScreen(
                     tint = accentSecondary(),
                     title = stringResource(R.string.more_global_agent_memory),
                     desc = stringResource(R.string.more_global_agent_memory_desc),
-                    onClick = { onNavigate("agent_memory") }
+                    onClick = { navigateOnce("agent_memory") }
                 )
             }
 
@@ -195,7 +201,7 @@ fun MoreScreen(
                     tint = accentSecondary(),
                     title = stringResource(R.string.global_search_title),
                     desc = stringResource(R.string.more_global_search_desc),
-                    onClick = { onNavigate("global_search") }
+                    onClick = { navigateOnce("global_search") }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 52.dp),
@@ -206,7 +212,7 @@ fun MoreScreen(
                     tint = accentSuccess(),
                     title = stringResource(R.string.more_state_history),
                     desc = stringResource(R.string.more_state_history_desc),
-                    onClick = { onNavigate("state_history") }
+                    onClick = { navigateOnce("state_history") }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 52.dp),
@@ -218,7 +224,7 @@ fun MoreScreen(
                     tint = accentWarning(),
                     title = stringResource(R.string.more_stickers),
                     desc = stringResource(R.string.more_stickers_desc),
-                    onClick = { onNavigate("stickers") }
+                    onClick = { navigateOnce("stickers") }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 52.dp),
@@ -229,7 +235,7 @@ fun MoreScreen(
                     tint = accentTertiary(),
                     title = stringResource(R.string.more_extensions),
                     desc = if (appMode != AppMode.LOCAL) stringResource(R.string.more_extensions_desc_server) else stringResource(R.string.more_extensions_desc_local),
-                    onClick = { onNavigate("extensions") }
+                    onClick = { navigateOnce("extensions") }
                 )
             }
 
@@ -244,7 +250,7 @@ fun MoreScreen(
                     tint = accentSecondary(),
                     title = stringResource(R.string.more_system_operations),
                     desc = stringResource(R.string.more_system_operations_desc),
-                    onClick = { onNavigate("system_operations") }
+                    onClick = { navigateOnce("system_operations") }
                 )
                 if (appMode == AppMode.LOCAL) {
                     // 本地模式：DB Profile 管理（从远程导入 nbotcfg / 切换 / 删除）
@@ -257,7 +263,7 @@ fun MoreScreen(
                         tint = accentTertiary(),
                         title = stringResource(R.string.more_db_management),
                         desc = stringResource(R.string.more_db_management_desc),
-                        onClick = { onNavigate("db_profile") }
+                        onClick = { navigateOnce("db_profile") }
                     )
                 }
             }
@@ -271,7 +277,7 @@ fun MoreScreen(
                     tint = MaterialTheme.colorScheme.primary,
                     title = stringResource(R.string.more_settings),
                     desc = stringResource(R.string.more_settings_desc),
-                    onClick = { onNavigate("settings") }
+                    onClick = { navigateOnce("settings") }
                 )
             }
 

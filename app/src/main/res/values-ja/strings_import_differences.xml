@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_difference_notice">各項目を比較し、保持または上書きを選びます。選択の保存ではデータを書き込みません。</string>
+    <string name="import_difference_save">選択を保存</string>
+    <string name="import_difference_keep">アプリ内の内容を保持（既定）</string>
+    <string name="import_difference_replace">アーカイブの内容でこの項目を上書き</string>
+    <string name="import_difference_file">添付ファイル</string>
+    <string name="import_difference_current">アプリ内の内容</string>
+    <string name="import_difference_incoming">アーカイブ内の内容</string>
+    <string name="import_difference_type">ファイル形式（拡張子）：%1$s</string>
+    <string name="import_difference_unknown_type">拡張子なし</string>
+    <string name="import_difference_unknown_size">サイズ不明</string>
+    <string name="import_difference_checksum">内容のチェックサム：%1$s</string>
+    <string name="import_difference_character">キャラクター：%1$s</string>
+    <string name="import_difference_session">会話：%1$s</string>
+    <string name="import_difference_shared">共有ワークスペース</string>
+    <string name="import_difference_show_path">フルパスを表示</string>
+    <string name="import_difference_hide_path">フルパスを隠す</string>
+    <string name="portability_ui_confirm_hint">追加と上書きの内容を確認し、必要な差分を処理します。</string>
+    <string name="portability_group_content">内容と記憶</string>
+    <string name="portability_group_tools">モデルとツール</string>
+    <string name="portability_group_files">ファイルとアプリ</string>
+</resources>

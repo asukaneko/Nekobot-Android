@@ -14,6 +14,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatSessionRuntimeTest {
+    @Test
+    fun memorySummaryNoticeKeepsItsKindAndAnchorUntilFinishedOrStopped() {
+        val state = ChatSessionState("fictional-memory-summary")
+        state.applyContextCompressionNotice(true, "虚构测试消息", memorySummarizing = true)
+        val notice = state.inlineNoticeOrNull<ContextCompressionUiState>()!!
+        assertTrue(notice.memorySummarizing)
+        assertTrue(notice.running)
+        assertEquals("虚构测试消息", notice.anchorContent)
+        state.applyContextCompressionNotice(false)
+        assertNull(state.inlineNoticeOrNull<ContextCompressionUiState>())
+        state.applyContextCompressionNotice(true, "普通压缩")
+        assertFalse(state.inlineNoticeOrNull<ContextCompressionUiState>()!!.memorySummarizing)
+    }
 
     @Test
     fun simultaneousContentAndReasoningCannotStarveEachOthersPreview() {

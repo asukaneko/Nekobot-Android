@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_bulk_record_incoming">Update existing content</string>
+    <string name="import_bulk_record_keep">Keep existing content</string>
+    <string name="import_bulk_record_scope">All %1$d differing records. File, setting, and credential choices stay unchanged.</string>
+    <string name="import_bulk_record_confirm">Select imported values for all %1$d differing records in this import, including records not yet loaded? File, app setting, and credential choices stay as they are. This only updates choices and the preview. You can still adjust individual fields; data is written only when you execute the import.</string>
+    <string name="import_bulk_record_changed">The differing records have changed. Refresh the preview before making a bulk choice.</string>
+</resources>

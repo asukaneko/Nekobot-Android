@@ -1,0 +1,69 @@
+{"text": "今天", "spoken": "2026-10-23", "expected": "2026-10-23", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "明天", "spoken": "2026-10-23", "expected": "2026-10-24", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "后天", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "大后天", "spoken": "2026-10-23", "expected": "2026-10-26", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "昨天", "spoken": "2026-10-23", "expected": "2026-10-22", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "前天", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "大前天", "spoken": "2026-10-23", "expected": "2026-10-20", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "两天前", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "3天后", "spoken": "2026-10-23", "expected": "2026-10-26", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "两周前", "spoken": "2026-10-23", "expected": "2026-10-09", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2周后", "spoken": "2026-10-23", "expected": "2026-11-06", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "下周三", "spoken": "2026-10-23", "expected": "2026-10-28", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "下下周一", "spoken": "2026-10-23", "expected": "2026-11-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "本周日", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "上周五", "spoken": "2026-10-23", "expected": "2026-10-16", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "这星期二", "spoken": "2026-10-23", "expected": "2026-10-20", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "下个月5号", "spoken": "2026-10-23", "expected": "2026-11-05", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "10月2日", "spoken": "2026-10-23", "expected": "2026-10-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2025年12月31日", "spoken": "2026-10-23", "expected": "2025-12-31", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "月底", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "过几天", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "下周", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "今天和明天", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2月30日", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2010-01-29", "spoken": "2017-03-22", "expected": "2010-01-29", "upstreamExpected": "2010-01-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#3"}
+{"text": "2010/01/29", "spoken": "2017-03-22", "expected": "2010-01-29", "upstreamExpected": "2010-01-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#5"}
+{"text": "1987年1月11日", "spoken": "2017-03-22", "expected": "1987-01-11", "upstreamExpected": "1987-01-11", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#7"}
+{"text": "1月19日", "spoken": "2017-03-22", "expected": "2017-01-19", "upstreamExpected": "2017-01-19", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#14"}
+{"text": "1月19号", "spoken": "2017-03-22", "expected": "2017-01-19", "upstreamExpected": "2017-01-19", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#15"}
+{"text": "明天", "spoken": "2017-03-22", "expected": "2017-03-23", "upstreamExpected": "2017-03-23", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#18"}
+{"text": "大后天", "spoken": "2017-03-22", "expected": "2017-03-25", "upstreamExpected": "2017-03-25", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#19"}
+{"text": "大前天", "spoken": "2017-03-22", "expected": "2017-03-19", "upstreamExpected": "2017-03-19", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#20"}
+{"text": "上周一", "spoken": "2017-03-22", "expected": "2017-03-13", "upstreamExpected": "2017-03-13", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#24"}
+{"text": "下下周日", "spoken": "2024-11-15", "expected": "2024-12-01", "upstreamExpected": "2024-12-01", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#25"}
+{"text": "上上個週三", "spoken": "2024-11-15", "expected": "2024-10-30", "upstreamExpected": "2024-10-30", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#26"}
+{"text": "这个星期一", "spoken": "2017-03-22", "expected": "2017-03-20", "upstreamExpected": "2017-03-20", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#28"}
+{"text": "二零零四年八月十五", "spoken": "2017-03-22", "expected": "2004-08-15", "upstreamExpected": "2004-08-15", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#31"}
+{"text": "1789-01-29", "spoken": "2017-03-22", "expected": "1789-01-29", "upstreamExpected": "1789-01-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#34"}
+{"text": "1357年6月10日", "spoken": "2017-03-22", "expected": "1357-06-10", "upstreamExpected": "1357-06-10", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#35"}
+{"text": "三六七年一月一日", "spoken": "2017-03-22", "expected": "0367-01-01", "upstreamExpected": "0367-01-01", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#36"}
+{"text": "昨日", "spoken": "2018-07-30", "expected": "2018-07-29", "upstreamExpected": "2018-07-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#44"}
+{"text": "後天", "spoken": "2018-09-18", "expected": "2018-09-20", "upstreamExpected": "2018-09-20", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#46"}
+{"text": "五月三十日", "spoken": "2020-11-22", "expected": "2020-05-30", "upstreamExpected": "2020-05-30", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#50"}
+{"text": "五月三十一日", "spoken": "2020-11-22", "expected": "2020-05-31", "upstreamExpected": "2020-05-31", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#51"}
+{"text": "一月二十三", "spoken": "2020-11-22", "expected": "2020-01-23", "upstreamExpected": "2020-01-23", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#52"}
+{"text": "2020/1/2", "spoken": "2020-11-22", "expected": "2020-01-02", "upstreamExpected": "2020-01-02", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#54"}
+{"text": "2月29日", "spoken": "2017-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#58"}
+{"text": "2月29日", "spoken": "2019-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#59"}
+{"text": "2月29日", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#60"}
+{"text": "2月30日", "spoken": "2020-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#61"}
+{"text": "2019年2月29日", "spoken": "2020-03-22", "expected": null, "upstreamExpected": "0001-01-01", "adjustment": "上游无解哨兵统一成Unresolved", "source": "Recognizers-Text/Chinese/DateParser.json#62"}
+{"text": "2020年2月29日", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateParser.json#63"}
+{"text": "2010/01/29", "spoken": "2017-03-22", "expected": "2010-01-29", "upstreamExpected": "2010-01-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#7"}
+{"text": "二零零四年八月十五", "spoken": "2017-03-22", "expected": "2004-08-15", "upstreamExpected": "2004-08-15", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#13"}
+{"text": "昨日", "spoken": "2018-07-30", "expected": "2018-07-29", "upstreamExpected": "2018-07-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#88"}
+{"text": "後天", "spoken": "2018-09-18", "expected": "2018-09-20", "upstreamExpected": "2018-09-20", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#95"}
+{"text": "下下周日", "spoken": "2024-11-15", "expected": "2024-12-01", "upstreamExpected": "2024-12-01", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#97"}
+{"text": "上上個週三", "spoken": "2024-11-15", "expected": "2024-10-30", "upstreamExpected": "2024-10-30", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#98"}
+{"text": "今日", "spoken": "2019-08-28", "expected": "2019-08-28", "upstreamExpected": "2019-08-28", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#137"}
+{"text": "今日", "spoken": "2019-08-28", "expected": "2019-08-28", "upstreamExpected": "2019-08-28", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#138"}
+{"text": "5天前", "spoken": "2018-08-30", "expected": "2018-08-25", "upstreamExpected": "2018-08-25", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#154"}
+{"text": "2020/12/1", "spoken": "2020-12-15", "expected": "2020-12-01", "upstreamExpected": "2020-12-01", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#231"}
+{"text": "2月29日", "spoken": "2017-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#237"}
+{"text": "2月29日", "spoken": "2019-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#238"}
+{"text": "2月29日", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#239"}
+{"text": "2月29日", "spoken": "2020-01-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#240"}
+{"text": "2月30日", "spoken": "2020-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#241"}
+{"text": "2019年2月29日", "spoken": "2020-03-22", "expected": null, "upstreamExpected": "not resolved", "adjustment": "上游无解哨兵统一成Unresolved", "source": "Recognizers-Text/Chinese/DateTimeModel.json#242"}
+{"text": "2020年2月29日", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/Chinese/DateTimeModel.json#243"}

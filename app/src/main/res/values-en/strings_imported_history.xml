@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="imported_history_favorites_title">Imported favorite snapshots</string>
+    <string name="imported_history_favorites_summary">%1$d items · Original chats unmatched, read only</string>
+    <string name="imported_history_favorites_read_only">Original saved content and timestamps. The original chats could not be matched.</string>
+    <string name="imported_history_favorites_unreadable">Imported favorite snapshots could not be read.</string>
+    <string name="imported_history_original_persona_unknown">Original persona not recorded</string>
+    <string name="imported_history_favorite_time">Saved: %1$s</string>
+    <string name="imported_history_message_time">Message time: %1$s</string>
+    <string name="imported_history_message_content">Message content</string>
+    <string name="imported_history_forwarded_content">Forwarded content</string>
+    <string name="imported_history_read_full">Read full content</string>
+    <string name="imported_history_back_to_snapshots">Back to snapshots</string>
+    <string name="imported_history_image_description">Original prompt and description</string>
+    <string name="imported_history_partial_sources_title">Original messages linked · Some content needs verification</string>
+    <string name="imported_history_partial_sources_message">These messages support part of the memory. Other details still need verification.</string>
+</resources>

@@ -8,6 +8,8 @@ import com.nekobot.app.data.local.ai.CompanionMemoryStore
 import com.nekobot.app.data.local.ai.CompanionMemoryPolicy
 import com.nekobot.app.data.local.ai.CompanionHybridSearch
 import com.nekobot.app.data.local.ai.FusedCompanionTools
+import com.nekobot.app.data.local.ai.CompanionPromptLanguage
+import com.nekobot.app.data.local.ai.CompanionReferences
 import com.nekobot.app.data.local.db.CompanionMemoryEntity
 import com.nekobot.app.data.local.ai.usesCompanionMemory
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -38,13 +40,12 @@ internal class LocalAgentRecallReader(private val db: NekobotDatabase) : AgentRe
         val store = CompanionMemoryStore(db)
         val scope = store.ensureScope(session)
         val forgotten = db.companionMemoryDao().forgotten(scope.id).toSet()
-        val facts = store.validatedMemories(scope).let { facts ->
-            if (session.companionMode) facts.sortedByDescending { it.current } else facts
-        }
+        val candidatesToValidate = if (session.companionMode) CompanionReferences.current(db.companionMemoryDao().memories(scope.id)) else null
+        val facts = store.validatedMemories(scope, candidatesToValidate)
         for (query in queries) {
             if (session.usesCompanionMemory()) {
                 facts.filter { CompanionMemoryPolicy.score(query, it.content + it.factKey + it.tagsJson + it.eventDate) > 0.04f }
-                    .forEach { memory -> candidates["memory:${memory.id}"] = memoryCandidate(memory, sessionId) }
+                    .forEach { memory -> candidates["memory:${memory.id}"] = memoryCandidate(memory, sessionId, session.companionMode) }
             }
             experiences.searchReadyBySession(sessionId, query, bounded)
                 .filter { it.characterId == session.characterId && experiences.sourceMessageIds(it.id).none { id -> id in forgotten } }
@@ -71,19 +72,20 @@ internal class LocalAgentRecallReader(private val db: NekobotDatabase) : AgentRe
             for (memory in pool) {
                 val score = scores["fact:${memory.id}"]?.takeIf { it >= FusedCompanionTools.VECTOR_MIN_SCORE } ?: continue
                 val key = "memory:${memory.id}"
-                candidates[key] = (candidates[key] ?: memoryCandidate(memory, sessionId)).copy(vectorScore = score)
+                candidates[key] = (candidates[key] ?: memoryCandidate(memory, sessionId, true)).copy(vectorScore = score)
             }
         }
         return candidates.values.take(96)
     }
 
-    private suspend fun memoryCandidate(memory: CompanionMemoryEntity, sessionId: String): AgentRecallCandidate {
+    private suspend fun memoryCandidate(memory: CompanionMemoryEntity, sessionId: String, companionMode: Boolean): AgentRecallCandidate {
         val sources = db.companionMemoryDao().sources(memory.id)
         return AgentRecallCandidate(
             id = memory.id,
             sourceType = "companion_memory",
             title = "${memory.factKey} · v${memory.version} · ${if (memory.current) "当前" else "历史"}",
-            content = "${memory.content} [状态:${memory.status}; ${CompanionMemoryPolicy.temporalHint(memory.eventDate, java.time.LocalDate.now())}]",
+            content = if (companionMode) CompanionPromptLanguage.memory(memory) else
+                "${memory.content} [状态:${memory.status}; ${CompanionMemoryPolicy.temporalHint(memory.eventDate, java.time.LocalDate.now())}]",
             tags = MemoryTags.fromJson(memory.tagsJson),
             sourceSessionId = sessionId,
             startMessageId = sources.firstOrNull()?.messageId,

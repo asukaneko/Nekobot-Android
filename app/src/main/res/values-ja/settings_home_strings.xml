@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_home_common">よく使う設定</string>
+    <string name="settings_home_privacy_experience">プライバシーと操作</string>
+    <string name="settings_home_data_backup">データとバックアップ</string>
+    <string name="settings_home_advanced">詳細設定</string>
+    <string name="settings_home_support_about">サポートとアプリ情報</string>
+    <string name="settings_home_connection">動作モードと接続</string>
+    <string name="settings_home_models_summary">プロバイダー、モデル、接続テスト</string>
+    <string name="settings_home_open_latest">起動時に最新のセッションを開く</string>
+    <string name="settings_home_include_archived">最近のセッションにアーカイブを表示</string>
+    <string name="settings_home_lock_summary">指紋で解除し、バックグラウンドのプレビューを非表示にします。有効時は画面の撮影・録画はできません。</string>
+    <string name="settings_home_image_prompt_summary">チャットモデルで画像の説明を整理し、キャラクター設定の文字が画像に入るのを減らします</string>
+    <string name="settings_home_portability_summary">カテゴリ別にデータをインポート・エクスポート・確認</string>
+    <string name="settings_home_agent_summary">セッションの動作パラメータとツール</string>
+    <string name="settings_home_diagnostics_summary">問題の確認と診断情報のエクスポート</string>
+</resources>

@@ -1,0 +1,120 @@
+{"text": "今日", "spoken": "2026-10-23", "expected": "2026-10-23", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "明日", "spoken": "2026-10-23", "expected": "2026-10-24", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "明後日", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "明々後日", "spoken": "2026-10-23", "expected": "2026-10-26", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "昨日", "spoken": "2026-10-23", "expected": "2026-10-22", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "一昨日", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "一昨昨日", "spoken": "2026-10-23", "expected": "2026-10-20", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "二日前", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "3日後", "spoken": "2026-10-23", "expected": "2026-10-26", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2週間後", "spoken": "2026-10-23", "expected": "2026-11-06", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2週間前", "spoken": "2026-10-23", "expected": "2026-10-09", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "来週の水曜日", "spoken": "2026-10-23", "expected": "2026-10-28", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "再来週の月曜日", "spoken": "2026-10-23", "expected": "2026-11-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "今週の日曜日", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "先週の金曜日", "spoken": "2026-10-23", "expected": "2026-10-16", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "来月5日", "spoken": "2026-10-23", "expected": "2026-11-05", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "10月2日", "spoken": "2026-10-23", "expected": "2026-10-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2025年12月31日", "spoken": "2026-10-23", "expected": "2025-12-31", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "月末", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "数日後", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "来週", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "今日と明日", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "10月2日", "spoken": "2016-11-07", "expected": "2016-10-02", "upstreamExpected": "2016-10-02", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#0"}
+{"text": "2016年2月22日", "spoken": "2016-11-07", "expected": "2016-02-22", "upstreamExpected": "2016-02-22", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#1"}
+{"text": "2016年4月21日", "spoken": "2016-11-07", "expected": "2016-04-21", "upstreamExpected": "2016-04-21", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#2"}
+{"text": "4月22日", "spoken": "2016-11-07", "expected": "2016-04-22", "upstreamExpected": "2016-04-22", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#3"}
+{"text": "2015年8月12日", "spoken": "2016-11-07", "expected": "2015-08-12", "upstreamExpected": "2015-08-12", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#4"}
+{"text": "1月1日", "spoken": "2016-11-07", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#5"}
+{"text": "先週の日曜日", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#6"}
+{"text": "今から2週間後", "spoken": "2016-11-07", "expected": "2016-11-21", "upstreamExpected": "2016-11-21", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#11"}
+{"text": "2018年1月12日", "spoken": "2016-11-07", "expected": "2018-01-12", "upstreamExpected": "2018-01-12", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#26"}
+{"text": "2015年9月18日", "spoken": "2016-11-07", "expected": "2015-09-18", "upstreamExpected": "2015-09-18", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#27"}
+{"text": "1901年の9月10日", "spoken": "2016-11-07", "expected": "1901-09-10", "upstreamExpected": "1901-09-10", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#28"}
+{"text": "来週の火曜日", "spoken": "2018-03-20", "expected": "2018-03-27", "upstreamExpected": "2018-03-27", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#29"}
+{"text": "2015年5月13日", "spoken": "2017-03-22", "expected": "2015-05-13", "upstreamExpected": "2015-05-13", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#32"}
+{"text": "2015年5月13日", "spoken": "2017-03-22", "expected": "2015-05-13", "upstreamExpected": "2015-05-13", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#33"}
+{"text": "2017年3月7日", "spoken": "2016-11-07", "expected": "2017-03-07", "upstreamExpected": "2017-03-07", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#34"}
+{"text": "2007年3月7日", "spoken": "2016-11-07", "expected": "2007-03-07", "upstreamExpected": "2007-03-07", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#35"}
+{"text": "2027年3月7日", "spoken": "2016-11-07", "expected": "2027-03-07", "upstreamExpected": "2027-03-07", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#36"}
+{"text": "1989年5月5日", "spoken": "2016-11-07", "expected": "1989-05-05", "upstreamExpected": "1989-05-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#37"}
+{"text": "1971年5月5日", "spoken": "2016-11-07", "expected": "1971-05-05", "upstreamExpected": "1971-05-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#38"}
+{"text": "10月の2日", "spoken": "2016-11-07", "expected": "2016-10-02", "upstreamExpected": "2016-10-02", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#44"}
+{"text": "2016年1月12日", "spoken": "2016-11-07", "expected": "2016-01-12", "upstreamExpected": "2016-01-12", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#45"}
+{"text": "1月の1日", "spoken": "2016-11-07", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#57"}
+{"text": "5月21日", "spoken": "2016-11-07", "expected": "2016-05-21", "upstreamExpected": "2016-05-21", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#59"}
+{"text": "5月の21日", "spoken": "2016-11-07", "expected": "2016-05-21", "upstreamExpected": "2016-05-21", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#60"}
+{"text": "8月2日", "spoken": "2016-11-07", "expected": "2016-08-02", "upstreamExpected": "2016-08-02", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#61"}
+{"text": "6月22日", "spoken": "2016-11-07", "expected": "2016-06-22", "upstreamExpected": "2016-06-22", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#62"}
+{"text": "今日", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#64"}
+{"text": "明日", "spoken": "2016-11-07", "expected": "2016-11-08", "upstreamExpected": "2016-11-08", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#65"}
+{"text": "昨日", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#66"}
+{"text": "一昨日", "spoken": "2016-11-07", "expected": "2016-11-05", "upstreamExpected": "2016-11-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#67"}
+{"text": "明後日", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#68"}
+{"text": "明後日", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#69"}
+{"text": "先週の日曜日", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#73"}
+{"text": "今週の金曜日", "spoken": "2016-11-07", "expected": "2016-11-11", "upstreamExpected": "2016-11-11", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#74"}
+{"text": "来週の日曜日", "spoken": "2016-11-07", "expected": "2016-11-20", "upstreamExpected": "2016-11-20", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#75"}
+{"text": "昨日", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#76"}
+{"text": "2016年6月15日", "spoken": "2016-11-07", "expected": "2016-06-15", "upstreamExpected": "2016-06-15", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#78"}
+{"text": "来週の金曜日", "spoken": "2016-11-07", "expected": "2016-11-18", "upstreamExpected": "2016-11-18", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#81"}
+{"text": "今日", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#82"}
+{"text": "2018年一月十二日", "spoken": "2016-11-07", "expected": "2018-01-12", "upstreamExpected": "2018-01-12", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#111"}
+{"text": "二日前", "spoken": "2016-11-07", "expected": "2016-11-05", "upstreamExpected": "2016-11-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#113"}
+{"text": "2016年11月16日", "spoken": "2016-11-14", "expected": "2016-11-16", "upstreamExpected": "2016-11-16", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#115"}
+{"text": "1391年12月5日", "spoken": "2017-12-18", "expected": "1391-12-05", "upstreamExpected": "1391-12-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#123"}
+{"text": "1978年9月21日", "spoken": "2016-11-07", "expected": "1978-09-21", "upstreamExpected": "1978-09-21", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#126"}
+{"text": "1901年の9月10日", "spoken": "2016-11-07", "expected": "1901-09-10", "upstreamExpected": "1901-09-10", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#127"}
+{"text": "二千年の九月十日", "spoken": "2016-11-07", "expected": "2000-09-10", "upstreamExpected": "2000-09-10", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#128"}
+{"text": "来週の木曜日", "spoken": "2018-03-20", "expected": "2018-03-29", "upstreamExpected": "2018-03-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#132"}
+{"text": "来週の日曜日", "spoken": "2018-03-20", "expected": "2018-04-01", "upstreamExpected": "2018-04-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#133"}
+{"text": "1989年05月05日", "spoken": "2016-11-07", "expected": "1989-05-05", "upstreamExpected": "1989-05-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#152"}
+{"text": "1月19日", "spoken": "2017-03-22", "expected": "2017-01-19", "upstreamExpected": "2017-01-19", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#153"}
+{"text": "2010年1月29日", "spoken": "2017-03-22", "expected": "2010-01-29", "upstreamExpected": "2010-01-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#154"}
+{"text": "明後日", "spoken": "2018-09-18", "expected": "2018-09-20", "upstreamExpected": "2018-09-20", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#156"}
+{"text": "2004年八月十五日", "spoken": "2017-03-22", "expected": "2004-08-15", "upstreamExpected": "2004-08-15", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#159"}
+{"text": "2017年3月7日", "spoken": "2016-11-07", "expected": "2017-03-07", "upstreamExpected": "2017-03-07", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#160"}
+{"text": "四日前", "spoken": "2017-03-22", "expected": "2017-03-18", "upstreamExpected": "2017-03-18", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#161"}
+{"text": "一月十九日", "spoken": "2017-03-22", "expected": "2017-01-19", "upstreamExpected": "2017-01-19", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#162"}
+{"text": "今週の月曜日", "spoken": "2017-03-22", "expected": "2017-03-20", "upstreamExpected": "2017-03-20", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#164"}
+{"text": "1357年6月10日", "spoken": "2017-03-22", "expected": "1357-06-10", "upstreamExpected": "1357-06-10", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#165"}
+{"text": "昨日", "spoken": "2018-07-30", "expected": "2018-07-29", "upstreamExpected": "2018-07-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#166"}
+{"text": "先週の月曜日", "spoken": "2017-03-22", "expected": "2017-03-13", "upstreamExpected": "2017-03-13", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#168"}
+{"text": "367年1月1日", "spoken": "2017-03-22", "expected": "0367-01-01", "upstreamExpected": "0367-01-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#176"}
+{"text": "2003年7月27日", "spoken": "2016-11-07", "expected": "2003-07-27", "upstreamExpected": "2003-07-27", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#177"}
+{"text": "2004年8月15日", "spoken": "2017-03-22", "expected": "2004-08-15", "upstreamExpected": "2004-08-15", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#181"}
+{"text": "四日後", "spoken": "2017-03-22", "expected": "2017-03-26", "upstreamExpected": "2017-03-26", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#184"}
+{"text": "2015年5月13日", "spoken": "2017-03-22", "expected": "2015-05-13", "upstreamExpected": "2015-05-13", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#190"}
+{"text": "明日", "spoken": "2017-03-22", "expected": "2017-03-23", "upstreamExpected": "2017-03-23", "adjustment": null, "source": "Recognizers-Text/Japanese/DateParser.json#192"}
+{"text": "2019年1月4日", "spoken": "2016-11-07", "expected": "2019-01-04", "upstreamExpected": "2019-01-04", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#0"}
+{"text": "2019年1月3日", "spoken": "2016-11-07", "expected": "2019-01-03", "upstreamExpected": "2019-01-03", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#1"}
+{"text": "2019年1月2日", "spoken": "2016-11-07", "expected": "2019-01-02", "upstreamExpected": "2019-01-02", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#2"}
+{"text": "2019年1月1日", "spoken": "2016-11-07", "expected": "2019-01-01", "upstreamExpected": "2019-01-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#3"}
+{"text": "10月2日", "spoken": "2016-11-07", "expected": "2016-10-02", "upstreamExpected": "2016-10-02", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#5"}
+{"text": "4月22日", "spoken": "2016-11-07", "expected": "2016-04-22", "upstreamExpected": "2016-04-22", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#6"}
+{"text": "5月29日", "spoken": "2016-11-07", "expected": "2016-05-29", "upstreamExpected": "2016-05-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#7"}
+{"text": "8月2日", "spoken": "2016-11-07", "expected": "2016-08-02", "upstreamExpected": "2016-08-02", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#8"}
+{"text": "今日", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#9"}
+{"text": "明日", "spoken": "2016-11-07", "expected": "2016-11-08", "upstreamExpected": "2016-11-08", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#10"}
+{"text": "今週の日曜日", "spoken": "2016-11-07", "expected": "2016-11-13", "upstreamExpected": "2016-11-13", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#30"}
+{"text": "今日", "spoken": "2018-03-14", "expected": "2018-03-14", "upstreamExpected": "2018-03-14", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#97"}
+{"text": "7月1日", "spoken": "2018-04-07", "expected": "2018-07-01", "upstreamExpected": "2018-07-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#104"}
+{"text": "1994年12月31日", "spoken": "2018-05-01", "expected": "1994-12-31", "upstreamExpected": "1994-12-31", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#141"}
+{"text": "明日", "spoken": "2018-08-17", "expected": "2018-08-18", "upstreamExpected": "2018-08-18", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#221"}
+{"text": "10月1日", "spoken": "2018-08-21", "expected": "2018-10-01", "upstreamExpected": "2018-10-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#225"}
+{"text": "2016年1月1日", "spoken": "2018-08-31", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#240"}
+{"text": "来週の水曜日", "spoken": "2018-11-28", "expected": "2018-12-05", "upstreamExpected": "2018-12-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#292"}
+{"text": "先週の月曜日", "spoken": "2018-11-28", "expected": "2018-11-19", "upstreamExpected": "2018-11-19", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#293"}
+{"text": "今週の月曜日", "spoken": "2018-11-28", "expected": "2018-11-26", "upstreamExpected": "2018-11-26", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#294"}
+{"text": "今週の金曜日", "spoken": "2019-01-31", "expected": "2019-02-01", "upstreamExpected": "2019-02-01", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#328"}
+{"text": "来週の金曜日", "spoken": "2019-01-31", "expected": "2019-02-08", "upstreamExpected": "2019-02-08", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#329"}
+{"text": "先週の水曜日", "spoken": "2019-01-31", "expected": "2019-01-23", "upstreamExpected": "2019-01-23", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#332"}
+{"text": "明日", "spoken": "2019-08-28", "expected": "2019-08-29", "upstreamExpected": "2019-08-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#356"}
+{"text": "今日", "spoken": "2019-08-28", "expected": "2019-08-28", "upstreamExpected": "2019-08-28", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#362"}
+{"text": "明日", "spoken": "2019-08-28", "expected": "2019-08-29", "upstreamExpected": "2019-08-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#377"}
+{"text": "昨日", "spoken": "2018-07-30", "expected": "2018-07-29", "upstreamExpected": "2018-07-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#409"}
+{"text": "2004年8月15日", "spoken": "2017-03-22", "expected": "2004-08-15", "upstreamExpected": "2004-08-15", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#439"}
+{"text": "今日", "spoken": "2019-08-28", "expected": "2019-08-28", "upstreamExpected": "2019-08-28", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#452"}
+{"text": "2010年1月29日", "spoken": "2017-03-22", "expected": "2010-01-29", "upstreamExpected": "2010-01-29", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#455"}
+{"text": "明後日", "spoken": "2018-09-18", "expected": "2018-09-20", "upstreamExpected": "2018-09-20", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#458"}
+{"text": "2016年8月5日", "spoken": "2018-10-24", "expected": "2016-08-05", "upstreamExpected": "2016-08-05", "adjustment": null, "source": "Recognizers-Text/Japanese/DateTimeModel.json#572"}

@@ -53,7 +53,10 @@ import com.nekobot.app.data.local.LocalLogger
         LocalMessageVariantEntity::class,
         LocalStickerEntity::class,
         CompanionScopeEntity::class,
+        CompanionExamplesEntity::class,
         CompanionMemoryEntity::class,
+        CompanionAppliedOpEntity::class,
+        CompanionLockedReviewEntity::class,
         CompanionSourceEntity::class,
         CompanionReceiptEntity::class,
         CompanionForgottenSourceEntity::class,
@@ -65,14 +68,16 @@ import com.nekobot.app.data.local.LocalLogger
         CompanionRelationshipEntity::class,
         CompanionRelationshipAssessmentEntity::class,
         CompanionRelationshipEventEntity::class,
-        CompanionTransferJobEntity::class
+        CompanionTransferJobEntity::class,
+        PortableImportCommitEntity::class
     ],
-    version = 60,
+    version = 64,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
     abstract fun companionRelationshipDao(): CompanionRelationshipDao
     abstract fun companionTransferDao(): CompanionTransferDao
+    abstract fun companionExamplesDao(): CompanionExamplesDao
     abstract fun companionMemoryDao(): CompanionMemoryDao
     abstract fun sessionDao(): SessionDao
     abstract fun messageDao(): MessageDao
@@ -1294,10 +1299,49 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_60_61 = object : Migration(60, 61) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                CompanionExamplesSchema.create(db)
+                // 不给存量会话补邀请资格。只清理单会话中有明确后继的旧条目。
+                CompanionMemoryReplacementSql.prune(db)
+            }
+        }
+
         /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
          */
+        val MIGRATION_61_62 = object : Migration(61, 62) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS portable_import_commits (id TEXT NOT NULL PRIMARY KEY, createdAt INTEGER NOT NULL)")
+            }
+        }
+
+        val MIGRATION_62_63 = object : Migration(62, 63) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN companion_speaking_prompt TEXT")
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN companion_thinking_prompt TEXT")
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN companion_thinking_enabled INTEGER")
+            }
+        }
+
+        val MIGRATION_63_64 = object : Migration(63, 64) {
+            override fun migrate(db: SupportSQLiteDatabase) = CompanionMemoryV2Schema.migrate(db)
+        }
+
+        /**
+         * Direct upgrades to memory v2 must not run the historical 60→61 pruning.
+         * Keep that released migration for its original destination, but preserve all
+         * records here and classify history only after the v2 columns have been added.
+         */
+        val MIGRATION_60_64 = object : Migration(60, 64) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                CompanionExamplesSchema.create(db)
+                MIGRATION_61_62.migrate(db)
+                MIGRATION_62_63.migrate(db)
+                MIGRATION_63_64.migrate(db)
+            }
+        }
         internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
             MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
@@ -1311,7 +1355,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
             MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45,
             MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49,
-            MIGRATION_49_50, MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54, MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58, MIGRATION_58_59, MIGRATION_59_60
+            MIGRATION_49_50, MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54, MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58, MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61, MIGRATION_61_62, MIGRATION_62_63, MIGRATION_63_64, MIGRATION_60_64
         )
 
         fun get(context: Context): NekobotDatabase =
@@ -1332,6 +1376,10 @@ abstract class NekobotDatabase : RoomDatabase() {
                         installExperienceInvalidationTriggers(db)
                         CompanionSchema.installTriggers(db)
                         FusedCompanionSchema.installTriggers(db)
+                        CompanionMemoryV2Schema.installTriggers(db)
+                        val legacy = com.nekobot.app.data.local.PrefsManager.readLegacyCharacterThinking(context)
+                        db.execSQL("UPDATE local_sessions SET companion_speaking_prompt = COALESCE(companion_speaking_prompt, ''), companion_thinking_prompt = COALESCE(companion_thinking_prompt, ?), companion_thinking_enabled = COALESCE(companion_thinking_enabled, ?) WHERE companion_mode = 1 AND (companion_speaking_prompt IS NULL OR companion_thinking_prompt IS NULL OR companion_thinking_enabled IS NULL)",
+                            arrayOf(legacy.customPrompt, if (legacy.enabled) 1 else 0))
                     }
                 })
                 .build()

@@ -139,7 +139,7 @@ internal class CompanionRelationshipService(
         return CompanionMemoryStore(db).permittedHistory(session(id), selected)
     }
     private suspend fun viewUnlocked(id: String): CompanionRelationshipView {
-        val state = ensure(id)
+        var state = ensure(id)
         val all = rows(id)
         val byId = all.associateBy { it.id }
         val events = dao.currentEvents(id)
@@ -148,6 +148,14 @@ internal class CompanionRelationshipService(
         val legacy = CompanionRelationshipNarrative.legacy(state.legacySnapshotJson)
         val validKeys = narrative?.relationships.orEmpty().filterValues { field -> field != null && CompanionRelationshipNarrative.valid(field, byId, events) }.keys
         val count = runCatching { CompanionRelationshipPolicy.pending(CompanionRelationshipPolicy.turns(all), if (state.historyReviewRequired) null else state.cursorId).size }
+        val backfillSourcesValid = narrative?.relationships?.values?.all { field ->
+            field != null && CompanionRelationshipNarrative.validSources(field.sources, byId)
+        } == true
+        if (backfillSourcesValid &&
+            CompanionRelationshipPolicy.backfillComplete(state, narrative, count.getOrNull())) {
+            state = state.copy(awaitingHistory = false, version = state.version + 1)
+            dao.save(state)
+        }
         val feelingRefs = if (narrative != null) narrative.feelings?.sources.orEmpty() else refs(state.feelingSources)
         val feelingChanged = feelingRefs.isNotEmpty() && !valid(feelingRefs, byId)
         val staleNarrative = narrative?.relationships.orEmpty().any { (key, field) -> field != null && key !in validKeys }

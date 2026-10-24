@@ -24,6 +24,7 @@ class PortableDataArchiveManagerTest {
         var db = NekobotDatabase.get(context, com.nekobot.app.ServiceContainer.prefs.activeDbName)
         val stamp = "2026-10-11T02:00:00Z"
         val characterId = "$mergeSessionId-character"
+        db.characterDao().upsert(com.nekobot.app.data.local.db.LocalCharacterEntity(characterId, "Synthetic relationship fixture", createdAt = stamp, updatedAt = stamp))
         db.sessionDao().upsert(LocalSessionEntity(mergeSessionId, "文字关系备份", characterId = characterId, companionMode = true,
             sessionMode = "agent", inheritCharacter = true, longConversationEnabled = true, createdAt = stamp, updatedAt = stamp))
         val words = "{\"description\":\"愿意分享日常，但对承诺仍有保留\"}"
@@ -103,6 +104,7 @@ class PortableDataArchiveManagerTest {
     @Test fun fusedModeBackupRestoresOwnershipFactsSourcesAndProgressWithoutRequestCache() = runBlocking {
         val db = NekobotDatabase.get(context, com.nekobot.app.ServiceContainer.prefs.activeDbName)
         val characterId = "fused-portable-${UUID.randomUUID()}"
+        db.characterDao().upsert(com.nekobot.app.data.local.db.LocalCharacterEntity(characterId, "Synthetic fused fixture", createdAt = "now", updatedAt = "now"))
         val row = LocalSessionEntity(mergeSessionId,"Portable fused fixture",characterId=characterId,
             sessionMode="agent",inheritCharacter=true,longConversationEnabled=true,companionMode=true,createdAt="now",updatedAt="now")
         db.sessionDao().upsert(row)
@@ -110,23 +112,41 @@ class PortableDataArchiveManagerTest {
         val scope=store.ensureScope(row)
         val source=LocalMessageEntity("$mergeSessionId-source",row.id,"user","我怕辣",timestamp="2026-10-08",createdAt="2026-10-08")
         db.messageDao().upsert(source)
-        store.fusedTool(row,"agent_memory_update",mapOf("key" to "diet","operation" to "add","category" to "user_profile",
-            "content" to "用户怕辣","quote" to source.content),source.id)
+        val written = store.fusedTool(row,"agent_memory_update",mapOf("op" to "add","category" to "user_profile",
+            "content" to "用户怕辣","evidence" to listOf("S1"),"date_type" to "habit"),
+            com.nekobot.app.data.local.ai.FusedMemoryReferences(listOf(source)))
+        assertEquals(true, written["success"])
         db.companionMemoryDao().saveReceipts(listOf(com.nekobot.app.data.local.db.CompanionReceiptEntity(scope.id,source.id,
             com.nekobot.app.data.local.ai.CompanionMemoryPolicy.fingerprint(source))))
+        val pending = db.companionMemoryDao().memories(scope.id).single().copy(pendingConfirm = true, uncertainInjectedTurns = 2)
+        db.companionMemoryDao().saveMemory(pending)
+        com.nekobot.app.data.local.ai.FusedUncertainMemory.recordInjected(db.companionMemoryDao(), scope.id, source.id, listOf(pending), "now")
+        val operationKeys = db.companionMemoryDao().appliedOpKeys(scope.id, "").toSet()
+        assertEquals(2, operationKeys.size)
         val output=ByteArrayOutputStream()
         manager.export(setOf(PortableDataCategory.CONVERSATIONS),"",output,"test")
         db.sessionDao().deleteById(row.id)
+        db.openHelper.writableDatabase.execSQL("DELETE FROM companion_applied_ops WHERE scopeId=?", arrayOf(scope.id))
         manager.import(ByteArrayInputStream(output.toByteArray()),"",setOf(PortableDataCategory.CONVERSATIONS))
-        val restored=requireNotNull(db.sessionDao().getById(row.id))
+        // Committing an import rebuilds the active Room instance. Read through the new connection.
+        val reopenedDb=NekobotDatabase.get(context, com.nekobot.app.ServiceContainer.prefs.activeDbName)
+        val reopenedStore=com.nekobot.app.data.local.ai.CompanionMemoryStore(reopenedDb)
+        val restored=requireNotNull(reopenedDb.sessionDao().getById(row.id))
         assertTrue(restored.companionMode)
-        assertEquals(row.id,db.companionMemoryDao().owner(characterId)?.sessionId)
-        val restoredScope=store.ensureScope(restored)
-        val fact=store.validatedMemories(restoredScope).single { it.current }
+        assertEquals(row.id,reopenedDb.companionMemoryDao().owner(characterId)?.sessionId)
+        val restoredScope=reopenedStore.ensureScope(restored)
+        val fact=reopenedStore.validatedMemories(restoredScope).single { it.current }
         assertEquals("用户怕辣",fact.content)
-        assertEquals(source.id,db.companionMemoryDao().sources(fact.id).single().messageId)
-        assertTrue(db.companionMemoryDao().pending(restoredScope.id).isEmpty())
-        assertTrue(db.companionMemoryDao().contextMaterials(restoredScope.id).isEmpty())
+        assertEquals(source.id,reopenedDb.companionMemoryDao().sources(fact.id).single().messageId)
+        assertEquals(operationKeys, reopenedDb.companionMemoryDao().appliedOpKeys(restoredScope.id, "").toSet())
+        com.nekobot.app.data.local.ai.FusedUncertainMemory.recordInjected(reopenedDb.companionMemoryDao(), restoredScope.id, source.id, listOf(fact), "later")
+        assertEquals(3, reopenedDb.companionMemoryDao().memory(fact.id)!!.uncertainInjectedTurns)
+        assertEquals(true, reopenedStore.fusedTool(restored, "agent_memory_update", mapOf("op" to "add", "category" to "user_profile",
+            "content" to "用户怕辣", "evidence" to listOf("S1"), "date_type" to "habit"),
+            com.nekobot.app.data.local.ai.FusedMemoryReferences(listOf(source)))["success"])
+        assertEquals(1, reopenedDb.companionMemoryDao().memories(restoredScope.id).size)
+        assertTrue(reopenedDb.companionMemoryDao().pending(restoredScope.id).isEmpty())
+        assertTrue(reopenedDb.companionMemoryDao().contextMaterials(restoredScope.id).isEmpty())
     }
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private lateinit var manager: PortableDataArchiveManager
@@ -135,9 +155,16 @@ class PortableDataArchiveManagerTest {
     private var originalMemory: ByteArray? = null
     private var originalRecentSessionsIncludeArchived: Boolean = false
     private lateinit var mergeSessionId: String
+    private lateinit var previousProfile: String
+    private lateinit var testProfile: String
 
     @Before
     fun setUp() {
+        // Export includes all conversations in the active profile. Isolate every case so a
+        // previous interrupted test cannot become part of this case's archive.
+        previousProfile = com.nekobot.app.ServiceContainer.prefs.activeDbName
+        testProfile = "portable-archive-test-${UUID.randomUUID()}"
+        com.nekobot.app.ServiceContainer.switchLocalDb(testProfile)
         manager = PortableDataArchiveManager(context)
         memoryFile = com.nekobot.app.data.local.ai.GlobalAgentMemoryStore.memoryFileFor(
             context,
@@ -154,14 +181,15 @@ class PortableDataArchiveManagerTest {
 
     @After
     fun tearDown() {
-        workspaceRoot.deleteRecursively()
-        originalMemory?.let(memoryFile::writeBytes) ?: memoryFile.delete()
-        com.nekobot.app.ServiceContainer.prefs.recentSessionsIncludeArchived =
-            originalRecentSessionsIncludeArchived
-        runBlocking {
-            NekobotDatabase.get(context, com.nekobot.app.ServiceContainer.prefs.activeDbName)
-                .sessionDao()
-                .deleteById(mergeSessionId)
+        try {
+            workspaceRoot.deleteRecursively()
+            originalMemory?.let(memoryFile::writeBytes) ?: memoryFile.delete()
+            com.nekobot.app.ServiceContainer.prefs.recentSessionsIncludeArchived =
+                originalRecentSessionsIncludeArchived
+        } finally {
+            com.nekobot.app.ServiceContainer.switchLocalDb(previousProfile)
+            com.nekobot.app.ServiceContainer.prefs.removeDbProfile(testProfile)
+            NekobotDatabase.deleteProfileFile(context, testProfile)
         }
     }
 
@@ -233,14 +261,16 @@ class PortableDataArchiveManagerTest {
         )
 
         com.nekobot.app.ServiceContainer.prefs.recentSessionsIncludeArchived = !expected
-        val result = manager.import(
-            input = ByteArrayInputStream(output.toByteArray()),
-            password = "",
-            selected = setOf(PortableDataCategory.APP_SETTINGS)
-        )
-
-        assertEquals(expected, com.nekobot.app.ServiceContainer.prefs.recentSessionsIncludeArchived)
-        assertEquals(1, result.importedRows)
+        manager.prepareImport(ByteArrayInputStream(output.toByteArray()), "").use { source ->
+            val selected = mapOf(PortableDataCategory.APP_SETTINGS to setOf("app_settings"))
+            val keep = manager.commitImport(source, manager.previewImport(source, selected))
+            assertEquals(!expected, com.nekobot.app.ServiceContainer.prefs.recentSessionsIncludeArchived)
+            assertEquals(0, keep.settingsUpdated)
+            val chosen = PortableImportChoices(settings = setOf("recent_sessions_include_archived"))
+            val result = manager.commitImport(source, manager.previewImport(source, selected, chosen))
+            assertEquals(expected, com.nekobot.app.ServiceContainer.prefs.recentSessionsIncludeArchived)
+            assertEquals(1, result.settingsUpdated)
+        }
     }
 
     @Test

@@ -265,7 +265,7 @@ internal fun CompanionRelationshipScreen(sessionId: String, onBack: () -> Unit) 
                 Text(SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(saved.createdAt)), style = MaterialTheme.typography.titleSmall)
                 if (snapshot == null) Text(textResources.getString(R.string.single_role_this_record_cannot_be_read_right_now)) else {
                     snapshot.feelings?.let { feeling -> Text(textResources.getString(R.string.single_role_feelings_then_1_s_mood_2_s_intensity_3_s_energy_4_s_5_s, relationshipTime(feeling.observedAt, textResources.getString(R.string.common_unknown)), feeling.mood ?: textResources.getString(R.string.common_unknown), feeling.intensity ?: textResources.getString(R.string.common_unknown), feeling.energy ?: textResources.getString(R.string.common_unknown), feeling.reason)) }
-                    snapshot.relationships.forEach { (key, field) -> field?.let { Text("${CompanionRelationshipPolicy.dimensions[key]}：${it.description}\n${it.reason}") } }
+                    snapshot.relationships.forEach { (key, field) -> field?.let { Text("${relationshipDimensionLabel(key)}：${it.description}\n${it.reason}") } }
                 }
             }
             if (items.size >= 50) Text(textResources.getString(R.string.single_role_showing_the_latest_50_written_assessments_older_records_remain_in), style = MaterialTheme.typography.bodySmall)

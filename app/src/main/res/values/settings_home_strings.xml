@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_home_common">常用设置</string>
+    <string name="settings_home_privacy_experience">安全与体验</string>
+    <string name="settings_home_data_backup">数据与备份</string>
+    <string name="settings_home_advanced">进阶设置</string>
+    <string name="settings_home_support_about">支持与关于</string>
+    <string name="settings_home_connection">运行与连接</string>
+    <string name="settings_home_models_summary">接口、模型与连接测试</string>
+    <string name="settings_home_open_latest">启动时打开最近会话</string>
+    <string name="settings_home_include_archived">最近会话显示归档</string>
+    <string name="settings_home_lock_summary">指纹解锁并隐藏后台预览；开启后无法截屏、录屏</string>
+    <string name="settings_home_image_prompt_summary">先用聊天模型整理画面描述，减少角色文字入图</string>
+    <string name="settings_home_portability_summary">按类别导入、导出与核对数据</string>
+    <string name="settings_home_agent_summary">会话运行参数与工具</string>
+    <string name="settings_home_diagnostics_summary">检查问题与导出诊断信息</string>
+</resources>

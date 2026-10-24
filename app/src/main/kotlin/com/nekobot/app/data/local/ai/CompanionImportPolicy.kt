@@ -7,6 +7,8 @@ import java.time.*
 internal object CompanionImportPolicy {
     const val NATIVE = "native"
     const val IMPORTED_UNVERIFIED = "imported_unverified"
+    const val IMPORTED_VERIFIED = "imported_verified"
+    const val UNVERIFIED_EVIDENCE = "迁入的旧记忆，原话来源未验证；不能当作玩家已确认的事实"
 
     fun usable(memory: CompanionMemoryEntity, now: Instant = Instant.now()): Boolean {
         if (!memory.valid) return false
@@ -22,7 +24,8 @@ internal object CompanionImportPolicy {
 
     fun evidence(memory: CompanionMemoryEntity): String = when {
         memory.manual -> "玩家手动记录"
-        memory.provenance == IMPORTED_UNVERIFIED -> "迁入的旧记忆，原话来源未验证；不能当作玩家已确认的事实"
+        memory.provenance == IMPORTED_UNVERIFIED -> UNVERIFIED_EVIDENCE
+        memory.provenance == IMPORTED_VERIFIED -> "迁入的旧记忆，已有可核验的聊天原话"
         else -> "可核验的聊天原话"
     }
 }

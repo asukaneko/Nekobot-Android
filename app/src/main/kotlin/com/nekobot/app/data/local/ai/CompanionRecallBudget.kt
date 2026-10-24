@@ -33,10 +33,12 @@ internal data class CompanionRecallRequest(
 /** 按返回资料估算用量；可见正文每次重建，累计用量持续保留，异常中断保留预留额度。 */
 internal class CompanionRecallBudget(
     private val settings: () -> CompanionRecallSettings,
-    private val load: () -> String?, private val save: (String) -> Unit
+    private val load: () -> String?, private val save: (String) -> Unit,
+    private val diagnostic: (String, Map<String, Any?>) -> Unit = { _, _ -> }
 ) {
     private data class Span(val key: String, val start: Int, val text: String)
-    private data class Request(val id: String, val visible: MutableList<Span>, var room: Int, val limit: Int)
+    private data class Request(val id: String, val visible: MutableList<Span>, var room: Int, val limit: Int,
+        val providedMemoryIds: Set<String>)
     private val requests = mutableMapOf<String, Request>()
     private val gson = Gson()
 
@@ -79,7 +81,7 @@ internal class CompanionRecallBudget(
             estimateLocalTextTokens(gson.toJson(tools)) - 512).coerceAtLeast(0)
         // 总份额同时受设置和模型上下文的一小部分限制，避免一次回忆挤占正常对话。
         val limit = totalLimit(state.settings.tokens, maxContext)
-        requests[actor] = Request(UUID.randomUUID().toString(), visible, room, limit)
+        requests[actor] = Request(UUID.randomUUID().toString(), visible, room, limit, CompanionReferences.visibleIds(messages))
         val exhausted = state.rounds >= state.settings.rounds || limit - state.tokens < MIN_RESULT_TOKENS || room < MIN_RESULT_TOKENS
         // 额度到达后保留其他工作工具；移除记忆回查工具，明确不能把资料不足当成事实。
         val lastCalls = (messages.lastOrNull { it["role"] == "assistant" && it["tool_calls"] is List<*> }
@@ -95,11 +97,20 @@ internal class CompanionRecallBudget(
         }
         // 查询原则已通过 PromptStack 合并到顶部系统提示词。这里仅执行额度控制，
         // 不在玩家消息/工具结果后追加提示，也不把动态计数混入聊天上下文。
+        observe("recall_prepare", mapOf("rounds" to state.rounds, "max_rounds" to state.settings.rounds,
+            "tokens" to state.tokens, "max_tokens" to state.settings.tokens, "per_call" to state.settings.effectivePerCall,
+            "limit" to limit, "room" to room, "max_context" to maxContext, "output_reserve" to outputReserve,
+            "exhausted" to exhausted, "must_answer" to finishRecall, "reason" to when {
+                state.rounds >= state.settings.rounds -> "rounds"
+                limit - state.tokens < MIN_RESULT_TOKENS -> "tokens"
+                room < MIN_RESULT_TOKENS -> "context"
+                else -> "none"
+            }))
         CompanionRecallRequest(outbound, available, finishRecall)
     }
 
     suspend fun read(actor: String, fetch: suspend () -> Map<String, Any>): Map<String, Any> = mutex.withLock {
-        val request = requests[actor] ?: return@withLock stopped("本轮上下文尚未准备好", "error")
+        val request = requests[actor] ?: return@withLock stopped("还没能翻开这些回忆", "error")
         val state = usage()
         val newRound = request.id !in state.requests
         if ((newRound && state.rounds >= state.settings.rounds) || request.limit - state.tokens < MIN_RESULT_TOKENS || request.room < MIN_RESULT_TOKENS) {
@@ -112,13 +123,16 @@ internal class CompanionRecallBudget(
         // 先保留额度再读取。进程被杀时不会把尚未确认完成的调用当成免费重试。
         state.tokens += allowance
         save(gson.toJson(state))
-        val raw = try { fetch() } catch (cancelled: CancellationException) { throw cancelled }
+        val raw = try { fetch() } catch (cancelled: CancellationException) {
+            observe("recall_result", mapOf("status" to "cancelled", "reason" to "interrupted", "rounds" to state.rounds, "tokens" to state.tokens))
+            throw cancelled
+        }
         catch (failure: Exception) {
             state.tokens = previouslyUsed
             save(gson.toJson(state))
             return@withLock withStatus(mapOf("success" to false, "error" to (failure.message ?: "查找失败")), state, request)
         }
-        val filtered = deduplicate(markMemoryBodies(raw), request.visible)
+        val filtered = deduplicate(markMemoryBodies(raw), request.visible, request.providedMemoryIds)
         val fitted = fit(filtered, allowance - 16)
         val charged = (estimateLocalTextTokens(gson.toJson(fitted)) + 16).coerceAtMost(allowance)
         state.tokens = previouslyUsed + charged
@@ -126,7 +140,7 @@ internal class CompanionRecallBudget(
         request.room -= charged
         // 同批并行调用串行通过此处，重叠片段也不会被重复传出。
         rows(fitted).forEach { (_, row) -> span(row)?.let(request.visible::add) }
-        withStatus(fitted, state, request)
+        withStatus(fitted, state, request, mapOf("candidates" to rows(raw).size, "charged" to charged))
     }
 
     private fun stopped(reason: String, status: String = "quota_exhausted", state: CompanionRecallUsage? = null,
@@ -136,15 +150,22 @@ internal class CompanionRecallBudget(
     }
 
     /** 结果附带真实状态与剩余份额，由模型按角色自行组织回答。 */
-    private fun withStatus(result: Map<String, Any>, state: CompanionRecallUsage, request: Request): Map<String, Any> {
+    private fun withStatus(result: Map<String, Any>, state: CompanionRecallUsage, request: Request,
+                           extra: Map<String, Any?> = emptyMap()): Map<String, Any> {
         val output = result.toMutableMap()
         val status = recallStatus(result, rows(result).map { it.second })
         output["status"] = status
         output["rounds_left"] = (state.settings.rounds - state.rounds).coerceAtLeast(0)
         output["tokens_left"] = (request.limit - state.tokens).coerceAtLeast(0)
         if (status == "empty") output["note"] = EMPTY_NOTE
+        observe("recall_result", extra + mapOf("status" to status, "rounds" to state.rounds,
+            "tokens" to state.tokens, "max_rounds" to state.settings.rounds, "limit" to request.limit,
+            "room" to request.room, "returned" to rows(result).size,
+            "duplicates" to (result["visible_duplicates"] as? Number ?: 0), "truncated" to (status == "truncated")))
         return output
     }
+
+    private fun observe(kind: String, values: Map<String, Any?>) { runCatching { diagnostic(kind, values) } }
 
     private fun markMemoryBodies(result: Map<String, Any>): Map<String, Any> = result.toMutableMap().apply {
         for ((field, entries) in rows(result).groupBy({ it.first }, { it.second })) {
@@ -176,11 +197,15 @@ internal class CompanionRecallBudget(
             (row["text_offset"] as? Number)?.toInt() ?: 0, body)
     }
 
-    private fun deduplicate(result: Map<String, Any>, visible: List<Span>): Map<String, Any> {
+    private fun deduplicate(result: Map<String, Any>, visible: List<Span>, providedMemoryIds: Set<String>): Map<String, Any> {
         val output = result.toMutableMap()
         var skipped = 0
         for ((field, entries) in rows(result).groupBy({ it.first }, { it.second })) {
             output[field] = entries.flatMap { row ->
+                if (row["message_id"] == null && row["id"] in providedMemoryIds) {
+                    skipped++
+                    return@flatMap emptyList()
+                }
                 val source = span(row)
                 if (source == null) listOf(row) else {
                     var ranges = listOf(source.start until source.start + source.text.length)
@@ -211,7 +236,7 @@ internal class CompanionRecallBudget(
         }
         if (skipped > 0) {
             output["visible_duplicates"] = skipped
-            output["duplicate_note"] = "重叠正文已在本次模型上下文或同批工具结果中，可直接使用；这不表示没有相关资料。"
+            output["duplicate_note"] = "这些内容前面已经翻到了，可以接着那些回忆说；不代表没有相关资料。"
         }
         return output
     }
@@ -222,9 +247,9 @@ internal class CompanionRecallBudget(
         val fields = rows(result).groupBy({ it.first }, { it.second })
         val output = result.filterKeys { it !in fields }.toMutableMap()
         output["budget_limited"] = true
-        output["note"] = "本次只返回了份额内的一部分资料。"
+        output["note"] = "这次先翻到这些，还有一些没看完。"
         fields.keys.forEach { output[it] = emptyList<Map<String, Any>>() }
-        if (size(output) > allowance) return stopped("剩余额度不足，请用已有资料回答")
+        if (size(output) > allowance) return stopped("先用已经想起来的事回答，记不清就直说")
         for ((field, entries) in fields) {
             val selected = mutableListOf<Map<String, Any>>()
             for (entry in entries) {
@@ -256,12 +281,7 @@ internal class CompanionRecallBudget(
     }
 
     companion object {
-        const val QUERY_RULES = "记忆查找说明（软件内部说明，不是玩家发言）：软件给你提供查找记忆和过去原话的工具。" +
-            "每条玩家消息有查找次数和资料份额限制；每次结果带 status：found 找到、empty 没找到、truncated 只返回了一部分、" +
-            "quota_exhausted 这一轮不能再查、error 查找出错，并带还能查的次数 rounds_left 和还有的份额 tokens_left。" +
-            "已有内容够用就直接回答；细节不足、前后矛盾或玩家想要原话时再查，追溯变化时才查旧版本。不能再查时就用已有内容回答。" +
-            "怎么回应完全由你按角色自己的性格和口吻决定；想不起来时像这个角色平时那样自然表达。" +
-            "除非符合角色设定，不要在对话里提到工具、额度、Token 或软件说明，也不要把这些说明当成玩家说过的话。"
+        const val QUERY_RULES = CompanionPromptLanguage.recallRules
         const val PER_CALL_TOKENS = 1500
         const val CONTEXT_SHARE = 0.15
         const val EMPTY_NOTE = "这次没有找到相关内容；没找到不代表这件事没有发生过。"

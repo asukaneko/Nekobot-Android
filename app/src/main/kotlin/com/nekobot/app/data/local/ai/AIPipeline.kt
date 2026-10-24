@@ -242,6 +242,7 @@ class AIPipeline {
         tools: List<Map<String, Any>>,
         maxContextChars: Int
     ) {
+        callbacks.prepareCharacterPromptSettings(ctx)
         // 加载消息历史
         val messagesRaw = callbacks.loadMessages(ctx)
         val isAgentHistory = ((ctx.metadata["session_mode"] ?: ctx.chatRequest.metadata["session_mode"]) as? String)
@@ -324,6 +325,17 @@ class AIPipeline {
         // 角色运行时 before_turn
         phaseCharacterRuntimeBeforeTurn(ctx, callbacks)
 
+        if (ctx.metadata[META_FUSED_COMPANION] == true) {
+            ctx.characterTurn?.let { turn ->
+                val settings = CompanionPromptSettings(speakingPrompt = callbacks.getCompanionSpeakingPrompt(ctx).orEmpty())
+                val speaking = settings.speakingForRequest(turn.profile.name,
+                    (ctx.metadata["user_name"] ?: ctx.chatRequest.metadata["user_name"]) as? String)
+                turn.promptStackItems = turn.promptStackItems.map { item ->
+                    if (item.key == COMPANION_SPEAKING_STYLE_KEY) item.copy(content = speaking) else item
+                }
+            }
+        }
+
         // 现实时间连续性 + 昼夜节律 + 离线剧情推进注入（对齐原仓库 _phase_real_time_prompt_fallback
         // 与 character/runtime._inject_real_time_context / _inject_circadian_state）
         // CharacterRuntime 未注入时由管线兜底注入，确保现实时间感知生效。
@@ -362,7 +374,7 @@ class AIPipeline {
         // 作为高优先级行为约束，让 AI 按此身份理解玩家（包括玩家姓名、偏好、处境等）
         // 注意：senderName 是 AI 扮演的角色名，不是玩家名；玩家身份由 userPersona 字段承载
         val userPersona = ctx.metadata["user_persona"] as? String ?: ""
-        if (userPersona.isNotBlank()) {
+        if (ctx.metadata[META_FUSED_COMPANION] != true && userPersona.isNotBlank()) {
             ctx.promptStack.add(
                 "user.persona",
                 "玩家人设／背景（据此理解玩家的身份、姓名、偏好与处境；称呼或提及玩家时，使用这份描述中给出的名字，不要使用“用户”等泛称）：\n$userPersona",
@@ -390,7 +402,8 @@ class AIPipeline {
                 CHARACTER_THINKING_STYLE_KEY,
                 characterThinkingPrompt(thinkingSettings,
                     ctx.characterTurn?.profile?.name.orEmpty().ifBlank { (ctx.metadata["sender_name"] as? String).orEmpty() },
-                    (ctx.metadata["user_name"] ?: ctx.chatRequest.metadata["user_name"]) as? String),
+                    (ctx.metadata["user_name"] ?: ctx.chatRequest.metadata["user_name"]) as? String,
+                    companionMode = ctx.metadata[META_FUSED_COMPANION] == true),
                 priority = PromptStack.Priority.BEHAVIOR + 1,
                 // 长久陪伴也放在顶部 system 中，工具循环及缓存重建均保留这项规则。
                 scope = "session"
@@ -409,12 +422,16 @@ class AIPipeline {
         val fused = ctx.metadata[META_FUSED_COMPANION] == true
         val dynamicKeys = setOf("knowledge.rag", "agent.todos", "agent.goal", "agent.spec")
         val dynamicItems = if (fused) pipelineExtraItems.filter { it.key in dynamicKeys || it.scope == "turn" } else emptyList()
+        val characterFixedItems = if (fused) ctx.characterTurn?.promptStackItems.orEmpty()
+            .filter { it.key in characterOutputPromptKeys && it.key != CHARACTER_THINKING_STYLE_KEY && it.enabled } else emptyList()
         val baseParts = listOf(characterBasePrompt, basePrompt)
             .map { PromptStack.stripSection(it, CHARACTER_THINKING_STYLE_KEY) }
             .map(String::trim)
             .filter(String::isNotBlank)
             .distinct()
-        val composedSystem = (baseParts + pipelineExtraItems.filterNot { it in dynamicItems }.map { "## ${it.key}\n${it.content.trim()}" })
+        val composedSystem = (baseParts + (pipelineExtraItems + characterFixedItems)
+            .filterNot { it in dynamicItems || it.key == CHARACTER_THINKING_STYLE_KEY }
+            .map { PromptStack.renderItem(it, fused) })
             .joinToString("\n\n")
         ctx.metadata["composed_system_prompt"] = composedSystem
 
@@ -449,11 +466,18 @@ class AIPipeline {
         )
 
         messagesForAi = listOf(mapOf("role" to "system", "content" to composedSystem)) + depthInjectedHistory
-        val dynamic = (dynamicItems + if (fused) ctx.characterTurn?.promptStackItems.orEmpty() else emptyList())
-            .filter { it.enabled && it.content.isNotBlank() }.joinToString("\n\n") { "${it.key}: ${it.content}" }
+        val dynamic = (dynamicItems + if (fused) ctx.characterTurn?.promptStackItems.orEmpty()
+            .filterNot { it.key in characterOutputPromptKeys } else emptyList())
+            .filter { it.enabled && it.content.isNotBlank() }.joinToString("\n\n") { if (fused) it.content.trim() else "${it.key}: ${it.content}" }
         messagesForAi = callbacks.finalizeContext(ctx, messagesForAi, tools, dynamic)
-        messagesForAi = withCharacterThinkingRequest(messagesForAi,
-            ctx.promptStack.get(CHARACTER_THINKING_STYLE_KEY)?.takeIf { it.enabled }?.content)
+        // 思考提示词不放顶部 system；发送时由 withCharacterThinkingRule 放到请求最末尾。
+        if (fused) {
+            val firstSystem = messagesForAi.indexOfFirst { it["role"] == "system" }
+            messagesForAi = messagesForAi.mapIndexed { index, message ->
+                if (index == firstSystem) markCompanionSystem(message,
+                    (pipelineExtraItems + characterFixedItems).filterNot { it in dynamicItems || it.key == CHARACTER_THINKING_STYLE_KEY }) else message
+            }
+        }
         ctx.metadata["composed_system_prompt"] = messagesForAi.filter { it["role"] == "system" }
             .joinToString("\n\n") { it["content"].toString() }
 

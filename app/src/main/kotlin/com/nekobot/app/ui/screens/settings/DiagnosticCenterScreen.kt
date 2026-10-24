@@ -235,7 +235,7 @@ class DiagnosticViewModel : BaseViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiagnosticCenterScreen(onBack: () -> Unit) {
+fun DiagnosticCenterScreen(onBack: () -> Unit, onExportProblem: () -> Unit = {}) {
     val vm: DiagnosticViewModel = viewModel()
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
@@ -310,6 +310,9 @@ fun DiagnosticCenterScreen(onBack: () -> Unit) {
                 }
 
                 // ==================== 本地状态区（所有模式可用） ====================
+                Button(onClick = onExportProblem, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.problem_diag_export))
+                }
 
                 // 1. Socket 连接卡片
                 SocketStateCard()

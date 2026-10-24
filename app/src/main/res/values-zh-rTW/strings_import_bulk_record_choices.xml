@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_bulk_record_incoming">所有記錄使用匯入值</string>
+    <string name="import_bulk_record_keep">所有記錄保留本機</string>
+    <string name="import_bulk_record_scope">全部 %1$d 筆差異記錄；檔案、設定與憑證選擇不變。</string>
+    <string name="import_bulk_record_confirm">將為本次全部 %1$d 筆差異記錄選擇使用匯入值，包含尚未載入的記錄。檔案、應用程式設定與憑證的選擇保持。此時只更新選擇和預覽，仍可逐項調整；最後執行匯入才會寫入資料。</string>
+    <string name="import_bulk_record_changed">差異記錄已變化，請重新預覽後再批次選擇。</string>
+</resources>

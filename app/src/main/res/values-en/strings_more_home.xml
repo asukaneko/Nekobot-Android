@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_home_common">Frequently used</string>
+    <string name="more_home_memory">Characters and memory</string>
+    <string name="more_home_appearance_chat">Appearance and chat</string>
+    <string name="more_home_extensions_management">Extensions and management</string>
+    <string name="more_home_role_memory_scope">Memories of you and events, organized by character</string>
+    <string name="more_home_session_memory_scope">Experiences and promises kept separately for each session</string>
+    <string name="more_home_global_memory_scope">Shared across sessions in the current database</string>
+</resources>

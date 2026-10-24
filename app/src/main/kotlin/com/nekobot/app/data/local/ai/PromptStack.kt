@@ -112,7 +112,7 @@ class PromptStack {
      * @param basePrompt 基础系统提示词（通常来自角色卡编译结果）
      * @return 合成后的完整系统提示词
      */
-    fun render(basePrompt: String = ""): String {
+    fun render(basePrompt: String = "", companionMode: Boolean = false): String {
         val parts = mutableListOf<String>()
 
         val cleanedBase = stripDynamicPromptSections(basePrompt)
@@ -123,7 +123,7 @@ class PromptStack {
         items
             .filter { it.enabled && it.content.isNotBlank() }
             .sortedBy { it.priority }
-            .forEach { parts.add("## ${it.key}\n${it.content.trim()}") }
+            .forEach { parts.add(renderItem(it, companionMode)) }
 
         return parts.joinToString("\n\n").trim()
     }
@@ -241,6 +241,9 @@ class PromptStack {
     }
 
     companion object {
+        internal fun renderItem(item: PromptInjection, companionMode: Boolean): String =
+            if (companionMode) item.content.trim() else "## ${item.key}\n${item.content.trim()}"
+
         /** 移除历史系统提示里缓存的单个动态段，兼容两种标题格式；只删到段后第一个空行，后续无标题文字保留。 */
         internal fun stripSection(prompt: String, key: String): String {
             val escapedKey = Regex.escape(key)
