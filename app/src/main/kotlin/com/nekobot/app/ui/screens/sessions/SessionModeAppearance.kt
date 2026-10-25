@@ -38,11 +38,13 @@ internal fun SessionModeLabel.title(): String = stringResource(when (this) {
 
 @Composable
 internal fun SessionModeLabel.color(): Color {
+    // 只用三种克制的色相区分会话类型：陶土红（角色）/ 墨绿（Agent）/ 蓝灰（单角色），
+    // 群聊回到中性色。色相不抢正文，也不会在深色底上发光。
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     return when (this) {
-        SessionModeLabel.CHARACTER -> if (dark) Color(0xFFE5A7BF) else Color(0xFFA05B77)
-        SessionModeLabel.AGENT -> if (dark) Color(0xFFE1B778) else Color(0xFF916025)
-        SessionModeLabel.COMPANION -> if (dark) Color(0xFFABBFF5) else Color(0xFF5266A5)
+        SessionModeLabel.CHARACTER -> MaterialTheme.colorScheme.primary
+        SessionModeLabel.AGENT -> if (dark) Color(0xFFA8C5B2) else Color(0xFF42715C)
+        SessionModeLabel.COMPANION -> if (dark) Color(0xFF9FB4C2) else Color(0xFF5F788C)
         SessionModeLabel.GROUP -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }

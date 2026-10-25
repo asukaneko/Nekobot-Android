@@ -1,10 +1,10 @@
 package com.nekobot.app.ui.navigation
 
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.nekobot.app.R
@@ -13,8 +13,17 @@ object Routes {
     const val QUICK_SETUP = "quick_setup"
     const val LOGIN = "login"
 
-    // 底部导航主页面
+    // 底部导航主页面（4 个一级入口）
     const val SESSIONS = "sessions"
+    /** 内容库：角色 + 世界书，页内分段切换。`tab` 指定初始分段（0 角色 / 1 世界书）。 */
+    const val LIBRARY = "library?tab={tab}"
+    fun library(tab: Int? = null): String = if (tab == null) "library" else "library?tab=$tab"
+    /** 能力：智能与模型、Agent、记忆、扩展、用量入口。 */
+    const val CAPABILITIES = "capabilities"
+    /** 我的：外观偏好、数据、设置、关于。 */
+    const val PROFILE = "profile"
+
+    // 兼容旧入口（全局搜索、桌面快捷方式等仍可能指向原来的单页路由）
     const val CHARACTERS = "characters"
     const val WORLD_BOOKS = "world_books"
     const val TOKENS = "tokens"
@@ -183,15 +192,14 @@ data class BottomItem(
 
 /** 底栏路由顺序（非 Composable 场景使用，不含本地化标签）。 */
 val bottomRoutes = listOf(
-    Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS, Routes.TOKENS, Routes.MORE
+    Routes.SESSIONS, Routes.LIBRARY, Routes.CAPABILITIES, Routes.PROFILE
 )
 
 /** 底栏项目（Composable 场景使用，标签随语言切换）。 */
 @Composable
 fun bottomItems(): List<BottomItem> = listOf(
-    BottomItem(Routes.SESSIONS, stringResource(R.string.nav_sessions), androidx.compose.material.icons.Icons.Filled.Chat),
-    BottomItem(Routes.CHARACTERS, stringResource(R.string.nav_characters), androidx.compose.material.icons.Icons.Filled.Person),
-    BottomItem(Routes.WORLD_BOOKS, stringResource(R.string.nav_world_books), androidx.compose.material.icons.Icons.Filled.MenuBook),
-    BottomItem(Routes.TOKENS, stringResource(R.string.nav_tokens), androidx.compose.material.icons.Icons.Filled.BarChart),
-    BottomItem(Routes.MORE, stringResource(R.string.nav_more), androidx.compose.material.icons.Icons.Filled.Apps),
+    BottomItem(Routes.SESSIONS, stringResource(R.string.nav_sessions), Icons.Outlined.ChatBubbleOutline),
+    BottomItem(Routes.LIBRARY, stringResource(R.string.nav_library), Icons.Outlined.MenuBook),
+    BottomItem(Routes.CAPABILITIES, stringResource(R.string.nav_capabilities), Icons.Outlined.AutoAwesome),
+    BottomItem(Routes.PROFILE, stringResource(R.string.nav_profile), Icons.Outlined.PersonOutline),
 )

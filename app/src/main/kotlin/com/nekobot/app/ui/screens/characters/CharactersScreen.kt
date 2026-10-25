@@ -55,7 +55,14 @@ import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorToast
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.NekoChoiceRow
+import com.nekobot.app.ui.components.NekoIconTile
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.NekoSheet
+import com.nekobot.app.ui.components.NekoSheetHeader
+import com.nekobot.app.ui.navigation.rememberBottomBarClearance
+import com.nekobot.app.ui.screens.library.LibraryTopAction
+import com.nekobot.app.ui.screens.library.LibraryTopBarActions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -165,7 +172,11 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
 fun CharactersScreen(
     onOpenCharacter: (String) -> Unit,
     onOpenEdit: (String) -> Unit = onOpenCharacter,
-    viewModel: CharactersViewModel = viewModel()
+    viewModel: CharactersViewModel = viewModel(),
+    /** 嵌入「内容库」时由外层提供标题栏、搜索与分段控件。 */
+    embedded: Boolean = false,
+    /** 外层搜索框的关键词：按名称与描述做本地过滤。 */
+    searchQuery: String = ""
 ) {
     val characters by viewModel.characters.collectAsStateWithLifecycle()
     val sessionModes by viewModel.sessionModes.collectAsStateWithLifecycle()
@@ -173,6 +184,19 @@ fun CharactersScreen(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val bottomBarClearance = rememberBottomBarClearance()
+    // 内容库里的关键词过滤：只影响展示，不改动源数据
+    val visibleCharacters = remember(characters, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) {
+            characters
+        } else {
+            characters.filter { character ->
+                character.displayName.contains(query, ignoreCase = true) ||
+                    character.description?.contains(query, ignoreCase = true) == true
+            }
+        }
+    }
 
     var viewMode by remember {
         mutableStateOf(
@@ -205,9 +229,72 @@ fun CharactersScreen(
         }
     }
 
+    // 嵌入内容库时：把顶栏动作交给外层渲染（标题栏只有一份，功能一个不丢）
+    if (embedded) {
+        val viewToggleLabel = stringResource(
+            if (viewMode == CharacterViewMode.LIST) R.string.characters_view_grid
+            else R.string.characters_view_list
+        )
+        val refreshLabel = stringResource(R.string.characters_refresh)
+        val importLabel = stringResource(R.string.characters_import_card)
+        val newLabel = stringResource(R.string.characters_new)
+        LibraryTopBarActions {
+            listOf(
+                LibraryTopAction(
+                    key = "view_mode",
+                    icon = if (viewMode == CharacterViewMode.LIST) Icons.Filled.Apps else Icons.Filled.ViewList,
+                    label = viewToggleLabel
+                ) {
+                    val newMode =
+                        if (viewMode == CharacterViewMode.LIST) CharacterViewMode.GRID else CharacterViewMode.LIST
+                    viewMode = newMode
+                    ServiceContainer.prefs.characterViewMode = newMode.name
+                },
+                LibraryTopAction("refresh", Icons.Filled.Refresh, refreshLabel) { viewModel.load() },
+                LibraryTopAction("import", Icons.Filled.Upload, importLabel) {
+                    importLauncher.launch(
+                        arrayOf(
+                            "application/json", "application/zip", "application/x-zip-compressed",
+                            "image/png", "*/*"
+                        )
+                    )
+                },
+                LibraryTopAction("new", Icons.Filled.Add, newLabel, prominent = true) { showAddMenu = true },
+            )
+        }
+        // 排版更清爽的选择方式：新建 / AI 生成放进抽屉，而不是塞一个下拉菜单
+        if (showAddMenu) {
+            NekoSheet(onDismissRequest = { showAddMenu = false }) {
+                NekoSheetHeader(
+                    title = stringResource(R.string.characters_new),
+                    onClose = { showAddMenu = false }
+                )
+                NekoChoiceRow(
+                    title = stringResource(R.string.characters_new),
+                    onClick = {
+                        showAddMenu = false
+                        onOpenCharacter("new")
+                    },
+                    leading = { NekoIconTile(Icons.Filled.Person) }
+                )
+                NekoChoiceRow(
+                    title = stringResource(R.string.characters_ai_generate),
+                    onClick = {
+                        showAddMenu = false
+                        showAiDialog = true
+                    },
+                    leading = { NekoIconTile(Icons.Filled.AutoAwesome) }
+                )
+            }
+        }
+    }
+
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (embedded) Color.Transparent else MaterialTheme.colorScheme.background,
+        // 嵌入内容库时外层已经处理状态栏/底栏避让，子页不再重复加 inset
+        contentWindowInsets = if (embedded) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
+            if (!embedded) {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -271,20 +358,27 @@ fun CharactersScreen(
                     }
                 }
             )
+            }
         }
     ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background),
+                .background(if (embedded) Color.Transparent else MaterialTheme.colorScheme.background),
             // 宽屏下列表视图被约束到最大宽度后水平居中（网格视图铺满全宽不受影响）
             contentAlignment = Alignment.TopCenter
         ) {
-            if (characters.isEmpty() && !loading) {
+            if (visibleCharacters.isEmpty() && !loading) {
                 EmptyState(
-                    title = stringResource(R.string.characters_empty_title),
-                    hint = stringResource(R.string.characters_empty_hint),
+                    title = stringResource(
+                        if (searchQuery.isBlank()) R.string.characters_empty_title
+                        else R.string.shell_library_empty
+                    ),
+                    hint = stringResource(
+                        if (searchQuery.isBlank()) R.string.characters_empty_hint
+                        else R.string.shell_library_empty_hint
+                    ),
                     icon = {
                         Icon(
                             Icons.Filled.Person,
@@ -298,7 +392,7 @@ fun CharactersScreen(
                 LazyColumn(
                     // 平板宽屏：列表卡片约束最大宽度居中，避免整行卡片被横向拉伸
                     modifier = Modifier.widthIn(max = 720.dp).fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = bottomBarClearance + 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (error != null) {
@@ -306,7 +400,7 @@ fun CharactersScreen(
                             ErrorToast(message = error!!, onShown = { viewModel.clearError() })
                         }
                     }
-                    items(characters, key = { it.id ?: it.name ?: it.hashCode().toString() }) { character ->
+                    items(visibleCharacters, key = { it.id ?: it.name ?: it.hashCode().toString() }) { character ->
                         CharacterListItem(character = character,
                             modes = sessionModes?.get(character.id).orEmptyWhenLoaded(sessionModes != null), onClick = {
                             character.id?.let { onOpenCharacter(it) }
@@ -325,7 +419,7 @@ fun CharactersScreen(
                         GridCells.Adaptive(160.dp)
                     },
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = bottomBarClearance + 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -334,7 +428,7 @@ fun CharactersScreen(
                             ErrorToast(message = error!!, onShown = { viewModel.clearError() })
                         }
                     }
-                    items(characters, key = { it.id ?: it.name ?: it.hashCode().toString() }) { character ->
+                    items(visibleCharacters, key = { it.id ?: it.name ?: it.hashCode().toString() }) { character ->
                         CharacterGridItem(character = character,
                             modes = sessionModes?.get(character.id).orEmptyWhenLoaded(sessionModes != null), onClick = {
                             character.id?.let { onOpenCharacter(it) }

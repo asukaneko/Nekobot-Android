@@ -13,7 +13,7 @@ import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.ui.navigation.Routes
-import com.nekobot.app.ui.screens.more.MoreScreen
+import com.nekobot.app.ui.screens.capabilities.CapabilitiesScreen
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -50,13 +50,13 @@ class AgentCharacterMemoryDirectoryTest {
                 var page by remember { mutableStateOf("more") }
                 var owner by remember { mutableStateOf("") }
                 MaterialTheme { when (page) {
-                    "more" -> MoreScreen({ destination=it; page=it }, {})
+                    "more" -> CapabilitiesScreen({ destination = it; page = it })
                     Routes.AGENT_CHARACTER_MEMORY -> AgentCharacterMemoryDirectoryScreen({ page="more" }, { owner=it; page="detail" })
                     else -> FusedCompanionMemoryScreen(owner,{ page=Routes.AGENT_CHARACTER_MEMORY },{})
                 } }
             }
             val title=compose.activity.getString(R.string.agent_character_memory_title)
-            compose.onNodeWithText(title).performScrollTo()
+            compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(title))
             screenshot("more")
             compose.onNodeWithText(title).performClick()
             assertEquals(Routes.AGENT_CHARACTER_MEMORY, destination)

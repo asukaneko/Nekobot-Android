@@ -16,6 +16,8 @@ import androidx.compose.foundation.border as materialBorder
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +45,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -54,12 +57,17 @@ import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
@@ -82,16 +90,27 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -99,6 +118,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -118,9 +138,17 @@ import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
-import com.nekobot.app.ui.components.EmptyState
+import com.nekobot.app.ui.components.NekoCountBadge
+import com.nekobot.app.ui.components.NekoEmpty
+import com.nekobot.app.ui.components.NekoIconAction
+import com.nekobot.app.ui.components.NekoPageHorizontalPadding
+import com.nekobot.app.ui.components.NekoPageTopBar
+import com.nekobot.app.ui.components.NekoTag
+import com.nekobot.app.ui.components.nekoCaptionStyle
+import com.nekobot.app.ui.components.nekoRowSubtitleStyle
+import com.nekobot.app.ui.components.nekoRowTitleStyle
 import com.nekobot.app.ui.navigation.Routes
-import com.nekobot.app.ui.navigation.rememberLiquidGlassBottomBarClearance
+import com.nekobot.app.ui.navigation.rememberBottomBarClearance
 import com.nekobot.app.ui.components.ErrorToast
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
@@ -141,6 +169,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -240,7 +269,7 @@ private fun TwoPaneSessionsWrapper(
     val chatMaximized = useTwoPane && fraction <= 0.0001f
     LaunchedEffect(chatMaximized) { onChatMaximizedChange(chatMaximized) }
     // 底栏高度随窗口宽度变化（平板更高），避让间距必须取当前值。
-    val bottomBarClearance = rememberLiquidGlassBottomBarClearance()
+    val bottomBarClearance = rememberBottomBarClearance()
 
     if (!useTwoPane) {
         content()
@@ -398,6 +427,8 @@ fun SessionsScreen(
 ) {
     val viewModel: SessionsViewModel = viewModel()
     val sessionRows by viewModel.displayedSessionRows.collectAsStateWithLifecycle()
+    // banner 用未过滤的会话行（最新会话 / 固定的那一个）
+    val homeRows by viewModel.homeBannerRows.collectAsStateWithLifecycle()
     val overview by viewModel.overview.collectAsStateWithLifecycle()
     val characters by viewModel.characters.collectAsStateWithLifecycle()
     val sessionCreationState by viewModel.sessionCreationState.collectAsStateWithLifecycle()
@@ -453,6 +484,11 @@ fun SessionsScreen(
     // LazyListState 会按会话 key 记住首个可见项，列表因聊天更新排序后也不会跳回顶部。
     val sessionListState = viewModel.listScrollState
     val dashboardVisible = pagerState.currentPage == 0
+    // 长按会话弹出的横向动作条（取代每行右侧的三点菜单）
+    val sessionActionStrip = remember { SessionActionStripState() }
+    // 内容区在窗口中的位置与尺寸：动作条按"触发行的纵坐标"摆放，需要窗口坐标换算
+    var pageOrigin by remember { mutableStateOf(Offset.Zero) }
+    var pageSize by remember { mutableStateOf(IntSize.Zero) }
 
     // 模式切换时自动刷新会话列表
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
@@ -477,6 +513,7 @@ fun SessionsScreen(
 
     // 弹窗状态
     var showCreateModeMenu by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     var createConfigMode by rememberSaveable { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<SessionListRow?>(null) }
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
@@ -503,6 +540,8 @@ fun SessionsScreen(
     } else {
         onOpenChat
     }
+    // 列表底部需要给底部导航栏留出避让高度（随窗口宽度变化）
+    val bottomBarClearance = rememberBottomBarClearance()
 
     TwoPaneSessionsWrapper(
         useTwoPane = useTwoPane,
@@ -521,50 +560,60 @@ fun SessionsScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (dashboardVisible) dashboardTitle else titleText,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.size(8.dp))
-                        if (dashboardVisible) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                            ) {
-                                Text(
-                                    stringResource(R.string.stats_dashboard_badge),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        } else {
-                            SessionCountBadge(sessionRows.size)
-                        }
-                    }
+            NekoPageTopBar(
+                title = if (dashboardVisible) dashboardTitle else titleText,
+                badge = if (dashboardVisible) {
+                    { NekoTag(stringResource(R.string.stats_dashboard_badge)) }
+                } else {
+                    { NekoCountBadge(sessionRows.size) }
                 },
                 actions = {
                     if (dashboardVisible) {
-                        IconButton(
-                            onClick = {
-                                viewModel.loadAll()
-                                viewModel.loadDashboardMetrics()
-                            }
-                        ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = dashboardRefreshDesc, tint = MaterialTheme.colorScheme.onSurface)
+                        NekoIconAction(Icons.Filled.Refresh, dashboardRefreshDesc) {
+                            viewModel.loadAll()
+                            viewModel.loadDashboardMetrics()
                         }
-                        IconButton(onClick = { showDashboardLayout = true }) {
-                            Icon(Icons.Filled.DashboardCustomize, contentDescription = stringResource(R.string.stats_customize_layout), tint = MaterialTheme.colorScheme.primary)
-                        }
+                        NekoIconAction(
+                            Icons.Filled.DashboardCustomize,
+                            stringResource(R.string.stats_customize_layout),
+                            tint = MaterialTheme.colorScheme.primary
+                        ) { showDashboardLayout = true }
                     } else {
-                        SessionHeaderAction(Icons.Filled.Refresh, refreshDesc, onClick = { viewModel.loadAll() })
-                        SessionHeaderAction(Icons.Filled.FileUpload, importDesc, onClick = { importFileLauncher.launch("*/*") })
+                        NekoIconAction(Icons.Filled.Search, stringResource(R.string.global_search_title)) {
+                            onNavigate(Routes.GLOBAL_SEARCH)
+                        }
                         Box {
-                            SessionHeaderAction(Icons.Filled.Add, newSessionDesc, prominent = true, onClick = { showCreateModeMenu = true })
+                            NekoIconAction(Icons.Filled.MoreVert, stringResource(R.string.shell_more_actions)) {
+                                showOverflowMenu = true
+                            }
+                            DropdownMenu(
+                                expanded = showOverflowMenu,
+                                onDismissRequest = { showOverflowMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(refreshDesc) },
+                                    leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.loadAll()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(importDesc) },
+                                    leadingIcon = { Icon(Icons.Filled.FileUpload, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        importFileLauncher.launch("*/*")
+                                    }
+                                )
+                            }
+                        }
+                        Box {
+                            NekoIconAction(
+                                Icons.Filled.Add,
+                                newSessionDesc,
+                                tint = MaterialTheme.colorScheme.primary
+                            ) { showCreateModeMenu = true }
                             DropdownMenu(
                                 expanded = showCreateModeMenu,
                                 onDismissRequest = { showCreateModeMenu = false }
@@ -623,10 +672,7 @@ fun SessionsScreen(
                             }
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                }
             )
         }
     ) { padding ->
@@ -685,60 +731,46 @@ fun SessionsScreen(
                     }
                 )
             } else {
-                Column(modifier = Modifier.fillMaxSize()) {
-            // 概览统计 + 快速筛选合并：每张卡显示数量并可点击筛选
-            SessionStatFilters(
-                overview = overview,
-                selected = filter,
-                onToggle = viewModel::toggleFilter
-            )
-
-            Box(modifier = Modifier.fillMaxSize()) {
+            // 首屏头部：加载态 / 空态 / 列表态共用同一段内容，三种状态样式一致
+            val homeHeader: @Composable () -> Unit = {
+                SessionHomeHeaderContent(
+                    characters = characters,
+                    totalCount = overview.total,
+                    filter = filter,
+                    homeRows = homeRows,
+                    onOpenSession = handleOpenChat,
+                    onNewChat = { showCreateModeMenu = true },
+                    onOpenFilter = { showSearchPanel = true },
+                    onSelectFilter = viewModel::setFilter
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned {
+                        pageOrigin = it.positionInWindow()
+                        pageSize = it.size
+                    }
+            ) {
                 when {
                     loading && sessionRows.isEmpty() -> {
-                        // 初次加载时搜索框仍可见（固定在顶部），下方显示加载指示。
-                        // 外层 padding 与有数据时 LazyColumn 的 contentPadding 保持一致，
-                        // 保证搜索框在所有状态下样式统一。
                         Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 16.dp, end = 16.dp, top = 4.dp)
+                                .fillMaxSize()
+                                .padding(horizontal = NekoPageHorizontalPadding)
                         ) {
-                            SearchEntryBar(
-                                searchQuery = searchQuery,
-                                filter = filter,
-                                channelFilterValue = channelFilterValue,
-                                availableChannels = availableChannels,
-                                onClick = { showSearchPanel = true }
-                            )
-                            SessionRecentControls(filter, viewModel::toggleFilter)
-                        }
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            homeHeader()
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 56.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                     sessionRows.isEmpty() -> {
-                        // 空状态下搜索框仍可见（固定在顶部），下方显示空状态。
-                        // 外层 padding 与有数据时 LazyColumn 的 contentPadding 保持一致，
-                        // 保证搜索框在所有状态下样式统一。
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 16.dp, end = 16.dp, top = 4.dp)
-                        ) {
-                            SearchEntryBar(
-                                searchQuery = searchQuery,
-                                filter = filter,
-                                channelFilterValue = channelFilterValue,
-                                availableChannels = availableChannels,
-                                onClick = { showSearchPanel = true }
-                            )
-                            SessionRecentControls(filter, viewModel::toggleFilter)
-                        }
                         val emptyTitle = when {
                             searchQuery.isNotBlank() -> noMatchTitle
                             filter != SessionFilter.ALL -> filterEmptyTitle
@@ -749,45 +781,37 @@ fun SessionsScreen(
                             filter != SessionFilter.ALL -> filterEmptyHint
                             else -> emptyHintText
                         }
-                        EmptyState(
-                            title = emptyTitle,
-                            hint = emptyHint,
-                            icon = {
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.Chat,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(56.dp)
-                                )
-                            }
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = NekoPageHorizontalPadding)
+                        ) {
+                            homeHeader()
+                            NekoEmpty(
+                                title = emptyTitle,
+                                hint = emptyHint,
+                                icon = Icons.AutoMirrored.Outlined.Chat
+                            )
+                        }
                     }
                     else -> {
-                        // 列表不为空时，搜索框作为 LazyColumn 的第一个 item，跟随列表滚动
+                        // 头部作为首个 item 跟随列表一起滚动
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             state = sessionListState,
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 110.dp),
+                            contentPadding = PaddingValues(
+                                start = NekoPageHorizontalPadding,
+                                end = NekoPageHorizontalPadding,
+                                top = 4.dp,
+                                bottom = bottomBarClearance + 24.dp
+                            ),
                             verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
-                            // 搜索栏：跟随列表滚动的首项
                             item(
-                                key = "search-entry-bar",
-                                contentType = "search-entry-bar"
+                                key = "home-header",
+                                contentType = "home-header"
                             ) {
-                                SearchEntryBar(
-                                    searchQuery = searchQuery,
-                                    filter = filter,
-                                    channelFilterValue = channelFilterValue,
-                                    availableChannels = availableChannels,
-                                    onClick = { showSearchPanel = true }
-                                )
-                            }
-                            item(
-                                key = "session-section-header",
-                                contentType = "session-section-header"
-                            ) {
-                                SessionRecentControls(filter, viewModel::toggleFilter)
+                                homeHeader()
                             }
                             itemsIndexed(
                                 items = sessionRows,
@@ -813,17 +837,24 @@ fun SessionsScreen(
                                     onToggleArchived = {
                                         row.id?.let { viewModel.toggleArchived(it, row.archived) }
                                     },
-                                    onOpenStoryGraph = { row.id?.let(onOpenStoryGraph) }
+                                    onOpenStoryGraph = { row.id?.let(onOpenStoryGraph) },
+                                    actionStrip = sessionActionStrip
                                 )
                             }
                         }
                     }
                 }
 
+                // 长按会话后的横向动作条：浮在触发行上，拖动切换高亮，松手执行
+                SessionActionStripOverlay(
+                    state = sessionActionStrip,
+                    origin = pageOrigin,
+                    containerSize = pageSize
+                )
+
                 // 错误提示统一走系统 Toast（屏幕下方横条）
                 ErrorToast(message = error, onShown = { viewModel.clearError() })
             }
-                }
             }
         }
     }
@@ -939,130 +970,6 @@ fun SessionsScreen(
                 onCharacterFilterChange = viewModel::setCharacterFilter
             )
         }
-    }
-}
-
-@Composable
-private fun SessionCountBadge(count: Int) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-            .padding(horizontal = 7.dp, vertical = 2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-/**
- * 三种会话模式固定在同一排；收藏和归档在最近会话标题旁，窄屏也能直接操作。
- * 已选中的卡片再次点按会恢复到默认「最近会话」筛选。
- */
-@Composable
-internal fun SessionStatFilters(
-    overview: SessionOverview,
-    selected: SessionFilter,
-    onToggle: (SessionFilter) -> Unit
-) {
-    SessionModeFilters(overview, selected, onToggle)
-}
-
-/** 搜索入口栏：点击展开半屏搜索面板。展示当前搜索词和活跃筛选标签。 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SearchEntryBar(
-    searchQuery: String,
-    filter: SessionFilter,
-    channelFilterValue: String?,
-    availableChannels: List<ChannelOption>,
-    onClick: () -> Unit
-) {
-    val searchHint = stringResource(R.string.sessions_search_hint)
-    val channelLabel = availableChannels.firstOrNull { it.value == channelFilterValue }?.label
-    val hasActiveFilter = filter != SessionFilter.ALL || channelFilterValue != null || searchQuery.isNotBlank()
-
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(18.dp)
-    val accent = colors.primary
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .height(52.dp)
-            .clip(shape)
-            .materialBorder(
-                width = 1.dp,
-                color = if (hasActiveFilter) accent.copy(alpha = 0.34f)
-                else colors.outlineVariant.copy(alpha = 0.72f),
-                shape = shape
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp)
-    ) {
-        Box(
-            modifier = Modifier.size(34.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(colors.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Filled.Search,
-                contentDescription = null,
-                modifier = Modifier.size(19.dp),
-                tint = colors.onPrimaryContainer
-            )
-        }
-        if (searchQuery.isNotBlank()) {
-            Text(
-                searchQuery,
-                color = colors.onSurface,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        } else {
-            Text(
-                searchHint,
-                color = colors.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        // 活跃筛选标签
-        if (channelLabel != null) {
-            FilterChip(label = channelLabel, active = true)
-        }
-        if (filter != SessionFilter.ALL) {
-            FilterChip(label = stringResource(filter.labelResId), active = true)
-        }
-    }
-}
-
-/** 小型筛选标签。直接用Box渲染避免GlassCard内部padding。 */
-@Composable
-private fun FilterChip(label: String, active: Boolean) {
-    Box(
-        modifier = Modifier
-            .height(26.dp)
-            .clip(RoundedCornerShape(13.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-            .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary
-        )
     }
 }
 
@@ -1414,20 +1321,7 @@ private fun CreateGroupSessionDialog(
     )
 }
 
-@Composable
-private fun SessionStatusIcon(icon: ImageVector, description: String) {
-    Icon(
-        imageVector = icon,
-        contentDescription = description,
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(14.dp)
-    )
-}
-
-/** 「等待处理」提示：该会话有 AI 授权/提问等待用户处理。 */
-private val SessionPortraitShape = RoundedCornerShape(12.dp)
-
-/** 单个会话项卡片。 */
+/** 单个会话行：头像 + 标题 + 最后一条消息 + 时间，长按弹出横向操作条。 */
 @Composable
 internal fun SessionItem(
     row: SessionListRow,
@@ -1442,15 +1336,14 @@ internal fun SessionItem(
     onTogglePinned: () -> Unit,
     onOpenDetail: () -> Unit = {},
     onToggleArchived: () -> Unit = {},
-    onOpenStoryGraph: () -> Unit = {}
+    onOpenStoryGraph: () -> Unit = {},
+    actionStrip: SessionActionStripState = remember { SessionActionStripState() }
 ) {
     val textResources = LocalResources.current
-    var menuExpanded by remember(row.key) { mutableStateOf(false) }
     // 提取本地化字符串
     val pinnedBadge = stringResource(R.string.sessions_pinned_badge)
     val favoritedBadge = stringResource(R.string.sessions_favorited_badge)
     val archivedBadge = stringResource(R.string.sessions_archived_badge)
-    val moreDesc = stringResource(R.string.sessions_more)
     val detailMenuText = stringResource(R.string.sessions_detail_menu)
     val renameMenuText = stringResource(R.string.sessions_rename_menu)
     val unpinText = stringResource(R.string.sessions_unpin)
@@ -1461,6 +1354,7 @@ internal fun SessionItem(
     val archiveText = stringResource(R.string.sessions_archive)
     val storyGraphText = stringResource(R.string.sessions_story_graph)
     val deleteText = stringResource(R.string.common_delete)
+    val noMessageText = stringResource(R.string.sessions_no_message)
     val context = LocalContext.current
     val portraitRequest = remember(context, row.portraitUrl) {
         row.portraitUrl?.let { portraitUrl ->
@@ -1473,21 +1367,109 @@ internal fun SessionItem(
                 .build()
         }
     }
-    val containerColor = MaterialTheme.colorScheme.surface
+    // 只给整组首尾加圆角：多行拼成一张分组卡，中间行保持直角与细线分隔
     val itemShape = RoundedCornerShape(
         topStart = if (first) 18.dp else 0.dp, topEnd = if (first) 18.dp else 0.dp,
-        bottomStart = if (last) 18.dp else 0.dp, bottomEnd = if (last) 18.dp else 0.dp)
+        bottomStart = if (last) 18.dp else 0.dp, bottomEnd = if (last) 18.dp else 0.dp
+    )
+    // 置顶行用极浅的强调色底：一眼看出它被固定在顶部，又不需要额外的徽标或彩色描边
+    val baseColor = if (row.pinned) {
+        lerp(
+            MaterialTheme.colorScheme.surface,
+            MaterialTheme.colorScheme.primaryContainer,
+            0.55f
+        )
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val modeColor = row.modeLabel.color()
+    val stripActive = actionStrip.targetKey == row.key
+    val containerColor = if (stripActive) {
+        lerp(baseColor, MaterialTheme.colorScheme.primaryContainer, 0.45f)
+    } else {
+        baseColor
+    }
+    // 长按后横条里的动作：与原来的三点菜单一致，删除放在最后
+    val stripActions = rememberUpdatedState(
+        listOf(
+            SessionAction(detailMenuText, Icons.Outlined.Info) { onOpenDetail() },
+            SessionAction(renameMenuText, Icons.Outlined.Edit) { onRename() },
+            SessionAction(
+                if (row.pinned) unpinText else pinText,
+                Icons.Filled.PushPin
+            ) { onTogglePinned() },
+            SessionAction(
+                if (row.favorite) unfavoriteText else favoriteText,
+                if (row.favorite) Icons.Filled.FavoriteBorder else Icons.Filled.Favorite
+            ) { onToggleFavorite() },
+            SessionAction(
+                if (row.archived) unarchiveText else archiveText,
+                Icons.Filled.Archive
+            ) { onToggleArchived() },
+            SessionAction(storyGraphText, Icons.Outlined.AccountTree) { onOpenStoryGraph() },
+            SessionAction(deleteText, Icons.Outlined.Delete, destructive = true) { onDelete() }
+        )
+    )
+    var rowBounds by remember(row.key) { mutableStateOf(Rect.Zero) }
+    // 长按成立时给一次明确的触感反馈（弹出动作条）
+    val haptic = LocalHapticFeedback.current
 
     Surface(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
+            .onGloballyPositioned { rowBounds = it.boundsInWindow() }
+            // 长按弹出横向动作条：在 Initial 阶段先于内部的 clickable 消费事件，
+            // 否则长按结束时抬起会被当成一次点击，直接进入会话。
+            .pointerInput(row.key) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial
+                    )
+                    val longPressed = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                                ?: return@withTimeoutOrNull false
+                            // 提前抬起 = 普通点击；移动超过阈值 = 列表滚动，两种情况都不拦截
+                            if (!change.pressed) return@withTimeoutOrNull false
+                            if ((change.position - down.position).getDistance() >
+                                viewConfiguration.touchSlop
+                            ) {
+                                return@withTimeoutOrNull false
+                            }
+                        }
+                        @Suppress("UNREACHABLE_CODE")
+                        false
+                    } == null
+                    if (!longPressed) return@awaitEachGesture
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    actionStrip.show(
+                        row.key,
+                        stripActions.value,
+                        rowBounds.top,
+                        rowBounds.bottom
+                    )
+                    // 长按成立后吞掉整段手势：拖动切换高亮，抬起保留横条
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        change.consume()
+                        if (!change.pressed) {
+                            actionStrip.release()
+                            break
+                        }
+                        actionStrip.updatePointer(change.position.x + rowBounds.left)
+                    }
+                }
+            }
             .listItemSemantics(
                 stringResource(
                     R.string.sessions_item_description,
                     row.listTitle,
                     listOfNotNull(
-                        row.lastMessage ?: stringResource(R.string.sessions_no_message),
+                        row.lastMessage ?: noMessageText,
                         row.updatedAt
                     ).joinToString(" · ")
                 )
@@ -1499,117 +1481,136 @@ internal fun SessionItem(
         shadowElevation = 0.dp
     ) {
         Column {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).padding(start = 14.dp, end = 2.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box {
-                Surface(shape = SessionPortraitShape, color = row.modeLabel.color().copy(alpha = .08f),
-                    border = BorderStroke(1.dp, row.modeLabel.color().copy(alpha = .08f)), modifier = Modifier.size(46.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (portraitRequest != null) {
-                            AsyncImage(model = portraitRequest, contentDescription = null,
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                        } else if (row.modeLabel == SessionModeLabel.COMPANION) {
-                            val name = row.listTitle
-                            Text(name.takeIf(String::isNotBlank)?.let { it.substring(0, it.offsetByCodePoints(0, 1)) } ?: textResources.getString(R.string.single_role_c),
-                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = row.modeLabel.color())
-                        } else {
-                            val fallbackPainter = if (row.isAgentSession && !row.inheritCharacter) painterResource(R.drawable.ic_agent_neko)
-                                else rememberVectorPainter(if (row.isGroupSession) Icons.Outlined.Group else Icons.AutoMirrored.Outlined.Chat)
-                            Icon(fallbackPainter, null, Modifier.size(27.dp), tint = row.modeLabel.color())
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 78.dp)
+                    .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(modeColor.copy(alpha = 0.10f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when {
+                            portraitRequest != null -> AsyncImage(
+                                model = portraitRequest,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            row.modeLabel == SessionModeLabel.COMPANION -> Text(
+                                text = row.listTitle
+                                    .takeIf(String::isNotBlank)
+                                    ?.let { it.substring(0, it.offsetByCodePoints(0, 1)) }
+                                    ?: textResources.getString(R.string.single_role_c),
+                                style = nekoRowTitleStyle(),
+                                fontWeight = FontWeight.Medium,
+                                color = modeColor
+                            )
+                            else -> {
+                                val fallbackPainter =
+                                    if (row.isAgentSession && !row.inheritCharacter) painterResource(R.drawable.ic_agent_neko)
+                                    else rememberVectorPainter(
+                                        if (row.isGroupSession) Icons.Outlined.Group
+                                        else Icons.AutoMirrored.Outlined.Chat
+                                    )
+                                Icon(fallbackPainter, null, Modifier.size(23.dp), tint = modeColor)
+                            }
                         }
                     }
-                }
-                if (hasAttention || isGenerating) Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.align(Alignment.BottomEnd).size(9.dp)) { }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(row.listTitle, style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    if (row.pinned) SessionStatusIcon(Icons.Filled.PushPin, pinnedBadge)
-                    if (row.favorite) SessionStatusIcon(Icons.Filled.Favorite, favoritedBadge)
-                    if (row.archived) SessionStatusIcon(Icons.Filled.Archive, archivedBadge)
-                    row.listDate?.let { date ->
-                        Text(date, Modifier.padding(start = 8.dp), style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .78f), maxLines = 1)
+                    // 等待处理 / 正在生成：头像角标，不做整行高亮
+                    if (hasAttention || isGenerating) {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
                     }
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(row.modeLabel.icon(), null, Modifier.size(12.dp), tint = row.modeLabel.color())
-                    Text(row.modeLabel.title(), style = MaterialTheme.typography.labelSmall, color = row.modeLabel.color(), maxLines = 1)
-                    Text("·", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .4f))
-                    Text(row.lastMessage ?: stringResource(R.string.sessions_no_message), modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    // 第一行：置顶针 + 标题 + 状态图标 + 时间（时间贴在该区域右上）
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (row.pinned) {
+                            Icon(
+                                Icons.Filled.PushPin,
+                                contentDescription = pinnedBadge,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(5.dp))
+                        }
+                        Text(
+                            text = row.listTitle,
+                            style = nekoRowTitleStyle(),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (row.favorite) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                Icons.Filled.Favorite,
+                                contentDescription = favoritedBadge,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                        if (row.archived) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                Icons.Filled.Archive,
+                                contentDescription = archivedBadge,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                        row.listDate?.let { date ->
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = date,
+                                style = nekoCaptionStyle(),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    // 第二行：模式图标 + 最后一条消息，一直延伸到右边缘
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            row.modeLabel.icon(),
+                            contentDescription = row.modeLabel.title(),
+                            tint = modeColor,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = row.lastMessage ?: noMessageText,
+                            style = nekoRowSubtitleStyle(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = moreDesc, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(detailMenuText) },
-                        onClick = {
-                            menuExpanded = false
-                            onOpenDetail()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(renameMenuText) },
-                        onClick = {
-                            menuExpanded = false
-                            onRename()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (row.pinned) unpinText else pinText) },
-                        onClick = {
-                            menuExpanded = false
-                            onTogglePinned()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (row.favorite) unfavoriteText else favoriteText) },
-                        onClick = {
-                            menuExpanded = false
-                            onToggleFavorite()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (row.archived) unarchiveText else archiveText) },
-                        onClick = {
-                            menuExpanded = false
-                            onToggleArchived()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(storyGraphText) },
-                        onClick = {
-                            menuExpanded = false
-                            onOpenStoryGraph()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(deleteText, color = Color(0xFFFF6B6B)) },
-                        onClick = {
-                            menuExpanded = false
-                            onDelete()
-                        }
-                    )
-                }
+            if (!last) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 70.dp, end = 14.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    thickness = 1.dp
+                )
             }
-        }
-        if (!last) HorizontalDivider(Modifier.padding(start = 72.dp, end = 14.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .35f), thickness = .5.dp)
         }
     }
 }
@@ -1800,6 +1801,30 @@ class SessionsViewModel : BaseViewModel() {
     fun setFilter(f: SessionFilter) {
         _filter.value = f
     }
+
+    /**
+     * 首页 banner 用的会话行：不受筛选/搜索影响，按更新时间倒序，且排除归档。
+     *
+     * 与 [displayedSessionRows] 分开，避免用户在当前筛选下看不到 banner 该显示的那条会话。
+     */
+    val homeBannerRows: StateFlow<List<SessionListRow>> = combine(
+        _sessions,
+        _characters
+    ) { sessions, characters ->
+        buildSessionListRows(
+            sessions = sessions
+                .filter { it.isArchive != true && it.archived != true }
+                .sortedByDescending { it.updatedAt ?: it.createdAt.orEmpty() },
+            characters = characters,
+            portraitUrlResolver = { resolveAvatarUrl(it) }
+        )
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
 
     /**
      * 顶部四个筛选按钮的切换：再次点按已选中的筛选恢复到默认「最近会话」（ALL）。

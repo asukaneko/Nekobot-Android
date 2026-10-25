@@ -64,6 +64,23 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.width
+import com.nekobot.app.ui.components.resolveAvatarUrl
+import com.nekobot.app.ui.components.nekoRowTitleStyle
+import com.nekobot.app.ui.components.nekoRowSubtitleStyle
+import com.nekobot.app.ui.components.nekoCaptionStyle
+import com.nekobot.app.ui.components.NekoLetterAvatar
+import com.nekobot.app.ui.components.NekoIconTile
+import com.nekobot.app.ui.components.NekoChevron
+import com.nekobot.app.data.model.userFacingTitle
+import com.nekobot.app.data.model.Session
+import coil.request.repeatCount
+import coil.request.ImageRequest
+import coil.compose.AsyncImage
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.shape.CircleShape
 import com.nekobot.app.ui.navigation.Routes
 
 @Composable
@@ -74,10 +91,10 @@ internal fun GlobalSearchInput(
     val colors = MaterialTheme.colorScheme
     val focusManager = LocalFocusManager.current
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(14.dp)
     TextField(value = query, onValueChange = onQueryChange,
         modifier = modifier.focusRequester(focusRequester).onFocusChanged { focused = it.isFocused }
-            .border(1.dp, if (focused) colors.primary.copy(alpha = 0.24f) else Color.Transparent, shape),
+            .border(1.dp, if (focused) colors.primary else colors.outline, shape),
         textStyle = MaterialTheme.typography.bodyMedium,
         singleLine = true, shape = shape,
         placeholder = { Text(stringResource(R.string.global_search_placeholder),
@@ -92,8 +109,8 @@ internal fun GlobalSearchInput(
             }
         },
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = colors.surfaceVariant.copy(alpha = 0.42f),
-            unfocusedContainerColor = colors.surfaceVariant.copy(alpha = 0.42f),
+            focusedContainerColor = colors.surface,
+            unfocusedContainerColor = colors.surface,
             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
             disabledIndicatorColor = Color.Transparent),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -121,42 +138,108 @@ internal fun GlobalSearchCategories(selected: GlobalSearchKind?, onSelect: (Glob
     }
 }
 
+
+/** 搜索结果行：放在分组卡里的一行（图标底座 + 标题 + 副标题 + 箭头）。 */
 @Composable
-internal fun GlobalSearchSectionHeader(kind: GlobalSearchKind, count: Int) {
-    Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(kind.labelRes), modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(count.toString(), style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f))
+internal fun GlobalSearchRow(
+    result: GlobalSearchResult,
+    query: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 15.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        NekoIconTile(icon = result.searchIcon(), size = 33.dp)
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                highlightedSearchText(result.title, query, SpanStyle(color = colors.primary, fontWeight = FontWeight.SemiBold)),
+                style = nekoRowTitleStyle(), color = colors.onSurface,
+                maxLines = if (result.kind == GlobalSearchKind.MESSAGE) 2 else 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (result.subtitle.isNotBlank()) {
+                Text(
+                    highlightedSearchText(result.subtitle, query, SpanStyle(color = colors.primary)),
+                    style = nekoRowSubtitleStyle(), color = colors.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        NekoChevron()
     }
 }
 
+/** 最近会话行：头像 + 会话名 + 末条消息 + 更新时间。 */
 @Composable
-internal fun GlobalSearchRow(result: GlobalSearchResult, query: String, first: Boolean, last: Boolean, onClick: () -> Unit) {
+internal fun GlobalSearchSessionRow(
+    session: Session,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(topStart = if (first) 18.dp else 0.dp, topEnd = if (first) 18.dp else 0.dp,
-        bottomStart = if (last) 18.dp else 0.dp, bottomEnd = if (last) 18.dp else 0.dp)
-    Surface(shape = shape, color = colors.surfaceVariant.copy(alpha = 0.32f)) {
-        Column {
-            Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
-                .heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Icon(result.searchIcon(), contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(highlightedSearchText(result.title, query, SpanStyle(color = colors.primary, fontWeight = FontWeight.SemiBold)),
-                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium,
-                        maxLines = if (result.kind == GlobalSearchKind.MESSAGE) 2 else 1, overflow = TextOverflow.Ellipsis)
-                    if (result.subtitle.isNotBlank()) Text(
-                        highlightedSearchText(result.subtitle, query, SpanStyle(color = colors.primary)),
-                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
-                    tint = colors.onSurfaceVariant.copy(alpha = 0.55f), modifier = Modifier.size(18.dp))
+    val context = LocalContext.current
+    val title = session.displayName
+    val subtitle = listOfNotNull(
+        if (session.companionMode == true) session.userFacingTitle() else session.characterName,
+        session.lastMessage?.replace(Regex("\\s+"), " ")?.trim()
+    ).filter { it.isNotBlank() }.joinToString(" · ")
+    val timeLabel = session.updatedAt?.let { if (it.length >= 10) it.substring(5, 10) else it }
+    val portrait = remember(session.portraitUrl) {
+        resolveAvatarUrl(session.portraitUrl)?.let {
+            ImageRequest.Builder(context).data(it).crossfade(false).repeatCount(0).build()
+        }
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 15.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (portrait != null) {
+            AsyncImage(
+                model = portrait,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+            )
+        } else {
+            NekoLetterAvatar(text = title, size = 38.dp)
+        }
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                title,
+                style = nekoRowTitleStyle(),
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = nekoRowSubtitleStyle(),
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            if (!last) HorizontalDivider(Modifier.padding(start = 52.dp, end = 16.dp), color = colors.outlineVariant.copy(alpha = 0.35f))
+        }
+        if (timeLabel != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(timeLabel, style = nekoCaptionStyle(), color = colors.onSurfaceVariant, maxLines = 1)
         }
     }
 }

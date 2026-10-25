@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Book
@@ -39,6 +40,10 @@ import com.nekobot.app.data.model.WorldBookRequest
 import com.nekobot.app.ui.adaptive.listItemSemantics
 import com.nekobot.app.ui.adaptive.rememberShouldUseTwoPane
 import com.nekobot.app.ui.components.EmptyState
+import com.nekobot.app.ui.components.NekoChoiceRow
+import com.nekobot.app.ui.components.NekoIconTile
+import com.nekobot.app.ui.components.NekoSheet
+import com.nekobot.app.ui.components.NekoSheetHeader
 import com.nekobot.app.ui.components.ErrorToast
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
@@ -129,11 +134,24 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
 fun WorldBooksScreen(
     onOpenBook: (String) -> Unit,
     onOpenMatchDebug: () -> Unit = {},
-    viewModel: WorldBooksViewModel = viewModel()
+    viewModel: WorldBooksViewModel = viewModel(),
+    /** 嵌入「内容库」时由外层提供标题栏、搜索与分段控件。 */
+    embedded: Boolean = false,
+    /** 外层搜索框的关键词：按名称与描述做本地过滤。 */
+    searchQuery: String = ""
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val bottomBarClearance = com.nekobot.app.ui.navigation.rememberBottomBarClearance()
+    // 内容库里的关键词过滤：只影响展示，不改动源数据
+    val visibleBooks = remember(books, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) books else books.filter { book ->
+            book.name?.contains(query, ignoreCase = true) == true ||
+                book.description?.contains(query, ignoreCase = true) == true
+        }
+    }
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
@@ -166,10 +184,71 @@ fun WorldBooksScreen(
         onOpenBook
     }
 
+    // 嵌入内容库时：把顶栏动作交给外层渲染（标题栏只有一份，功能一个不丢）
+    if (embedded) {
+        val viewToggleLabel = stringResource(
+            if (viewMode == WorldBookViewMode.LIST) R.string.worldbook_view_grid
+            else R.string.worldbook_view_list
+        )
+        val refreshLabel = stringResource(R.string.worldbook_refresh)
+        val debugLabel = stringResource(R.string.worldbook_debug_title)
+        val newLabel = stringResource(R.string.worldbook_new)
+        com.nekobot.app.ui.screens.library.LibraryTopBarActions {
+            listOf(
+                com.nekobot.app.ui.screens.library.LibraryTopAction(
+                    key = "view_mode",
+                    icon = if (viewMode == WorldBookViewMode.LIST) Icons.Filled.GridView else Icons.Filled.ViewList,
+                    label = viewToggleLabel
+                ) {
+                    val newMode = if (viewMode == WorldBookViewMode.LIST) WorldBookViewMode.GRID else WorldBookViewMode.LIST
+                    viewMode = newMode
+                    ServiceContainer.prefs.worldBookViewMode = newMode.name
+                },
+                com.nekobot.app.ui.screens.library.LibraryTopAction("refresh", Icons.Filled.Refresh, refreshLabel) {
+                    viewModel.load()
+                },
+                com.nekobot.app.ui.screens.library.LibraryTopAction("match_debug", Icons.Filled.Search, debugLabel) {
+                    onOpenMatchDebug()
+                },
+                com.nekobot.app.ui.screens.library.LibraryTopAction("new", Icons.Filled.Add, newLabel, prominent = true) {
+                    showAddMenu = true
+                },
+            )
+        }
+        // 新建 / AI 生成放进抽屉：比下拉菜单更适合触屏与长文案
+        if (showAddMenu) {
+            NekoSheet(onDismissRequest = { showAddMenu = false }) {
+                NekoSheetHeader(
+                    title = stringResource(R.string.worldbook_new),
+                    onClose = { showAddMenu = false }
+                )
+                NekoChoiceRow(
+                    title = stringResource(R.string.worldbook_new),
+                    onClick = {
+                        showAddMenu = false
+                        showCreateDialog = true
+                    },
+                    leading = { NekoIconTile(Icons.Filled.Book) }
+                )
+                NekoChoiceRow(
+                    title = stringResource(R.string.worldbook_ai_generate),
+                    onClick = {
+                        showAddMenu = false
+                        showAiDialog = true
+                    },
+                    leading = { NekoIconTile(Icons.Filled.AutoAwesome) }
+                )
+            }
+        }
+    }
+
     val scaffoldContent: @Composable () -> Unit = {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (embedded) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.background,
+        // 嵌入内容库时外层已经处理状态栏/底栏避让，子页不再重复加 inset
+        contentWindowInsets = if (embedded) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
+            if (!embedded) {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -241,18 +320,28 @@ fun WorldBooksScreen(
                     }
                 }
             )
+            }
         }
     ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
+                .background(
+                    if (embedded) androidx.compose.ui.graphics.Color.Transparent
+                    else MaterialTheme.colorScheme.background
+                )
         ) {
-            if (books.isEmpty() && !loading) {
+            if (visibleBooks.isEmpty() && !loading) {
                 EmptyState(
-                    title = stringResource(R.string.worldbook_empty_title),
-                    hint = stringResource(R.string.worldbook_empty_hint),
+                    title = stringResource(
+                        if (searchQuery.isBlank()) R.string.worldbook_empty_title
+                        else R.string.shell_library_empty
+                    ),
+                    hint = stringResource(
+                        if (searchQuery.isBlank()) R.string.worldbook_empty_hint
+                        else R.string.shell_library_empty_hint
+                    ),
                     icon = {
                         Icon(
                             Icons.Filled.Book,
@@ -266,7 +355,7 @@ fun WorldBooksScreen(
                 if (viewMode == WorldBookViewMode.LIST) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = bottomBarClearance + 24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         if (error != null) {
@@ -274,7 +363,7 @@ fun WorldBooksScreen(
                                 ErrorToast(message = error!!, onShown = { viewModel.clearError() })
                             }
                         }
-                        items(books, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
+                        items(visibleBooks, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
                             WorldBookItem(book = book, onClick = { book.id?.let { handleOpenBook(it) } })
                         }
                     }
@@ -282,7 +371,7 @@ fun WorldBooksScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 156.dp),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = bottomBarClearance + 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -291,13 +380,13 @@ fun WorldBooksScreen(
                                 ErrorToast(message = error!!, onShown = { viewModel.clearError() })
                             }
                         }
-                        gridItems(books, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
+                        gridItems(visibleBooks, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
                             WorldBookGridItem(book = book, onClick = { book.id?.let { handleOpenBook(it) } })
                         }
                     }
                 }
             }
-            LoadingOverlay(visible = loading && books.isEmpty())
+            LoadingOverlay(visible = loading && visibleBooks.isEmpty())
         }
     }
     } // 结束 scaffoldContent lambda

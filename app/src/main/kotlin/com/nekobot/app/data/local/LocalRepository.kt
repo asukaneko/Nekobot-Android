@@ -9937,6 +9937,30 @@ class LocalRepository(
     }
 
     /**
+     * 轻量一次性文本生成：走与工具任务相同的模型队列，不写会话、不建消息。
+     *
+     * 目前用于会话页的 AI 问候语。调用方需自行处理异常，并在失败时回退本地文案。
+     */
+    suspend fun generateUtilityLine(
+        systemPrompt: String,
+        userPrompt: String,
+        tag: String = "utility",
+        /** Token 记录里的来源标识：不要用 "web"，否则会被显示成「联网搜索」。 */
+        source: String = "utility"
+    ): String = withContext(Dispatchers.IO) {
+        val execution = executeChatOnceViaQueue(
+            messages = listOf(
+                mapOf("role" to "system", "content" to systemPrompt),
+                mapOf("role" to "user", "content" to userPrompt)
+            ),
+            requestTag = tag,
+            failoverPurpose = "utility"
+        )
+        recordFailoverTokenUsage(execution, source, TokenStatsManager.PURPOSE_UTILITY)
+        execution.value.content.trim()
+    }
+
+    /**
      * AI 随机生成角色灵感条目（标题 + 描述 + 标签）。
      * 使用 chat 故障转移队列，生成 3 个互不重复、风格差异明显的角色灵感。
      * @return 生成的角色灵感列表
@@ -11452,6 +11476,14 @@ ${AiOutputLanguage.directive()}
         /** life_sim 心跳 prompt 中角色卡单字段截断长度（对齐原仓库 200 字符） */
         private const val LIFE_SIM_PROFILE_FIELD_CHARS = 200
 
+        /** 首页问候引用角色记忆的条数上限（融合记忆 / 普通记忆） */
+        private const val HOME_GREETING_COMPANION_LIMIT = 6
+
+        /** 首页问候优先引用的普通角色记忆类别（顺序即优先级） */
+        private val HOME_GREETING_MEMORY_CATEGORIES = listOf(
+            "user_persona", "recent_digest", "important_event", "character_persona", "timeline", "life_sim"
+        )
+
         /** 静态时间戳工具（供 LocalPipelineCallbacks 等外部类使用） */
         fun nowIsoStatic(): String =
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -11798,6 +11830,69 @@ ${AiOutputLanguage.directive()}
                 ?: return@withContext emptyList()
             val store = CompanionMemoryStore(db)
             store.validatedMemories(store.ensureScope(session))
+        }
+
+    /**
+     * 首页问候用的角色记忆摘要。
+     *
+     * 问候要贴合角色和你们相处的经历，因此同时读两类记忆：
+     * - 单角色会话（Agent 角色 / companion）：该角色最近一个会话的 `companion_memories` 融合记忆
+     *   （核心 + 事实 / 待办 / 生日），只取仍有效且未作废的条目；
+     * - 普通角色会话：`local_character_memories`（用户画像、角色画像、重要事件、近期摘要、时间线）。
+     *
+     * 结果按「核心 > 其他」和类别优先级排序，逐行截断到 [maxChars]，供提示词引用；
+     * 没有记忆或读取失败时返回空串，不影响问候生成。
+     */
+    suspend fun homeGreetingMemoryBrief(characterId: String, maxChars: Int = 420): String =
+        withContext(Dispatchers.IO) {
+            if (characterId.isBlank()) return@withContext ""
+            val items = mutableListOf<String>()
+            // 1) 单角色会话的融合记忆（取该角色最近一个仍有记忆作用域的会话）
+            runCatching {
+                val session = sessionDao.listForCompanionEligibility(characterId)
+                    .firstOrNull { !it.archived && it.characterId == characterId && it.usesCompanionMemory() }
+                    ?: return@runCatching
+                val store = CompanionMemoryStore(db)
+                store.validatedMemories(store.ensureScope(session))
+                    .filter { it.current && it.valid && it.status in setOf("active", "completed") }
+                    .sortedWith(
+                        compareByDescending<com.nekobot.app.data.local.db.CompanionMemoryEntity> {
+                            it.alwaysProvide || it.kind == "core"
+                        }.thenByDescending { it.updatedAt }
+                    )
+                    .take(HOME_GREETING_COMPANION_LIMIT)
+                    .forEach { memory ->
+                        val subject = memory.subject.trim()
+                        val content = memory.content.trim().replace('\n', ' ')
+                        if (content.isNotBlank()) {
+                            items += (if (subject.isNotBlank()) "$subject：" else "") + content.take(120)
+                        }
+                    }
+            }
+            // 2) 普通角色会话的记忆（按类别优先级取，避免问候里全是琐碎细节）
+            runCatching {
+                val now = nowIso()
+                val rows = db.memoryDao().listByCharacter(characterId)
+                    .filter { it.type != "flash" }
+                    .filter { it.expiresAt.isNullOrBlank() || it.expiresAt > now }
+                val picked = HOME_GREETING_MEMORY_CATEGORIES.flatMap { category ->
+                    rows.filter { it.category == category }.sortedByDescending { it.importance }.take(2)
+                } + rows.filter { it.category !in HOME_GREETING_MEMORY_CATEGORIES }
+                    .sortedByDescending { it.importance }
+                    .take(2)
+                picked.distinctBy { it.content }.forEach { row ->
+                    val text = row.content.ifBlank { row.summary }.trim().replace('\n', ' ')
+                    if (text.isNotBlank()) items += text.take(120)
+                }
+            }
+            if (items.isEmpty()) return@withContext ""
+            val builder = StringBuilder()
+            for (item in items) {
+                if (builder.length + item.length + 2 > maxChars) break
+                if (builder.isNotEmpty()) builder.append('\n')
+                builder.append("- ").append(item)
+            }
+            builder.toString()
         }
 
     suspend fun companionMemoryError(sessionId: String): String? = withContext(Dispatchers.IO) {

@@ -902,6 +902,68 @@ class UnifiedRepository(
             }
         } else Resource.Success(emptyList())
 
+    /**
+     * 首页问候可能引用的角色记忆摘要（单角色会话的融合记忆 + 普通角色会话的记忆）。
+     *
+     * 只本地模式有数据；服务器模式或读取失败返回空串，由调用方按「无记忆」降级。
+     */
+    suspend fun homeGreetingMemoryBrief(characterId: String): String =
+        if (!isLocal || characterId.isBlank()) "" else runCatching {
+            local.homeGreetingMemoryBrief(characterId)
+        }.getOrDefault("")
+
+    /**
+     * 生成会话页的一句问候语，风格跟随所选角色的角色卡，并结合该角色的记忆。
+     *
+     * 仅本地模式调用 AI（服务器模式没有通用的单次补全接口，返回错误由 UI 回退到本地候选池），
+     * 失败时同样由 UI 回退，不会让首页出现空白。
+     */
+    suspend fun generateHomeGreeting(
+        character: CharacterPreset?,
+        periodLabel: String,
+        memoryBrief: String = ""
+    ): Resource<String> {
+        if (!isLocal) return Resource.Error("home_greeting_unsupported")
+        val persona = buildString {
+            if (character != null) {
+                append("你在扮演角色「").append(character.displayName).append("」。")
+                character.personality?.takeIf { it.isNotBlank() }
+                    ?.let { append("性格：").append(it.take(300)).append(" ") }
+                character.description?.takeIf { it.isNotBlank() }
+                    ?.let { append("设定：").append(it.take(500)).append(" ") }
+                character.scenario?.takeIf { it.isNotBlank() }
+                    ?.let { append("场景：").append(it.take(240)).append(" ") }
+            } else {
+                append("你是用户手机里的 AI 伙伴 Neko，语气温和、克制，像熟人说话。")
+            }
+            if (memoryBrief.isNotBlank()) {
+                append("\n\n你记得的、关于用户和你们之间已经发生的事（历史会话记忆）：\n")
+                append(memoryBrief)
+                append(
+                    "\n这些记忆只能用来让问候贴合你们的相处：可以自然带出其中一件具体的小事" +
+                        "（称呼、近况、约定、偏好、心情），让它听起来像熟人随口一句；" +
+                        "不要罗列、不要逐条复述、不要说出「记得」「根据记忆」这类词，也不要编造记忆里没有的事。"
+                )
+            }
+        }
+        val systemPrompt = persona +
+            "请用角色本人的口吻写一句 12~22 字的开场问候，像日常对话的开头。" +
+            "只输出这一句话：不要引号、不要解释、不要提到 AI 或系统。" +
+            com.nekobot.app.data.local.ai.AiOutputLanguage.directive()
+        val userPrompt = "现在是$periodLabel。"
+        return try {
+            val line = local.generateUtilityLine(
+                systemPrompt = systemPrompt,
+                userPrompt = userPrompt,
+                tag = "home_greeting",
+                source = "home_greeting"
+            )
+            if (line.isBlank()) Resource.Error("empty") else Resource.Success(line)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "AI 生成失败")
+        }
+    }
+
     // ==================== 世界书 ====================
 
     suspend fun listWorldBooks(): Resource<List<WorldBook>> =

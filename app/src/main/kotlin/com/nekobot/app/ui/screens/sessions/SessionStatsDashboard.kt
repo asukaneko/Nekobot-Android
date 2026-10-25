@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -232,16 +233,8 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.92f),
-                        MaterialTheme.colorScheme.secondary
-                    )
-                ),
-                shape
-            )
+            .background(MaterialTheme.colorScheme.surface, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
             .padding(20.dp)
     ) {
         Box(
@@ -249,16 +242,16 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
                 .align(Alignment.TopEnd)
                 .size(108.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.09f))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Bolt, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     stringResource(R.string.stats_banner_eyebrow),
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = 0.88f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -266,7 +259,7 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
             Text(
                 stringResource(R.string.stats_banner_title),
                 style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(18.dp))
@@ -290,7 +283,7 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
             Spacer(Modifier.height(14.dp))
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color.White.copy(alpha = 0.14f)
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp),
@@ -300,26 +293,26 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
                         Text(
                             stringResource(R.string.stats_banner_today_usage),
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.72f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             formatCompactNumber(data.todayTokens),
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Box(Modifier.width(1.dp).height(30.dp).background(Color.White.copy(alpha = 0.22f)))
+                    Box(Modifier.width(1.dp).height(30.dp).background(MaterialTheme.colorScheme.outline))
                     Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
                         Text(
                             stringResource(R.string.stats_banner_active_sessions),
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.72f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             data.activeSessions.toString(),
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -331,17 +324,17 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
 
 @Composable
 private fun DashboardBannerChip(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.16f)) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(5.dp))
             Text(
                 text,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
@@ -679,12 +672,7 @@ private fun DashboardCharacterPortrait(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.50f)
-                            )
-                        )
+                        MaterialTheme.colorScheme.surfaceVariant
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -692,7 +680,7 @@ private fun DashboardCharacterPortrait(
                     Icons.Filled.RecentActors,
                     contentDescription = null,
                     modifier = Modifier.size(48.dp),
-                    tint = Color.White.copy(alpha = 0.88f)
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -867,11 +855,8 @@ private fun DashboardTrend(days: List<DashboardActivityDay>, todayTokens: Long) 
                             .fillMaxWidth()
                             .height(barHeight)
                             .clip(RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f))
-                                )
-                            )
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.62f))
+
                     )
                     Spacer(Modifier.height(5.dp))
                     Text(day.date.format(formatter), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1274,19 +1259,14 @@ private fun DashboardRecentSessions(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .background(
-                                            Brush.linearGradient(
-                                                listOf(
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
-                                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.50f)
-                                                )
-                                            )
+                                            MaterialTheme.colorScheme.surfaceVariant
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         Icons.Filled.ChatBubble,
                                         contentDescription = null,
-                                        tint = Color.White.copy(alpha = 0.88f),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
@@ -1689,19 +1669,14 @@ private fun TodayCharacterPanel(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .background(
-                                            Brush.linearGradient(
-                                                listOf(
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
-                                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.50f)
-                                                )
-                                            )
+                                            MaterialTheme.colorScheme.surfaceVariant
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         Icons.Filled.Face,
                                         contentDescription = null,
-                                        tint = Color.White.copy(alpha = 0.88f),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
@@ -1794,14 +1769,8 @@ private fun RandomCharacterPanel(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f)
-                                    )
-                                )
-                            ),
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(

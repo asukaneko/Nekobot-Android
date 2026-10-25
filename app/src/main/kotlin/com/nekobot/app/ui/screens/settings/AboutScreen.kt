@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -158,6 +159,7 @@ fun AboutScreen(
                         subtitle = "v$version",
                         onClick = { vm.checkForUpdate(context, version) }
                     )
+                    AboutDivider()
                     AboutRow(
                         icon = Icons.Filled.Person,
                         iconColor = MaterialTheme.colorScheme.primary,
@@ -165,6 +167,7 @@ fun AboutScreen(
                         subtitle = "Asukaneko",
                         onClick = { openUrl(context, "https://github.com/asukaneko") }
                     )
+                    AboutDivider()
                     AboutRow(
                         icon = Icons.Filled.Description,
                         iconColor = MaterialTheme.colorScheme.tertiary,
@@ -172,6 +175,7 @@ fun AboutScreen(
                         subtitle = "github.com/asukaneko/Nekobot-Android",
                         onClick = { openUrl(context, "https://github.com/asukaneko/Nekobot-Android") }
                     )
+                    AboutDivider()
                     AboutRow(
                         icon = Icons.Filled.Memory,
                         iconColor = MaterialTheme.colorScheme.secondary,
@@ -192,6 +196,7 @@ fun AboutScreen(
                         subtitle = "GPL-3.0",
                         onClick = onOpenLicense
                     )
+                    AboutDivider()
                     AboutRow(
                         icon = Icons.Filled.PrivacyTip,
                         iconColor = MaterialTheme.colorScheme.secondary,
@@ -199,6 +204,7 @@ fun AboutScreen(
                         subtitle = stringResource(R.string.about_privacy_statement_subtitle),
                         onClick = onOpenPrivacy
                     )
+                    AboutDivider()
                     AboutRow(
                         icon = Icons.Filled.Language,
                         iconColor = MaterialTheme.colorScheme.primary,
@@ -206,6 +212,7 @@ fun AboutScreen(
                         subtitle = "asukaneko.github.io",
                         onClick = { openUrl(context, "https://asukaneko.github.io/Nekobot-Android/") }
                     )
+                    AboutDivider()
                     AboutRow(
                         icon = Icons.Filled.DeveloperMode,
                         iconColor = MaterialTheme.colorScheme.tertiary,
@@ -289,6 +296,16 @@ fun AboutScreen(
             }
         )
     }
+}
+
+/** 卡片内的行分隔线：从标题文字起始处开始，避免穿过图标。 */
+@Composable
+private fun AboutDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 40.dp, end = 4.dp),
+        color = MaterialTheme.colorScheme.outline,
+        thickness = 1.dp
+    )
 }
 
 /** 关于页面的导航行：图标 + 标题 + 副标题 + 右箭头。 */

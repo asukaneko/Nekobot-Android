@@ -399,7 +399,8 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
             TopAppBar(
                 title = {
                     Text(
-                        stringResource(R.string.settings_title),
+                        // 入口在「我的」里叫「高级设置」，标题与入口保持一致，返回时不会显得跳到别的页面
+                        stringResource(R.string.shell_profile_advanced),
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -726,18 +727,6 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     ) { showLanguagePicker = true }
                 }
 
-                // 8. 关于（跳转独立关于页面）
-                GlassCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    SettingNavRow(
-                        icon = Icons.Filled.Info,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        title = stringResource(R.string.settings_about),
-                        subtitle = "v${getAppVersion(context)}"
-                    ) { onNavigate("about") }
-                }
             }
 
             LoadingOverlay(visible = loading || updateState is UpdateUiState.Checking, message = if (updateState is UpdateUiState.Checking) stringResource(R.string.update_checking) else stringResource(R.string.common_loading))
