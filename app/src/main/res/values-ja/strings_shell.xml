@@ -69,6 +69,7 @@
 
     <!-- 问候语来源与交互 -->
     <string name="tokens_source_home_greeting">ホームのあいさつ</string>
+    <string name="tokens_source_agent_welcome">ウェルカム候補</string>
     <string name="shell_greeting_full_title">あいさつ全文</string>
     <string name="shell_greeting_regenerate">再生成</string>
     <string name="shell_library_search">キャラクターまたはワールドブックを検索</string>

@@ -69,6 +69,7 @@
 
     <!-- 问候语来源与交互 -->
     <string name="tokens_source_home_greeting">Home greeting</string>
+    <string name="tokens_source_agent_welcome">Welcome suggestions</string>
     <string name="shell_greeting_full_title">Full greeting</string>
     <string name="shell_greeting_regenerate">Regenerate</string>
     <string name="shell_library_search">Search characters or lorebooks</string>

@@ -964,8 +964,22 @@ class UnifiedRepository(
         }
     }
 
-    // ==================== 世界书 ====================
+    /**
+     * 新 Agent 会话欢迎页候选：根据全局长期记忆生成 4 条起步指令。
+     *
+     * 只有本地模式能调用 AI（服务器模式没有通用补全接口），失败时由界面回退到默认候选。
+     */
+    suspend fun generateAgentWelcomeSuggestions(memory: String): Resource<List<String>> {
+        if (!isLocal) return Resource.Error("agent_welcome_unsupported")
+        return try {
+            val items = local.generateAgentWelcomeSuggestions(memory)
+            if (items.isEmpty()) Resource.Error("empty") else Resource.Success(items)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "AI 生成失败")
+        }
+    }
 
+    // ==================== 世界书 ====================
     suspend fun listWorldBooks(): Resource<List<WorldBook>> =
         if (isLocal) Resource.Success(local.listWorldBooks()) else remote.listWorldBooks()
 

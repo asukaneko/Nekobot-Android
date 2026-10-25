@@ -69,6 +69,7 @@
 
     <!-- 问候语来源与交互 -->
     <string name="tokens_source_home_greeting">홈 인사말</string>
+    <string name="tokens_source_agent_welcome">환영 추천</string>
     <string name="shell_greeting_full_title">전체 인사말</string>
     <string name="shell_greeting_regenerate">다시 생성</string>
     <string name="shell_library_search">캐릭터 또는 세계관 검색</string>

@@ -328,6 +328,16 @@
     <string name="chat_view_archive">View archive</string>
     <string name="chat_clear_messages">Clear messages</string>
     <string name="chat_start_new_conversation">Start a new conversation</string>
+    <string name="agent_welcome_title">What would you like to do today?</string>
+    <string name="agent_welcome_subtitle_memory">Based on %1$d characters of long-term memory, here are 4 ways to start</string>
+    <string name="agent_welcome_subtitle_empty">No long-term memory yet — start with one of these</string>
+    <string name="agent_welcome_section">Suggested for you</string>
+    <string name="agent_welcome_refresh">Refresh</string>
+    <string name="agent_welcome_send">Send this suggestion</string>
+    <string name="agent_welcome_default_1">Help me plan what to focus on today</string>
+    <string name="agent_welcome_default_2">Check the current project and list the to-dos</string>
+    <string name="agent_welcome_default_3">Give me an action plan based on my preferences</string>
+    <string name="agent_welcome_default_4">Review our long-term agreements and remind me what matters</string>
     <string name="chat_send_prompt">Send a message to start a story with %1$s</string>
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">Delete message</string>

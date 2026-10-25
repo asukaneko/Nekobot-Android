@@ -15,6 +15,7 @@ import com.nekobot.app.data.local.ai.AiBalanceQuery
 import com.nekobot.app.data.local.ai.AiBalanceRecord
 import com.nekobot.app.data.local.ai.AiBalanceSource
 import com.nekobot.app.data.local.ai.AgentNoticeBus
+import com.nekobot.app.data.local.ai.AgentWelcomeSuggestions
 import com.nekobot.app.data.local.ai.buildAgentWakeUpMessage
 import com.nekobot.app.data.local.ai.buildImagePromptRewriteMessages
 import com.nekobot.app.data.local.ai.cleanRewrittenImagePrompt
@@ -9972,6 +9973,28 @@ class LocalRepository(
         )
         execution.value.content.trim()
     }
+
+    /**
+     * 根据全局 Agent 长期记忆生成新会话欢迎页的四条起步候选。
+     *
+     * 走一次性文本生成通道（purpose=utility），不写会话、不建消息；模型不可用或
+     * 返回不合法时抛出异常，由调用方回退到本地默认候选。
+     */
+    suspend fun generateAgentWelcomeSuggestions(memory: String): List<String> =
+        withContext(Dispatchers.IO) {
+            val execution = executeChatOnceViaQueue(
+                messages = listOf(
+                    mapOf("role" to "system", "content" to AgentWelcomeSuggestions.buildSystemPrompt()),
+                    mapOf("role" to "user", "content" to AgentWelcomeSuggestions.buildUserPrompt(memory))
+                ),
+                requestTag = "agent_welcome",
+                failoverPurpose = "utility"
+            )
+            recordFailoverTokenUsage(
+                execution, "agent_welcome", TokenStatsManager.PURPOSE_UTILITY, sessionId = ""
+            )
+            AgentWelcomeSuggestions.parse(execution.value.content)
+        }
 
     /**
      * AI 随机生成角色灵感条目（标题 + 描述 + 标签）。

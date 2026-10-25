@@ -1927,6 +1927,7 @@ private fun sourceLabelFor(normalized: String, raw: String): String = when (norm
     "command" -> ServiceContainer.getString(R.string.tokens_source_command)
     "utility" -> ServiceContainer.getString(R.string.tokens_source_utility)
     "home_greeting" -> ServiceContainer.getString(R.string.tokens_source_home_greeting)
+    "agent_welcome" -> ServiceContainer.getString(R.string.tokens_source_agent_welcome)
     "decision" -> ServiceContainer.getString(R.string.tokens_source_decision)
     "embedding" -> ServiceContainer.getString(R.string.tokens_source_embedding)
     "react" -> ServiceContainer.getString(R.string.tokens_source_react)

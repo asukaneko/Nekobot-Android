@@ -328,6 +328,16 @@
     <string name="chat_view_archive">보관함 보기</string>
     <string name="chat_clear_messages">메시지 지우기</string>
     <string name="chat_start_new_conversation">새 대화 시작</string>
+    <string name="agent_welcome_title">오늘 무엇을 할까요?</string>
+    <string name="agent_welcome_subtitle_memory">장기 기억 %1$d자를 참고해 4가지 시작 방법을 골랐어요</string>
+    <string name="agent_welcome_subtitle_empty">아직 장기 기억이 없어요. 여기서 시작해 보세요</string>
+    <string name="agent_welcome_section">추천</string>
+    <string name="agent_welcome_refresh">다른 추천</string>
+    <string name="agent_welcome_send">이 제안 보내기</string>
+    <string name="agent_welcome_default_1">오늘 가장 먼저 할 일을 정리해 줘</string>
+    <string name="agent_welcome_default_2">현재 프로젝트 상태를 확인하고 할 일을 정리해 줘</string>
+    <string name="agent_welcome_default_3">내 선호에 맞춰 실행 계획을 제안해 줘</string>
+    <string name="agent_welcome_default_4">장기 약속을 돌아보고 주의할 점을 알려 줘</string>
     <string name="chat_send_prompt">%1$s와(과) 함께 이야기를 시작하려면 메시지를 보내세요</string>
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">메시지 삭제</string>

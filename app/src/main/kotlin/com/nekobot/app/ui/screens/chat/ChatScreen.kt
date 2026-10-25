@@ -362,6 +362,16 @@ fun ChatScreen(
     // 摘要本身仅供请求上下文使用，聊天列表仍展示完整原始历史。
     // 同一消息 id 可能在页面状态合并时短暂出现两份，渲染前统一去重（保证 Compose key 稳定唯一）。
     val visibleMessages = deduplicateMessagesById(messages).filterNot { it.isAgentContextSummary() }
+    // 新 Agent 会话欢迎页：普通 Agent 会话（非角色继承、非陪伴聊天）还没有任何消息时展示。
+    val agentWelcomeState by viewModel.agentWelcomeState.collectAsStateWithLifecycle()
+    val showAgentWelcome = visibleMessages.isEmpty() &&
+        !loading &&
+        session?.sessionMode.equals("agent", ignoreCase = true) &&
+        !inheritsCharacter &&
+        !companionChat
+    LaunchedEffect(showAgentWelcome) {
+        if (showAgentWelcome) viewModel.ensureAgentWelcomeSuggestions()
+    }
     // 消息总数：分页后 messages 只含已加载窗口，取会话计数（由写入路径维护）展示完整总数
     val totalMessageCount = maxOf(visibleMessages.size, session?.messageCount ?: 0)
     // 排队“立即发送”的乐观气泡渲染在宿主（前一条用户消息）item 内、进度卡片之前，
@@ -1224,65 +1234,83 @@ fun ChatScreen(
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else if (visibleMessages.isEmpty()) {
-                // 空会话引导：角色会话显示立绘，其他模式显示默认图标
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    if (
-                        session?.sessionMode != "group" &&
-                        (session?.sessionMode != "agent" || inheritsCharacter)
-                    ) {
-                        ChatAvatar(
-                            portraitUrl = session?.portraitUrl,
-                            size = 88.dp,
-                            ring = true
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(88.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (session?.sessionMode.equals("agent", ignoreCase = true)) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_agent_neko),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(40.dp)
-                                )
+                if (showAgentWelcome) {
+                    AgentWelcomePage(
+                        state = agentWelcomeState,
+                        onSelect = { suggestion ->
+                            keyboard?.hide()
+                            if (input.isBlank()) {
+                                pendingPlotChoiceId = null
+                                pendingImageAttachments = emptyList()
+                                viewModel.sendMessage(suggestion)
                             } else {
-                                Icon(
-                                    Icons.Outlined.Group,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(40.dp)
-                                )
+                                // 已有草稿时不直接发送，避免把用户输入吞掉。
+                                input = suggestion
+                            }
+                        },
+                        onRefresh = { viewModel.refreshAgentWelcomeSuggestions() }
+                    )
+                } else {
+                    // 空会话引导：角色会话显示立绘，其他模式显示默认图标
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        if (
+                            session?.sessionMode != "group" &&
+                            (session?.sessionMode != "agent" || inheritsCharacter)
+                        ) {
+                            ChatAvatar(
+                                portraitUrl = session?.portraitUrl,
+                                size = 88.dp,
+                                ring = true
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(88.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (session?.sessionMode.equals("agent", ignoreCase = true)) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_agent_neko),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Outlined.Group,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
                             }
                         }
+                        Spacer(Modifier.height(18.dp))
+                        Text(
+                            stringResource(R.string.chat_start_new_conversation),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(
+                                R.string.chat_send_prompt,
+                                // 优先显示角色名：characterName（本地模式）→ senderName（远程模式后端字段）→ displayName（会话名）→ AI
+                                // 自定义标题优先，与顶栏、列表一致
+                                companionChatTitle(session).takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.chat_ai_label)
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Spacer(Modifier.height(18.dp))
-                    Text(
-                        stringResource(R.string.chat_start_new_conversation),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(
-                            R.string.chat_send_prompt,
-                            // 优先显示角色名：characterName（本地模式）→ senderName（远程模式后端字段）→ displayName（会话名）→ AI
-                            // 自定义标题优先，与顶栏、列表一致
-                            companionChatTitle(session).takeIf { it.isNotBlank() }
-                                ?: stringResource(R.string.chat_ai_label)
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             } else {
                 LazyColumn(

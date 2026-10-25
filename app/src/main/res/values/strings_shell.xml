@@ -75,6 +75,7 @@
 
     <!-- 问候语来源与交互 -->
     <string name="tokens_source_home_greeting">首页问候</string>
+    <string name="tokens_source_agent_welcome">欢迎建议</string>
     <string name="shell_greeting_full_title">完整问候</string>
     <string name="shell_greeting_regenerate">重新生成</string>
     <string name="shell_library_search">搜索角色或世界书</string>

@@ -334,6 +334,16 @@
     <string name="chat_view_archive">查看歸檔</string>
     <string name="chat_clear_messages">清空訊息</string>
     <string name="chat_start_new_conversation">開始新的對話</string>
+    <string name="agent_welcome_title">今天想做什麼？</string>
+    <string name="agent_welcome_subtitle_memory">參考了 %1$d 字長期記憶，挑了 4 個開始方式</string>
+    <string name="agent_welcome_subtitle_empty">還沒有長期記憶，先從這些開始</string>
+    <string name="agent_welcome_section">為你推薦</string>
+    <string name="agent_welcome_refresh">換一批</string>
+    <string name="agent_welcome_send">傳送這則建議</string>
+    <string name="agent_welcome_default_1">幫我梳理今天最該推進的事</string>
+    <string name="agent_welcome_default_2">檢查目前專案狀態，列出待辦</string>
+    <string name="agent_welcome_default_3">按我的偏好給我一個行動方案</string>
+    <string name="agent_welcome_default_4">回顧長期約定，提醒我需要注意什麼</string>
     <string name="chat_send_prompt">發送訊息，與%1$s開啟一段故事</string>
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">刪除訊息</string>

@@ -1007,6 +1007,20 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_HOME_GREETING_AI_KEY, value).apply()
         }
 
+    /** 新 Agent 会话欢迎页候选（一行一条，最多 4 条）。 */
+    var agentWelcomeSuggestions: String
+        get() = prefs.getString(KEY_AGENT_WELCOME_SUGGESTIONS, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_AGENT_WELCOME_SUGGESTIONS, value).apply()
+        }
+
+    /** 欢迎候选的缓存键：`记忆哈希|语言`，记忆或语言变化后重新生成。 */
+    var agentWelcomeKey: String
+        get() = prefs.getString(KEY_AGENT_WELCOME_KEY, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_AGENT_WELCOME_KEY, value).apply()
+        }
+
     // ============ 会话页 banner ============
 
     /** banner 展示来源：LATEST（最新会话）/ PINNED（固定某个单角色会话）。 */
@@ -1660,6 +1674,8 @@ class PrefsManager(context: Context) {
         private const val KEY_HOME_GREETING_HISTORY = "home_greeting_history"
         private const val KEY_HOME_GREETING_AI_LINE = "home_greeting_ai_line"
         private const val KEY_HOME_GREETING_AI_KEY = "home_greeting_ai_key"
+        private const val KEY_AGENT_WELCOME_SUGGESTIONS = "agent_welcome_suggestions"
+        private const val KEY_AGENT_WELCOME_KEY = "agent_welcome_key"
         private const val KEY_HOME_BANNER_MODE = "home_banner_mode"
         private const val KEY_HOME_BANNER_SESSION = "home_banner_session"
         private const val KEY_WORLD_BOOK_VIEW_MODE = "world_book_view_mode"

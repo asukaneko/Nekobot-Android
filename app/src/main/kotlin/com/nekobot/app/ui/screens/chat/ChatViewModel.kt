@@ -153,6 +153,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -182,6 +183,8 @@ import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.terminal.LocalTerminalSession
 import com.nekobot.app.data.local.ai.AgentRecoveryState
 import com.nekobot.app.data.local.ai.AgentToolLimits
+import com.nekobot.app.data.local.ai.AgentWelcomeSuggestions
+import com.nekobot.app.data.local.ai.AiOutputLanguage
 import com.nekobot.app.data.local.ai.toRecoveryState
 import com.nekobot.app.data.local.ai.RealtimeContextMessage
 import com.nekobot.app.data.local.ai.RealtimeFunctionCall
@@ -465,6 +468,16 @@ class ChatViewModel : BaseViewModel() {
         .flatMapLatest { it }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     private val _plotChoicesLoading: MutableStateFlow<Boolean> get() = runtime.plotChoicesLoading
+
+    /**
+     * 新 Agent 会话欢迎页状态：四条起步候选由全局 Agent 记忆生成。
+     *
+     * 先展示本地默认候选（或用缓存）避免空白，AI 结果返回后再替换；
+     * 状态放在 VM 里而不是 Composable 内，滚动/旋转/重新进入页面都不会重复生成。
+     */
+    private val _agentWelcomeState = MutableStateFlow(AgentWelcomeState())
+    val agentWelcomeState: StateFlow<AgentWelcomeState> = _agentWelcomeState.asStateFlow()
+    private var agentWelcomeJob: Job? = null
 
     /**
      * Agent 会话生成期间的排队消息队列（FIFO）。
@@ -4156,6 +4169,79 @@ class ChatViewModel : BaseViewModel() {
             onError = { _plotChoicesLoading.value = false }
         )
     }
+
+    /**
+     * 准备新 Agent 会话欢迎页的四条候选。
+     *
+     * 1. 先读取全局 Agent 记忆，并展示上次缓存的候选（无缓存时用本地默认候选）；
+     * 2. 本地模式下调用模型按记忆生成，成功则替换并写入缓存；
+     * 3. 失败或服务器模式保持默认候选，不阻塞输入与发送。
+     *
+     * @param force true 表示用户点「换一批」，忽略缓存与当前结果重新生成。
+     */
+    fun ensureAgentWelcomeSuggestions(force: Boolean = false) {
+        if (agentWelcomeJob?.isActive == true) return
+        if (!force && _agentWelcomeState.value.suggestions.isNotEmpty()) return
+        agentWelcomeJob = viewModelScope.launch {
+            val defaults = defaultAgentWelcomeSuggestions()
+            val memory = withContext(Dispatchers.IO) {
+                runCatching { ServiceContainer.unified.readGlobalAgentMemory().content }
+                    .getOrDefault("")
+            }
+            val prefs = ServiceContainer.prefs
+            val cacheKey = "${memory.hashCode()}|${AiOutputLanguage.languageTag()}"
+            val cached = if (!force && prefs.agentWelcomeKey == cacheKey) {
+                AgentWelcomeSuggestions.decode(prefs.agentWelcomeSuggestions)
+            } else {
+                emptyList()
+            }
+            // 有缓存直接展示，避免每次进入会话都等一次模型；无缓存先放默认项。
+            if (cached.isNotEmpty()) {
+                _agentWelcomeState.value = AgentWelcomeState(
+                    suggestions = cached,
+                    loading = false,
+                    memoryChars = memory.length
+                )
+                return@launch
+            }
+            _agentWelcomeState.value = AgentWelcomeState(
+                suggestions = defaults,
+                loading = true,
+                memoryChars = memory.length
+            )
+            val generated = if (prefs.isLocalMode) {
+                val result = runCatching {
+                    ServiceContainer.unified.generateAgentWelcomeSuggestions(memory)
+                }.getOrNull()
+                (result as? Resource.Success<List<String>>)?.data.orEmpty()
+            } else {
+                emptyList()
+            }
+            val finalItems = (generated.filter { it.isNotBlank() } + defaults)
+                .distinct()
+                .take(AgentWelcomeSuggestions.COUNT)
+            if (generated.isNotEmpty()) {
+                prefs.agentWelcomeSuggestions = AgentWelcomeSuggestions.encode(finalItems)
+                prefs.agentWelcomeKey = cacheKey
+            }
+            _agentWelcomeState.value = AgentWelcomeState(
+                suggestions = finalItems,
+                loading = false,
+                memoryChars = memory.length
+            )
+        }
+    }
+
+    /** 用户点「换一批」：忽略缓存重新请求模型。 */
+    fun refreshAgentWelcomeSuggestions() = ensureAgentWelcomeSuggestions(force = true)
+
+    /** 本地默认候选：模型不可用/服务器模式时保证欢迎页仍有四条可选。 */
+    private fun defaultAgentWelcomeSuggestions(): List<String> = listOf(
+        R.string.agent_welcome_default_1,
+        R.string.agent_welcome_default_2,
+        R.string.agent_welcome_default_3,
+        R.string.agent_welcome_default_4
+    ).map { string(it) }.filter { it.isNotBlank() }
 
     /** 解析服务器返回的剧情选项列表。服务器字段：id, text, intent, level, selected。 */
     private fun parsePlotChoices(json: JsonElement?): List<PlotChoice> {
