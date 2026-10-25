@@ -42,7 +42,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -488,7 +487,6 @@ fun SessionsScreen(
     // 滚动状态由 ViewModel 持有：进入聊天/详情再返回时仍停在原位置；
     // LazyListState 会按会话 key 记住首个可见项，列表因聊天更新排序后也不会跳回顶部。
     val sessionListState = viewModel.listScrollState
-    val dashboardVisible = pagerState.currentPage == 0
     // 长按会话弹出的横向动作条（取代每行右侧的三点菜单）
     val sessionActionStrip = remember { SessionActionStripState() }
     // 内容区在窗口中的位置与尺寸：动作条按"触发行的纵坐标"摆放，需要窗口坐标换算
@@ -562,6 +560,7 @@ fun SessionsScreen(
         onOpenWenku8Login = { onNavigate(Routes.WENKU_LOGIN) },
         onChatMaximizedChange = onTwoPaneChatMaximizedChange
     ) {
+    SessionDashboardPager(state = pagerState) { dashboardVisible ->
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -681,12 +680,8 @@ fun SessionsScreen(
             )
         }
     ) { padding ->
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize().padding(padding),
-            key = { it }
-        ) { page ->
-            if (page == 0) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (dashboardVisible) {
                 SessionStatsDashboard(
                     data = dashboardData,
                     loading = dashboardLoading,
@@ -863,6 +858,7 @@ fun SessionsScreen(
             }
         }
     }
+    } // 结束 SessionDashboardPager
     } // 结束 TwoPaneSessionsWrapper
 
     if (showDashboardLayout) {
