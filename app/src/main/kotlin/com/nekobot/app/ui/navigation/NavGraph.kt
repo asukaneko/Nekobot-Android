@@ -725,13 +725,35 @@ fun NekobotNavGraph() {
                 AiConfigScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AI_MODELS) {
-                AiModelsScreen(onBack = { navController.popBackStack() })
+                AiModelsScreen(onBack = { navController.popBackStack() },
+                    onEditModel = { navController.navigate(Routes.aiModelEditor(false, it)) })
             }
             composable(Routes.AI_FAILOVER) {
                 FailoverQueueScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.LOCAL_AI_MODELS) {
-                LocalAiModelsScreen(onBack = { navController.popBackStack() })
+                LocalAiModelsScreen(onBack = { navController.popBackStack() },
+                    onEditModel = { navController.navigate(Routes.aiModelEditor(true, it)) })
+            }
+            composable(
+                Routes.AI_MODEL_EDITOR,
+                arguments = listOf(
+                    navArgument("local") { type = NavType.BoolType },
+                    navArgument("modelId") { type = NavType.StringType; nullable = true; defaultValue = null }
+                )
+            ) { entry ->
+                val local = entry.arguments?.getBoolean("local") == true
+                val parent = remember(entry) {
+                    navController.getBackStackEntry(if (local) Routes.LOCAL_AI_MODELS else Routes.AI_MODELS)
+                }
+                val modelId = entry.arguments?.getString("modelId")
+                if (local) {
+                    com.nekobot.app.ui.screens.aiconfig.LocalAiModelEditorRoute(modelId,
+                        vm = androidx.lifecycle.viewmodel.compose.viewModel(parent), onBack = { navController.popBackStack() })
+                } else {
+                    com.nekobot.app.ui.screens.aiconfig.ServerAiModelEditorRoute(modelId,
+                        vm = androidx.lifecycle.viewmodel.compose.viewModel(parent), onBack = { navController.popBackStack() })
+                }
             }
             composable(Routes.MODEL_PROXY) {
                 ModelProxyScreen(onBack = { navController.popBackStack() })

@@ -12,6 +12,15 @@ import java.net.Proxy
 class ModelProxyTest {
 
     @Test
+    fun formValidationKeepsHostUnresolved() {
+        val config = requireNotNull(parseModelProxyUrl("proxy.invalid:8080", resolveHost = false))
+        val address = config.proxy.address() as InetSocketAddress
+        assertEquals(true, address.isUnresolved)
+        assertEquals("proxy.invalid", address.hostString)
+        assertEquals(8080, address.port)
+    }
+
+    @Test
     fun blankProxyKeepsDirectClient() {
         val client = OkHttpClient()
 

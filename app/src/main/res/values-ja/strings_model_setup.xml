@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="model_setup_basics">用途とプリセット</string>
+    <string name="model_setup_connection">接続とモデル</string>
+    <string name="model_setup_options">設定と確認</string>
+    <string name="model_setup_basics_hint">用途を選び、プリセットから入力できます。</string>
+    <string name="model_setup_connection_hint">接続先とキーを入力し、モデルを選びます。</string>
+    <string name="model_setup_options_hint">内容を確認し、必要に応じて設定して保存します。</string>
+    <string name="model_setup_previous">戻る</string>
+    <string name="model_setup_next">次へ</string>
+    <string name="model_setup_create">モデルを作成</string>
+    <string name="model_setup_identity">基本情報</string>
+    <string name="model_setup_network">プロキシ（任意）</string>
+    <string name="model_setup_review">設定の概要</string>
+    <string name="model_setup_discard_title">入力を終了しますか？</string>
+    <string name="model_setup_discard_hint">入力内容はまだ保存されていません。</string>
+    <string name="model_setup_discard">破棄して終了</string>
+    <string name="model_setup_keep_editing">入力を続ける</string>
+    <string name="model_setup_show_key">キーを表示</string>
+    <string name="model_setup_hide_key">キーを隠す</string>
+    <string name="model_setup_invalid_url">完全な接続先URLを入力してください</string>
+    <string name="model_setup_invalid_proxy">プロキシURLが無効です</string>
+    <string name="model_setup_positive_integer">0より大きい整数を入力してください</string>
+    <string name="model_setup_nonnegative_number">0以上の数値を入力してください</string>
+    <string name="model_setup_integer">整数を入力してください</string>
+    <string name="model_setup_temperature_range">温度は0〜2で入力してください</string>
+    <string name="model_setup_top_p_range">Top Pは0〜1で入力してください</string>
+    <string name="model_setup_expanded">展開中</string>
+    <string name="model_setup_collapsed">折りたたみ</string>
+    <string name="model_setup_not_found">モデルが見つかりません。一覧から再試行してください。</string>
+</resources>

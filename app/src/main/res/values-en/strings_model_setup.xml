@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="model_setup_basics">Purpose</string>
+    <string name="model_setup_connection">Connection</string>
+    <string name="model_setup_options">Review</string>
+    <string name="model_setup_basics_hint">Choose a purpose and start with a preset.</string>
+    <string name="model_setup_connection_hint">Enter the endpoint and key, then choose a model.</string>
+    <string name="model_setup_options_hint">Review your settings and adjust options before saving.</string>
+    <string name="model_setup_previous">Previous</string>
+    <string name="model_setup_next">Continue</string>
+    <string name="model_setup_create">Create model</string>
+    <string name="model_setup_identity">Model identity</string>
+    <string name="model_setup_network">Proxy (optional)</string>
+    <string name="model_setup_review">Configuration summary</string>
+    <string name="model_setup_discard_title">Leave this form?</string>
+    <string name="model_setup_discard_hint">Your changes have not been saved.</string>
+    <string name="model_setup_discard">Discard</string>
+    <string name="model_setup_keep_editing">Keep editing</string>
+    <string name="model_setup_show_key">Show key</string>
+    <string name="model_setup_hide_key">Hide key</string>
+    <string name="model_setup_invalid_url">Enter a complete endpoint URL</string>
+    <string name="model_setup_invalid_proxy">Invalid proxy URL</string>
+    <string name="model_setup_positive_integer">Enter an integer greater than 0</string>
+    <string name="model_setup_nonnegative_number">Enter a number of 0 or greater</string>
+    <string name="model_setup_integer">Enter an integer</string>
+    <string name="model_setup_temperature_range">Temperature must be between 0 and 2</string>
+    <string name="model_setup_top_p_range">Top P must be between 0 and 1</string>
+    <string name="model_setup_expanded">Expanded</string>
+    <string name="model_setup_collapsed">Collapsed</string>
+    <string name="model_setup_not_found">Model unavailable. Return to the list and try again.</string>
+</resources>

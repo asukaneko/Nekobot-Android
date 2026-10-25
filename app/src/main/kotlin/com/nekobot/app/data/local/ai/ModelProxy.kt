@@ -18,7 +18,7 @@ internal data class ModelProxyConfig(
  *
  * 支持 HTTP 和 SOCKS5；省略协议时按 HTTP 处理。HTTP 代理可在链接中携带用户名密码。
  */
-internal fun parseModelProxyUrl(rawUrl: String): ModelProxyConfig? {
+internal fun parseModelProxyUrl(rawUrl: String, resolveHost: Boolean = true): ModelProxyConfig? {
     val raw = rawUrl.trim()
     if (raw.isEmpty()) return null
 
@@ -52,7 +52,8 @@ internal fun parseModelProxyUrl(rawUrl: String): ModelProxyConfig? {
     val password = credentials.getOrNull(1)?.let(::decodeProxyCredential).orEmpty()
 
     return ModelProxyConfig(
-        proxy = Proxy(type, InetSocketAddress(host, port)),
+        // 表单校验只检查格式，避免在输入时同步解析域名。
+        proxy = Proxy(type, if (resolveHost) InetSocketAddress(host, port) else InetSocketAddress.createUnresolved(host, port)),
         username = username,
         password = password
     )

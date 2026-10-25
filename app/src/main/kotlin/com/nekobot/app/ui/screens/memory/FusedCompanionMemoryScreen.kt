@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -144,15 +145,17 @@ private fun CompanionMemoryDetail(sessionId: String, onBack: () -> Unit, onLocat
         (query.isBlank() || "${it.content} ${it.tagsJson} ${it.factKey}".contains(query, true)) }
     val editable = ready && !busy && error == null && repo === ServiceContainer.localRepository
     if (recallSettingsOpen) {
-        CompanionRecallSettingsScreen(sessionId, ownerName, ownerAvatar, recallSettings, busy, actionError,
-            onBack = { recallSettingsOpen = false; actionError = null; addedEmbeddingId = null }, onSave = { rounds, tokens, perCall, enabled, modelId, consolidation -> action {
-                repo.saveCompanionMemorySettings(sessionId, rounds, tokens, perCall, enabled, modelId, consolidation)
-                recallSettings = repo.companionRecallSettings(sessionId)
-                embeddingSettings = repo.companionEmbeddingSettings(sessionId)
-                recallSettingsOpen = false
-                addedEmbeddingId = null
-            } }, embedding = requireNotNull(embeddingSettings), onAddModel = { addingEmbeddingModel = true }, addedModelId = addedEmbeddingId,
-            initialConsolidation = repo.companionConsolidationSettings(sessionId))
+        Box(Modifier.then(if (addingEmbeddingModel) Modifier.clearAndSetSemantics { } else Modifier)) {
+            CompanionRecallSettingsScreen(sessionId, ownerName, ownerAvatar, recallSettings, busy, actionError,
+                onBack = { recallSettingsOpen = false; actionError = null; addedEmbeddingId = null }, onSave = { rounds, tokens, perCall, enabled, modelId, consolidation -> action {
+                    repo.saveCompanionMemorySettings(sessionId, rounds, tokens, perCall, enabled, modelId, consolidation)
+                    recallSettings = repo.companionRecallSettings(sessionId)
+                    embeddingSettings = repo.companionEmbeddingSettings(sessionId)
+                    recallSettingsOpen = false
+                    addedEmbeddingId = null
+                } }, embedding = requireNotNull(embeddingSettings), onAddModel = { addingEmbeddingModel = true }, addedModelId = addedEmbeddingId,
+                initialConsolidation = repo.companionConsolidationSettings(sessionId))
+        }
         if (addingEmbeddingModel) CompanionEmbeddingModelEditor(repo, onDismiss = { addingEmbeddingModel = false }, onAdded = { id -> action {
             embeddingSettings = repo.companionEmbeddingSettings(sessionId)
             addedEmbeddingId = id

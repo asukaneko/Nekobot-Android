@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="model_setup_basics">用途與預設</string>
+    <string name="model_setup_connection">連線與模型</string>
+    <string name="model_setup_options">參數與確認</string>
+    <string name="model_setup_basics_hint">選擇用途，使用預設快速填寫。</string>
+    <string name="model_setup_connection_hint">填寫介面與金鑰，輸入或取得模型。</string>
+    <string name="model_setup_options_hint">核對設定，視需要調整參數後儲存。</string>
+    <string name="model_setup_previous">上一步</string>
+    <string name="model_setup_next">下一步</string>
+    <string name="model_setup_create">建立模型</string>
+    <string name="model_setup_identity">設定資訊</string>
+    <string name="model_setup_network">代理設定（選填）</string>
+    <string name="model_setup_review">設定概覽</string>
+    <string name="model_setup_discard_title">離開填寫？</string>
+    <string name="model_setup_discard_hint">目前填寫內容尚未儲存。</string>
+    <string name="model_setup_discard">放棄並離開</string>
+    <string name="model_setup_keep_editing">繼續填寫</string>
+    <string name="model_setup_show_key">顯示金鑰</string>
+    <string name="model_setup_hide_key">隱藏金鑰</string>
+    <string name="model_setup_invalid_url">請輸入完整的介面位址</string>
+    <string name="model_setup_invalid_proxy">代理位址格式無效</string>
+    <string name="model_setup_positive_integer">請輸入大於 0 的整數</string>
+    <string name="model_setup_nonnegative_number">請輸入不小於 0 的數值</string>
+    <string name="model_setup_integer">請輸入整數</string>
+    <string name="model_setup_temperature_range">溫度須介於 0 到 2</string>
+    <string name="model_setup_top_p_range">Top P 須介於 0 到 1</string>
+    <string name="model_setup_expanded">已展開</string>
+    <string name="model_setup_collapsed">已收合</string>
+    <string name="model_setup_not_found">模型不存在，請返回清單重試</string>
+</resources>

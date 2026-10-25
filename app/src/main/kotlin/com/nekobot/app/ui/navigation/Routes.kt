@@ -55,6 +55,9 @@ object Routes {
     const val AI_CONFIG_CENTER = "ai_config_center"
     const val AI_CONFIG = "ai_config"
     const val AI_MODELS = "ai_models"
+    const val AI_MODEL_EDITOR = "ai_model_editor/{local}?modelId={modelId}"
+    fun aiModelEditor(local: Boolean, modelId: String? = null): String =
+        "ai_model_editor/$local" + (modelId?.let { "?modelId=${android.net.Uri.encode(it)}" } ?: "")
     const val AI_FAILOVER = "ai_failover"
     const val LOCAL_AI_MODELS = "local_ai_models"
     const val MODEL_PROXY = "model_proxy"

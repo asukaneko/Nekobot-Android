@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
@@ -61,7 +60,6 @@ import androidx.compose.material3.MaterialTheme
 import com.nekobot.app.ui.components.BorderlessOutlinedButton as OutlinedButton
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -90,8 +88,6 @@ import androidx.lifecycle.viewModelScope
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalLogger
-import com.nekobot.app.data.local.ai.GeminiNativeProtocol
-import com.nekobot.app.data.local.ai.LocalProtocols
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.ui.BaseViewModel
@@ -104,7 +100,6 @@ import com.nekobot.app.ui.components.ModelEndpointRow
 import com.nekobot.app.ui.components.ModelInfoChip
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.ProviderLogo
-import com.nekobot.app.ui.components.SectionHeader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -119,7 +114,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-private val localModelPurposes = listOf(
+internal val localModelPurposes = listOf(
     "chat",
     "live",
     "vision",
@@ -135,6 +130,9 @@ private val localModelPurposes = listOf(
  */
 class LocalAiModelsViewModel : BaseViewModel() {
 
+    private val _modelsLoaded = MutableStateFlow(false)
+    val modelsLoaded = _modelsLoaded.asStateFlow()
+
     private val _models = MutableStateFlow<List<LocalAiModelEntity>>(emptyList())
     val models: StateFlow<List<LocalAiModelEntity>> = _models.asStateFlow()
 
@@ -143,6 +141,8 @@ class LocalAiModelsViewModel : BaseViewModel() {
 
     private val _availableModels = MutableStateFlow<List<String>>(emptyList())
     val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+
+    fun clearEditorModels() { _availableModels.value = emptyList(); clearError() }
 
     private val _apiKeys = MutableStateFlow<List<ApiKey>>(emptyList())
     val apiKeys: StateFlow<List<ApiKey>> = _apiKeys.asStateFlow()
@@ -156,6 +156,7 @@ class LocalAiModelsViewModel : BaseViewModel() {
         viewModelScope.launch {
             ServiceContainer.unified.observeLocalAiModels()?.collect { list ->
                 _models.value = list
+                _modelsLoaded.value = true
             }
         }
         viewModelScope.launch {
@@ -165,10 +166,19 @@ class LocalAiModelsViewModel : BaseViewModel() {
         }
     }
 
-    fun saveModel(model: LocalAiModelEntity) {
+    fun saveModel(model: LocalAiModelEntity, onSaved: () -> Unit = {}) {
+        if (loading.value) return
+        setLoading(true)
+        clearError()
         viewModelScope.launch {
-            ServiceContainer.unified.upsertLocalAiModel(model)
-            showToast(string(R.string.localai_saved))
+            try {
+                check(ServiceContainer.prefs.isLocalMode)
+                ServiceContainer.unified.upsertLocalAiModel(model)
+                showToast(string(R.string.localai_saved))
+                onSaved()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) { showError(failure.message ?: string(R.string.common_unknown_error)) }
+            finally { setLoading(false) }
         }
     }
 
@@ -323,6 +333,8 @@ class LocalAiModelsViewModel : BaseViewModel() {
         appendBaseUrlPath: Boolean,
         proxyUrl: String
     ) {
+        clearError()
+        _availableModels.value = emptyList()
         viewModelScope.launch {
             setLoading(true)
             try {
@@ -348,19 +360,15 @@ class LocalAiModelsViewModel : BaseViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LocalAiModelsScreen(onBack: () -> Unit) {
+fun LocalAiModelsScreen(onBack: () -> Unit, onEditModel: (String?) -> Unit) {
     val textResources = LocalResources.current
     val vm: LocalAiModelsViewModel = viewModel()
     val models by vm.models.collectAsStateWithLifecycle()
     val activeModel by vm.activeModel.collectAsStateWithLifecycle()
-    val availableModels by vm.availableModels.collectAsStateWithLifecycle()
-    val apiKeys by vm.apiKeys.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    var showEditDialog by remember { mutableStateOf(false) }
-    var editingModel by remember { mutableStateOf<LocalAiModelEntity?>(null) }
     var deletingModel by remember { mutableStateOf<LocalAiModelEntity?>(null) }
     var testingModel by remember { mutableStateOf<LocalAiModelEntity?>(null) }
     var probeModelId by remember { mutableStateOf<String?>(null) }
@@ -425,8 +433,8 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                         Icon(Icons.Filled.Description, contentDescription = stringResource(R.string.localai_local_logs), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
-                        editingModel = null
-                        showEditDialog = true
+                        vm.clearError()
+                        onEditModel(null)
                     }) {
                         Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.common_add), tint = MaterialTheme.colorScheme.onSurface)
                     }
@@ -504,8 +512,8 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                                 onSetActive = { vm.setActive(model.id) },
                                 onToggleEnabled = { vm.setEnabled(model, !model.enabled) },
                                 onEdit = {
-                                    editingModel = model
-                                    showEditDialog = true
+                                    vm.clearError()
+                                    onEditModel(model.id)
                                 },
                                 onDuplicate = { vm.duplicateModel(model) },
                                 onDelete = { deletingModel = model },
@@ -523,41 +531,6 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
         }
 
         LoadingOverlay(visible = loading)
-    }
-
-    // 编辑/新建对话框
-    if (showEditDialog) {
-        val geminiNativeLabel = stringResource(R.string.aimodel_editor_protocol_gemini_native)
-        val protocolOptions = remember(geminiNativeLabel) {
-            LocalProtocols.names().map { protocol ->
-                ProtocolOption(
-                    protocol,
-                    if (protocol == GeminiNativeProtocol.name) geminiNativeLabel else protocol
-                )
-            }
-        }
-        AiModelEditorDialog(
-            initial = editingModel.toEditorState(protocolOptions),
-            isEditing = editingModel != null,
-            protocols = protocolOptions,
-            purposes = localModelPurposes,
-            availableModels = availableModels,
-            savedApiKeys = apiKeys,
-            showProxyConfig = true,
-            onResolveApiKey = vm::resolveApiKey,
-            onFetchModels = { baseUrl, apiKey, protocol, appendBaseUrlPath, proxyUrl ->
-                vm.fetchModels(baseUrl, apiKey, protocol, appendBaseUrlPath, proxyUrl)
-            },
-            onDismiss = {
-                showEditDialog = false
-                editingModel = null
-            },
-            onConfirm = { state ->
-                vm.saveModel(state.toLocalEntity(editingModel))
-                showEditDialog = false
-                editingModel = null
-            }
-        )
     }
 
     // 删除确认
@@ -1026,263 +999,6 @@ private fun ModelCard(
                         fontWeight = FontWeight.Medium
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocalAiModelEditDialog(
-    model: LocalAiModelEntity?,
-    onDismiss: () -> Unit,
-    onSave: (LocalAiModelEntity) -> Unit
-) {
-    val protocols = remember { LocalProtocols.names() }
-    val purposes = remember {
-        listOf(
-            "chat" to R.string.localai_purpose_chat_model,
-            "live" to R.string.localai_purpose_live,
-            "vision" to R.string.localai_purpose_vision,
-            "video" to R.string.localai_purpose_video,
-            "tts" to R.string.localai_purpose_tts,
-            "stt" to R.string.localai_purpose_stt,
-            "embedding" to R.string.localai_purpose_embedding,
-            "image_generation" to R.string.localai_purpose_image_generation
-        )
-    }
-    val now = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()) }
-
-    var name by remember(model) { mutableStateOf(model?.name ?: "") }
-    var protocol by remember(model) { mutableStateOf(model?.protocol ?: protocols.first()) }
-    var provider by remember(model) { mutableStateOf(model?.provider ?: "") }
-    var apiKey by remember(model) { mutableStateOf(model?.apiKey ?: "") }
-    var baseUrl by remember(model) { mutableStateOf(model?.baseUrl ?: "") }
-    var modelName by remember(model) { mutableStateOf(model?.model ?: "") }
-    var purpose by remember(model) { mutableStateOf(model?.purpose ?: "chat") }
-    var priority by remember(model) { mutableStateOf(model?.priority.toString()) }
-    var temperature by remember(model) { mutableStateOf(model?.temperature?.toString() ?: "") }
-    var maxTokens by remember(model) { mutableStateOf(model?.maxTokens?.toString() ?: "") }
-    var topP by remember(model) { mutableStateOf(model?.topP?.toString() ?: "") }
-    var stopSequences by remember(model) { mutableStateOf(model?.stopSequences ?: "") }
-    var appendPath by remember(model) { mutableStateOf(model?.appendBaseUrlPath ?: true) }
-    var protocolMenuExpanded by remember { mutableStateOf(false) }
-    var purposeMenuExpanded by remember { mutableStateOf(false) }
-
-    val purposeLabelResId = remember(purpose) {
-        purposes.firstOrNull { it.first == purpose }?.second ?: R.string.localai_purpose_chat_model
-    }
-    val purposeLabel = stringResource(purposeLabelResId)
-
-    NekoDialog(
-        onDismiss = onDismiss,
-        title = if (model == null) stringResource(R.string.localai_new_model) else stringResource(R.string.localai_edit_model),
-        confirmText = stringResource(R.string.common_save),
-        onConfirm = {
-            if (name.isNotBlank() && apiKey.isNotBlank() && baseUrl.isNotBlank() && modelName.isNotBlank()) {
-                val entity = LocalAiModelEntity(
-                    id = model?.id ?: UUID.randomUUID().toString(),
-                    name = name.trim(),
-                    protocol = protocol,
-                    provider = provider.trim().ifBlank { null },
-                    apiKey = apiKey.trim(),
-                    baseUrl = baseUrl.trim(),
-                    model = modelName.trim(),
-                    purpose = purpose,
-                    priority = priority.toIntOrNull() ?: 0,
-                    active = model?.active ?: false,
-                    temperature = temperature.toFloatOrNull(),
-                    maxTokens = maxTokens.toIntOrNull(),
-                    topP = topP.toFloatOrNull(),
-                    stopSequences = stopSequences.trim().ifBlank { null },
-                    appendBaseUrlPath = appendPath,
-                    createdAt = model?.createdAt ?: now,
-                    oauthAccountId = model?.oauthAccountId
-                )
-                onSave(entity)
-            }
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(R.string.aimodels_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            // 用途选择（7 种 purpose）
-            Box {
-                OutlinedTextField(
-                    value = purposeLabel,
-                    onValueChange = {},
-                    label = { Text(stringResource(R.string.aimodels_purpose_label)) },
-                    readOnly = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { purposeMenuExpanded = true },
-                    trailingIcon = {
-                        IconButton(onClick = { purposeMenuExpanded = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = null)
-                        }
-                    }
-                )
-                DropdownMenu(
-                    expanded = purposeMenuExpanded,
-                    onDismissRequest = { purposeMenuExpanded = false }
-                ) {
-                    purposes.forEach { (key, labelResId) ->
-                        DropdownMenuItem(
-                            text = { Text(stringResource(labelResId)) },
-                            onClick = {
-                                purpose = key
-                                purposeMenuExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-            // 协议选择
-            Box {
-                OutlinedTextField(
-                    value = protocol,
-                    onValueChange = {},
-                    label = { Text(stringResource(R.string.localai_protocol)) },
-                    readOnly = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { protocolMenuExpanded = true },
-                    trailingIcon = {
-                        IconButton(onClick = { protocolMenuExpanded = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = null)
-                        }
-                    }
-                )
-                DropdownMenu(
-                    expanded = protocolMenuExpanded,
-                    onDismissRequest = { protocolMenuExpanded = false }
-                ) {
-                    protocols.forEach { p ->
-                        DropdownMenuItem(
-                            text = { Text(p) },
-                            onClick = {
-                                protocol = p
-                                protocolMenuExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-            // Provider 仅在 STT 用途下显示（STT 多协议路由需要：xiaomi/mimo 走小米 MiMo，其他走 OpenAI 兼容）
-            if (purpose == "stt") {
-                OutlinedTextField(
-                    value = provider,
-                    onValueChange = { provider = it },
-                    label = { Text(stringResource(R.string.localai_provider)) },
-                    placeholder = { Text(stringResource(R.string.localai_provider_placeholder)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                label = { Text("Base URL") },
-                placeholder = { Text("https://api.openai.com/v1") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                text = stringResource(R.string.localai_base_url_http_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                label = { Text("API Key") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = modelName,
-                onValueChange = { modelName = it },
-                label = { Text(stringResource(R.string.localai_model_name)) },
-                placeholder = { Text("gpt-4o / claude-sonnet-4-20250514") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    stringResource(R.string.localai_append_path),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                Switch(
-                    checked = appendPath,
-                    onCheckedChange = { appendPath = it }
-                )
-            }
-            OutlinedTextField(
-                value = priority,
-                onValueChange = { priority = it.filter { c -> c.isDigit() } },
-                label = { Text(stringResource(R.string.localai_priority)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = temperature,
-                onValueChange = { temperature = it },
-                label = { Text(stringResource(R.string.localai_temperature)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = maxTokens,
-                onValueChange = { maxTokens = it },
-                label = { Text(stringResource(R.string.localai_max_tokens)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = topP,
-                onValueChange = { topP = it },
-                label = { Text("Top P") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = stopSequences,
-                onValueChange = { stopSequences = it },
-                label = { Text(stringResource(R.string.localai_stop_sequences)) },
-                supportingText = { Text(stringResource(R.string.localai_stop_sequences_hint)) },
-                minLines = 2,
-                maxLines = 4,
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (purpose != "chat") {
-                Text(
-                    when (purpose) {
-                        "live" -> stringResource(R.string.localai_purpose_hint_live)
-                        "vision" -> stringResource(R.string.localai_purpose_hint_vision)
-                        "video" -> stringResource(R.string.localai_purpose_hint_video)
-                        "tts" -> stringResource(R.string.localai_purpose_hint_tts)
-                        "stt" -> stringResource(R.string.localai_purpose_hint_stt)
-                        "embedding" -> stringResource(R.string.localai_purpose_hint_embedding)
-                        "image_generation" -> stringResource(R.string.localai_purpose_hint_image_generation)
-                        else -> ""
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }

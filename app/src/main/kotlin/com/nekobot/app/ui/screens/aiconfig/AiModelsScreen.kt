@@ -19,21 +19,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import com.nekobot.app.ui.components.GlassExposedDropdownMenu as ExposedDropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,7 +51,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -94,6 +88,9 @@ data class ProtocolOption(val key: String, val displayName: String)
  */
 class AiModelsViewModel : BaseViewModel() {
 
+    private val _modelsLoaded = MutableStateFlow(false)
+    val modelsLoaded = _modelsLoaded.asStateFlow()
+
     private val _models = MutableStateFlow<List<AiModel>>(emptyList())
     val models: StateFlow<List<AiModel>> = _models.asStateFlow()
 
@@ -105,6 +102,8 @@ class AiModelsViewModel : BaseViewModel() {
 
     private val _availableModels = MutableStateFlow<List<String>>(emptyList())
     val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+
+    fun clearEditorModels() { _availableModels.value = emptyList(); clearError() }
 
     private val _apiKeys = MutableStateFlow<List<ApiKey>>(emptyList())
     val apiKeys: StateFlow<List<ApiKey>> = _apiKeys.asStateFlow()
@@ -119,7 +118,8 @@ class AiModelsViewModel : BaseViewModel() {
     fun load() {
         launchResult(
             block = { repo.listAiModels() },
-            onSuccess = { _models.value = it }
+            onSuccess = { _models.value = it; _modelsLoaded.value = true },
+            onError = { _modelsLoaded.value = true; showError(it) }
         )
         loadProtocols()
         loadPurposes()
@@ -142,28 +142,24 @@ class AiModelsViewModel : BaseViewModel() {
         )
     }
 
-    fun create(req: AiModelRequest) {
-        launchResult(
-            block = { repo.createAiModel(req) },
-            onSuccess = {
-                ServiceContainer.realtimeCredentialStore.save(ServiceContainer.prefs.serverUrl, req)
-                load()
-            }
-        )
-    }
+    private val _editorSaving = MutableStateFlow(false)
+    val editorSaving = _editorSaving.asStateFlow()
 
-    fun update(id: String, req: AiModelRequest) {
+    fun saveEditor(id: String?, req: AiModelRequest, onSaved: () -> Unit) {
+        if (_editorSaving.value) return
+        _editorSaving.value = true
+        clearError()
         val previous = _models.value.firstOrNull { it.id == id }
         launchResult(
-            block = { repo.updateAiModel(id, req) },
+            block = { if (id == null) repo.createAiModel(req) else repo.updateAiModel(id, req) },
             onSuccess = {
-                ServiceContainer.realtimeCredentialStore.migrate(
-                    ServiceContainer.prefs.serverUrl,
-                    previous,
-                    req
-                )
+                if (id == null) ServiceContainer.realtimeCredentialStore.save(ServiceContainer.prefs.serverUrl, req)
+                else ServiceContainer.realtimeCredentialStore.migrate(ServiceContainer.prefs.serverUrl, previous, req)
+                _editorSaving.value = false
                 load()
-            }
+                onSaved()
+            },
+            onError = { _editorSaving.value = false; showError(it) }
         )
     }
 
@@ -219,6 +215,8 @@ class AiModelsViewModel : BaseViewModel() {
     }
 
     fun fetchModels(baseUrl: String, apiKey: String?, protocol: String?, appendBaseUrlPath: Boolean) {
+        clearError()
+        _availableModels.value = emptyList()
         val req = FetchModelsRequest(
             baseUrl = baseUrl,
             apiKey = apiKey,
@@ -323,21 +321,15 @@ class AiModelsViewModel : BaseViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AiModelsScreen(onBack: () -> Unit) {
+fun AiModelsScreen(onBack: () -> Unit, onEditModel: (String?) -> Unit) {
     val vm: AiModelsViewModel = viewModel()
     val models by vm.models.collectAsStateWithLifecycle()
-    val protocols by vm.protocols.collectAsStateWithLifecycle()
-    val purposes by vm.purposes.collectAsStateWithLifecycle()
-    val availableModels by vm.availableModels.collectAsStateWithLifecycle()
-    val apiKeys by vm.apiKeys.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
     val testResult by vm.testResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    var showForm by remember { mutableStateOf(false) }
-    var editingModel by remember { mutableStateOf<AiModel?>(null) }
     var deleteTarget by remember { mutableStateOf<AiModel?>(null) }
 
     LaunchedEffect(toast) {
@@ -371,8 +363,8 @@ fun AiModelsScreen(onBack: () -> Unit) {
                 actions = {
                     ModelPricingCatalogRefreshAction()
                     IconButton(onClick = {
-                        editingModel = null
-                        showForm = true
+                        vm.clearError()
+                        onEditModel(null)
                     }) {
                         Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.aimodels_new_model))
                     }
@@ -411,8 +403,8 @@ fun AiModelsScreen(onBack: () -> Unit) {
                             onTest = { model.id?.let { vm.test(it) } },
                             onClone = { model.id?.let { vm.clone(it) } },
                             onEdit = {
-                                editingModel = model
-                                showForm = true
+                                vm.clearError()
+                                model.id?.let(onEditModel)
                             },
                             onDelete = {
                                 deleteTarget = model
@@ -426,33 +418,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
         }
     }
 
-    // 新建/编辑表单弹窗
-    if (showForm) {
-        AiModelEditorDialog(
-            initial = editingModel.toEditorState(protocols),
-            isEditing = editingModel != null,
-            protocols = protocols,
-            purposes = purposes,
-            availableModels = availableModels,
-            savedApiKeys = apiKeys,
-            onResolveApiKey = vm::resolveApiKey,
-            onFetchModels = { baseUrl, apiKey, protocol, appendBaseUrlPath, _ ->
-                vm.fetchModels(baseUrl, apiKey, protocol, appendBaseUrlPath)
-            },
-            onConfirm = { state ->
-                val req = state.toRequest()
-                editingModel?.id?.let { id -> vm.update(id, req) } ?: vm.create(req)
-                showForm = false
-                editingModel = null
-            },
-            onDismiss = {
-                showForm = false
-                editingModel = null
-            }
-        )
-    }
 
-    // 删除确认弹窗
     deleteTarget?.let { model ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
@@ -632,190 +598,3 @@ private fun ModelCard(
 /**
  * 模型新建/编辑表单弹窗
  */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AiModelFormDialog(
-    initial: AiModel?,
-    protocols: List<ProtocolOption>,
-    purposes: List<String>,
-    availableModels: List<String>,
-    onFetchModels: (baseUrl: String, apiKey: String?, protocol: String?) -> Unit,
-    onConfirm: (AiModelRequest) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var name by remember { mutableStateOf(initial?.name ?: "") }
-    var protocol by remember { mutableStateOf(initial?.protocol ?: "") }
-    var provider by remember { mutableStateOf(initial?.provider ?: "") }
-    var baseUrl by remember { mutableStateOf(initial?.baseUrl ?: "") }
-    var apiKey by remember { mutableStateOf(initial?.apiKey ?: "") }
-    var model by remember { mutableStateOf(initial?.model ?: "") }
-    var purpose by remember { mutableStateOf(initial?.purpose ?: "") }
-    var enabled by remember { mutableStateOf(initial?.enabled ?: true) }
-
-    val unnamedFallback = stringResource(R.string.aimodels_unnamed)
-    NekoDialog(
-        onDismiss = onDismiss,
-        title = if (initial == null) stringResource(R.string.aimodels_new_model) else stringResource(R.string.aimodels_edit_model),
-        confirmText = stringResource(R.string.common_save),
-        onConfirm = {
-            val req = AiModelRequest(
-                name = name.ifBlank { unnamedFallback },
-                protocol = protocol.ifBlank { null },
-                provider = provider.ifBlank { null },
-                apiKey = apiKey.ifBlank { null },
-                baseUrl = baseUrl.ifBlank { null },
-                model = model.ifBlank { null },
-                enabled = enabled,
-                purpose = purpose.ifBlank { null }
-            )
-            onConfirm(req)
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .heightIn(max = 420.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(R.string.aimodels_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            val protocolOptions = if (protocols.isEmpty()) listOf(ProtocolOption("openai", "openai")) else protocols
-            DropdownField(
-                label = stringResource(R.string.aimodels_protocol_label),
-                value = protocol,
-                options = protocolOptions.map { it.key },
-                onSelect = { protocol = it },
-                labelFor = { key -> protocolOptions.find { it.key == key }?.displayName ?: key }
-            )
-
-            // Provider 仅在 STT 用途下显示（多协议路由需要，其他用途留空走默认避免歧义）
-            if (purpose == "stt") {
-                OutlinedTextField(
-                    value = provider,
-                    onValueChange = { provider = it },
-                    label = { Text(stringResource(R.string.aimodels_provider)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                label = { Text("Base URL") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                label = { Text("API Key") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // 模型选择 + 拉取按钮
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                DropdownField(
-                    label = stringResource(R.string.aimodels_model_label),
-                    value = model,
-                    options = availableModels,
-                    onSelect = { model = it },
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = {
-                    onFetchModels(baseUrl, apiKey.ifBlank { null }, protocol.ifBlank { null })
-                }) {
-                    Icon(Icons.Filled.CloudDownload, contentDescription = stringResource(R.string.aimodels_fetch_available), tint = MaterialTheme.colorScheme.primary)
-                }
-            }
-
-            val purposeOptions = if (purposes.isEmpty()) listOf("chat") else purposes
-            DropdownField(
-                label = stringResource(R.string.aimodels_purpose_label),
-                value = purpose,
-                options = purposeOptions,
-                onSelect = { purpose = it }
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(stringResource(R.string.aimodels_enabled), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = { enabled = it }
-                )
-            }
-        }
-    }
-}
-
-/**
- * 下拉选择字段
- * @param labelFor 可选的显示名转换函数：传入 option 的 value，返回用于 UI 显示的文本。
- *                 若为 null，则直接显示 value 本身。用于协议等需要 key/label 分离的场景。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DropdownField(
-    label: String,
-    value: String,
-    options: List<String>,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    labelFor: ((String) -> String)? = null
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val displayValue = labelFor?.invoke(value) ?: value
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-        modifier = modifier
-    ) {
-        @Suppress("DEPRECATION")
-        OutlinedTextField(
-            value = displayValue,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            if (options.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.aimodels_no_options)) },
-                    onClick = { expanded = false }
-                )
-            } else {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(labelFor?.invoke(option) ?: option) },
-                        onClick = {
-                            onSelect(option)
-                            expanded = false
-                        }
-                    )
-                }
-            }
-        }
-    }
-}

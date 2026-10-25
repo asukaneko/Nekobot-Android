@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="model_setup_basics">용도 및 프리셋</string>
+    <string name="model_setup_connection">연결 및 모델</string>
+    <string name="model_setup_options">설정 및 확인</string>
+    <string name="model_setup_basics_hint">용도를 선택하고 프리셋으로 시작하세요.</string>
+    <string name="model_setup_connection_hint">주소와 키를 입력한 후 모델을 선택하세요.</string>
+    <string name="model_setup_options_hint">내용을 확인하고 필요에 따라 설정을 조정하세요.</string>
+    <string name="model_setup_previous">이전</string>
+    <string name="model_setup_next">다음</string>
+    <string name="model_setup_create">모델 만들기</string>
+    <string name="model_setup_identity">기본 정보</string>
+    <string name="model_setup_network">프록시 (선택)</string>
+    <string name="model_setup_review">설정 요약</string>
+    <string name="model_setup_discard_title">입력을 종료할까요?</string>
+    <string name="model_setup_discard_hint">입력한 내용이 아직 저장되지 않았습니다.</string>
+    <string name="model_setup_discard">버리고 종료</string>
+    <string name="model_setup_keep_editing">계속 입력</string>
+    <string name="model_setup_show_key">키 표시</string>
+    <string name="model_setup_hide_key">키 숨기기</string>
+    <string name="model_setup_invalid_url">전체 주소를 입력하세요</string>
+    <string name="model_setup_invalid_proxy">프록시 주소가 올바르지 않습니다</string>
+    <string name="model_setup_positive_integer">0보다 큰 정수를 입력하세요</string>
+    <string name="model_setup_nonnegative_number">0 이상의 숫자를 입력하세요</string>
+    <string name="model_setup_integer">정수를 입력하세요</string>
+    <string name="model_setup_temperature_range">온도는 0~2 사이여야 합니다</string>
+    <string name="model_setup_top_p_range">Top P는 0~1 사이여야 합니다</string>
+    <string name="model_setup_expanded">펼쳐짐</string>
+    <string name="model_setup_collapsed">접힘</string>
+    <string name="model_setup_not_found">모델을 찾을 수 없습니다. 목록에서 다시 시도하세요.</string>
+</resources>

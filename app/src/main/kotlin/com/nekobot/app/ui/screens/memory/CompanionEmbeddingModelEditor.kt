@@ -24,24 +24,26 @@ import kotlinx.coroutines.launch
     var keys by remember { mutableStateOf(emptyList<ApiKey>()) }
     var available by remember { mutableStateOf(emptyList<String>()) }
     var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
     val protocols = remember { LocalProtocols.names().map { ProtocolOption(it, it) } }
     val initial = remember { AiModelEditorState(purpose = "embedding", model = "", maxTokens = "", maxContextLength = "",
         protocol = "openai_compatible", supportsTools = false, supportsReasoning = false, supportsStream = false) }
     fun action(block: suspend () -> Unit) {
         if (busy) return
         busy = true
+        error = null
         scope.launch {
             try {
                 check(repo === ServiceContainer.localRepository && ServiceContainer.prefs.isLocalMode) { textResources.getString(R.string.single_role_the_data_profile_changed_reopen_this_page) }
                 block()
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { Toast.makeText(context, textResources.getString(R.string.single_role_action_incomplete_check_model_settings_and_try_again), Toast.LENGTH_LONG).show() }
+            catch (_: Exception) { error = textResources.getString(R.string.single_role_action_incomplete_check_model_settings_and_try_again) }
             finally { busy = false }
         }
     }
     LaunchedEffect(repo) { keys = runCatching { repo.listApiKeys() }.getOrDefault(emptyList()) }
-    AiModelEditorDialog(initial = initial, isEditing = false, protocols = protocols, purposes = listOf("embedding"),
-        availableModels = available, savedApiKeys = keys, showProxyConfig = true,
+    AiModelEditorScreen(initial = initial, isEditing = false, protocols = protocols, purposes = listOf("embedding"),
+        availableModels = available, savedApiKeys = keys, showProxyConfig = true, fixedPurpose = true, busy = busy, actionError = error,
         onResolveApiKey = { id, callback -> action { repo.getApiKey(id)?.key?.let(callback) } },
         onFetchModels = { url, key, protocol, append, proxy -> action { available = repo.fetchAvailableModels(url, key, protocol, append, proxy) } },
         onDismiss = { if (!busy) onDismiss() }, onConfirm = { state -> action {
@@ -49,5 +51,4 @@ import kotlinx.coroutines.launch
             repo.upsertAiModel(model)
             onAdded(model.id)
         } })
-    LoadingOverlay(visible = busy)
 }
