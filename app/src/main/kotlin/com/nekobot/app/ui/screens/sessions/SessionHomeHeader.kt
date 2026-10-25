@@ -74,6 +74,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -429,9 +430,12 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
     val period = remember {
         greetingPeriodFor(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
     }
+    // 当前语言：切换语言后问候要按新语言重新生成，缓存也按语言区分
+    val locales = LocalConfiguration.current.locales
+    val localeTag = remember(locales) { locales[0]?.toLanguageTag().orEmpty() }
     val localLine = rememberLocalGreetingLine(period)
     // 用 rememberSaveable：列表滚出再滚回时保留同一句问候，不会重新随机/闪动
-    var line by rememberSaveable(period.key, characterId) { mutableStateOf(localLine) }
+    var line by rememberSaveable(period.key, characterId, localeTag) { mutableStateOf(localLine) }
     var showPicker by remember { mutableStateOf(false) }
     var croppingCharacter by remember { mutableStateOf<CharacterPreset?>(null) }
     // 点击问候语：重新生成一次；长按：看完整内容
@@ -442,7 +446,7 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
         parsePortraitCrop(prefs.homePortraitCrop, characterId)
     }
 
-    LaunchedEffect(period.key, characterId, character, regenerateKey) {
+    LaunchedEffect(period.key, characterId, character, localeTag, regenerateKey) {
         // 角色列表还没加载完（有 id 但解析不出角色卡）时先不生成：
         // 否则会用默认 Neko 口吻生成并缓存到该角色名下，30 分钟内都不会纠正。
         if (characterId.isNotBlank() && character == null) return@LaunchedEffect
@@ -453,7 +457,7 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
         val memoryBrief = if (characterId.isBlank()) "" else runCatching {
             ServiceContainer.unified.homeGreetingMemoryBrief(characterId)
         }.getOrDefault("")
-        val cacheKey = "$characterId|${period.key}|${memoryBrief.hashCode()}"
+        val cacheKey = "$characterId|${period.key}|$localeTag|${memoryBrief.hashCode()}"
         if (!force) {
             val cachedKey = prefs.homeGreetingAiKey
             val cachedLine = prefs.homeGreetingAiLine
