@@ -45,9 +45,6 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.adaptive.rememberShouldUseNavRail
-import com.nekobot.app.ui.components.glassBackdropSource
-import com.nekobot.app.ui.components.rememberGlassBackdrop
-import com.nekobot.app.ui.components.rememberLiquidGlassAvailable
 import com.nekobot.app.ui.screens.aiconfig.AiConfigCenterScreen
 import com.nekobot.app.ui.screens.aiconfig.AiBalanceScreen
 import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
@@ -68,7 +65,9 @@ import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.memory.ExperienceArchiveScreen
 import com.nekobot.app.ui.screens.memory.ExperienceSourceScreen
 import com.nekobot.app.ui.screens.memory.ChatLocationScreen
-import com.nekobot.app.ui.screens.more.MoreScreen
+import com.nekobot.app.ui.screens.profile.ProfileScreen
+import com.nekobot.app.ui.screens.capabilities.CapabilitiesScreen
+import com.nekobot.app.ui.screens.library.LibraryScreen
 import com.nekobot.app.ui.screens.search.GlobalSearchScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
 import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
@@ -134,8 +133,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.absoluteValue
 
 private val mainRoutes = setOf(
-    Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS,
-    Routes.TOKENS, Routes.MORE
+    Routes.SESSIONS, Routes.LIBRARY, Routes.CAPABILITIES,
+    Routes.PROFILE, Routes.MORE
 )
 
 // 底栏 Tab 的显示顺序，用于判断横向滑动方向。
@@ -227,8 +226,8 @@ fun NekobotNavGraph() {
             }
         }
     }
-    // 平板形态（够宽 + 够高）：底部导航栏改为左侧悬浮侧边导航栏，
-    // 主界面 5 个 Tab 整体向右避让；手机（含手机横屏）仍用底部悬浮导航栏。
+    // 平板形态（够宽 + 够高）：底部导航栏改为左侧侧边导航栏，
+    // 主界面 4 个 Tab 整体向右避让；手机（含手机横屏）仍用底部导航栏。
     val useNavRail = rememberShouldUseNavRail()
     val navRailClearance = rememberNavRailClearance()
     // 平板双栏：聊天全屏（会话列表收起）时隐藏底部导航栏，把整屏让给聊天。
@@ -242,13 +241,9 @@ fun NekobotNavGraph() {
             selectedMainRoute == Routes.SESSIONS
         )
 
-    // 液态玻璃导航（底栏 / 侧栏）：API 31+ 且非低内存设备时，把下层页面录进离屏层，
-    // 供导航玻璃真实采样（模糊 + 边缘折射），取代原来的伪毛玻璃渐变；否则退回静态半透明样式。
-    val liquidGlassAvailable = rememberLiquidGlassAvailable()
-    val glassBackdrop = rememberGlassBackdrop()
-    val useLiquidGlass = liquidGlassAvailable && (showBottomBar || showNavRail)
-    // 底栏占据的总高度随窗口宽度变化（平板更高），渐变遮罩按它推算。
-    val bottomBarClearance = rememberLiquidGlassBottomBarClearance()
+    // 液态玻璃导航已移除：新的导航栏是扁平的纯色 + 细线，不再采样下层页面。
+    // 底栏占据的总高度随窗口宽度变化（平板更高），列表底部留白按它推算。
+    val bottomBarClearance = rememberBottomBarClearance()
 
     // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
     val isLoggedIn by ServiceContainer.loginStateFlow.collectAsStateWithLifecycle()
@@ -341,13 +336,7 @@ fun NekobotNavGraph() {
             },
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (useLiquidGlass) Modifier.glassBackdropSource(glassBackdrop) else Modifier)
-                // 玻璃采样源里补上应用底色：页面若自身透明，玻璃仍能采到真实底色而不是空像素。
-                .then(
-                    if (useLiquidGlass) {
-                        Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-                    } else Modifier
-                ),
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background),
             // 主 Tab 之间（点击底栏触发）：纯阻尼淡入淡出，不再左右位移；
             // 左右滑动切换保留在 Pager 手势上。进入详情页：从右侧滑入形成层级纵深感。
             // 所有淡入淡出统一走阻尼曲线：离场页面快速褪去，
@@ -455,6 +444,35 @@ fun NekobotNavGraph() {
                                     }
                                 )
 
+                                Routes.LIBRARY -> LibraryScreen(
+                                    onOpenCharacter = { id ->
+                                        if (id == "new") navController.navigate(Routes.characterDetail(id))
+                                        else navController.navigate(Routes.characterView(id))
+                                    },
+                                    onOpenEdit = { id ->
+                                        navController.navigate(Routes.characterDetail(id))
+                                    },
+                                    onOpenBook = { id ->
+                                        navController.navigate(Routes.worldBookDetail(id))
+                                    },
+                                    onOpenMatchDebug = {
+                                        navController.navigate(Routes.WORLD_BOOK_MATCH_DEBUG)
+                                    }
+                                )
+
+                                Routes.CAPABILITIES -> CapabilitiesScreen(
+                                    onNavigate = { route -> navController.navigate(route) }
+                                )
+
+                                Routes.PROFILE -> ProfileScreen(
+                                    onNavigate = { route -> navController.navigate(route) },
+                                    onLogout = {
+                                        ServiceContainer.socket.disconnect()
+                                        ServiceContainer.repository.logoutLocal()
+                                        ServiceContainer.notifyLoginState(false)
+                                    }
+                                )
+
                                 Routes.CHARACTERS -> CharactersScreen(
                                     onOpenCharacter = { id ->
                                         if (id == "new") navController.navigate(Routes.characterDetail(id))
@@ -478,7 +496,7 @@ fun NekobotNavGraph() {
                                     onNavigate = { route -> navController.navigate(route) }
                                 )
 
-                                Routes.MORE -> MoreScreen(
+                                Routes.MORE -> ProfileScreen(
                                     onNavigate = { route -> navController.navigate(route) },
                                     onLogout = {
                                         ServiceContainer.socket.disconnect()
@@ -557,8 +575,8 @@ fun NekobotNavGraph() {
                 )
             }
             composable(Routes.CHARACTERS) {
-                // 主界面 Tab 的独立入口（如全局搜索直达）：侧栏形态下同样向右避让
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                // 已并入「内容库」标签：这里是独立入口（如全局搜索直达），全屏显示、不再避让侧栏
+                Box(modifier = Modifier.fillMaxSize()) {
                     CharactersScreen(
                         onOpenCharacter = { id ->
                             // 列表点击 → 只读详情视图；新建仍走编辑页
@@ -592,7 +610,8 @@ fun NekobotNavGraph() {
                 )
             }
             composable(Routes.WORLD_BOOKS) {
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                // 同上：世界书详情入口已并入「内容库」，独立进入时全屏显示
+                Box(modifier = Modifier.fillMaxSize()) {
                     WorldBooksScreen(
                         onOpenBook = { id ->
                             navController.navigate(Routes.worldBookDetail(id))
@@ -615,16 +634,42 @@ fun NekobotNavGraph() {
                     onBack = { navController.popBackStack() }
                 )
             }
+            // 用量页：从「能力」页进入的详情页，因此顶部带返回、也不避让侧栏
             composable(Routes.TOKENS) {
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     TokensScreen(
-                        onNavigate = { route -> navController.navigate(route) }
+                        onNavigate = { route -> navController.navigate(route) },
+                        onBack = { navController.popBackStack() }
                     )
+                }
+            }
+            composable(
+                route = Routes.LIBRARY,
+                arguments = listOf(
+                    navArgument("tab") { type = NavType.IntType; defaultValue = 0 }
+                )
+            ) { entry ->
+                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                    LibraryScreen(
+                        onOpenCharacter = { id ->
+                            if (id == "new") navController.navigate(Routes.characterDetail(id))
+                            else navController.navigate(Routes.characterView(id))
+                        },
+                        onOpenEdit = { id -> navController.navigate(Routes.characterDetail(id)) },
+                        onOpenBook = { id -> navController.navigate(Routes.worldBookDetail(id)) },
+                        onOpenMatchDebug = { navController.navigate(Routes.WORLD_BOOK_MATCH_DEBUG) },
+                        initialTab = entry.arguments?.getInt("tab") ?: 0
+                    )
+                }
+            }
+            composable(Routes.CAPABILITIES) {
+                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                    CapabilitiesScreen(onNavigate = { route -> navController.navigate(route) })
                 }
             }
             composable(Routes.MORE) {
                 Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
-                    MoreScreen(
+                    ProfileScreen(
                         onNavigate = { route -> navController.navigate(route) },
                         onLogout = {
                             // 清除本地 token 并断开 socket，广播登录态变化（LaunchedEffect 会自动导航）
@@ -1017,31 +1062,10 @@ fun NekobotNavGraph() {
             }
         }
 
-        // 作为覆盖层悬浮在页面上方，不再为底栏预留整块背景；
-        // 胶囊外的透明区域没有手势处理，点击和滚动会继续交给下方内容。
+        // 底部导航栏：贴在屏幕底部的一条实心栏（纯底色 + 1dp 顶线）。
+        // 不再是悬浮胶囊，也不再采样模糊；页面内容的底部留白由 rememberBottomBarClearance 推算。
         if (showBottomBar) {
-            // 底栏下方的渐变遮罩：从透明渐变到背景色，让接近底栏的列表内容
-            // 自然"淡入"背景，模拟毛玻璃的朦胧感（Telegram / iOS 常用技巧）。
-            // 不消耗手势事件，点击与滚动穿透到下方内容。
-            // 真液态玻璃直接采样并模糊下层内容，此时不再需要这层伪毛玻璃。
-            if (!useLiquidGlass) {
-                val bgColor = androidx.compose.material3.MaterialTheme.colorScheme.background
-                Spacer(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        // 底栏越高（宽窗口），渐变遮罩越高，保证内容在胶囊附近自然淡出。
-                        .height(bottomBarClearance + 36.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                0.5f to bgColor.copy(alpha = 0.45f),
-                                1f to bgColor.copy(alpha = 0.85f)
-                            )
-                        )
-                )
-            }
-            LiquidGlassBottomBar(
+            NekoBottomNav(
                 items = bottomItems(),
                 selectedRoute = if (currentRoute == Routes.SESSIONS) {
                     selectedMainRoute
@@ -1049,15 +1073,14 @@ fun NekobotNavGraph() {
                     currentRoute
                 },
                 modifier = Modifier.align(Alignment.BottomCenter),
-                backdrop = if (useLiquidGlass) glassBackdrop else null,
                 onItemSelected = onNavItemSelected,
             )
         }
 
-        // 平板形态：同样的导航项改为左侧悬浮侧边导航栏。
+        // 平板形态：同样的导航项改为左侧侧边导航栏。
         // 侧栏与底栏互斥（由 useNavRail 决定），两者共用同一套切换逻辑。
         if (showNavRail) {
-            LiquidGlassNavRail(
+            NekoNavRail(
                 items = bottomItems(),
                 selectedRoute = if (currentRoute == Routes.SESSIONS) {
                     selectedMainRoute
@@ -1065,7 +1088,6 @@ fun NekobotNavGraph() {
                     currentRoute
                 },
                 modifier = Modifier.align(Alignment.CenterStart),
-                backdrop = if (useLiquidGlass) glassBackdrop else null,
                 onItemSelected = onNavItemSelected,
             )
         }

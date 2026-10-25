@@ -32,8 +32,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.R
+import com.nekobot.app.ui.components.nekoCaptionStyle
+import com.nekobot.app.ui.components.NekoSectionHeader
+import com.nekobot.app.ui.components.NekoPageHorizontalPadding
+import com.nekobot.app.ui.components.NekoIconAction
+import com.nekobot.app.ui.components.NekoGroup
+import com.nekobot.app.ui.components.NekoDivider
+import com.nekobot.app.ui.components.NekoDetailTopBar
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.PaddingValues
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.LegacyMemory
+import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.MemoryFile
 import com.nekobot.app.data.model.userFacingTitle
 import com.nekobot.app.data.repository.Resource
@@ -78,14 +89,25 @@ class GlobalSearchViewModel : BaseViewModel() {
     private val _searching = MutableStateFlow(false)
     val searching: StateFlow<Boolean> = _searching.asStateFlow()
 
+    private val _recentSessions = MutableStateFlow<List<Session>>(emptyList())
+
+    /** 空查询时展示在「快捷入口」下方的最近会话（按更新时间倒序，最多 4 条）。 */
+    val recentSessions: StateFlow<List<Session>> = _recentSessions.asStateFlow()
+
     private var searchJob: Job? = null
+    private var recentJob: Job? = null
     private var searchRequest = 0
     private data class Cached(val revision: Long, val expiresAt: Long, val value: Any)
     private val catalogCache = mutableMapOf<String, Cached>()
     private val _selectedKind = MutableStateFlow<GlobalSearchKind?>(null)
     val selectedKind = _selectedKind.asStateFlow()
     fun selectKind(kind: GlobalSearchKind?) { _selectedKind.value = kind }
-    fun refresh() { catalogCache.clear(); updateQuery(_query.value) }
+    fun refresh() {
+        catalogCache.clear()
+        updateQuery(_query.value)
+        // 会话可能在别处被改名 / 归档 / 删除，刷新时一并更新「最近会话」
+        loadRecentSessions()
+    }
 
     init {
         viewModelScope.launch {
@@ -96,6 +118,27 @@ class GlobalSearchViewModel : BaseViewModel() {
                 catalogCache.clear()
                 _results.value = defaultCommands()
                 updateQuery(_query.value)
+                loadRecentSessions()
+            }
+        }
+        loadRecentSessions()
+    }
+
+    /** 载入「最近会话」：不过滤、按更新时间倒序取前几条。 */
+    private fun loadRecentSessions() {
+        recentJob?.cancel()
+        val revision = ServiceContainer.dataSourceRevision.value
+        recentJob = viewModelScope.launch {
+            val rows = runCatching {
+                (ServiceContainer.unified.listSessions() as? Resource.Success<List<Session>>)?.data
+            }.getOrNull()
+                .orEmpty()
+                .filter { it.isArchive != true && it.archived != true }
+                .sortedByDescending { it.updatedAt ?: it.createdAt.orEmpty() }
+                .take(RECENT_SESSION_LIMIT)
+            // 数据源在加载期间切换过就丢弃这次结果，避免旧数据源的列表覆盖新的
+            if (revision == ServiceContainer.dataSourceRevision.value) {
+                _recentSessions.value = rows
             }
         }
     }
@@ -274,8 +317,8 @@ class GlobalSearchViewModel : BaseViewModel() {
 
     private fun defaultCommands(): List<GlobalSearchResult> = listOf(
         command(R.string.global_search_command_sessions, R.string.global_search_command_sessions_desc, Routes.SESSIONS),
-        command(R.string.global_search_command_characters, R.string.global_search_command_characters_desc, Routes.CHARACTERS),
-        command(R.string.global_search_command_world_books, R.string.global_search_command_world_books_desc, Routes.WORLD_BOOKS),
+        command(R.string.global_search_command_characters, R.string.global_search_command_characters_desc, Routes.library(0)),
+        command(R.string.global_search_command_world_books, R.string.global_search_command_world_books_desc, Routes.library(1)),
         command(R.string.global_search_command_memories, R.string.global_search_command_memories_desc, Routes.MEMORY),
         command(R.string.global_search_command_ai_config, R.string.global_search_command_ai_config_desc, Routes.AI_CONFIG_CENTER),
         command(R.string.global_search_command_system_ops, R.string.global_search_command_system_ops_desc, Routes.SYSTEM_OPERATIONS),
@@ -342,6 +385,7 @@ class GlobalSearchViewModel : BaseViewModel() {
 
     private companion object {
         const val MAX_RESULTS = 120
+        const val RECENT_SESSION_LIMIT = 4
     }
 }
 
@@ -357,46 +401,132 @@ fun GlobalSearchScreen(
     val selectedKind by viewModel.selectedKind.collectAsStateWithLifecycle()
     val searching by viewModel.searching.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
-    val focusRequester = androidx.compose.runtime.remember { FocusRequester() }
+    val recentSessions by viewModel.recentSessions.collectAsStateWithLifecycle()
+    val focusRequester = remember { FocusRequester() }
     val filtered = results.filter { selectedKind == null || it.kind == selectedKind }
     val grouped = filtered.groupBy(GlobalSearchResult::kind)
+    // 空查询且未选类型时是"首页"：快捷前往 + 最近会话，两块各自一张分组卡
+    val homeMode = query.isBlank() && selectedKind == null
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.global_search_title),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                } },
-                actions = { IconButton(onClick = viewModel::refresh) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.search_refresh), modifier = Modifier.size(22.dp))
-                } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            NekoDetailTopBar(
+                title = stringResource(R.string.global_search_title),
+                onBack = onBack,
+                backContentDescription = stringResource(R.string.common_back),
+                actions = {
+                    NekoIconAction(
+                        icon = Icons.Filled.Refresh,
+                        contentDescription = stringResource(R.string.search_refresh),
+                        onClick = viewModel::refresh
+                    )
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            GlobalSearchInput(query, viewModel::updateQuery, searching, focusRequester,
-                onSearch = viewModel::refresh, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            GlobalSearchInput(
+                query = query,
+                onQueryChange = viewModel::updateQuery,
+                searching = searching,
+                focusRequester = focusRequester,
+                onSearch = viewModel::refresh,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = NekoPageHorizontalPadding, vertical = 8.dp)
+            )
             GlobalSearchCategories(selectedKind, viewModel::selectKind)
-            if (!error.isNullOrBlank()) Text(error.orEmpty(),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-            if (!searching && filtered.isEmpty()) {
+            if (!error.isNullOrBlank()) {
+                Text(
+                    error.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = NekoPageHorizontalPadding, vertical = 8.dp)
+                )
+            }
+            if (!searching && filtered.isEmpty() && !homeMode) {
                 GlobalSearchEmpty(Modifier.weight(1f))
             } else {
-                LazyColumn(modifier = Modifier.weight(1f),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
-                    GlobalSearchKind.entries.forEach { kind ->
-                        val items = grouped[kind].orEmpty()
-                        if (items.isNotEmpty()) {
-                            item(key = "header:${kind.name}") { GlobalSearchSectionHeader(kind, items.size) }
-                            itemsIndexed(items, key = { index, item -> "${item.key}:$index" }, contentType = { _, _ -> "search-result" }) { index, item ->
-                                GlobalSearchRow(item, query, first = index == 0, last = index == items.lastIndex) { onNavigate(item.route) }
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(
+                        start = NekoPageHorizontalPadding,
+                        end = NekoPageHorizontalPadding,
+                        bottom = 24.dp
+                    )
+                ) {
+                    if (homeMode) {
+                        val commands = grouped[GlobalSearchKind.COMMAND].orEmpty()
+                        if (commands.isNotEmpty()) {
+                            item(key = "home:commands-header") {
+                                NekoSectionHeader(title = stringResource(R.string.shell_search_quick_access))
+                            }
+                            item(key = "home:commands") {
+                                NekoGroup {
+                                    commands.forEachIndexed { index, item ->
+                                        GlobalSearchRow(
+                                            result = item,
+                                            query = query,
+                                            onClick = { onNavigate(item.route) }
+                                        )
+                                        if (index != commands.lastIndex) NekoDivider(startInset = 61.dp)
+                                    }
+                                }
+                            }
+                        }
+                        if (recentSessions.isNotEmpty()) {
+                            item(key = "home:recent-header") {
+                                NekoSectionHeader(title = stringResource(R.string.shell_search_recent))
+                            }
+                            item(key = "home:recent") {
+                                NekoGroup {
+                                    recentSessions.forEachIndexed { index, session ->
+                                        GlobalSearchSessionRow(
+                                            session = session,
+                                            onClick = {
+                                                session.id?.let { onNavigate(Routes.chat(it)) }
+                                            }
+                                        )
+                                        if (index != recentSessions.lastIndex) NekoDivider(startInset = 61.dp)
+                                    }
+                                }
+                            }
+                        }
+                        item(key = "home:foot") {
+                            Text(
+                                text = stringResource(R.string.shell_search_foot),
+                                style = nekoCaptionStyle(),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 18.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        GlobalSearchKind.entries.forEach { kind ->
+                            val items = grouped[kind].orEmpty()
+                            if (items.isNotEmpty()) {
+                                item(key = "header:${kind.name}") {
+                                    NekoSectionHeader(
+                                        title = stringResource(kind.labelRes),
+                                        meta = items.size.toString()
+                                    )
+                                }
+                                item(key = "group:${kind.name}") {
+                                    NekoGroup {
+                                        items.forEachIndexed { index, item ->
+                                            GlobalSearchRow(
+                                                result = item,
+                                                query = query,
+                                                onClick = { onNavigate(item.route) }
+                                            )
+                                            if (index != items.lastIndex) NekoDivider(startInset = 61.dp)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

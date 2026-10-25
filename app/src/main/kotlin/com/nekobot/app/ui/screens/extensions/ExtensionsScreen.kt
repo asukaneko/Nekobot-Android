@@ -167,7 +167,9 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
 private fun ExtensionDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(start = 52.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+        // 用主题细线色（而不是加深透明度后的分隔色），在浅色卡片上也能看清
+        color = MaterialTheme.colorScheme.outline,
+        thickness = 1.dp
     )
 }
 
@@ -282,10 +284,6 @@ private fun buildExtensionGroups(): List<ExtensionGroup> = listOf(
             ExtensionItem(
                 stringResource(R.string.extensions_knowledge), stringResource(R.string.extensions_knowledge_desc),
                 Icons.Filled.MenuBook, accentSuccess(), Routes.KNOWLEDGE
-            ),
-            ExtensionItem(
-                stringResource(R.string.extensions_skills), stringResource(R.string.extensions_skills_desc),
-                Icons.Filled.Build, accentSecondary(), Routes.SKILLS
             ),
             ExtensionItem(
                 stringResource(R.string.extensions_tools), stringResource(R.string.extensions_tools_desc),

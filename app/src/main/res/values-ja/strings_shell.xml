@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 外側シェル（ナビゲーション / 第一階層ページ）の文言。機能内部の画面は既存ファイルを使用。 -->
+<resources>
+    <string name="nav_library">ライブラリ</string>
+    <string name="nav_capabilities">できること</string>
+    <string name="nav_profile">マイ</string>
+
+    <string name="shell_seg_all">すべて</string>
+    <string name="shell_seg_character">キャラ</string>
+    <string name="shell_seg_agent">Agent</string>
+    <string name="shell_seg_single">単独</string>
+
+    <string name="shell_new_chat">新しい会話を始める</string>
+    <string name="shell_your_chats">あなたの会話</string>
+    <string name="shell_chat_count">%1$d 件の会話</string>
+    <string name="shell_filter">絞り込み</string>
+    <string name="shell_more_actions">その他の操作</string>
+    <string name="shell_refresh">更新</string>
+    <string name="shell_import">読み込み</string>
+
+    <string name="shell_greet_morning_title">おはようございます。</string>
+    <string name="shell_greet_morning_1">新しい一日、何から話しましょうか？</string>
+    <string name="shell_greet_morning_2">ゆっくり起きてください。ここにいます。</string>
+    <string name="shell_greet_morning_3">今日もゆっくり、一緒に。</string>
+    <string name="shell_greet_midday_title">こんにちは。</string>
+    <string name="shell_greet_midday_1">午前中お疲れさまでした。少し休みましょう。</string>
+    <string name="shell_greet_midday_2">お昼は食べましたか？まずは自分を大切に。</string>
+    <string name="shell_greet_midday_3">言いたいことがあれば、今どうぞ。</string>
+    <string name="shell_greet_afternoon_title">また会えましたね。</string>
+    <string name="shell_greet_afternoon_1">今日は順調ですか？</string>
+    <string name="shell_greet_afternoon_2">この時間は少しゆっくりするのが一番です。</string>
+    <string name="shell_greet_afternoon_3">言葉を整えなくて大丈夫、思いついたままに。</string>
+    <string name="shell_greet_evening_title">こんばんは。</string>
+    <string name="shell_greet_evening_1">お疲れさまでした。話しますか、静かにしますか？</string>
+    <string name="shell_greet_evening_2">いい夜ですね。どこから話しましょうか？</string>
+    <string name="shell_greet_evening_3">ここにいます。今日はどうでしたか？</string>
+    <string name="shell_greet_night_title">夜も更けました。</string>
+    <string name="shell_greet_night_1">もう少しだけ一緒にいます。</string>
+    <string name="shell_greet_night_2">眠れないなら、少し話しましょう。</string>
+    <string name="shell_greet_night_3">夜は長い、ここにいます。</string>
+
+    <string name="shell_welcome_picker_title">ホームの姿</string>
+    <string name="shell_welcome_picker_desc">既定はアプリアイコン。ローカルのキャラクター画像にも変更できます。</string>
+    <string name="shell_welcome_app_icon">アプリアイコン</string>
+    <string name="shell_welcome_app_icon_desc">Neko の既定の姿</string>
+    <string name="shell_welcome_character_desc">キャラクター画像 · ライブラリから</string>
+    <string name="shell_welcome_note">ホームの歓迎エリアのみ変更され、会話には影響しません。</string>
+
+
+    <!-- 会话页 banner -->
+    <string name="shell_banner_continue">この会話を続ける</string>
+    <string name="shell_banner_choose">ホームの会話を変更</string>
+    <string name="shell_banner_choose_desc">ホームのバナーに表示する会話を選びます。</string>
+    <string name="shell_banner_source_latest">最新の会話</string>
+    <string name="shell_banner_source_latest_desc">最近話した会話を自動で表示</string>
+    <string name="shell_banner_no_companion">単独キャラの会話がまだありません</string>
+    <string name="shell_banner_source_note">固定した会話が削除・アーカイブされると「最新の会話」に戻ります。</string>
+
+    <!-- 立绘取景 / 主题色默认项 -->
+    <string name="shell_portrait_crop_title">表示範囲を調整</string>
+    <string name="shell_portrait_crop_hint">枠をドラッグして移動、ピンチで拡大縮小</string>
+    <string name="shell_portrait_crop_reset">リセット</string>
+    <string name="shell_style_color_default">既定</string>
+
+    <!-- 全局搜索首页 -->
+    <string name="shell_search_quick_access">クイックアクセス</string>
+    <string name="shell_search_recent">最近の会話</string>
+    <string name="shell_search_foot">すべてを一か所で。</string>
+
+    <!-- 问候语来源与交互 -->
+    <string name="tokens_source_home_greeting">ホームのあいさつ</string>
+    <string name="shell_greeting_full_title">あいさつ全文</string>
+    <string name="shell_greeting_regenerate">再生成</string>
+    <string name="shell_library_search">キャラクターまたはワールドブックを検索</string>
+    <string name="shell_library_empty">見つかりませんでした</string>
+    <string name="shell_library_empty_hint">別のキーワードをお試しください。</string>
+
+    <string name="shell_cap_models">モデルと AI</string>
+    <string name="shell_cap_models_desc">モデル、フェイルオーバー、残高照会を管理します。</string>
+    <string name="shell_cap_expand">Neko の能力を広げる</string>
+    <string name="shell_cap_status_local">ローカルモード</string>
+    <string name="shell_cap_status_server">サーバー接続済み</string>
+    <string name="shell_cap_agent">Agent</string>
+    <string name="shell_cap_agent_desc">タスクとツール</string>
+    <string name="shell_cap_memory">記憶</string>
+    <string name="shell_cap_memory_desc">会話をつなげる</string>
+    <string name="shell_cap_skills">Skills</string>
+    <string name="shell_cap_skills_desc">スキル設定</string>
+    <string name="shell_cap_extensions">拡張</string>
+    <string name="shell_cap_extensions_desc">プラグイン・スキル・MCP</string>
+    <string name="shell_cap_usage">使用量</string>
+    <string name="shell_cap_usage_desc">モデル消費を確認</string>
+    <string name="shell_cap_group_memory">記憶</string>
+
+    <string name="shell_profile_name">マイ Neko</string>
+    <string name="shell_profile_local">ローカルモード · データは端末内のみ</string>
+    <string name="shell_profile_server">サーバーモード · %1$s</string>
+    <string name="shell_profile_preferences">設定</string>
+    <string name="shell_profile_content">コンテンツ</string>
+    <string name="shell_profile_data">データとサポート</string>
+    <string name="shell_profile_system">システム</string>
+    <string name="shell_profile_advanced">詳細設定</string>
+    <string name="shell_profile_notifications">通知</string>
+    <string name="shell_profile_skin">関係ページのスキン</string>
+    <string name="shell_profile_version">バージョン %1$s</string>
+    <string name="shell_profile_language">言語</string>
+    <string name="shell_profile_usage">使用量と請求</string>
+    <!-- 会話ホーム -->
+    <string name="shell_banner_pinned">固定した会話</string>
+    <string name="shell_action_more">その他</string>
+</resources>

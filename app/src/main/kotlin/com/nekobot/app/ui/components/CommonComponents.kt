@@ -87,7 +87,11 @@ fun GlassCard(
 }
 
 /**
- * 选项菜单使用跨窗口背景采样，保留液态玻璃的模糊、折射和高光。
+ * 选项菜单（三点菜单 / + 号菜单）。
+ *
+ * 统一使用实心面板 + 1dp 细线 + 14dp 圆角，不再采样下层页面做模糊：
+ * 弹出层应当"盖在内容上"，而不是和内容混在一起。
+ * 阴影只留极轻的一层（2dp）用于和下方内容分层，避免弹出时出现明显的黑色投影。
  */
 @Composable
 fun GlassDropdownMenu(
@@ -96,55 +100,15 @@ fun GlassDropdownMenu(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val dark = isSystemInDarkTheme()
-    val shape = RoundedCornerShape(24.dp)
-    val containerColor = if (dark) {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f)
-    } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.93f)
-    }
-    val borderBrush = if (dark) {
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.22f),
-                Color.White.copy(alpha = 0.06f)
-            )
-        )
-    } else {
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.96f),
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
-            )
-        )
-    }
-    LiquidGlassMenuPopup(
+    NekoMenuPopup(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
         modifier = modifier,
-        shape = shape,
-        tint = containerColor.copy(alpha = if (dark) 0.66f else 0.48f),
-        border = BorderStroke(1.dp, borderBrush),
-        fallback = {
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = onDismissRequest,
-                modifier = modifier,
-                shape = shape,
-                containerColor = containerColor,
-                tonalElevation = 0.dp,
-                shadowElevation = 10.dp,
-                border = BorderStroke(1.dp, borderBrush),
-                content = content,
-            )
-        },
-        content = content
+        content = content,
     )
 }
 
-/**
- * 表单下拉选择器使用与三点选项菜单相同的磨砂玻璃样式。
- */
+/** 表单里的下拉选择器：与三点菜单同一套扁平样式。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExposedDropdownMenuBoxScope.GlassExposedDropdownMenu(
@@ -153,37 +117,15 @@ fun ExposedDropdownMenuBoxScope.GlassExposedDropdownMenu(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val dark = isSystemInDarkTheme()
-    val shape = RoundedCornerShape(24.dp)
-    val containerColor = if (dark) {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f)
-    } else {
-        Color.White.copy(alpha = 0.93f)
-    }
-    val borderBrush = if (dark) {
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.22f),
-                Color.White.copy(alpha = 0.06f)
-            )
-        )
-    } else {
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.96f),
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
-            )
-        )
-    }
     ExposedDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
         modifier = modifier,
-        shape = shape,
-        containerColor = containerColor,
+        shape = RoundedCornerShape(14.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
-        shadowElevation = 10.dp,
-        border = BorderStroke(1.dp, borderBrush),
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         content = content
     )
 }
@@ -274,10 +216,8 @@ fun NekoDialog(
     dismissOnClickOutside: Boolean = true,
     content: @Composable (ColumnScope.() -> Unit)? = null
 ) {
-    val backdrop = rememberPopupGlassBackdrop(true)
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(20.dp)
     val containerColor = MaterialTheme.colorScheme.surface
-    val dialogTint = glassDialogTint(containerColor)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -292,15 +232,16 @@ fun NekoDialog(
             // 限制弹窗最大高度为屏幕 85%，避免内容过长把按钮挤出屏幕
             val maxDialogHeight = maxHeight * 0.85f
             val contentScrollState = rememberScrollState()
+            // 弹窗用实心面板 + 细线：不需要背景采样，也不需要额外阴影堆叠
             GlassCard(
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
                     .heightIn(max = maxDialogHeight)
-                    .padding(8.dp)
-                    .liquidGlassDialogSurface(backdrop, shape, dialogTint),
-                cornerRadius = 24,
-                containerColor = if (backdrop == null) containerColor else Color.Transparent,
-                borderWidth = borderWidth
+                    .padding(8.dp),
+                shape = shape,
+                cornerRadius = 20,
+                containerColor = containerColor,
+                borderWidth = 1
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

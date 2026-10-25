@@ -42,6 +42,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.ChatBubbleOutline
@@ -343,7 +344,7 @@ class TokensViewModel : BaseViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TokensScreen(onNavigate: (String) -> Unit = {}) {
+fun TokensScreen(onNavigate: (String) -> Unit = {}, onBack: (() -> Unit)? = null) {
     val vm: TokensViewModel = viewModel()
     val stats by vm.stats.collectAsStateWithLifecycle()
     val rankings by vm.rankings.collectAsStateWithLifecycle()
@@ -414,6 +415,18 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    // 用量现在是「能力」页进入的详情页，因此顶部带返回
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.common_back),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                },
                 title = {
                     Text(
                         stringResource(R.string.tokens_title),
@@ -979,16 +992,8 @@ private fun TokenUsageHero(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.94f),
-                        MaterialTheme.colorScheme.secondary
-                    )
-                ),
-                shape
-            )
+            .background(MaterialTheme.colorScheme.surface, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
             .padding(20.dp)
     ) {
         Box(
@@ -996,7 +1001,7 @@ private fun TokenUsageHero(
                 .align(Alignment.TopEnd)
                 .size(112.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.09f))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1004,13 +1009,13 @@ private fun TokenUsageHero(
                     Icons.Filled.DataUsage,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.width(7.dp))
                 Text(
                     rangeLabel,
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = 0.88f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -1018,7 +1023,7 @@ private fun TokenUsageHero(
             Text(
                 formatTokenCount(total),
                 style = MaterialTheme.typography.headlineLarge,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
             )
@@ -1028,33 +1033,33 @@ private fun TokenUsageHero(
                     ?.let { stringResource(R.string.tokens_hero_cost, formatUsdCost(it)) }
                     ?: stringResource(R.string.tokens_stat_token),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.76f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if ((dateRange == "custom" || dateRange == "week") && (displayStart != null || displayEnd != null)) {
                 Spacer(Modifier.height(3.dp))
                 Text(
                     listOfNotNull(displayStart, displayEnd).joinToString("  —  "),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.72f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(Modifier.height(17.dp))
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color.White.copy(alpha = 0.14f)
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp)) {
                     Row {
                         TokenHeroMetric(
                             label = stringResource(R.string.tokens_input),
                             value = input,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f)
                         )
                         TokenHeroMetric(
                             label = stringResource(R.string.tokens_output),
                             value = output,
-                            color = Color.White.copy(alpha = 0.72f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f),
                             alignEnd = true
                         )
@@ -1066,8 +1071,8 @@ private fun TokenUsageHero(
                             .height(8.dp)
                             .clip(RoundedCornerShape(50))
                             .background(
-                                if (breakdownTotal > 0L) Color.White.copy(alpha = 0.35f)
-                                else Color.White.copy(alpha = 0.16f)
+                                if (breakdownTotal > 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+                                else MaterialTheme.colorScheme.outline
                             )
                     ) {
                         if (breakdownTotal > 0L) {
@@ -1076,7 +1081,7 @@ private fun TokenUsageHero(
                                     .fillMaxWidth(inputFraction)
                                     .height(8.dp)
                                     .clip(RoundedCornerShape(50))
-                                    .background(Color.White)
+                                    .background(MaterialTheme.colorScheme.primary)
                             )
                         }
                     }
@@ -1098,7 +1103,7 @@ private fun TokenHeroMetric(
         modifier = modifier,
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
     ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             formatTokenCount(value),
             style = MaterialTheme.typography.titleMedium,
@@ -1921,6 +1926,7 @@ private fun sourceLabelFor(normalized: String, raw: String): String = when (norm
     "life_sim" -> ServiceContainer.getString(R.string.tokens_source_life_sim)
     "command" -> ServiceContainer.getString(R.string.tokens_source_command)
     "utility" -> ServiceContainer.getString(R.string.tokens_source_utility)
+    "home_greeting" -> ServiceContainer.getString(R.string.tokens_source_home_greeting)
     "decision" -> ServiceContainer.getString(R.string.tokens_source_decision)
     "embedding" -> ServiceContainer.getString(R.string.tokens_source_embedding)
     "react" -> ServiceContainer.getString(R.string.tokens_source_react)

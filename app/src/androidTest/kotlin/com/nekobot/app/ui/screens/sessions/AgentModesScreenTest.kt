@@ -15,6 +15,11 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ui.theme.NekobotTheme
+import com.nekobot.app.ui.theme.BubbleUser
+import com.nekobot.app.ui.theme.BubbleUserLight
+import com.nekobot.app.ui.theme.Secondary
+import com.nekobot.app.ui.theme.LocalNekoTypeScale
+import com.nekobot.app.ui.components.NekoSegmentedControl
 import com.nekobot.app.ui.components.ChatBubbleAppearance
 import com.nekobot.app.ui.components.chatBubbleAppearance
 import org.junit.Assert.*
@@ -39,7 +44,7 @@ class AgentModesScreenTest {
             }
         }
         compose.runOnIdle {
-            assertEquals(Color(0xFFFF6B97), appearance.userColor)
+            assertEquals(BubbleUserLight, appearance.userColor)
             assertEquals(Color.White, appearance.userText)
             assertTrue(appearance.assistantColor.luminance() > 0.9f)
             assertTrue(appearance.assistantText.luminance() < 0.1f)
@@ -48,11 +53,11 @@ class AgentModesScreenTest {
         }
         compose.waitForIdle()
         compose.runOnIdle {
-            assertEquals(Color(0xFFFF8FB1), appearance.userColor)
+            assertEquals(BubbleUser, appearance.userColor)
             assertEquals(Color.White, appearance.userText)
             assertTrue(appearance.assistantColor.luminance() < 0.15f)
             assertTrue(appearance.assistantText.luminance() > 0.5f)
-            assertEquals(Color(0xFF6EC1E4), appearance.assistantLink)
+            assertEquals(Secondary, appearance.assistantLink)
             assistantOverride = "#FFFFFF"
         }
         compose.waitForIdle()
@@ -105,23 +110,25 @@ class AgentModesScreenTest {
         compose.onNodeWithText(text(R.string.agent_character_memories)).performClick()
         assertTrue(opened)
     }
-    @Test fun narrowLargeFontFiltersAndSecondaryControlsRemainReachable() {
+    @Test fun narrowLargeFontSessionSegmentsRemainReachable() {
         var selected by mutableStateOf(SessionFilter.ALL)
         compose.setContent { Theme {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+            CompositionLocalProvider(LocalNekoTypeScale provides 1.5f) {
                 Column(Modifier.width(320.dp)) {
-                    SessionStatFilters(SessionOverview(characterSessions = 2, agentSessions = 3, agentCharacterSessions = 7, archived = 4), selected, { selected = it })
-                    SessionRecentControls(selected, { selected = it })
+                    NekoSegmentedControl(
+                        options = listOf(text(R.string.shell_seg_all), text(R.string.shell_seg_character), text(R.string.shell_seg_agent), text(R.string.shell_seg_single)),
+                        selectedIndex = sessionSegmentFilters.indexOf(selected),
+                        onSelect = { selected = sessionSegmentFilters[it] }
+                    )
                 }
             }
         } }
-        compose.onNodeWithText(text(R.string.sessions_filter_agent_characters)).performClick()
+        compose.onNodeWithText(text(R.string.shell_seg_single)).assertIsDisplayed().performClick()
         assertEquals(SessionFilter.AGENT_CHARACTERS, selected)
         capture("agent-character-filter-large-text")
-        compose.onNodeWithText(text(R.string.sessions_archive)).performClick()
-        assertEquals(SessionFilter.ARCHIVED, selected)
-        compose.onNodeWithText(text(R.string.sessions_filter_agent_sessions)).performClick()
+        compose.onNodeWithText(text(R.string.shell_seg_agent)).assertIsDisplayed().performClick()
         assertEquals(SessionFilter.AGENT_SESSIONS, selected)
+        compose.onNodeWithText(text(R.string.shell_seg_all)).assertIsDisplayed().performClick()
+        assertEquals(SessionFilter.ALL, selected)
     }
 }

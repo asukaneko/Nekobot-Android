@@ -961,6 +961,69 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CHARACTER_VIEW_MODE, value).apply()
         }
 
+    // ============ 会话页欢迎区 ============
+
+    /** 首页欢迎形象：空串表示应用图标，否则为角色 ID（使用角色立绘）。 */
+    var homeWelcomeCharacterId: String
+        get() = prefs.getString(KEY_HOME_WELCOME_CHARACTER, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_WELCOME_CHARACTER, value).apply()
+        }
+
+    /**
+     * 欢迎立绘的方形取景：`角色ID|zoom|offsetX|offsetY`。
+     *
+     * offsetX/Y 是相对"可移动范围"的归一化比例（-1..1），因此同一组参数在
+     * 76dp 头像与取景预览框里得到完全一致的画面。
+     */
+    var homePortraitCrop: String
+        get() = prefs.getString(KEY_HOME_PORTRAIT_CROP, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_PORTRAIT_CROP, value).apply()
+        }
+
+    /**
+     * 最近展示过的问候语标识（"|" 分隔）。
+     *
+     * 只用来避免连续几次打开看到同一句，不做历史记录用途，最多保留最近 8 条。
+     */
+    var homeGreetingHistory: String
+        get() = prefs.getString(KEY_HOME_GREETING_HISTORY, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_GREETING_HISTORY, value).apply()
+        }
+
+    /** AI 生成的首页问候语（空串表示还没生成过，退回本地候选池）。 */
+    var homeGreetingAiLine: String
+        get() = prefs.getString(KEY_HOME_GREETING_AI_LINE, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_GREETING_AI_LINE, value).apply()
+        }
+
+    /** 上一条 AI 问候语的缓存键：`角色|时段|生成时间戳`，用于判断是否还要重新生成。 */
+    var homeGreetingAiKey: String
+        get() = prefs.getString(KEY_HOME_GREETING_AI_KEY, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_GREETING_AI_KEY, value).apply()
+        }
+
+    // ============ 会话页 banner ============
+
+    /** banner 展示来源：LATEST（最新会话）/ PINNED（固定某个单角色会话）。 */
+    var homeBannerMode: String
+        get() = prefs.getString(KEY_HOME_BANNER_MODE, HOME_BANNER_LATEST) ?: HOME_BANNER_LATEST
+        set(value) {
+            val normalized = if (value == HOME_BANNER_PINNED) HOME_BANNER_PINNED else HOME_BANNER_LATEST
+            prefs.edit().putString(KEY_HOME_BANNER_MODE, normalized).apply()
+        }
+
+    /** 固定展示的会话 ID（[homeBannerMode] 为 PINNED 时生效）。 */
+    var homeBannerSessionId: String
+        get() = prefs.getString(KEY_HOME_BANNER_SESSION, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_BANNER_SESSION, value).apply()
+        }
+
     /** 世界书列表视图模式：LIST / GRID，持久化用户选择 */
     var worldBookViewMode: String
         get() = prefs.getString(KEY_WORLD_BOOK_VIEW_MODE, "LIST") ?: "LIST"
@@ -1592,6 +1655,13 @@ class PrefsManager(context: Context) {
         private const val KEY_STATS_DASHBOARD_HIDDEN_VERSION = "stats_dashboard_hidden_version"
         private const val KEY_STATS_CHARACTER_RANKING_MODE = "stats_character_ranking_mode"
         private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
+        private const val KEY_HOME_WELCOME_CHARACTER = "home_welcome_character"
+        private const val KEY_HOME_PORTRAIT_CROP = "home_portrait_crop"
+        private const val KEY_HOME_GREETING_HISTORY = "home_greeting_history"
+        private const val KEY_HOME_GREETING_AI_LINE = "home_greeting_ai_line"
+        private const val KEY_HOME_GREETING_AI_KEY = "home_greeting_ai_key"
+        private const val KEY_HOME_BANNER_MODE = "home_banner_mode"
+        private const val KEY_HOME_BANNER_SESSION = "home_banner_session"
         private const val KEY_WORLD_BOOK_VIEW_MODE = "world_book_view_mode"
         private const val KEY_ACHIEVEMENT_VIEW_MODE = "achievement_view_mode"
         private const val DEFAULT_SERVER = "https://localhost:5000"
@@ -1792,6 +1862,10 @@ class PrefsManager(context: Context) {
         const val LANGUAGE_EN = "en"
         const val LANGUAGE_JA = "ja"
         const val LANGUAGE_KO = "ko"
+
+        // 会话页 banner 来源
+        const val HOME_BANNER_LATEST = "LATEST"
+        const val HOME_BANNER_PINNED = "PINNED"
     }
 
     /** 当前语言偏好：system / zh / zh-TW / en / ja / ko */

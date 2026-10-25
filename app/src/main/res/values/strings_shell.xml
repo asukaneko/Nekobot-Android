@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 外层壳（导航 / 一级页面 / 我的 / 能力）文案。功能内部页面沿用原有字符串文件。 -->
+<resources>
+    <!-- 底部导航 -->
+    <string name="nav_library">内容库</string>
+    <string name="nav_capabilities">能力</string>
+    <string name="nav_profile">我的</string>
+
+    <!-- 会话分段筛选 -->
+    <string name="shell_seg_all">全部</string>
+    <string name="shell_seg_character">角色</string>
+    <string name="shell_seg_agent">Agent</string>
+    <string name="shell_seg_single">单角色</string>
+
+    <!-- 会话页 -->
+    <string name="shell_new_chat">开始新对话</string>
+    <string name="shell_your_chats">你的对话</string>
+    <string name="shell_chat_count">%1$d 个会话</string>
+    <string name="shell_filter">筛选</string>
+    <string name="shell_more_actions">更多操作</string>
+    <string name="shell_refresh">刷新</string>
+    <string name="shell_import">导入</string>
+
+    <!-- 首页问候语 -->
+    <string name="shell_greet_morning_title">早上好。</string>
+    <string name="shell_greet_morning_1">新的一天，想先聊点什么？</string>
+    <string name="shell_greet_morning_2">慢慢醒来，我在这里。</string>
+    <string name="shell_greet_morning_3">今天也一起，慢慢来。</string>
+    <string name="shell_greet_midday_title">中午好。</string>
+    <string name="shell_greet_midday_1">忙了一上午，先歇一会儿吧。</string>
+    <string name="shell_greet_midday_2">午饭吃了吗？不急，先照顾好自己。</string>
+    <string name="shell_greet_midday_3">有什么想吐槽的，趁现在说。</string>
+    <string name="shell_greet_afternoon_title">下午好。</string>
+    <string name="shell_greet_afternoon_1">今天过得还顺利吗？</string>
+    <string name="shell_greet_afternoon_2">这个时间最适合放慢一点。</string>
+    <string name="shell_greet_afternoon_3">不用先组织语言，想到哪儿说到哪儿。</string>
+    <string name="shell_greet_evening_title">晚上好。</string>
+    <string name="shell_greet_evening_1">今天辛苦了。想聊聊，还是安静待一会儿？</string>
+    <string name="shell_greet_evening_2">夜色刚刚好，想从哪里说起？</string>
+    <string name="shell_greet_evening_3">我在。今天过得怎么样？</string>
+    <string name="shell_greet_night_title">夜深了。</string>
+    <string name="shell_greet_night_1">我陪你再待一会儿。</string>
+    <string name="shell_greet_night_2">如果睡不着，我们随便聊聊。</string>
+    <string name="shell_greet_night_3">夜很长，我在这里。</string>
+
+    <!-- 欢迎形象 -->
+    <string name="shell_welcome_picker_title">首页欢迎形象</string>
+    <string name="shell_welcome_picker_desc">默认使用应用图标，也可以换成本地已有的角色立绘。</string>
+    <string name="shell_welcome_app_icon">应用图标</string>
+    <string name="shell_welcome_app_icon_desc">Neko 默认形象</string>
+    <string name="shell_welcome_character_desc">角色立绘 · 来自内容库</string>
+    <string name="shell_welcome_note">更改只影响首页欢迎区，不改变当前会话。</string>
+
+    <!-- 内容库 -->
+
+    <!-- 会话页 banner -->
+    <string name="shell_banner_continue">继续这段对话</string>
+    <string name="shell_banner_choose">更换首页会话</string>
+    <string name="shell_banner_choose_desc">选择首页 banner 展示哪一个会话。</string>
+    <string name="shell_banner_source_latest">最新会话</string>
+    <string name="shell_banner_source_latest_desc">自动显示最近聊过的那一个</string>
+    <string name="shell_banner_no_companion">还没有单角色会话</string>
+    <string name="shell_banner_source_note">固定的会话被删除或归档后，会自动回到「最新会话」。</string>
+
+    <!-- 立绘取景 / 主题色默认项 -->
+    <string name="shell_portrait_crop_title">调整取景</string>
+    <string name="shell_portrait_crop_hint">拖动移动方框，双指缩放方框</string>
+    <string name="shell_portrait_crop_reset">重置</string>
+    <string name="shell_style_color_default">默认</string>
+
+    <!-- 全局搜索首页 -->
+    <string name="shell_search_quick_access">快速前往</string>
+    <string name="shell_search_recent">最近会话</string>
+    <string name="shell_search_foot">一个地方，找到所有内容。</string>
+
+    <!-- 问候语来源与交互 -->
+    <string name="tokens_source_home_greeting">首页问候</string>
+    <string name="shell_greeting_full_title">完整问候</string>
+    <string name="shell_greeting_regenerate">重新生成</string>
+    <string name="shell_library_search">搜索角色或世界书</string>
+    <string name="shell_library_empty">没有找到相关内容</string>
+    <string name="shell_library_empty_hint">换个关键词试试。</string>
+
+    <!-- 能力页 -->
+    <string name="shell_cap_models">智能与模型</string>
+    <string name="shell_cap_models_desc">管理模型、故障转移队列，查询余额</string>
+    <string name="shell_cap_expand">拓展 Neko 的能力</string>
+    <string name="shell_cap_status_local">本地模式</string>
+    <string name="shell_cap_status_server">已连接服务器</string>
+    <string name="shell_cap_agent">Agent</string>
+    <string name="shell_cap_agent_desc">任务与工具</string>
+    <string name="shell_cap_memory">记忆</string>
+    <string name="shell_cap_memory_desc">让交流更连贯</string>
+    <string name="shell_cap_skills">Skills</string>
+    <string name="shell_cap_skills_desc">技能配置</string>
+    <string name="shell_cap_extensions">扩展</string>
+    <string name="shell_cap_extensions_desc">插件、技能与 MCP</string>
+    <string name="shell_cap_usage">用量</string>
+    <string name="shell_cap_usage_desc">查看模型消耗</string>
+    <string name="shell_cap_group_memory">记忆</string>
+
+    <!-- 我的 -->
+    <string name="shell_profile_name">我的 Neko</string>
+    <string name="shell_profile_local">本地模式 · 数据仅在此设备</string>
+    <string name="shell_profile_server">服务器模式 · %1$s</string>
+    <string name="shell_profile_preferences">偏好</string>
+    <string name="shell_profile_content">内容</string>
+    <string name="shell_profile_data">数据与支持</string>
+    <string name="shell_profile_system">系统</string>
+    <string name="shell_profile_advanced">高级设置</string>
+    <string name="shell_profile_notifications">通知</string>
+    <string name="shell_profile_skin">关系页皮肤</string>
+    <string name="shell_profile_version">版本 %1$s</string>
+    <string name="shell_profile_language">语言</string>
+    <string name="shell_profile_usage">用量与账单</string>
+    <!-- 会话首页 -->
+    <string name="shell_banner_pinned">固定会话</string>
+    <string name="shell_action_more">更多</string>
+</resources>

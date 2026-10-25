@@ -128,9 +128,9 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
         PrefsManager.CHAT_BACKGROUND_CUSTOM to stringResource(R.string.style_chat_background_custom)
     )
 
-    // 主题色选项：null 表示默认粉色
+    // 主题色选项：null 表示默认色（陶土红）
     val themeColorOptions = listOf<Pair<String?, String>>(
-        null to stringResource(R.string.style_color_pink),
+        null to stringResource(R.string.shell_style_color_default),
         "#8B6CFF" to stringResource(R.string.style_color_purple),
         "#4D96FF" to stringResource(R.string.style_color_blue),
         "#22C1C5" to stringResource(R.string.style_color_cyan),

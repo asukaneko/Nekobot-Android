@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shell (navigation / top-level pages) strings. Inner feature screens keep their own files. -->
+<resources>
+    <string name="nav_library">Library</string>
+    <string name="nav_capabilities">Capabilities</string>
+    <string name="nav_profile">Me</string>
+
+    <string name="shell_seg_all">All</string>
+    <string name="shell_seg_character">Characters</string>
+    <string name="shell_seg_agent">Agent</string>
+    <string name="shell_seg_single">Solo</string>
+
+    <string name="shell_new_chat">Start a new chat</string>
+    <string name="shell_your_chats">Your chats</string>
+    <string name="shell_chat_count">%1$d chats</string>
+    <string name="shell_filter">Filter</string>
+    <string name="shell_more_actions">More</string>
+    <string name="shell_refresh">Refresh</string>
+    <string name="shell_import">Import</string>
+
+    <string name="shell_greet_morning_title">Good morning.</string>
+    <string name="shell_greet_morning_1">What shall we start with today?</string>
+    <string name="shell_greet_morning_2">Take your time. I\'m here.</string>
+    <string name="shell_greet_morning_3">Let\'s go slowly, together.</string>
+    <string name="shell_greet_midday_title">Good afternoon.</string>
+    <string name="shell_greet_midday_1">Busy morning? Take a short break.</string>
+    <string name="shell_greet_midday_2">Had lunch yet? Look after yourself first.</string>
+    <string name="shell_greet_midday_3">Got something to vent? Now works.</string>
+    <string name="shell_greet_afternoon_title">Hello again.</string>
+    <string name="shell_greet_afternoon_1">Is your day going well?</string>
+    <string name="shell_greet_afternoon_2">This hour is made for slowing down.</string>
+    <string name="shell_greet_afternoon_3">No need to phrase it well, just say it.</string>
+    <string name="shell_greet_evening_title">Good evening.</string>
+    <string name="shell_greet_evening_1">Long day. Talk, or just sit quietly?</string>
+    <string name="shell_greet_evening_2">Nice evening. Where should we begin?</string>
+    <string name="shell_greet_evening_3">I\'m here. How was your day?</string>
+    <string name="shell_greet_night_title">It\'s late.</string>
+    <string name="shell_greet_night_1">I\'ll stay a little longer.</string>
+    <string name="shell_greet_night_2">Can\'t sleep? Let\'s just chat.</string>
+    <string name="shell_greet_night_3">The night is long, and I\'m here.</string>
+
+    <string name="shell_welcome_picker_title">Home portrait</string>
+    <string name="shell_welcome_picker_desc">The app icon is the default. You can use a character portrait instead.</string>
+    <string name="shell_welcome_app_icon">App icon</string>
+    <string name="shell_welcome_app_icon_desc">Default Neko look</string>
+    <string name="shell_welcome_character_desc">Character portrait · from Library</string>
+    <string name="shell_welcome_note">Only affects the welcome area on Home.</string>
+
+
+    <!-- 会话页 banner -->
+    <string name="shell_banner_continue">Continue this chat</string>
+    <string name="shell_banner_choose">Change home chat</string>
+    <string name="shell_banner_choose_desc">Pick which chat the home banner shows.</string>
+    <string name="shell_banner_source_latest">Latest chat</string>
+    <string name="shell_banner_source_latest_desc">Automatically the most recent one</string>
+    <string name="shell_banner_no_companion">No one-on-one chats yet</string>
+    <string name="shell_banner_source_note">If the pinned chat is deleted or archived, it falls back to the latest chat.</string>
+
+    <!-- 立绘取景 / 主题色默认项 -->
+    <string name="shell_portrait_crop_title">Adjust framing</string>
+    <string name="shell_portrait_crop_hint">Drag the frame to move, pinch to resize</string>
+    <string name="shell_portrait_crop_reset">Reset</string>
+    <string name="shell_style_color_default">Default</string>
+
+    <!-- 全局搜索首页 -->
+    <string name="shell_search_quick_access">Quick access</string>
+    <string name="shell_search_recent">Recent chats</string>
+    <string name="shell_search_foot">Find everything in one place.</string>
+
+    <!-- 问候语来源与交互 -->
+    <string name="tokens_source_home_greeting">Home greeting</string>
+    <string name="shell_greeting_full_title">Full greeting</string>
+    <string name="shell_greeting_regenerate">Regenerate</string>
+    <string name="shell_library_search">Search characters or lorebooks</string>
+    <string name="shell_library_empty">Nothing found</string>
+    <string name="shell_library_empty_hint">Try another keyword.</string>
+
+    <string name="shell_cap_models">Models &amp; AI</string>
+    <string name="shell_cap_models_desc">Manage models, failover queue and balance.</string>
+    <string name="shell_cap_expand">Extend Neko</string>
+    <string name="shell_cap_status_local">Local mode</string>
+    <string name="shell_cap_status_server">Server connected</string>
+    <string name="shell_cap_agent">Agent</string>
+    <string name="shell_cap_agent_desc">Tasks and tools</string>
+    <string name="shell_cap_memory">Memory</string>
+    <string name="shell_cap_memory_desc">Keep chats coherent</string>
+    <string name="shell_cap_skills">Skills</string>
+    <string name="shell_cap_skills_desc">Skill configuration</string>
+    <string name="shell_cap_extensions">Extensions</string>
+    <string name="shell_cap_extensions_desc">Plugins, skills, MCP</string>
+    <string name="shell_cap_usage">Usage</string>
+    <string name="shell_cap_usage_desc">Model consumption</string>
+    <string name="shell_cap_group_memory">Memory</string>
+
+    <string name="shell_profile_name">My Neko</string>
+    <string name="shell_profile_local">Local mode · data stays on device</string>
+    <string name="shell_profile_server">Server mode · %1$s</string>
+    <string name="shell_profile_preferences">Preferences</string>
+    <string name="shell_profile_content">Content</string>
+    <string name="shell_profile_data">Data &amp; support</string>
+    <string name="shell_profile_system">System</string>
+    <string name="shell_profile_advanced">Advanced settings</string>
+    <string name="shell_profile_notifications">Notifications</string>
+    <string name="shell_profile_skin">Relationship skins</string>
+    <string name="shell_profile_version">Version %1$s</string>
+    <string name="shell_profile_language">Language</string>
+    <string name="shell_profile_usage">Usage &amp; billing</string>
+    <!-- Session home -->
+    <string name="shell_banner_pinned">Pinned chat</string>
+    <string name="shell_action_more">More</string>
+</resources>

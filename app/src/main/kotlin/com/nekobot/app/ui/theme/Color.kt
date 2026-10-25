@@ -5,55 +5,111 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 
-// ==================== 深色玻璃拟态主题配色 ====================
-// 深色蓝灰主题：背景 #1F2732 / 表面 #242D38 / 变体 #2B3440
-val BgDark = Color(0xFF1F2732)
-val BgSurface = Color(0xFF242D38)
-val BgSurfaceVariant = Color(0xFF2B3440)
+// ==================== 内容优先的极简配色 ====================
+// 设计基线：暖白底 + 细线 + 单一陶土红强调色。所有"彩色"只用于区分信息类别，
+// 不再出现玻璃渐变、粉紫霓虹或多重阴影——颜色越少，内容越清楚。
+//
+// 浅色：背景 #F7F7F4 / 表面 #FFFFFF / 正文 #222522 / 次要 #777C75 / 细线 #E7E9E3
+// 深色：背景 #171A18 / 表面 #222622 / 正文 #F0F2EC / 次要 #A6ADA2 / 细线 #363D35
+
+// ---- 浅色 ----
+val NekoBgLight = Color(0xFFFAFAFA)
+val NekoSurfaceLight = Color(0xFFFFFFFF)
+val NekoSurfaceTintLight = Color(0xFFF2F2F2)
+val NekoLineLight = Color(0xFFE5E5E5)
+val NekoTextLight = Color(0xFF1D1E1F)
+val NekoMutedLight = Color(0xFF6F7377)
+val NekoAccentLight = Color(0xFFFF6B97)
+val NekoAccentSoftLight = Color(0xFFFFE5EE)
+val NekoAccentDeepLight = Color(0xFFD8386A)
+val NekoGreenLight = Color(0xFF3F7A5E)
+val NekoGreenSoftLight = Color(0xFFE9F0E9)
+val NekoBlueSoftLight = Color(0xFFEEF2F6)
+val NekoBlueLight = Color(0xFF5C7488)
+val NekoClayLight = Color(0xFF7C6A60)
+
+// ---- 深色 ----
+val NekoBgDark = Color(0xFF141414)
+val NekoSurfaceDark = Color(0xFF1D1D1D)
+val NekoSurfaceTintDark = Color(0xFF272727)
+val NekoLineDark = Color(0xFF303030)
+val NekoTextDark = Color(0xFFF0F0F0)
+val NekoMutedDark = Color(0xFFA0A3A5)
+val NekoAccentDark = Color(0xFFFF8FB1)
+val NekoAccentSoftDark = Color(0xFF3E1B2A)
+val NekoAccentDeepDark = Color(0xFFFFC2D2)
+val NekoGreenDark = Color(0xFF9FC4AC)
+val NekoGreenSoftDark = Color(0xFF26312A)
+val NekoBlueSoftDark = Color(0xFF232B31)
+val NekoBlueDark = Color(0xFF9DB2BF)
+val NekoClayDark = Color(0xFFB9A79D)
+
+// ==================== 兼容旧命名的主题令牌 ====================
+// 旧代码按这些名字取色；这里统一指向新配色，避免全量替换调用点。
 val GlassWhite = Color(0xFFFFFFFF)
-val GlassAlpha = Color(0x14FFFFFF)
+val GlassAlpha = Color(0x0FFFFFFF)
 
-val Primary = Color(0xFFFF8FB1)
-val PrimaryContainer = Color(0xFFFF6B97)
-val Secondary = Color(0xFF6EC1E4)
-val Tertiary = Color(0xFF8B6CFF)
+val BgDark = NekoBgDark
+val BgSurface = NekoSurfaceDark
+val BgSurfaceVariant = NekoSurfaceTintDark
 
-val OnPrimary = Color(0xFFFFFFFF)
-val OnSurface = Color(0xFFE8E8F0)
-val OnSurfaceVariant = Color(0xFFA8A8BE)
-val Outline = Color(0xFF3A3A4E)
+val Primary = NekoAccentDark
+val PrimaryContainer = NekoAccentSoftDark
+val Secondary = NekoBlueDark
+val Tertiary = NekoClayDark
 
-val ErrorRed = Color(0xFFFF6B6B)
-val SuccessGreen = Color(0xFF6BCF7F)
-val WarningAmber = Color(0xFFFFC56B)
+val OnPrimary = Color(0xFF3B0F22)
+val OnSurface = NekoTextDark
+val OnSurfaceVariant = NekoMutedDark
+val Outline = NekoLineDark
+
+val ErrorRed = Color(0xFFE5645C)
+val SuccessGreen = NekoGreenDark
+val WarningAmber = Color(0xFFD2AC6B)
 
 // 消息气泡
-val BubbleUser = Color(0xFFFF8FB1)
-val BubbleAssistant = Color(0xFF242436)
+val BubbleUser = NekoAccentDark
+val BubbleAssistant = NekoSurfaceDark
 
 // ==================== 浅色主题配色 ====================
-val BgLight = Color(0xFFF6F6FB)
-val BgSurfaceLight = Color(0xFFFFFFFF)
-val BgSurfaceVariantLight = Color(0xFFECECF3)
-val GlassAlphaLight = Color(0x33000000)
+val BgLight = NekoBgLight
+val BgSurfaceLight = NekoSurfaceLight
+val BgSurfaceVariantLight = NekoSurfaceTintLight
+val GlassAlphaLight = Color(0x1A000000)
 
-val PrimaryLight = Color(0xFFFF6B97)
-val PrimaryContainerLight = Color(0xFFFFE5EE)
-val SecondaryLight = Color(0xFF3E9EC4)
-val TertiaryLight = Color(0xFF7A5CFF)
+val PrimaryLight = NekoAccentLight
+val PrimaryContainerLight = NekoAccentSoftLight
+val SecondaryLight = NekoBlueLight
+val TertiaryLight = NekoClayLight
 
 val OnPrimaryLight = Color(0xFFFFFFFF)
-val OnSurfaceLight = Color(0xFF1C1C28)
-val OnSurfaceVariantLight = Color(0xFF5C5C70)
-val OutlineLight = Color(0xFFD2D2DE)
+val OnSurfaceLight = NekoTextLight
+val OnSurfaceVariantLight = NekoMutedLight
+val OutlineLight = NekoLineLight
 
-val ErrorRedLight = Color(0xFFE5484D)
-val SuccessGreenLight = Color(0xFF2E9E5A)
-val WarningAmberLight = Color(0xFFC77700)
+val ErrorRedLight = Color(0xFFC24D43)
+val SuccessGreenLight = NekoGreenLight
+val WarningAmberLight = Color(0xFF8A6A2F)
 
 // 消息气泡（浅色）
-val BubbleUserLight = Color(0xFFFF6B97)
-val BubbleAssistantLight = Color(0xFFEDEDF6)
+val BubbleUserLight = NekoAccentLight
+val BubbleAssistantLight = NekoSurfaceLight
+
+/** 线条色（分隔线 / 卡片描边）：浅色 #E7E9E3，深色 #363D35。 */
+@Composable
+fun nekoLine(): Color = if (isSystemInDarkTheme()) NekoLineDark else NekoLineLight
+
+/** 更淡的一级文字（时间戳、脚注）。 */
+@Composable
+fun nekoFaint(): Color = if (isSystemInDarkTheme()) NekoMutedDark.copy(alpha = 0.82f) else NekoMutedLight.copy(alpha = 0.72f)
+
+/** 强调色底（标签、选中态）。 */
+@Composable
+fun nekoAccentSoft(): Color = if (isSystemInDarkTheme()) NekoAccentSoftDark else NekoAccentSoftLight
+
+/** 绿（正常/成功）：仅用于状态点与提示，不作大块填充。 */
+@Composable
+fun nekoGreen(): Color = if (isSystemInDarkTheme()) NekoGreenDark else NekoGreenLight
 
 /**
  * 根据主色派生 primaryContainer（深色主题用，亮度降低到 ~38%）。
@@ -96,8 +152,8 @@ fun parseHexColor(hex: String?): Color? {
 }
 
 /**
- * 获取"默认粉色"主题色：与主题色覆盖为 null 时一致，
- * 不受当前已选主题色影响，供样式设置中的"粉色"选项展示用。
+ * 获取"默认强调色"主题色：与主题色覆盖为 null 时一致，
+ * 不受当前已选主题色影响，供样式设置中的默认选项展示用。
  */
 @Composable
 fun defaultPrimaryColor(): Color =
@@ -107,12 +163,12 @@ fun defaultPrimaryColor(): Color =
 // 用于图标着色、日志等级、剧情事件等"点缀色"场景，
 // 避免硬编码 hex 导致浅色主题下对比度错误。
 
-/** 蓝（深色 Secondary / 浅色 SecondaryLight） */
+/** 蓝灰（深色 Secondary / 浅色 SecondaryLight） */
 @Composable
 fun accentSecondary(): Color =
     if (isSystemInDarkTheme()) Secondary else SecondaryLight
 
-/** 紫（深色 Tertiary / 浅色 TertiaryLight） */
+/** 陶土棕（深色 Tertiary / 浅色 TertiaryLight） */
 @Composable
 fun accentTertiary(): Color =
     if (isSystemInDarkTheme()) Tertiary else TertiaryLight

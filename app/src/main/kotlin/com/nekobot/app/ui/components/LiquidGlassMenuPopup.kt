@@ -58,7 +58,7 @@ import androidx.compose.ui.window.PopupProperties
 private val MenuShadowPadding = 32.dp
 private val MenuVerticalMargin = 48.dp
 
-/** 阴影在 Surface 裁切之外绘制，透明留白随菜单一起动画。 */
+/** 阴影�?Surface 裁切之外绘制，透明留白随菜单一起动画�?*/
 @Composable
 internal fun LiquidGlassMenuPopup(
     expanded: Boolean,
@@ -85,7 +85,7 @@ internal fun LiquidGlassMenuPopup(
         .minus(MenuVerticalMargin * 2).coerceAtLeast(48.dp)
     val transformOrigin = remember { mutableStateOf(TransformOrigin.Center) }
     val positionProvider = remember(density) {
-        LiquidGlassMenuPositionProvider(
+        NekoMenuPositionProvider(
             shadowPadding = with(density) { MenuShadowPadding.roundToPx() },
             verticalMargin = with(density) { MenuVerticalMargin.roundToPx() },
             onTransformOrigin = { transformOrigin.value = it },
@@ -144,8 +144,8 @@ internal fun LiquidGlassMenuPopup(
     }
 }
 
-/** 沿用 Material 菜单的锚点顺序，阴影留白不参与菜单位置计算。 */
-internal class LiquidGlassMenuPositionProvider(
+/** 沿用 Material 菜单的锚点顺序，阴影留白不参与菜单位置计算�?*/
+internal class NekoMenuPositionProvider(
     private val shadowPadding: Int,
     private val verticalMargin: Int,
     private val onTransformOrigin: (TransformOrigin) -> Unit = {},
