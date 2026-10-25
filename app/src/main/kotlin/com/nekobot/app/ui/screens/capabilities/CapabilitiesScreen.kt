@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -109,11 +110,11 @@ fun CapabilitiesScreen(onNavigate: (String) -> Unit) {
                             onClick = { onNavigate(Routes.AGENT_SETTINGS) }
                         )
                         CapabilityCard(
-                            icon = Icons.Outlined.Bookmarks,
-                            title = stringResource(R.string.shell_cap_memory),
-                            description = stringResource(R.string.shell_cap_memory_desc),
+                            icon = Icons.Outlined.School,
+                            title = stringResource(R.string.shell_cap_skills),
+                            description = stringResource(R.string.shell_cap_skills_desc),
                             modifier = Modifier.weight(1f),
-                            onClick = { onNavigate(Routes.MEMORY) }
+                            onClick = { onNavigate(Routes.SKILLS) }
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

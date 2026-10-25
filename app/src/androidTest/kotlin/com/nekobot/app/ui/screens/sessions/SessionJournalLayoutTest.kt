@@ -11,6 +11,10 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -20,6 +24,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.data.local.RelationshipBackground
 import com.nekobot.app.ui.theme.NekobotTheme
+import com.nekobot.app.ui.components.NekoSegmentedControl
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -52,7 +57,7 @@ class SessionJournalLayoutTest {
         }
     }
 
-    @Test fun twoLineRowsKeepSeparateDetailsAndMenuTargets() {
+    @Test fun twoLineRowsOpenDetailsThroughLongPressActions() {
         var details = false
         var opened = false
         val rows = listOf(
@@ -62,23 +67,29 @@ class SessionJournalLayoutTest {
             SessionListRow("d", "d", "测试", "测试", null, "test", "2026-10-11", "在呢在呢！怎么啦？", 7, pinned = false, favorite = false, archived = false, modeLabel = SessionModeLabel.COMPANION)
         )
         compose.setContent { Theme {
+            val actions = remember { SessionActionStripState() }
+            var origin by remember { mutableStateOf(Offset.Zero) }
+            var size by remember { mutableStateOf(IntSize.Zero) }
             Surface(Modifier.fillMaxSize()) {
+              Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow(); size = it.size }) {
                 Column(Modifier.statusBarsPadding().navigationBarsPadding().padding(16.dp)) {
                     Text("会话", style = MaterialTheme.typography.headlineSmall)
-                    SessionModeFilters(SessionOverview(characterSessions = 2, agentSessions = 1, agentCharacterSessions = 2), SessionFilter.ALL, {})
-                    SessionRecentControls(SessionFilter.ALL, {})
+                    NekoSegmentedControl(listOf("全部", "角色", "Agent", "单角色"), 0, {})
                     rows.forEachIndexed { index, row ->
                         SessionItem(row, first = index == 0, last = index == rows.lastIndex,
-                            onClick = { opened = true }, onOpenDetail = { details = true }, onRename = {}, onDelete = {}, onToggleFavorite = {}, onTogglePinned = {})
+                            onClick = { opened = true }, onOpenDetail = { details = true }, onRename = {}, onDelete = {}, onToggleFavorite = {}, onTogglePinned = {}, actionStrip = actions)
                     }
                 }
+                SessionActionStripOverlay(actions, origin, size)
+              }
             }
         } }
         compose.onNodeWithText("林小满（转换测试）", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("九月日报整理", useUnmergedTree = true).assertIsDisplayed()
         compose.onAllNodesWithText("918 条").assertCountEquals(0)
         capture("sessions-two-line-native")
-        compose.onAllNodesWithContentDescription("更多")[0].performClick()
+        compose.onNodeWithText(rows.first().listTitle).performTouchInput { longClick() }
+        compose.onNodeWithText("更多").performClick()
         compose.onNodeWithText("会话详情").performClick()
         assertTrue(details)
         assertFalse(opened)

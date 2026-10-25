@@ -76,7 +76,7 @@
     <string name="shell_library_empty_hint">다른 키워드로 시도해 보세요.</string>
 
     <string name="shell_cap_models">모델 및 AI</string>
-    <string name="shell_cap_models_desc">모델, 장애 대체, Agent 도구 모음 관리.</string>
+    <string name="shell_cap_models_desc">모델, 장애 대체, 잔액 조회 관리.</string>
     <string name="shell_cap_expand">Neko의 능력 넓히기</string>
     <string name="shell_cap_status_local">로컬 모드</string>
     <string name="shell_cap_status_server">서버 연결됨</string>
@@ -84,6 +84,8 @@
     <string name="shell_cap_agent_desc">작업과 도구</string>
     <string name="shell_cap_memory">기억</string>
     <string name="shell_cap_memory_desc">대화를 이어지게</string>
+    <string name="shell_cap_skills">Skills</string>
+    <string name="shell_cap_skills_desc">스킬 설정</string>
     <string name="shell_cap_extensions">확장</string>
     <string name="shell_cap_extensions_desc">플러그인, 스킬, MCP</string>
     <string name="shell_cap_usage">사용량</string>
@@ -103,4 +105,7 @@
     <string name="shell_profile_version">버전 %1$s</string>
     <string name="shell_profile_language">언어</string>
     <string name="shell_profile_usage">사용량 및 결제</string>
+    <!-- 세션 홈 -->
+    <string name="shell_banner_pinned">고정 대화</string>
+    <string name="shell_action_more">더보기</string>
 </resources>

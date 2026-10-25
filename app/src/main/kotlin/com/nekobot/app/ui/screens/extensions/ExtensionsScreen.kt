@@ -286,10 +286,6 @@ private fun buildExtensionGroups(): List<ExtensionGroup> = listOf(
                 Icons.Filled.MenuBook, accentSuccess(), Routes.KNOWLEDGE
             ),
             ExtensionItem(
-                stringResource(R.string.extensions_skills), stringResource(R.string.extensions_skills_desc),
-                Icons.Filled.Build, accentSecondary(), Routes.SKILLS
-            ),
-            ExtensionItem(
                 stringResource(R.string.extensions_tools), stringResource(R.string.extensions_tools_desc),
                 Icons.Filled.Storage, MaterialTheme.colorScheme.primary, Routes.TOOLS
             ),

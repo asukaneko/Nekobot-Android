@@ -76,7 +76,7 @@
     <string name="shell_library_empty_hint">換個關鍵詞試試。</string>
 
     <string name="shell_cap_models">智慧與模型</string>
-    <string name="shell_cap_models_desc">管理模型、故障轉移與 Agent 工具集。</string>
+    <string name="shell_cap_models_desc">管理模型、故障轉移佇列，查詢餘額</string>
     <string name="shell_cap_expand">拓展 Neko 的能力</string>
     <string name="shell_cap_status_local">本地模式</string>
     <string name="shell_cap_status_server">已連線伺服器</string>
@@ -84,6 +84,8 @@
     <string name="shell_cap_agent_desc">任務與工具</string>
     <string name="shell_cap_memory">記憶</string>
     <string name="shell_cap_memory_desc">讓交流更連貫</string>
+    <string name="shell_cap_skills">Skills</string>
+    <string name="shell_cap_skills_desc">技能配置</string>
     <string name="shell_cap_extensions">擴充</string>
     <string name="shell_cap_extensions_desc">外掛、技能與 MCP</string>
     <string name="shell_cap_usage">用量</string>
@@ -103,4 +105,7 @@
     <string name="shell_profile_version">版本 %1$s</string>
     <string name="shell_profile_language">語言</string>
     <string name="shell_profile_usage">用量與帳單</string>
+    <!-- 會話首頁 -->
+    <string name="shell_banner_pinned">固定對話</string>
+    <string name="shell_action_more">更多</string>
 </resources>

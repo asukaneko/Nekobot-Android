@@ -146,6 +146,9 @@ import com.nekobot.app.ui.components.NekoIconAction
 import com.nekobot.app.ui.components.NekoPageHorizontalPadding
 import com.nekobot.app.ui.components.NekoPageTopBar
 import com.nekobot.app.ui.components.NekoTag
+import com.nekobot.app.ui.components.NekoSheet
+import com.nekobot.app.ui.components.NekoSheetHeader
+import com.nekobot.app.ui.components.NekoChoiceRow
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
@@ -847,7 +850,7 @@ fun SessionsScreen(
                     }
                 }
 
-                // 长按会话后的横向动作条：浮在触发行上，拖动切换高亮，松手执行
+                // 长按打开常用操作条，松手后点选执行。
                 SessionActionStripOverlay(
                     state = sessionActionStrip,
                     origin = pageOrigin,
@@ -1358,6 +1361,8 @@ internal fun SessionItem(
     val deleteText = stringResource(R.string.common_delete)
     val noMessageText = stringResource(R.string.sessions_no_message)
     val moreActionsLabel = stringResource(R.string.shell_more_actions)
+    val moreLabel = stringResource(R.string.shell_action_more)
+    var showMoreActions by remember(row.key) { mutableStateOf(false) }
     val context = LocalContext.current
     val portraitRequest = remember(context, row.portraitUrl) {
         row.portraitUrl?.let { portraitUrl ->
@@ -1392,11 +1397,9 @@ internal fun SessionItem(
     } else {
         baseColor
     }
-    // 长按后横条里的动作：与原来的三点菜单一致，删除放在最后
+    // 常用操作放在第一层，管理操作收进二级面板。
     val stripActions = rememberUpdatedState(
         listOf(
-            SessionAction(detailMenuText, Icons.Outlined.Info) { onOpenDetail() },
-            SessionAction(renameMenuText, Icons.Outlined.Edit) { onRename() },
             SessionAction(
                 if (row.pinned) unpinText else pinText,
                 Icons.Filled.PushPin
@@ -1409,13 +1412,39 @@ internal fun SessionItem(
                 if (row.archived) unarchiveText else archiveText,
                 Icons.Filled.Archive
             ) { onToggleArchived() },
-            SessionAction(storyGraphText, Icons.Outlined.AccountTree) { onOpenStoryGraph() },
-            SessionAction(deleteText, Icons.Outlined.Delete, destructive = true) { onDelete() }
+            SessionAction(deleteText, Icons.Outlined.Delete, destructive = true) { onDelete() },
+            SessionAction(moreLabel, Icons.Filled.MoreVert) { showMoreActions = true }
         )
     )
     var rowBounds by remember(row.key) { mutableStateOf(Rect.Zero) }
     // 长按成立时给一次明确的触感反馈（弹出动作条）
     val haptic = LocalHapticFeedback.current
+
+    if (showMoreActions) {
+        NekoSheet(onDismissRequest = { showMoreActions = false }) {
+            NekoSheetHeader(title = row.listTitle, onClose = { showMoreActions = false })
+            listOf(
+                SessionAction(detailMenuText, Icons.Outlined.Info) { onOpenDetail() },
+                SessionAction(renameMenuText, Icons.Outlined.Edit) { onRename() },
+                SessionAction(storyGraphText, Icons.Outlined.AccountTree) { onOpenStoryGraph() }
+            ).forEach { action ->
+                NekoChoiceRow(
+                    title = action.label,
+                    leading = {
+                        Icon(
+                            action.icon,
+                            contentDescription = null,
+                            tint = if (action.destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    onClick = {
+                        showMoreActions = false
+                        action.onSelect()
+                    }
+                )
+            }
+        }
+    }
 
     Surface(
         onClick = onClick,

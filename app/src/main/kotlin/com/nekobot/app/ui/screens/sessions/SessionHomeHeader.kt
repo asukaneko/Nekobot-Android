@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import com.nekobot.app.ui.components.NekoDialog
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Size
@@ -26,6 +25,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.material3.TextButton
@@ -104,6 +104,7 @@ import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
 import com.nekobot.app.ui.components.nekoWelcomeTitleStyle
+import com.nekobot.app.ui.components.nekoTextSize
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import java.util.Calendar
 import kotlin.random.Random
@@ -263,8 +264,8 @@ private fun HomeSessionBanner(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+            .background(lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.primaryContainer, 0.45f))
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape)
             .clickable(onClick = onOpen)
             .heightIn(min = 72.dp)
             .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
@@ -273,6 +274,13 @@ private fun HomeSessionBanner(
         BannerAvatar(row = row, size = 46.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(if (pinned) R.string.shell_banner_pinned else R.string.shell_banner_continue),
+                style = nekoCaptionStyle(),
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (pinned) {
                     Icon(
@@ -294,7 +302,7 @@ private fun HomeSessionBanner(
             }
             Spacer(Modifier.height(3.dp))
             Text(
-                text = row.lastMessage ?: stringResource(R.string.shell_banner_continue),
+                text = row.lastMessage ?: stringResource(R.string.sessions_no_message),
                 style = nekoRowSubtitleStyle(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -438,7 +446,7 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
     var line by rememberSaveable(period.key, characterId, localeTag) { mutableStateOf(localLine) }
     var showPicker by remember { mutableStateOf(false) }
     var croppingCharacter by remember { mutableStateOf<CharacterPreset?>(null) }
-    // 点击问候语：重新生成一次；长按：看完整内容
+    // 点击阅读完整问候，在展开面板里主动换一句。
     var regenerateKey by remember { mutableIntStateOf(0) }
     var generating by remember { mutableStateOf(false) }
     var showFullGreeting by remember { mutableStateOf(false) }
@@ -495,10 +503,9 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(12.dp))
-                .combinedClickable(
-                    onClick = { regenerateKey++ },
-                    onLongClick = { showFullGreeting = true }
-                )
+                .clickable(onClickLabel = stringResource(R.string.shell_greeting_full_title)) {
+                    showFullGreeting = true
+                }
                 .padding(vertical = 2.dp)
         ) {
             Text(
@@ -512,7 +519,7 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = line,
-                    style = nekoCaptionStyle(),
+                    style = nekoRowSubtitleStyle().copy(fontSize = nekoTextSize(13f)),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                         alpha = if (generating) 0.5f else 1f
                     ),

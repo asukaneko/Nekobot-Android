@@ -46,7 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.nekobot.app.ui.components.nekoTextSize
 import kotlin.math.roundToInt
 
 /** 长按会话后横条里的一个动作。 */
@@ -149,19 +149,20 @@ internal fun SessionActionStripOverlay(
     if (!state.visible) return
     val actions = state.actions
     val density = LocalDensity.current
-    val stripHeight = 58.dp
+    val stripHeight = with(density) { nekoTextSize(16f).toDp() } + 44.dp
     val horizontalPadding = 6.dp
     val cornerRadius = 20.dp
 
     val marginPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
     val paddingPx = with(density) { horizontalPadding.toPx() }
-    val idealItemPx = with(density) { 46.dp.toPx() }
-    val minItemPx = with(density) { 34.dp.toPx() }
+    val labelWidth = nekoTextSize(64f)
+    val idealItemPx = with(density) { maxOf(68.dp.toPx(), labelWidth.toPx()) }
+    val minItemPx = with(density) { 48.dp.toPx() }
     val heightPx = with(density) { stripHeight.toPx() }
 
     val maxWidthPx = (containerSize.width - marginPx * 2f).coerceAtLeast(minItemPx)
-    // 放得下就铺满 46dp，放不下就均分可用宽度（不低于 34dp，再窄则改用横向滚动）
+    // 常用动作保留足够的点击宽度，极窄窗口通过横向滚动完整呈现。
     val itemPx = minOf(idealItemPx, (maxWidthPx - paddingPx * 2f) / actions.size)
         .coerceAtLeast(minItemPx)
     val fullWidthPx = itemPx * actions.size + paddingPx * 2f
@@ -236,8 +237,8 @@ internal fun SessionActionStripOverlay(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             text = action.label,
-                            fontSize = 10.sp,
-                            lineHeight = 12.sp,
+                            fontSize = nekoTextSize(11f),
+                            lineHeight = nekoTextSize(16f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,

@@ -76,7 +76,7 @@
     <string name="shell_library_empty_hint">別のキーワードをお試しください。</string>
 
     <string name="shell_cap_models">モデルと AI</string>
-    <string name="shell_cap_models_desc">モデル、フェイルオーバー、Agent ツールを管理します。</string>
+    <string name="shell_cap_models_desc">モデル、フェイルオーバー、残高照会を管理します。</string>
     <string name="shell_cap_expand">Neko の能力を広げる</string>
     <string name="shell_cap_status_local">ローカルモード</string>
     <string name="shell_cap_status_server">サーバー接続済み</string>
@@ -84,6 +84,8 @@
     <string name="shell_cap_agent_desc">タスクとツール</string>
     <string name="shell_cap_memory">記憶</string>
     <string name="shell_cap_memory_desc">会話をつなげる</string>
+    <string name="shell_cap_skills">Skills</string>
+    <string name="shell_cap_skills_desc">スキル設定</string>
     <string name="shell_cap_extensions">拡張</string>
     <string name="shell_cap_extensions_desc">プラグイン・スキル・MCP</string>
     <string name="shell_cap_usage">使用量</string>
@@ -103,4 +105,7 @@
     <string name="shell_profile_version">バージョン %1$s</string>
     <string name="shell_profile_language">言語</string>
     <string name="shell_profile_usage">使用量と請求</string>
+    <!-- 会話ホーム -->
+    <string name="shell_banner_pinned">固定した会話</string>
+    <string name="shell_action_more">その他</string>
 </resources>
