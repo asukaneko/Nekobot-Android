@@ -1060,9 +1060,9 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CUSTOM_FONT_NAME, value).apply()
         }
 
-    /** 字体缩放因子：以 16sp 正文字号为 1.0，可通过样式页按 1sp 精确调整。 */
+    /** 字体缩放因子：以 16sp 正文字号为 1.0，可通过样式页按 1sp 精确调整。默认 17sp 正文。 */
     var fontScale: Float
-        get() = prefs.getFloat(KEY_FONT_SCALE, 1.0f)
+        get() = prefs.getFloat(KEY_FONT_SCALE, DEFAULT_FONT_SCALE)
         set(value) {
             prefs.edit().putFloat(KEY_FONT_SCALE, value).apply()
         }
@@ -1694,6 +1694,10 @@ class PrefsManager(context: Context) {
         const val DEFAULT_BODY_FONT_SP = 16f
         const val MIN_BODY_FONT_SP = 12f
         const val MAX_BODY_FONT_SP = 24f
+
+        /** 应用默认正文字号（sp）与对应的缩放倍率。 */
+        const val DEFAULT_STYLE_BODY_FONT_SP = 17f
+        const val DEFAULT_FONT_SCALE = DEFAULT_STYLE_BODY_FONT_SP / DEFAULT_BODY_FONT_SP
 
         // 聊天背景来源可选值
         const val CHAT_BACKGROUND_NONE = "none"

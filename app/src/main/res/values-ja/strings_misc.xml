@@ -221,9 +221,4 @@
     <string name="quick_setup_continue_server">ログインへ</string>
     <string name="quick_setup_configure_chat_model">チャットモデルを設定</string>
     <string name="quick_setup_continue_without_model">モデルを設定せずに開始</string>
-    <string name="quick_setup_chat_model_title">チャットモデルを設定</string>
-    <string name="quick_setup_chat_model_description">保存後、このモデルはローカルモードの現在のチャットモデルになります。</string>
-    <string name="quick_setup_preset">プリセット</string>
-    <string name="quick_setup_preset_custom">カスタム</string>
-    <string name="quick_setup_save_model_and_start">保存して開始</string>
 </resources>

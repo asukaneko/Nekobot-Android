@@ -28,6 +28,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,9 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -156,9 +160,25 @@ internal fun SessionActionStripOverlay(
     val marginPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
     val paddingPx = with(density) { horizontalPadding.toPx() }
-    val labelWidth = nekoTextSize(64f)
-    val idealItemPx = with(density) { maxOf(68.dp.toPx(), labelWidth.toPx()) }
-    val minItemPx = with(density) { 48.dp.toPx() }
+    // 按最宽标签的实际排版宽度定每项宽度，避免固定留白把横条撑长
+    val labelStyle = TextStyle(
+        fontSize = nekoTextSize(11f),
+        lineHeight = nekoTextSize(16f)
+    )
+    val textMeasurer = rememberTextMeasurer()
+    val widestLabelPx = remember(actions, labelStyle) {
+        actions.maxOfOrNull { action ->
+            textMeasurer.measure(
+                text = AnnotatedString(action.label),
+                style = labelStyle,
+                maxLines = 1,
+                softWrap = false
+            ).size.width
+        } ?: 0
+    }
+    val labelGapPx = with(density) { 12.dp.toPx() }
+    val idealItemPx = widestLabelPx + labelGapPx
+    val minItemPx = with(density) { 44.dp.toPx() }
     val heightPx = with(density) { stripHeight.toPx() }
 
     val maxWidthPx = (containerSize.width - marginPx * 2f).coerceAtLeast(minItemPx)
@@ -237,8 +257,7 @@ internal fun SessionActionStripOverlay(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             text = action.label,
-                            fontSize = nekoTextSize(11f),
-                            lineHeight = nekoTextSize(16f),
+                            style = labelStyle,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,

@@ -222,9 +222,4 @@
     <string name="quick_setup_continue_server">Go to sign in</string>
     <string name="quick_setup_configure_chat_model">Configure chat model</string>
     <string name="quick_setup_continue_without_model">Start without a model</string>
-    <string name="quick_setup_chat_model_title">Configure chat model</string>
-    <string name="quick_setup_chat_model_description">This model will become the active chat model for local mode.</string>
-    <string name="quick_setup_preset">Preset</string>
-    <string name="quick_setup_preset_custom">Custom</string>
-    <string name="quick_setup_save_model_and_start">Save and start</string>
 </resources>

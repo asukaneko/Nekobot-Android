@@ -288,9 +288,4 @@
     <string name="quick_setup_continue_server">前往登入</string>
     <string name="quick_setup_configure_chat_model">配置對話模型</string>
     <string name="quick_setup_continue_without_model">暫不配置，開始使用</string>
-    <string name="quick_setup_chat_model_title">配置對話模型</string>
-    <string name="quick_setup_chat_model_description">儲存後將作為本地模式的當前對話模型。</string>
-    <string name="quick_setup_preset">預設</string>
-    <string name="quick_setup_preset_custom">自訂</string>
-    <string name="quick_setup_save_model_and_start">儲存並開始使用</string>
 </resources>
