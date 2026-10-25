@@ -140,7 +140,7 @@ internal object LocalDataCatalog {
             buildSet {
                 while (cursor.moveToNext()) add(cursor.getString(0))
             }
-        } - INTERNAL_DATABASE_TABLES
+        } - INTERNAL_DATABASE_TABLES - derivedTables(database)
         val unclassified = databaseTables - assigned.toSet()
         val missing = assigned.toSet() - databaseTables
         require(unclassified.isEmpty() && missing.isEmpty()) {
@@ -178,4 +178,28 @@ internal object LocalDataCatalog {
 
     // Request context is derived from this device's history/configuration and must be rebuilt after restore.
     private val INTERNAL_DATABASE_TABLES = setOf("android_metadata", "room_master_table", "companion_context_materials", "companion_transfer_jobs")
+
+    /**
+     * 运行期按需创建、内容可由源表重建的派生索引（LocalMessageSearchIndex）。
+     * 它们不属于可移植数据，也不应被「表覆盖校验」当成未登记的新表。
+     */
+    private val DERIVED_INDEX_TABLES = setOf("local_message_search", "local_message_search_dirty")
+
+    // FTS 虚表会自建影子表（data/idx/content/docsize/segdir/segments/stat/config），一并跳过。
+    private val FTS_SHADOW_TABLE_SUFFIXES = listOf(
+        "_data", "_idx", "_content", "_docsize", "_segdir", "_segments", "_stat", "_config"
+    )
+
+    private fun derivedTables(database: SupportSQLiteDatabase): Set<String> {
+        val virtualTables = database.query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%'"
+        ).use { cursor ->
+            buildSet {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
+        return DERIVED_INDEX_TABLES + virtualTables.flatMap { base ->
+            FTS_SHADOW_TABLE_SUFFIXES.map { base + it }
+        }
+    }
 }
