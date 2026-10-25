@@ -954,11 +954,17 @@ class LocalRepository(
         )
     }
 
-    /** 记录通过故障转移实际成功模型产生的 token 用量。 */
+    /**
+     * 记录通过故障转移实际成功模型产生的 token 用量。
+     *
+     * @param sessionId 归属会话；辅助任务（问候、翻译等）不属于任何会话时应传空串，
+     * 否则会污染上一个聊天会话的用量与会话缓存统计。
+     */
     private fun recordFailoverTokenUsage(
         execution: FailoverExecution<LocalAiResult>,
         source: String,
-        purpose: String
+        purpose: String,
+        sessionId: String = currentSessionId
     ) {
         val usage = execution.value.usage
         if (usage.isEmpty()) return
@@ -966,7 +972,7 @@ class LocalRepository(
         val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: usage["completion"] ?: 0
         if (input <= 0 && output <= 0) return
         appendTokenUsageRecord(
-            sessionId = currentSessionId,
+            sessionId = sessionId,
             model = execution.model.name,
             actualModel = execution.model.model,
             inputTokens = input,
@@ -9875,7 +9881,9 @@ class LocalRepository(
         )
         val execution = executeChatOnceViaQueue(messages)
         val result = execution.value
-        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
+        recordFailoverTokenUsage(
+            execution, "web", TokenStatsManager.PURPOSE_UTILITY, sessionId = ""
+        )
         val content = stripMarkdownCodeFence(result.content)
         val obj = JsonParser.parseString(content).asJsonObject
         // 填充默认值，与后端保持一致
@@ -9925,7 +9933,9 @@ class LocalRepository(
         )
         val execution = executeChatOnceViaQueue(messages)
         val result = execution.value
-        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
+        recordFailoverTokenUsage(
+            execution, "web", TokenStatsManager.PURPOSE_UTILITY, sessionId = ""
+        )
         val translated = JsonParser.parseString(stripMarkdownCodeFence(result.content)).asJsonObject
         val merged = gson.toJsonTree(character).asJsonObject
         translatableFields.forEach { field ->
@@ -9956,7 +9966,10 @@ class LocalRepository(
             requestTag = tag,
             failoverPurpose = "utility"
         )
-        recordFailoverTokenUsage(execution, source, TokenStatsManager.PURPOSE_UTILITY)
+        // 一次性文本不属于任何会话：显式传空，避免污染上一个聊天会话的统计
+        recordFailoverTokenUsage(
+            execution, source, TokenStatsManager.PURPOSE_UTILITY, sessionId = ""
+        )
         execution.value.content.trim()
     }
 
@@ -9973,7 +9986,9 @@ class LocalRepository(
         )
         val execution = executeChatOnceViaQueue(messages)
         val result = execution.value
-        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
+        recordFailoverTokenUsage(
+            execution, "web", TokenStatsManager.PURPOSE_UTILITY, sessionId = ""
+        )
         val content = stripMarkdownCodeFence(result.content)
         val parsed = JsonParser.parseString(content).asJsonObject
         val arr = parsed.get("ideas")?.takeIf { it.isJsonArray }?.asJsonArray
@@ -10040,7 +10055,9 @@ class LocalRepository(
             )
             val execution = executeChatOnceViaQueue(messages)
             val result = execution.value
-            recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
+            recordFailoverTokenUsage(
+            execution, "web", TokenStatsManager.PURPOSE_UTILITY, sessionId = ""
+        )
             val content = stripMarkdownCodeFence(result.content)
             val parsed = JsonParser.parseString(content).asJsonObject
             val arr = parsed.get("entries")?.takeIf { it.isJsonArray }?.asJsonArray
@@ -12970,7 +12987,9 @@ ${AiOutputLanguage.directive()}
         )
         val execution = executeChatOnceViaQueue(messages)
         val result = execution.value
-        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
+        recordFailoverTokenUsage(
+            execution, "web", TokenStatsManager.PURPOSE_UTILITY, sessionId = ""
+        )
         val content = stripMarkdownCodeFence(result.content)
         val obj = JsonParser.parseString(content).asJsonObject
         val name = obj.get("name")?.takeIf { !it.isJsonNull }?.asString

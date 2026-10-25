@@ -575,8 +575,8 @@ fun NekobotNavGraph() {
                 )
             }
             composable(Routes.CHARACTERS) {
-                // 主界面 Tab 的独立入口（如全局搜索直达）：侧栏形态下同样向右避让
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                // 已并入「内容库」标签：这里是独立入口（如全局搜索直达），全屏显示、不再避让侧栏
+                Box(modifier = Modifier.fillMaxSize()) {
                     CharactersScreen(
                         onOpenCharacter = { id ->
                             // 列表点击 → 只读详情视图；新建仍走编辑页
@@ -610,7 +610,8 @@ fun NekobotNavGraph() {
                 )
             }
             composable(Routes.WORLD_BOOKS) {
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                // 同上：世界书详情入口已并入「内容库」，独立进入时全屏显示
+                Box(modifier = Modifier.fillMaxSize()) {
                     WorldBooksScreen(
                         onOpenBook = { id ->
                             navController.navigate(Routes.worldBookDetail(id))
@@ -633,9 +634,9 @@ fun NekobotNavGraph() {
                     onBack = { navController.popBackStack() }
                 )
             }
-            // 用量页：从「能力」页进入的详情页，因此顶部带返回
+            // 用量页：从「能力」页进入的详情页，因此顶部带返回、也不避让侧栏
             composable(Routes.TOKENS) {
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     TokensScreen(
                         onNavigate = { route -> navController.navigate(route) },
                         onBack = { navController.popBackStack() }

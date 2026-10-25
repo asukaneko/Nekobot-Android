@@ -67,6 +67,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -429,7 +430,8 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
         greetingPeriodFor(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
     }
     val localLine = rememberLocalGreetingLine(period)
-    var line by remember(period.key, characterId) { mutableStateOf(localLine) }
+    // 用 rememberSaveable：列表滚出再滚回时保留同一句问候，不会重新随机/闪动
+    var line by rememberSaveable(period.key, characterId) { mutableStateOf(localLine) }
     var showPicker by remember { mutableStateOf(false) }
     var croppingCharacter by remember { mutableStateOf<CharacterPreset?>(null) }
     // 点击问候语：重新生成一次；长按：看完整内容
@@ -440,7 +442,10 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
         parsePortraitCrop(prefs.homePortraitCrop, characterId)
     }
 
-    LaunchedEffect(period.key, characterId, regenerateKey) {
+    LaunchedEffect(period.key, characterId, character, regenerateKey) {
+        // 角色列表还没加载完（有 id 但解析不出角色卡）时先不生成：
+        // 否则会用默认 Neko 口吻生成并缓存到该角色名下，30 分钟内都不会纠正。
+        if (characterId.isNotBlank() && character == null) return@LaunchedEffect
         // regenerateKey > 0 表示用户主动点了问候语：跳过缓存强制重新生成
         val force = regenerateKey > 0
         // 先取角色记忆（单角色会话的融合记忆 + 普通角色会话的记忆）：
@@ -741,7 +746,7 @@ private fun greetingPeriodFor(hour: Int): GreetingPeriod = when {
  */
 @Composable
 private fun rememberLocalGreetingLine(period: GreetingPeriod): String {
-    val lineRes = remember(period) {
+    val lineRes = rememberSaveable(period) {
         val history = ServiceContainer.prefs.homeGreetingHistory
             .split('|')
             .filter { it.isNotBlank() }

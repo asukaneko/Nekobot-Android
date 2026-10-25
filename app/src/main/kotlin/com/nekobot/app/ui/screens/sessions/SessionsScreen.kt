@@ -116,6 +116,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -1355,6 +1357,7 @@ internal fun SessionItem(
     val storyGraphText = stringResource(R.string.sessions_story_graph)
     val deleteText = stringResource(R.string.common_delete)
     val noMessageText = stringResource(R.string.sessions_no_message)
+    val moreActionsLabel = stringResource(R.string.shell_more_actions)
     val context = LocalContext.current
     val portraitRequest = remember(context, row.portraitUrl) {
         row.portraitUrl?.let { portraitUrl ->
@@ -1473,7 +1476,19 @@ internal fun SessionItem(
                         row.updatedAt
                     ).joinToString(" · ")
                 )
-            ),
+            )
+            // 无障碍：长按动作条也提供一个语义动作，TalkBack / 开关控制可以打开它
+            .semantics {
+                onLongClick(label = moreActionsLabel) {
+                    actionStrip.show(
+                        row.key,
+                        stripActions.value,
+                        rowBounds.top,
+                        rowBounds.bottom
+                    )
+                    true
+                }
+            },
         shape = itemShape,
         color = containerColor,
         border = null,

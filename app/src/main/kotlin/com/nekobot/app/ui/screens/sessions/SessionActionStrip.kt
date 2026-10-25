@@ -2,7 +2,9 @@ package com.nekobot.app.ui.screens.sessions
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,12 +17,14 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +40,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -75,6 +80,11 @@ internal class SessionActionStripState {
     /** 横条在窗口坐标里的实际位置，用于把手指横坐标映射成选项序号。 */
     var bounds by mutableStateOf(Rect.Zero)
 
+    // 横条回报的布局数据：窄屏时每项会被压窄、放不下时整条可横向滚动
+    private var itemWidthPx = 0f
+    private var paddingPx = 0f
+    private var scrollOffsetPx = 0f
+
     val visible: Boolean get() = actions.isNotEmpty()
 
     fun show(key: String, actions: List<SessionAction>, top: Float, bottom: Float) {
@@ -86,11 +96,20 @@ internal class SessionActionStripState {
         this.highlight = null
     }
 
+    /** 横条回报布局（每项宽度、左右内边距、滚动偏移），用于拖动命中计算。 */
+    fun reportLayout(itemWidth: Float, padding: Float, scrollOffset: Float) {
+        itemWidthPx = itemWidth
+        paddingPx = padding
+        scrollOffsetPx = scrollOffset
+    }
+
     /** 手指横坐标（窗口坐标）→ 高亮项；横条还没量出位置时保持不高亮。 */
     fun updatePointer(windowX: Float) {
-        if (bounds.width <= 0f || actions.isEmpty()) return
-        val step = bounds.width / actions.size
-        highlight = ((windowX - bounds.left) / step).toInt().coerceIn(0, actions.lastIndex)
+        if (actions.isEmpty() || bounds.width <= 0f) return
+        val step = if (itemWidthPx > 0f) itemWidthPx else bounds.width / actions.size
+        if (step <= 0f) return
+        val contentX = windowX - bounds.left - paddingPx + scrollOffsetPx
+        highlight = (contentX / step).toInt().coerceIn(0, actions.lastIndex)
     }
 
     /** 松手：只清掉高亮，横条保留（用户接下来点选项）。 */
@@ -117,8 +136,8 @@ internal class SessionActionStripState {
  * 会话列表的长按动作条。
  *
  * 用普通层叠加绘制（不是 Popup），这样长按后手指仍在同一窗口里，可以继续拖动；
- * 横条优先浮在触发行的正上方（上方空间不足时落到下方），水平居中，
- * 松手后保留，点选项执行、点空白收起。
+ * 横条优先浮在触发行的正上方（上方空间不足时落到下方），水平居中。
+ * 每项宽度按可用宽度收缩，仍放不下时整条可横向滚动，保证最右侧的动作也能点到。
  */
 @Composable
 internal fun SessionActionStripOverlay(
@@ -130,17 +149,32 @@ internal fun SessionActionStripOverlay(
     if (!state.visible) return
     val actions = state.actions
     val density = LocalDensity.current
-    val itemWidth = 46.dp
     val stripHeight = 58.dp
     val horizontalPadding = 6.dp
     val cornerRadius = 20.dp
-    val widthPx = with(density) { (itemWidth * actions.size + horizontalPadding * 2).toPx() }
-    val heightPx = with(density) { stripHeight.toPx() }
+
     val marginPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
+    val paddingPx = with(density) { horizontalPadding.toPx() }
+    val idealItemPx = with(density) { 46.dp.toPx() }
+    val minItemPx = with(density) { 34.dp.toPx() }
+    val heightPx = with(density) { stripHeight.toPx() }
+
+    val maxWidthPx = (containerSize.width - marginPx * 2f).coerceAtLeast(minItemPx)
+    // 放得下就铺满 46dp，放不下就均分可用宽度（不低于 34dp，再窄则改用横向滚动）
+    val itemPx = minOf(idealItemPx, (maxWidthPx - paddingPx * 2f) / actions.size)
+        .coerceAtLeast(minItemPx)
+    val fullWidthPx = itemPx * actions.size + paddingPx * 2f
+    val scrollable = fullWidthPx > maxWidthPx
+    val widthPx = minOf(fullWidthPx, maxWidthPx)
+    val itemWidth = with(density) { itemPx.toDp() }
+    val stripWidth = with(density) { widthPx.toDp() }
+
+    val scrollState = rememberScrollState()
+    SideEffect { state.reportLayout(itemPx, paddingPx, scrollState.value.toFloat()) }
+
     val left = ((containerSize.width - widthPx) / 2f).coerceAtLeast(marginPx)
     val maxTop = (containerSize.height - heightPx - marginPx).coerceAtLeast(marginPx)
-    // 优先浮在该行上方；上方放不下就放到行下方
     val above = state.anchorTop - origin.y - heightPx - gapPx
     val below = state.anchorBottom - origin.y + gapPx
     val top = (if (above >= marginPx) above else below).coerceIn(marginPx, maxTop)
@@ -155,7 +189,7 @@ internal fun SessionActionStripOverlay(
         Surface(
             modifier = Modifier
                 .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
-                .width(itemWidth * actions.size + horizontalPadding * 2)
+                .width(stripWidth)
                 .height(stripHeight)
                 .onGloballyPositioned { state.bounds = it.boundsInWindow() },
             shape = RoundedCornerShape(cornerRadius),
@@ -166,7 +200,10 @@ internal fun SessionActionStripOverlay(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         ) {
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = horizontalPadding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = horizontalPadding)
+                    .then(if (scrollable) Modifier.horizontalScroll(scrollState) else Modifier),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 actions.forEachIndexed { index, action ->
@@ -185,9 +222,8 @@ internal fun SessionActionStripOverlay(
                             .background(
                                 if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                             )
-                            .pointerInput(action) {
-                                detectTapGestures { state.run(index) }
-                            },
+                            // clickable 同时提供无障碍点击语义、角色与点击反馈
+                            .clickable(role = Role.Button) { state.run(index) },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {

@@ -71,7 +71,7 @@
     <string name="tokens_source_home_greeting">ホームのあいさつ</string>
     <string name="shell_greeting_full_title">あいさつ全文</string>
     <string name="shell_greeting_regenerate">再生成</string>
-    <string name="shell_library_search">キャラクター或は設定資料を検索</string>
+    <string name="shell_library_search">キャラクターまたはワールドブックを検索</string>
     <string name="shell_library_empty">見つかりませんでした</string>
     <string name="shell_library_empty_hint">別のキーワードをお試しください。</string>
 

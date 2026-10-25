@@ -63,8 +63,15 @@ fun NekoBottomNav(
             .background(MaterialTheme.colorScheme.background)
     ) {
         HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
+        // 宽屏时限宽居中：widthIn 必须在 fillMaxWidth 之前，否则传入约束已被铺满，最大宽度不生效
+        val pillMaxWidth = layout.pillMaxWidth
         Row(
             modifier = Modifier
+                .then(
+                    if (pillMaxWidth != null) {
+                        Modifier.widthIn(max = pillMaxWidth).align(Alignment.CenterHorizontally)
+                    } else Modifier
+                )
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(
@@ -72,11 +79,6 @@ fun NekoBottomNav(
                     end = layout.horizontalPadding,
                     top = 6.dp,
                     bottom = 6.dp
-                )
-                .then(
-                    if (layout.pillMaxWidth != null) {
-                        Modifier.widthIn(max = layout.pillMaxWidth).align(Alignment.CenterHorizontally)
-                    } else Modifier
                 ),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically

@@ -95,13 +95,19 @@ class GlobalSearchViewModel : BaseViewModel() {
     val recentSessions: StateFlow<List<Session>> = _recentSessions.asStateFlow()
 
     private var searchJob: Job? = null
+    private var recentJob: Job? = null
     private var searchRequest = 0
     private data class Cached(val revision: Long, val expiresAt: Long, val value: Any)
     private val catalogCache = mutableMapOf<String, Cached>()
     private val _selectedKind = MutableStateFlow<GlobalSearchKind?>(null)
     val selectedKind = _selectedKind.asStateFlow()
     fun selectKind(kind: GlobalSearchKind?) { _selectedKind.value = kind }
-    fun refresh() { catalogCache.clear(); updateQuery(_query.value) }
+    fun refresh() {
+        catalogCache.clear()
+        updateQuery(_query.value)
+        // 会话可能在别处被改名 / 归档 / 删除，刷新时一并更新「最近会话」
+        loadRecentSessions()
+    }
 
     init {
         viewModelScope.launch {
@@ -120,14 +126,20 @@ class GlobalSearchViewModel : BaseViewModel() {
 
     /** 载入「最近会话」：不过滤、按更新时间倒序取前几条。 */
     private fun loadRecentSessions() {
-        viewModelScope.launch {
-            _recentSessions.value = runCatching {
+        recentJob?.cancel()
+        val revision = ServiceContainer.dataSourceRevision.value
+        recentJob = viewModelScope.launch {
+            val rows = runCatching {
                 (ServiceContainer.unified.listSessions() as? Resource.Success<List<Session>>)?.data
             }.getOrNull()
                 .orEmpty()
                 .filter { it.isArchive != true && it.archived != true }
                 .sortedByDescending { it.updatedAt ?: it.createdAt.orEmpty() }
                 .take(RECENT_SESSION_LIMIT)
+            // 数据源在加载期间切换过就丢弃这次结果，避免旧数据源的列表覆盖新的
+            if (revision == ServiceContainer.dataSourceRevision.value) {
+                _recentSessions.value = rows
+            }
         }
     }
 

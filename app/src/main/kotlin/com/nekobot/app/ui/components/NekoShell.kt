@@ -57,10 +57,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import com.nekobot.app.R
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -151,11 +153,6 @@ val NekoContentMaxWidth: Dp = 760.dp
 /** 页面左右留白。 */
 val NekoPageHorizontalPadding: Dp = 20.dp
 
-/** 一级页面内容：白底、左右 20dp、底部避让底部导航。 */
-fun Modifier.nekoPageContent(bottomPadding: Dp): Modifier = this
-    .fillMaxWidth()
-    .widthIn(max = NekoContentMaxWidth)
-
 /**
  * 图标底座的配色档位。
  *
@@ -231,7 +228,7 @@ fun NekoDetailTopBar(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    backContentDescription: String? = null,
+    backContentDescription: String = stringResource(R.string.common_back),
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     Row(
@@ -568,6 +565,11 @@ fun NekoPrimaryAction(
     trailingChevron: Boolean = true,
     enabled: Boolean = true
 ) {
+    val foreground = if (enabled) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -579,13 +581,13 @@ fun NekoPrimaryAction(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leadingIcon != null) {
-            Icon(leadingIcon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
+            Icon(leadingIcon, contentDescription = null, tint = foreground, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(9.dp))
         }
         Text(
             text = text,
             style = nekoRowTitleStyle(),
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = foreground,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f)
         )
@@ -593,7 +595,7 @@ fun NekoPrimaryAction(
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                tint = foreground.copy(alpha = 0.9f),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -683,7 +685,7 @@ fun NekoSearchField(
             IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(32.dp)) {
                 Icon(
                     Icons.Filled.Close,
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.common_clear),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
@@ -755,13 +757,17 @@ fun NekoLetterAvatar(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = text.take(1),
+            text = text.firstCodePointText(),
             style = nekoRowTitleStyle(),
             color = fg,
             fontWeight = FontWeight.Medium
         )
     }
 }
+
+/** 取首个完整码点：emoji / 补充平面汉字不会被截成半个代理对。 */
+private fun String.firstCodePointText(): String =
+    if (isEmpty()) this else substring(0, offsetByCodePoints(0, 1))
 
 /** 图标底座（33dp / 彩色浅底），用于设置行与抽屉选项。 */
 @Composable
@@ -913,7 +919,7 @@ fun NekoSheetHeader(
         }
         NekoIconAction(
             icon = Icons.Filled.Close,
-            contentDescription = null,
+            contentDescription = stringResource(R.string.common_close),
             onClick = onClose,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
