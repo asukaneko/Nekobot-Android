@@ -84,8 +84,8 @@ internal class SessionActionStripState {
     /** 横条在窗口坐标里的实际位置，用于把手指横坐标映射成选项序号。 */
     var bounds by mutableStateOf(Rect.Zero)
 
-    // 横条回报的布局数据：窄屏时每项会被压窄、放不下时整条可横向滚动
-    private var itemWidthPx = 0f
+    // 横条回报的布局数据：每项宽度按自身文案单独计算，窄屏时会被压窄、放不下时整条可横向滚动
+    private var itemWidthsPx = emptyList<Float>()
     private var paddingPx = 0f
     private var scrollOffsetPx = 0f
 
@@ -101,8 +101,8 @@ internal class SessionActionStripState {
     }
 
     /** 横条回报布局（每项宽度、左右内边距、滚动偏移），用于拖动命中计算。 */
-    fun reportLayout(itemWidth: Float, padding: Float, scrollOffset: Float) {
-        itemWidthPx = itemWidth
+    fun reportLayout(itemWidths: List<Float>, padding: Float, scrollOffset: Float) {
+        itemWidthsPx = itemWidths
         paddingPx = padding
         scrollOffsetPx = scrollOffset
     }
@@ -110,10 +110,19 @@ internal class SessionActionStripState {
     /** 手指横坐标（窗口坐标）→ 高亮项；横条还没量出位置时保持不高亮。 */
     fun updatePointer(windowX: Float) {
         if (actions.isEmpty() || bounds.width <= 0f) return
-        val step = if (itemWidthPx > 0f) itemWidthPx else bounds.width / actions.size
-        if (step <= 0f) return
+        if (itemWidthsPx.size != actions.size) return
         val contentX = windowX - bounds.left - paddingPx + scrollOffsetPx
-        highlight = (contentX / step).toInt().coerceIn(0, actions.lastIndex)
+        // 按累加宽度定位，每项宽度不同（"置顶" 与 "取消置顶" 不共用同一个宽度）
+        var edge = 0f
+        var hit = actions.lastIndex
+        for (index in itemWidthsPx.indices) {
+            edge += itemWidthsPx[index]
+            if (contentX < edge) {
+                hit = index
+                break
+            }
+        }
+        highlight = hit.coerceIn(0, actions.lastIndex)
     }
 
     /** 松手：只清掉高亮，横条保留（用户接下来点选项）。 */
@@ -160,39 +169,46 @@ internal fun SessionActionStripOverlay(
     val marginPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
     val paddingPx = with(density) { horizontalPadding.toPx() }
-    // 按最宽标签的实际排版宽度定每项宽度，避免固定留白把横条撑长
+    // 每项按自身文案的排版宽度单独定宽：置顶态的「取消置顶」不会把「删除/更多」一起撑宽
     val labelStyle = TextStyle(
         fontSize = nekoTextSize(11f),
-        lineHeight = nekoTextSize(16f)
+        lineHeight = nekoTextSize(16f),
+        // 与主题同一字体族，保证实测宽度和实际渲染一致（自定义字体也按真实字宽算）
+        fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     )
     val textMeasurer = rememberTextMeasurer()
-    val widestLabelPx = remember(actions, labelStyle) {
-        actions.maxOfOrNull { action ->
+    val labelWidthsPx = remember(actions, labelStyle) {
+        actions.map { action ->
             textMeasurer.measure(
                 text = AnnotatedString(action.label),
                 style = labelStyle,
                 maxLines = 1,
                 softWrap = false
-            ).size.width
-        } ?: 0
+            ).size.width.toFloat()
+        }
     }
-    val labelGapPx = with(density) { 12.dp.toPx() }
-    val idealItemPx = widestLabelPx + labelGapPx
-    val minItemPx = with(density) { 44.dp.toPx() }
+    val labelGapPx = with(density) { 10.dp.toPx() }
+    val minItemPx = with(density) { 40.dp.toPx() }
     val heightPx = with(density) { stripHeight.toPx() }
 
     val maxWidthPx = (containerSize.width - marginPx * 2f).coerceAtLeast(minItemPx)
-    // 常用动作保留足够的点击宽度，极窄窗口通过横向滚动完整呈现。
-    val itemPx = minOf(idealItemPx, (maxWidthPx - paddingPx * 2f) / actions.size)
-        .coerceAtLeast(minItemPx)
-    val fullWidthPx = itemPx * actions.size + paddingPx * 2f
+    val idealWidthsPx = labelWidthsPx.map { maxOf(it + labelGapPx, minItemPx) }
+    val availablePx = (maxWidthPx - paddingPx * 2f).coerceAtLeast(0f)
+    val idealTotalPx = idealWidthsPx.sum()
+    // 窗口太窄时按比例压窄，但每项不低于最小点击宽度；仍放不下就整条横向滚动
+    val itemWidthsPx = if (idealTotalPx <= availablePx) {
+        idealWidthsPx
+    } else {
+        idealWidthsPx.map { maxOf(minItemPx, it * availablePx / idealTotalPx) }
+    }
+    val itemWidthsDp = itemWidthsPx.map { with(density) { it.toDp() } }
+    val fullWidthPx = itemWidthsPx.sum() + paddingPx * 2f
     val scrollable = fullWidthPx > maxWidthPx
     val widthPx = minOf(fullWidthPx, maxWidthPx)
-    val itemWidth = with(density) { itemPx.toDp() }
     val stripWidth = with(density) { widthPx.toDp() }
 
     val scrollState = rememberScrollState()
-    SideEffect { state.reportLayout(itemPx, paddingPx, scrollState.value.toFloat()) }
+    SideEffect { state.reportLayout(itemWidthsPx, paddingPx, scrollState.value.toFloat()) }
 
     val left = ((containerSize.width - widthPx) / 2f).coerceAtLeast(marginPx)
     val maxTop = (containerSize.height - heightPx - marginPx).coerceAtLeast(marginPx)
@@ -236,7 +252,7 @@ internal fun SessionActionStripOverlay(
                     }
                     Column(
                         modifier = Modifier
-                            .width(itemWidth)
+                            .width(itemWidthsDp[index])
                             .fillMaxHeight()
                             .padding(vertical = 5.dp)
                             .clip(RoundedCornerShape(16.dp))
