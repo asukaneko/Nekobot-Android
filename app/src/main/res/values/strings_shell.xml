@@ -55,12 +55,15 @@
 
     <!-- 会话页 banner -->
     <string name="shell_banner_continue">继续这段对话</string>
-    <string name="shell_banner_choose">更换首页会话</string>
-    <string name="shell_banner_choose_desc">选择首页 banner 展示哪一个会话。</string>
+    <string name="shell_banner_choose">更换固定角色</string>
+    <string name="shell_banner_choose_desc">选择要固定在首页 banner 的角色。</string>
     <string name="shell_banner_source_latest">最新会话</string>
     <string name="shell_banner_source_latest_desc">自动显示最近聊过的那一个</string>
-    <string name="shell_banner_no_companion">还没有单角色会话</string>
-    <string name="shell_banner_source_note">固定的会话被删除或归档后，会自动回到「最新会话」。</string>
+    <string name="shell_banner_no_companion">还没有可固定的角色</string>
+    <string name="shell_banner_source_note">角色卡删除后，会自动回到「最新会话」。</string>
+    <string name="shell_banner_no_session">还没有会话，点击新建</string>
+    <string name="shell_banner_pick_desc">进入已有会话，或新建会话。</string>
+    <string name="shell_banner_new_desc">和该角色开始一段新对话</string>
 
     <!-- 立绘取景 / 主题色默认项 -->
     <string name="shell_portrait_crop_title">调整取景</string>
@@ -115,6 +118,6 @@
     <string name="shell_profile_language">语言</string>
     <string name="shell_profile_usage">用量与账单</string>
     <!-- 会话首页 -->
-    <string name="shell_banner_pinned">固定会话</string>
+    <string name="shell_banner_pinned">固定角色</string>
     <string name="shell_action_more">更多</string>
 </resources>

@@ -49,12 +49,15 @@
 
     <!-- 会话页 banner -->
     <string name="shell_banner_continue">Continue this chat</string>
-    <string name="shell_banner_choose">Change home chat</string>
-    <string name="shell_banner_choose_desc">Pick which chat the home banner shows.</string>
+    <string name="shell_banner_choose">Change pinned character</string>
+    <string name="shell_banner_choose_desc">Pick the character to pin on the home banner.</string>
     <string name="shell_banner_source_latest">Latest chat</string>
     <string name="shell_banner_source_latest_desc">Automatically the most recent one</string>
-    <string name="shell_banner_no_companion">No one-on-one chats yet</string>
-    <string name="shell_banner_source_note">If the pinned chat is deleted or archived, it falls back to the latest chat.</string>
+    <string name="shell_banner_no_companion">No characters to pin yet</string>
+    <string name="shell_banner_source_note">If the pinned character is deleted, it falls back to the latest chat.</string>
+    <string name="shell_banner_no_session">No chats yet, tap to create</string>
+    <string name="shell_banner_pick_desc">Open an existing chat, or start a new one.</string>
+    <string name="shell_banner_new_desc">Start a new chat with this character</string>
 
     <!-- 立绘取景 / 主题色默认项 -->
     <string name="shell_portrait_crop_title">Adjust framing</string>
@@ -107,6 +110,6 @@
     <string name="shell_profile_language">Language</string>
     <string name="shell_profile_usage">Usage &amp; billing</string>
     <!-- Session home -->
-    <string name="shell_banner_pinned">Pinned chat</string>
+    <string name="shell_banner_pinned">Pinned character</string>
     <string name="shell_action_more">More</string>
 </resources>

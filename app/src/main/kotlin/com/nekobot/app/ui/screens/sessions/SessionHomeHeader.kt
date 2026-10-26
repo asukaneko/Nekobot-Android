@@ -54,6 +54,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PushPin
@@ -119,26 +120,53 @@ fun SessionHomeHeaderContent(
     characters: List<CharacterPreset>,
     totalCount: Int,
     filter: SessionFilter,
-    /** 未过滤、按更新时间倒序的会话行，供 banner 与「固定会话」选择使用。 */
+    /** 未过滤、按更新时间倒序的会话行，供 banner 与「固定角色」选择使用。 */
     homeRows: List<SessionListRow>,
     onOpenSession: (String) -> Unit,
     onNewChat: () -> Unit,
     onOpenFilter: () -> Unit,
     onSelectFilter: (SessionFilter) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 用指定角色走「新建角色会话」弹窗。 */
+    onCreateSessionForCharacter: (String) -> Unit = {}
 ) {
     val prefs = ServiceContainer.prefs
     // prefs 不是可观察状态：这里另存一份局部状态，选择后 banner 立刻刷新
     var bannerMode by remember { mutableStateOf(prefs.homeBannerMode) }
     var bannerSessionId by remember { mutableStateOf(prefs.homeBannerSessionId) }
+    var bannerCharacterId by remember { mutableStateOf(prefs.homeBannerCharacterId) }
     var showSourceSheet by remember { mutableStateOf(false) }
+    var showSessionPicker by remember { mutableStateOf(false) }
     val pinnedMode = bannerMode == PrefsManager.HOME_BANNER_PINNED
-    val bannerRow = remember(homeRows, pinnedMode, bannerSessionId) {
-        if (pinnedMode) {
-            homeRows.firstOrNull { it.id == bannerSessionId } ?: homeRows.firstOrNull()
+    // 可固定的角色直接来自内容库：即使还没有会话也能固定
+    val bannerCharacters = remember(characters, homeRows) {
+        buildBannerCharacters(characters, homeRows)
+    }
+    // 旧版本只存会话 id：角色 id 缺失时从该会话反推，保持已有固定项可用
+    val pinnedCharacterId = remember(homeRows, bannerCharacterId, bannerSessionId) {
+        bannerCharacterId.takeIf { it.isNotBlank() }
+            ?: homeRows.firstOrNull { it.id == bannerSessionId }?.characterId.orEmpty()
+    }
+    val pinnedCharacter = remember(bannerCharacters, pinnedCharacterId) {
+        bannerCharacters.firstOrNull { it.id == pinnedCharacterId }?.character
+    }
+    val pinnedSessions = remember(homeRows, pinnedCharacterId) {
+        if (pinnedCharacterId.isBlank()) {
+            emptyList()
         } else {
-            homeRows.firstOrNull()
+            homeRows.filter { it.characterId == pinnedCharacterId }
         }
+    }
+    // 固定角色在 banner 上展示的那一段会话（角色还没有会话时为 null）
+    val pinnedRow = remember(homeRows, bannerSessionId, pinnedSessions) {
+        pinnedSessions.firstOrNull { it.id == bannerSessionId }
+            ?: pinnedSessions.firstOrNull()
+            ?: homeRows.firstOrNull { it.id == bannerSessionId }
+    }
+    val pinnedActive = pinnedMode && (pinnedCharacter != null || pinnedRow != null)
+    val latestRow = homeRows.firstOrNull()
+    val pinnedCompanionSession = pinnedSessions.firstOrNull {
+        it.modeLabel == SessionModeLabel.COMPANION
     }
 
     Column(modifier.fillMaxWidth()) {
@@ -146,11 +174,44 @@ fun SessionHomeHeaderContent(
         // 问候区与 banner 之间用一条细线分隔：避免两块内容糊在一起
         NekoDivider()
         Spacer(Modifier.height(16.dp))
-        if (bannerRow != null) {
+        if (pinnedActive || latestRow != null) {
+            val shownRow = if (pinnedActive) pinnedRow else latestRow
             HomeSessionBanner(
-                row = bannerRow,
-                pinned = pinnedMode && bannerRow.id == bannerSessionId,
-                onOpen = { bannerRow.id?.let(onOpenSession) },
+                title = if (pinnedActive) {
+                    pinnedCharacter?.displayName ?: shownRow?.listTitle.orEmpty()
+                } else {
+                    shownRow?.listTitle.orEmpty()
+                },
+                // 固定角色还没有会话时，这里展示角色简介
+                subtitle = if (pinnedActive) {
+                    shownRow?.lastMessage
+                        ?: pinnedCharacter?.description?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.shell_banner_no_session)
+                } else {
+                    shownRow?.lastMessage
+                },
+                portraitUrl = if (pinnedActive) {
+                    pinnedCharacter?.let(::characterPortraitUrl) ?: shownRow?.portraitUrl
+                } else {
+                    shownRow?.portraitUrl
+                },
+                modeLabel = shownRow?.modeLabel ?: SessionModeLabel.CHARACTER,
+                isGroupSession = shownRow?.isGroupSession == true,
+                pinned = pinnedActive,
+                onOpen = {
+                    when {
+                        // 未固定：直接继续最近那段对话
+                        !pinnedActive -> shownRow?.id?.let(onOpenSession)
+                        // 单角色只有一个会话，且不能再新建：直接进入
+                        pinnedCompanionSession?.id != null -> onOpenSession(pinnedCompanionSession.id)
+                        // 角色还没有会话：直接打开「新建角色会话」弹窗
+                        pinnedCharacter != null && pinnedSessions.isEmpty() ->
+                            onCreateSessionForCharacter(pinnedCharacterId)
+                        // 老数据只有会话 id：退回直接进入
+                        pinnedCharacter == null -> shownRow?.id?.let(onOpenSession)
+                        else -> showSessionPicker = true
+                    }
+                },
                 onChoose = { showSourceSheet = true }
             )
         } else {
@@ -216,25 +277,82 @@ fun SessionHomeHeaderContent(
 
     if (showSourceSheet) {
         BannerSourceSheet(
-            rows = homeRows.filter { it.modeLabel == SessionModeLabel.COMPANION },
+            entries = bannerCharacters,
             pinnedMode = pinnedMode,
-            pinnedSessionId = bannerSessionId,
+            pinnedCharacterId = pinnedCharacterId,
             onDismiss = { showSourceSheet = false },
             onSelectLatest = {
                 bannerMode = PrefsManager.HOME_BANNER_LATEST
                 prefs.homeBannerMode = PrefsManager.HOME_BANNER_LATEST
                 showSourceSheet = false
             },
-            onSelectSession = { id ->
+            onSelectCharacter = { entry ->
                 bannerMode = PrefsManager.HOME_BANNER_PINNED
-                bannerSessionId = id
+                bannerCharacterId = entry.id
+                bannerSessionId = entry.latestSession?.id.orEmpty()
                 prefs.homeBannerMode = PrefsManager.HOME_BANNER_PINNED
-                prefs.homeBannerSessionId = id
+                prefs.homeBannerCharacterId = entry.id
+                prefs.homeBannerSessionId = entry.latestSession?.id.orEmpty()
                 showSourceSheet = false
             }
         )
     }
+
+    if (showSessionPicker && pinnedSessions.isNotEmpty()) {
+        PinnedRoleSheet(
+            characterName = pinnedCharacter?.displayName ?: pinnedSessions.first().listTitle,
+            sessions = pinnedSessions,
+            onDismiss = { showSessionPicker = false },
+            onOpenSession = { id ->
+                showSessionPicker = false
+                onOpenSession(id)
+            },
+            onCreateSession = {
+                showSessionPicker = false
+                onCreateSessionForCharacter(pinnedCharacterId)
+            }
+        )
+    }
 }
+
+/** 首页 banner 可固定的角色：角色卡 + 该角色最近的一次会话（可能还没有会话）。 */
+private data class BannerCharacterEntry(
+    val character: CharacterPreset,
+    val latestSession: SessionListRow?
+) {
+    val id: String get() = character.id.orEmpty()
+    val title: String get() = character.displayName
+    val modeLabel: SessionModeLabel
+        get() = latestSession?.modeLabel ?: SessionModeLabel.CHARACTER
+    val portraitUrl: String? get() = characterPortraitUrl(character)
+    /** 有会话时显示最新消息，还没有会话时显示角色简介。 */
+    val subtitle: String? get() = latestSession?.lastMessage
+        ?: character.description?.takeIf { it.isNotBlank() }
+}
+
+/** 内容库角色 + 每个角色最近的一段会话；有会话的角色排在前面（按最近更新）。 */
+private fun buildBannerCharacters(
+    characters: List<CharacterPreset>,
+    homeRows: List<SessionListRow>
+): List<BannerCharacterEntry> {
+    val library = characters.filter { !it.id.isNullOrBlank() }.distinctBy { it.id }
+    val libraryById = library.associateBy { it.id }
+    val latestByCharacter = LinkedHashMap<String, SessionListRow>()
+    homeRows.forEach { row ->
+        val characterId = row.characterId?.takeIf { it.isNotBlank() } ?: return@forEach
+        if (!latestByCharacter.containsKey(characterId)) latestByCharacter[characterId] = row
+    }
+    val chatted = latestByCharacter.keys.mapNotNull { libraryById[it] }
+    val never = library.filterNot { latestByCharacter.containsKey(it.id) }
+    return (chatted + never).map { character ->
+        BannerCharacterEntry(character, latestByCharacter[character.id])
+    }
+}
+
+/** 角色立绘优先，其次头像。 */
+private fun characterPortraitUrl(character: CharacterPreset): String? =
+    resolveAvatarUrl(character.portrait?.takeIf { it.isNotBlank() })
+        ?: resolveAvatarUrl(character.avatarUrl)
 
 /** 分段筛选各项与筛选枚举的对应关系（下标与控件顺序一致）。 */
 val sessionSegmentFilters = listOf(
@@ -249,12 +367,16 @@ val sessionSegmentFilters = listOf(
 /**
  * 会话 banner：把"继续上次那段对话"做成页面上最显眼的一行。
  *
- * 默认跟随最近聊过的会话；也可以在右侧「切换」里固定某个单角色会话，
- * 固定后 banner 不再随新消息跳动。
+ * 默认跟随最近聊过的会话；也可以在右侧「切换」里固定某个角色（普通角色或单角色），
+ * 固定后 banner 不再随新消息跳动；单角色直接进入会话，还没有会话的角色点击即新建。
  */
 @Composable
 private fun HomeSessionBanner(
-    row: SessionListRow,
+    title: String,
+    subtitle: String?,
+    portraitUrl: String?,
+    modeLabel: SessionModeLabel,
+    isGroupSession: Boolean,
     pinned: Boolean,
     onOpen: () -> Unit,
     onChoose: () -> Unit
@@ -271,7 +393,13 @@ private fun HomeSessionBanner(
             .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        BannerAvatar(row = row, size = 46.dp)
+        BannerAvatar(
+            portraitUrl = portraitUrl,
+            modeLabel = modeLabel,
+            fallbackText = title,
+            isGroupSession = isGroupSession,
+            size = 46.dp
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -292,7 +420,7 @@ private fun HomeSessionBanner(
                     Spacer(Modifier.width(5.dp))
                 }
                 Text(
-                    text = row.listTitle,
+                    text = title,
                     style = nekoRowTitleStyle(),
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium,
@@ -302,7 +430,7 @@ private fun HomeSessionBanner(
             }
             Spacer(Modifier.height(3.dp))
             Text(
-                text = row.lastMessage ?: stringResource(R.string.sessions_no_message),
+                text = subtitle ?: stringResource(R.string.sessions_no_message),
                 style = nekoRowSubtitleStyle(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -321,11 +449,17 @@ private fun HomeSessionBanner(
 
 /** banner 头像：与列表行同一套兜底（立绘 → 首字 → 图标）。 */
 @Composable
-private fun BannerAvatar(row: SessionListRow, size: Dp) {
+private fun BannerAvatar(
+    portraitUrl: String?,
+    modeLabel: SessionModeLabel,
+    fallbackText: String,
+    isGroupSession: Boolean,
+    size: Dp
+) {
     val context = LocalContext.current
-    val modeColor = row.modeLabel.color()
-    val request = remember(context, row.portraitUrl) {
-        row.portraitUrl?.let {
+    val modeColor = modeLabel.color()
+    val request = remember(context, portraitUrl) {
+        portraitUrl?.let {
             ImageRequest.Builder(context)
                 .data(it)
                 .crossfade(true)
@@ -347,8 +481,8 @@ private fun BannerAvatar(row: SessionListRow, size: Dp) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
-            row.modeLabel == SessionModeLabel.COMPANION -> Text(
-                text = row.listTitle.takeIf(String::isNotBlank)
+            modeLabel == SessionModeLabel.COMPANION -> Text(
+                text = fallbackText.takeIf(String::isNotBlank)
                     ?.let { it.substring(0, it.offsetByCodePoints(0, 1)) }
                     ?: stringResource(R.string.single_role_c),
                 style = nekoRowTitleStyle(),
@@ -356,7 +490,7 @@ private fun BannerAvatar(row: SessionListRow, size: Dp) {
             )
             else -> Icon(
                 painter = rememberVectorPainter(
-                    if (row.isGroupSession) Icons.Outlined.Group else Icons.AutoMirrored.Outlined.Chat
+                    if (isGroupSession) Icons.Outlined.Group else Icons.AutoMirrored.Outlined.Chat
                 ),
                 contentDescription = null,
                 tint = modeColor,
@@ -366,15 +500,15 @@ private fun BannerAvatar(row: SessionListRow, size: Dp) {
     }
 }
 
-/** banner 来源选择：最新会话 / 固定一个单角色会话。 */
+/** banner 来源选择：最新会话 / 固定一个角色（含还没有会话的角色）。 */
 @Composable
 private fun BannerSourceSheet(
-    rows: List<SessionListRow>,
+    entries: List<BannerCharacterEntry>,
     pinnedMode: Boolean,
-    pinnedSessionId: String,
+    pinnedCharacterId: String,
     onDismiss: () -> Unit,
     onSelectLatest: () -> Unit,
-    onSelectSession: (String) -> Unit
+    onSelectCharacter: (BannerCharacterEntry) -> Unit
 ) {
     NekoSheet(onDismissRequest = onDismiss) {
         NekoSheetHeader(
@@ -388,9 +522,9 @@ private fun BannerSourceSheet(
             onClick = onSelectLatest,
             trailing = { NekoCheckMark(selected = !pinnedMode) },
             showChevron = false,
-            showDivider = rows.isNotEmpty()
+            showDivider = entries.isNotEmpty()
         )
-        if (rows.isEmpty()) {
+        if (entries.isEmpty()) {
             Text(
                 text = stringResource(R.string.shell_banner_no_companion),
                 style = nekoRowSubtitleStyle(),
@@ -399,15 +533,22 @@ private fun BannerSourceSheet(
             )
         } else {
             LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
-                items(rows, key = { it.key }) { row ->
-                    val id = row.id.orEmpty()
+                items(entries, key = { it.id }) { entry ->
                     NekoChoiceRow(
-                        title = row.listTitle,
-                        subtitle = row.lastMessage,
-                        onClick = { if (id.isNotEmpty()) onSelectSession(id) },
-                        leading = { BannerAvatar(row = row, size = 38.dp) },
+                        title = entry.title,
+                        subtitle = entry.subtitle,
+                        onClick = { onSelectCharacter(entry) },
+                        leading = {
+                            BannerAvatar(
+                                portraitUrl = entry.portraitUrl,
+                                modeLabel = entry.modeLabel,
+                                fallbackText = entry.title,
+                                isGroupSession = false,
+                                size = 38.dp
+                            )
+                        },
                         trailing = {
-                            NekoCheckMark(selected = pinnedMode && id == pinnedSessionId)
+                            NekoCheckMark(selected = pinnedMode && entry.id == pinnedCharacterId)
                         },
                         showChevron = false,
                         showDivider = true
@@ -416,6 +557,74 @@ private fun BannerSourceSheet(
             }
         }
         NekoSheetNote(stringResource(R.string.shell_banner_source_note))
+    }
+}
+
+/** 固定角色被点击后的选择：进入该角色的某个会话，或新建会话。 */
+@Composable
+private fun PinnedRoleSheet(
+    characterName: String,
+    sessions: List<SessionListRow>,
+    onDismiss: () -> Unit,
+    onOpenSession: (String) -> Unit,
+    onCreateSession: () -> Unit
+) {
+    NekoSheet(onDismissRequest = onDismiss) {
+        NekoSheetHeader(
+            title = characterName,
+            description = stringResource(R.string.shell_banner_pick_desc),
+            onClose = onDismiss
+        )
+        NekoChoiceRow(
+            title = stringResource(R.string.sessions_new),
+            subtitle = stringResource(R.string.shell_banner_new_desc),
+            onClick = onCreateSession,
+            leading = {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            },
+            showChevron = false,
+            showDivider = sessions.isNotEmpty()
+        )
+        if (sessions.isNotEmpty()) {
+            LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                items(sessions, key = { it.key }) { row ->
+                    val id = row.id.orEmpty()
+                    NekoChoiceRow(
+                        title = row.name.ifBlank { row.listTitle },
+                        // 同一角色的会话名常常相同，带上日期才好区分
+                        subtitle = listOfNotNull(
+                            row.listDate,
+                            row.lastMessage ?: stringResource(R.string.sessions_no_message)
+                        ).joinToString(" · "),
+                        onClick = { if (id.isNotEmpty()) onOpenSession(id) },
+                        leading = {
+                            BannerAvatar(
+                                portraitUrl = row.portraitUrl,
+                                modeLabel = row.modeLabel,
+                                fallbackText = row.listTitle,
+                                isGroupSession = row.isGroupSession,
+                                size = 38.dp
+                            )
+                        },
+                        showChevron = false,
+                        showDivider = true
+                    )
+                }
+            }
+        }
     }
 }
 

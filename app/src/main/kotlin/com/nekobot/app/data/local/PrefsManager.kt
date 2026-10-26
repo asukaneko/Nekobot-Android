@@ -1023,7 +1023,7 @@ class PrefsManager(context: Context) {
 
     // ============ 会话页 banner ============
 
-    /** banner 展示来源：LATEST（最新会话）/ PINNED（固定某个单角色会话）。 */
+    /** banner 展示来源：LATEST（最新会话）/ PINNED（固定某个角色）。 */
     var homeBannerMode: String
         get() = prefs.getString(KEY_HOME_BANNER_MODE, HOME_BANNER_LATEST) ?: HOME_BANNER_LATEST
         set(value) {
@@ -1031,7 +1031,14 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_HOME_BANNER_MODE, normalized).apply()
         }
 
-    /** 固定展示的会话 ID（[homeBannerMode] 为 PINNED 时生效）。 */
+    /** 固定角色 ID（[homeBannerMode] 为 PINNED 时生效）。 */
+    var homeBannerCharacterId: String
+        get() = prefs.getString(KEY_HOME_BANNER_CHARACTER, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_BANNER_CHARACTER, value).apply()
+        }
+
+    /** 固定角色在 banner 上展示的会话 ID（[homeBannerMode] 为 PINNED 时生效）。 */
     var homeBannerSessionId: String
         get() = prefs.getString(KEY_HOME_BANNER_SESSION, "").orEmpty()
         set(value) {
@@ -1678,6 +1685,7 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_WELCOME_KEY = "agent_welcome_key"
         private const val KEY_HOME_BANNER_MODE = "home_banner_mode"
         private const val KEY_HOME_BANNER_SESSION = "home_banner_session"
+        private const val KEY_HOME_BANNER_CHARACTER = "home_banner_character"
         private const val KEY_WORLD_BOOK_VIEW_MODE = "world_book_view_mode"
         private const val KEY_ACHIEVEMENT_VIEW_MODE = "achievement_view_mode"
         private const val DEFAULT_SERVER = "https://localhost:5000"

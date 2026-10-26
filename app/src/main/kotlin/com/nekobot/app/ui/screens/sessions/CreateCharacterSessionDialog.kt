@@ -63,15 +63,18 @@ internal fun CreateCharacterSessionDialog(
     userId: String?,
     onDismiss: () -> Unit,
     onCreate: (CreateSessionRequest) -> Unit,
-    onLoadCharacters: () -> Unit
+    onLoadCharacters: () -> Unit,
+    /** 预先选中的角色（首页 banner 固定角色直接新建时传入）。 */
+    initialCharacterId: String? = null
 ) {
     val defaultName = stringResource(R.string.sessions_new_default)
     val characters = remember(state.characters) {
         state.characters.filter { !it.id.isNullOrBlank() }.distinctBy { it.id }
     }
+    val presetCharacterId = initialCharacterId?.takeIf { it.isNotBlank() }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedCharacter = characters.firstOrNull { it.id == selectedId }
-    var choosingCharacter by rememberSaveable { mutableStateOf(true) }
+    var choosingCharacter by rememberSaveable { mutableStateOf(presetCharacterId == null) }
     var query by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var firstMessage by rememberSaveable { mutableStateOf("") }
@@ -99,6 +102,20 @@ internal fun CreateCharacterSessionDialog(
     LaunchedEffect(characters, state.loading) {
         if (!state.loading && selectedId != null && selectedCharacter == null) {
             selectedId = null
+            choosingCharacter = true
+        }
+    }
+    // 预选角色：角色列表加载完成后自动选中；角色卡已不存在则退回选择列表
+    LaunchedEffect(characters, state.loading, presetCharacterId) {
+        if (presetCharacterId == null) return@LaunchedEffect
+        val preset = characters.firstOrNull { it.id == presetCharacterId }
+        if (preset != null) {
+            if (selectedId == null) {
+                selectedId = preset.id
+                if (!firstMessageEdited) firstMessage = preset.firstMessage.orEmpty()
+                choosingCharacter = false
+            }
+        } else if (!state.loading && state.characters.isNotEmpty()) {
             choosingCharacter = true
         }
     }

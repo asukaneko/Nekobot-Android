@@ -42,6 +42,8 @@ data class SessionListRow(
     /** 群聊会话：列表项无立绘时回退到群聊图标而非默认聊天图标。 */
     val isGroupSession: Boolean = false,
     val modeLabel: SessionModeLabel = SessionModeLabel.CHARACTER,
+    /** 绑定的角色 ID（角色会话/单角色会话），首页「固定角色」按它聚合。 */
+    val characterId: String? = null,
     val listTitleOverride: String? = null
 ) {
     /** Tool chats are tasks; companion and character chats are people. */
@@ -172,6 +174,12 @@ fun buildSessionListRows(
             ?.takeIf { it.isNotBlank() }
             ?: fallbackCharacter?.avatarUrl?.takeIf { it.isNotBlank() }
         val sessionId = session.id?.takeIf { it.isNotBlank() }
+        val modeLabel = when {
+            session.isAgentCharacterSession() -> SessionModeLabel.COMPANION
+            isAgentSession -> SessionModeLabel.AGENT
+            isGroupSession -> SessionModeLabel.GROUP
+            else -> SessionModeLabel.CHARACTER
+        }
 
         SessionListRow(
             key = sessionId
@@ -192,11 +200,9 @@ fun buildSessionListRows(
             isAgentSession = isAgentSession,
             inheritCharacter = inheritCharacter,
             isGroupSession = isGroupSession,
-            modeLabel = when {
-                session.isAgentCharacterSession() -> SessionModeLabel.COMPANION
-                isAgentSession -> SessionModeLabel.AGENT
-                isGroupSession -> SessionModeLabel.GROUP
-                else -> SessionModeLabel.CHARACTER
+            modeLabel = modeLabel,
+            characterId = session.characterId?.takeIf {
+                it.isNotBlank() && (modeLabel == SessionModeLabel.CHARACTER || modeLabel == SessionModeLabel.COMPANION)
             }
         )
     }

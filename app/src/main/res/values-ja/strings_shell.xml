@@ -49,12 +49,15 @@
 
     <!-- 会话页 banner -->
     <string name="shell_banner_continue">この会話を続ける</string>
-    <string name="shell_banner_choose">ホームの会話を変更</string>
-    <string name="shell_banner_choose_desc">ホームのバナーに表示する会話を選びます。</string>
+    <string name="shell_banner_choose">固定キャラを変更</string>
+    <string name="shell_banner_choose_desc">ホームバナーに固定するキャラを選びます。</string>
     <string name="shell_banner_source_latest">最新の会話</string>
     <string name="shell_banner_source_latest_desc">最近話した会話を自動で表示</string>
-    <string name="shell_banner_no_companion">単独キャラの会話がまだありません</string>
-    <string name="shell_banner_source_note">固定した会話が削除・アーカイブされると「最新の会話」に戻ります。</string>
+    <string name="shell_banner_no_companion">固定できるキャラがまだありません</string>
+    <string name="shell_banner_source_note">固定したキャラが削除されると「最新の会話」に戻ります。</string>
+    <string name="shell_banner_no_session">まだ会話がありません。タップして作成</string>
+    <string name="shell_banner_pick_desc">既存の会話を開くか、新規作成します。</string>
+    <string name="shell_banner_new_desc">このキャラと新しい会話を始める</string>
 
     <!-- 立绘取景 / 主题色默认项 -->
     <string name="shell_portrait_crop_title">表示範囲を調整</string>
@@ -107,6 +110,6 @@
     <string name="shell_profile_language">言語</string>
     <string name="shell_profile_usage">使用量と請求</string>
     <!-- 会話ホーム -->
-    <string name="shell_banner_pinned">固定した会話</string>
+    <string name="shell_banner_pinned">固定キャラ</string>
     <string name="shell_action_more">その他</string>
 </resources>

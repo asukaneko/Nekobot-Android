@@ -518,6 +518,8 @@ fun SessionsScreen(
     var showCreateModeMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var createConfigMode by rememberSaveable { mutableStateOf<String?>(null) }
+    // 新建角色会话时预选的角色（如首页 banner 固定角色直接新建）
+    var createCharacterId by rememberSaveable { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<SessionListRow?>(null) }
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
     var showSearchPanel by rememberSaveable { mutableStateOf(false) }
@@ -634,6 +636,7 @@ fun SessionsScreen(
                                     },
                                     onClick = {
                                         showCreateModeMenu = false
+                                        createCharacterId = null
                                         createConfigMode = "character"
                                     }
                                 )
@@ -670,6 +673,7 @@ fun SessionsScreen(
                                     },
                                     onClick = {
                                         showCreateModeMenu = false
+                                        createCharacterId = null
                                         createConfigMode = "group"
                                     }
                                 )
@@ -699,7 +703,10 @@ fun SessionsScreen(
                     },
                     onQuickAction = { action ->
                         when (action) {
-                            DashboardQuickAction.NEW_SESSION -> createConfigMode = "character"
+                            DashboardQuickAction.NEW_SESSION -> {
+                                createCharacterId = null
+                                createConfigMode = "character"
+                            }
                             DashboardQuickAction.AI_CONFIG -> onNavigate(Routes.AI_CONFIG_CENTER)
                             DashboardQuickAction.WORLD_BOOKS -> onNavigate(Routes.WORLD_BOOKS)
                             DashboardQuickAction.SETTINGS -> onNavigate(Routes.SETTINGS)
@@ -741,7 +748,11 @@ fun SessionsScreen(
                     onOpenSession = handleOpenChat,
                     onNewChat = { showCreateModeMenu = true },
                     onOpenFilter = { showSearchPanel = true },
-                    onSelectFilter = viewModel::setFilter
+                    onSelectFilter = viewModel::setFilter,
+                    onCreateSessionForCharacter = { characterId ->
+                        createCharacterId = characterId.takeIf { it.isNotBlank() }
+                        createConfigMode = "character"
+                    }
                 )
             }
             Box(
@@ -893,8 +904,13 @@ fun SessionsScreen(
         if (sessionMode == "group") {
             CreateGroupSessionDialog(
                 characters = sessionCreationState.characters,
-                onDismiss = { createConfigMode = null },
-                onCreate = { req -> viewModel.createSession(req) { createConfigMode = null } },
+                onDismiss = { createConfigMode = null; createCharacterId = null },
+                onCreate = { req ->
+                    viewModel.createSession(req) {
+                        createConfigMode = null
+                        createCharacterId = null
+                    }
+                },
                 onLoadCharacters = { viewModel.loadSessionCreationCharacters() }
             )
         } else {
@@ -902,9 +918,15 @@ fun SessionsScreen(
                 state = sessionCreationState,
                 isLocalMode = appMode == AppMode.LOCAL,
                 userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() },
-                onDismiss = { createConfigMode = null },
-                onCreate = { req -> viewModel.createSession(req) { createConfigMode = null } },
-                onLoadCharacters = { viewModel.loadSessionCreationCharacters() }
+                onDismiss = { createConfigMode = null; createCharacterId = null },
+                onCreate = { req ->
+                    viewModel.createSession(req) {
+                        createConfigMode = null
+                        createCharacterId = null
+                    }
+                },
+                onLoadCharacters = { viewModel.loadSessionCreationCharacters() },
+                initialCharacterId = createCharacterId
             )
         }
     }
