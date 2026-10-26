@@ -1,8 +1,9 @@
 package com.nekobot.app.ui.screens.chat
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,7 +44,7 @@ import com.nekobot.app.ui.components.GlassCard
 
 /** 新 Agent 会话欢迎页的界面状态。 */
 data class AgentWelcomeState(
-    /** 四条起步候选；生成完成前先展示本地默认项，避免空白。 */
+    /** 四条起步候选；生成完成前为空，界面用骨架占位。 */
     val suggestions: List<String> = emptyList(),
     val loading: Boolean = false,
     /** 全局 Agent 记忆的字符数：只用于副标题提示与空记忆文案。 */
@@ -130,20 +131,34 @@ internal fun AgentWelcomePage(
                 }
             }
             Spacer(Modifier.height(6.dp))
-            if (state.suggestions.isEmpty() && state.loading) {
-                repeat(4) {
-                    AgentWelcomeSkeletonCard()
-                    Spacer(Modifier.height(10.dp))
-                }
+            // 骨架 → 生成结果、以及「换一批」后的内容变化都用淡入淡出，避免突然替换造成闪烁。
+            val visibleSuggestions = if (state.suggestions.isEmpty() && state.loading) {
+                emptyList()
             } else {
-                state.suggestions.forEachIndexed { index, suggestion ->
-                    AgentWelcomeSuggestionCard(
-                        index = index,
-                        text = suggestion,
-                        sendLabel = sendLabel,
-                        onClick = { onSelect(suggestion) }
-                    )
-                    Spacer(Modifier.height(10.dp))
+                state.suggestions
+            }
+            Crossfade(
+                targetState = visibleSuggestions,
+                animationSpec = tween(durationMillis = 220),
+                label = "agent_welcome_suggestions"
+            ) { suggestions ->
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (suggestions.isEmpty()) {
+                        repeat(4) {
+                            AgentWelcomeSkeletonCard()
+                            Spacer(Modifier.height(10.dp))
+                        }
+                    } else {
+                        suggestions.forEachIndexed { index, suggestion ->
+                            AgentWelcomeSuggestionCard(
+                                index = index,
+                                text = suggestion,
+                                sendLabel = sendLabel,
+                                onClick = { onSelect(suggestion) }
+                            )
+                            Spacer(Modifier.height(10.dp))
+                        }
+                    }
                 }
             }
         }

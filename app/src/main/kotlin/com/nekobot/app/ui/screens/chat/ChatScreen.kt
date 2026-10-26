@@ -364,8 +364,14 @@ fun ChatScreen(
     val visibleMessages = deduplicateMessagesById(messages).filterNot { it.isAgentContextSummary() }
     // 新 Agent 会话欢迎页：普通 Agent 会话（非角色继承、非陪伴聊天）还没有任何消息时展示。
     val agentWelcomeState by viewModel.agentWelcomeState.collectAsStateWithLifecycle()
-    val showAgentWelcome = visibleMessages.isEmpty() &&
-        !loading &&
+    val initialDataReady by viewModel.initialDataReady.collectAsStateWithLifecycle()
+    val activeSessionId by viewModel.activeSessionId.collectAsStateWithLifecycle()
+    // 双栏复用同一 VM 时，init 切换会话前先保持加载态，避免闪出上一个会话的欢迎页/消息。
+    val sessionStateReady = activeSessionId == sessionId
+    val showAgentWelcome = sessionStateReady &&
+        initialDataReady &&
+        visibleMessages.isEmpty() &&
+        (session?.messageCount ?: 0) == 0 &&
         session?.sessionMode.equals("agent", ignoreCase = true) &&
         !inheritsCharacter &&
         !companionChat
@@ -1225,7 +1231,9 @@ fun ChatScreen(
                         )
                     )
             )
-            if (visibleMessages.isEmpty() && loading) {
+            val waitingForInitialData = !initialDataReady ||
+                (loading && (session?.messageCount ?: 0) > 0)
+            if (!sessionStateReady || (visibleMessages.isEmpty() && waitingForInitialData)) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,

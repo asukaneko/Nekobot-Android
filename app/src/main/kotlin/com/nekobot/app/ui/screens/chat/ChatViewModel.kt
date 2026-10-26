@@ -475,9 +475,30 @@ class ChatViewModel : BaseViewModel() {
      * 先展示本地默认候选（或用缓存）避免空白，AI 结果返回后再替换；
      * 状态放在 VM 里而不是 Composable 内，滚动/旋转/重新进入页面都不会重复生成。
      */
-    private val _agentWelcomeState = MutableStateFlow(AgentWelcomeState())
+    private val _agentWelcomeState = MutableStateFlow(AgentWelcomeState(loading = true))
     val agentWelcomeState: StateFlow<AgentWelcomeState> = _agentWelcomeState.asStateFlow()
     private var agentWelcomeJob: Job? = null
+
+    /**
+     * 会话资料与首屏消息是否都已就绪。
+     *
+     * 进入会话时 session / messages 是并行加载的，首帧两者都还是空的。空态（尤其是欢迎页）
+     * 若直接按「消息为空」渲染，会先闪一下旧空态或加载态。界面统一等这个标记为 true 后再
+     * 决定显示欢迎页、普通空态还是消息列表。
+     */
+    private val _initialDataReady = MutableStateFlow(false)
+    val initialDataReady: StateFlow<Boolean> = _initialDataReady.asStateFlow()
+    private var initialSessionReady = false
+    private var initialMessagesReady = false
+
+    /**
+     * 当前 VM 已经切换到的会话 id。
+     *
+     * 平板双栏等场景会复用同一个 ChatViewModel 打开不同会话；界面用它与目标 sessionId 比对，
+     * 在 init 尚未完成切换的一两帧里先显示加载态，避免闪出上一个会话的内容。
+     */
+    private val _activeSessionId = MutableStateFlow("")
+    val activeSessionId: StateFlow<String> = _activeSessionId.asStateFlow()
 
     /**
      * Agent 会话生成期间的排队消息队列（FIFO）。
@@ -743,6 +764,7 @@ class ChatViewModel : BaseViewModel() {
             ChatSessionManager.release(currentSessionId)
         }
         currentSessionId = sessionId
+        _activeSessionId.value = sessionId
         messageImagesJob?.cancel()
         messageImagesJob = viewModelScope.launch {
             unified.observeMessageImages(sessionId).collect { images ->
@@ -758,6 +780,14 @@ class ChatViewModel : BaseViewModel() {
         // 获取（或创建）跨 VM 共享的运行时状态，引用计数 +1
         // 通过 _runtime.value 赋值使 Compose 的 flatMapLatest 自动切换到新 runtime
         _runtime.value = ChatSessionManager.acquire(sessionId)
+        // 首屏就绪标记按会话重置：session 与消息都返回后才允许渲染欢迎页/普通空态，
+        // 避免进入瞬间先闪一帧「消息为空」的旧空态。
+        initialSessionReady = false
+        initialMessagesReady = false
+        _initialDataReady.value = false
+        // 欢迎候选按会话重置：避免同一 VM 切换会话时短暂显示上一个会话的候选。
+        agentWelcomeJob?.cancel()
+        _agentWelcomeState.value = AgentWelcomeState(loading = true)
         if (runtime.delayReply.hasPending() && runtime.delayReplyJob?.isActive != true) {
             runtime.delayReply.currentPlan(elapsedRealtimeMs())?.let { installDelayReplyPlan(runtime, it) }
         }
@@ -808,6 +838,9 @@ class ChatViewModel : BaseViewModel() {
         // 否则保留 runtime 中的流式状态（用户切回正在生成的会话时能看到进度）。
         if (runtime.shouldLoadPersistedMessagesOnEntry()) {
             loadMessages()
+        } else {
+            // 不重拉消息时，runtime 已经持有可直接渲染的内容，首屏无需再等待消息加载。
+            markInitialMessagesReady(sessionId)
         }
         if (!isLocalMode) {
             connectSocket(sessionId)
@@ -1451,11 +1484,27 @@ class ChatViewModel : BaseViewModel() {
         showToast(string(R.string.chat_ask_question_skipped))
     }
 
+    /** 会话资料已返回：首屏就绪的一半（失败也视为返回，避免空态一直转圈）。 */
+    private fun markInitialSessionReady(sessionId: String) {
+        if (sessionId != currentSessionId || initialSessionReady) return
+        initialSessionReady = true
+        _initialDataReady.value = initialSessionReady && initialMessagesReady
+    }
+
+    /** 首屏消息已返回（或已确认无需加载）：另一半就绪。 */
+    private fun markInitialMessagesReady(sessionId: String) {
+        if (sessionId != currentSessionId || initialMessagesReady) return
+        initialMessagesReady = true
+        _initialDataReady.value = initialSessionReady && initialMessagesReady
+    }
+
     /** 加载会话信息。 */
     private fun loadSession(sessionId: String) {
         launchResult(
             block = { unified.getSession(sessionId) },
             onSuccess = {
+                // 双栏复用同一 VM 时旧会话的请求可能晚于切换返回，丢弃以免覆盖新会话资料。
+                if (currentSessionId != sessionId) return@launchResult
                 val companionJustResolved = _session.value?.companionMode != true && it?.companionMode == true
                 _session.value = it
                 // Session and message loads run in parallel on entry. Re-read saved reasoning
@@ -1480,6 +1529,11 @@ class ChatViewModel : BaseViewModel() {
                         if (isLocalMode) loadLocalPlotChoices() else loadPlotChoices()
                     }
                 }
+                markInitialSessionReady(sessionId)
+            },
+            onError = { message ->
+                showError(message)
+                markInitialSessionReady(sessionId)
             }
         )
     }
@@ -1637,7 +1691,12 @@ class ChatViewModel : BaseViewModel() {
                     }
                 }
                 _ttsStates.value = nextTtsStates
+                markInitialMessagesReady(requestedSessionId)
                 }
+            },
+            onError = { message ->
+                showError(message)
+                markInitialMessagesReady(requestedSessionId)
             }
         )
     }
@@ -4173,9 +4232,9 @@ class ChatViewModel : BaseViewModel() {
     /**
      * 准备新 Agent 会话欢迎页的四条候选。
      *
-     * 1. 先读取全局 Agent 记忆，并展示上次缓存的候选（无缓存时用本地默认候选）；
-     * 2. 本地模式下调用模型按记忆生成，成功则替换并写入缓存；
-     * 3. 失败或服务器模式保持默认候选，不阻塞输入与发送。
+     * 1. 先读取全局 Agent 记忆，有缓存时直接展示缓存候选；
+     * 2. 无缓存时本地模式先用骨架占位再调用模型生成，服务器模式直接展示默认候选；
+     * 3. 生成失败则回退默认候选，不阻塞输入与发送。
      *
      * @param force true 表示用户点「换一批」，忽略缓存与当前结果重新生成。
      */
@@ -4195,7 +4254,7 @@ class ChatViewModel : BaseViewModel() {
             } else {
                 emptyList()
             }
-            // 有缓存直接展示，避免每次进入会话都等一次模型；无缓存先放默认项。
+            // 有缓存直接展示，避免每次进入会话都等一次模型。
             if (cached.isNotEmpty()) {
                 _agentWelcomeState.value = AgentWelcomeState(
                     suggestions = cached,
@@ -4204,22 +4263,32 @@ class ChatViewModel : BaseViewModel() {
                 )
                 return@launch
             }
+            // 服务器模式没有通用补全接口，直接展示默认候选，不进入加载态。
+            if (!prefs.isLocalMode) {
+                _agentWelcomeState.value = AgentWelcomeState(
+                    suggestions = _agentWelcomeState.value.suggestions.ifEmpty { defaults },
+                    loading = false,
+                    memoryChars = memory.length
+                )
+                return@launch
+            }
+            // 首次生成用骨架占位；「换一批」保留当前内容，只显示加载指示，避免内容闪掉。
             _agentWelcomeState.value = AgentWelcomeState(
-                suggestions = defaults,
+                suggestions = if (force) _agentWelcomeState.value.suggestions else emptyList(),
                 loading = true,
                 memoryChars = memory.length
             )
-            val generated = if (prefs.isLocalMode) {
-                val result = runCatching {
-                    ServiceContainer.unified.generateAgentWelcomeSuggestions(memory)
-                }.getOrNull()
-                (result as? Resource.Success<List<String>>)?.data.orEmpty()
+            val generated = runCatching {
+                ServiceContainer.unified.generateAgentWelcomeSuggestions(memory)
+            }.getOrNull().let { (it as? Resource.Success<List<String>>)?.data.orEmpty() }
+            val finalItems = if (generated.isNotEmpty()) {
+                (generated.filter { it.isNotBlank() } + defaults)
+                    .distinct()
+                    .take(AgentWelcomeSuggestions.COUNT)
             } else {
-                emptyList()
+                // 生成失败：「换一批」保留原候选，首次进入回退默认候选。
+                _agentWelcomeState.value.suggestions.ifEmpty { defaults }
             }
-            val finalItems = (generated.filter { it.isNotBlank() } + defaults)
-                .distinct()
-                .take(AgentWelcomeSuggestions.COUNT)
             if (generated.isNotEmpty()) {
                 prefs.agentWelcomeSuggestions = AgentWelcomeSuggestions.encode(finalItems)
                 prefs.agentWelcomeKey = cacheKey
