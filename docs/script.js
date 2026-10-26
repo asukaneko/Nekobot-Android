@@ -56,6 +56,20 @@
   // 模拟聊天的发言方顺序（ai / me 交替，与文案条数一一对应）
   const CHAT_FROM_PATTERN = ['ai', 'me', 'ai', 'ai', 'me', 'ai', 'ai'];
 
+  // 截图语言：中文简繁用中文截图，其余语言用英文截图
+  const SHOT_LANGS = { 'zh-CN': 'zh', 'zh-TW': 'zh', 'en': 'en', 'ja': 'en', 'ko': 'en' };
+
+  function applyShotLang() {
+    const lang = SHOT_LANGS[currentLang] || 'en';
+    $$('img[data-shot-zh][data-shot-en]').forEach((img) => {
+      const src = lang === 'zh' ? img.dataset.shotZh : img.dataset.shotEn;
+      if (src && img.getAttribute('src') !== src) {
+        img.src = src;
+        img.loading = 'eager';
+      }
+    });
+  }
+
   function applyI18n() {
     const dict = I18N_DICT[currentLang] || I18N_DICT[I18N_DEFAULT] || {};
     const fallback = I18N_DICT[I18N_DEFAULT] || {};
@@ -82,6 +96,7 @@
     const metaDesc = $('meta[name="description"]');
     if (metaDesc) metaDesc.setAttribute('content', t('meta.description'));
     document.documentElement.lang = LANG_HTML[currentLang] || I18N_DEFAULT;
+    applyShotLang();
     const rawChat = Array.isArray(dict.chat) && dict.chat.length ? dict.chat : (fallback.chat || []);
     chatScript = rawChat.map((text, i) => ({ from: CHAT_FROM_PATTERN[i % CHAT_FROM_PATTERN.length], text }));
     updateLangSwitcher();

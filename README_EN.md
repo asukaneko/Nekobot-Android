@@ -27,14 +27,14 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
 
 <table>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/sessions.jpg" alt="Sessions" /><br /><sub>Session Management</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/chat.jpg" alt="Character Chat" /><br /><sub>Immersive Chat</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/characters.jpg" alt="Character Cards" /><br /><sub>Character Cards</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/会话.jpg" alt="Sessions" /><br /><sub>Session Management</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/聊天.jpg" alt="Character Chat" /><br /><sub>Immersive Chat</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/角色卡.jpg" alt="Character Cards" /><br /><sub>Character Cards</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/dashboard-widget.jpg" alt="Dashboard Widget" /><br /><sub>Dashboard Widget</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/usage.jpg" alt="Token Usage" /><br /><sub>Token Usage</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="More" /><br /><sub>More Features</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/数据概览负一屏.jpg" alt="Dashboard Widget" /><br /><sub>Dashboard Widget</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/token用量.jpg" alt="Token Usage" /><br /><sub>Token Usage</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/我的.jpg" alt="Me" /><br /><sub>Me & Settings</sub></td>
   </tr>
 </table>
 
@@ -45,14 +45,14 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
 
 <table>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/worldbooks.jpg" alt="World Books" /><br /><sub>World Books</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/memories.jpg" alt="Character Memory" /><br /><sub>Character Memory</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/achievements.jpg" alt="Achievements" /><br /><sub>Achievement System</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/世界书.jpg" alt="World Books" /><br /><sub>World Books</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/角色记忆.jpg" alt="Character Memory" /><br /><sub>Character Memory</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/能力.jpg" alt="Capability Hub" /><br /><sub>Capability Hub</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/state-history-trend.jpg" alt="State Trends" /><br /><sub>Trends & Diff</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/state-history-overview.jpg" alt="State History" /><br /><sub>Relationship Timeline</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/expansion.jpg" alt="Expansion" /><br /><sub>Extended Features</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/状态历程1.jpg" alt="State History" /><br /><sub>State History</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/状态历程2.jpg" alt="State Trends" /><br /><sub>Trends & Diff</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/en/扩展.jpg" alt="Extensions" /><br /><sub>Extended Features</sub></td>
   </tr>
 </table>
 
@@ -95,26 +95,26 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
 
 Agent mode runs in local mode, allowing models that support Function Calling / Tool Use not only to generate text, but also to browse the web, manipulate files, execute Linux commands and continuously complete multi-step tasks within a session.
 
-| Capability                    | Description                                                                                                                                                                                                  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Multi-turn Tool Execution** | Models can plan and call tools continuously, with parallel execution for read-only tools in the same batch; the progress card displays reasoning, parameters, results, errors and execution duration in real time, and the expanded state is preserved across new tool events.                  |
-| **Subagents**                 | Delegate independent tasks to subagents with their own context; supports foreground synchronous and background asynchronous execution, depth-limited nesting and a background concurrency cap. Progress streams into dedicated cards, with an enable switch and nesting-depth / tool-call limits. |
-| **Session Tool Catalog**      | Tools are grouped by category; toggle the current session's toolset by category or individual tool from the chat panel. Custom sets are persisted per session, all tools enabled by default; built-in Minimal / Standard / Roleplay / Android / All modes plus custom modes, and a configurable default toolset for new sessions. |
-| **Roleplay Agent**            | Agent sessions bound to a character can enable "inherit full character abilities" to load the character card, memory, world books and relationship state, inject real-time continuity and day-night rhythm, and run proactive chat and character life simulation. |
-| **Tasks & Q&A**               | `todo_write` collapsible task panel and `ask_user_question` structured Q&A (single choice / multi-select / free text), paired with `/goal` persistent session goals and `/spec` spec-driven development. |
-| **Pending Reminders**         | Command authorizations and structured questions are registered while waiting; a system notification is sent when the user is not in that session, and the session list shows a "pending" badge that jumps straight to the session. |
-| **Native Browser**            | Multi-tab support, click, input, scroll, forward/back, JavaScript, viewport and User-Agent switching.                                                                                                        |
-| **Web Reading**               | Read body content, dynamic DOM source, interaction skeletons and structured URLs; supports Cookie-authenticated requests and file downloads.                                                                 |
-| **Browser Preview**           | View the current page in real time on the chat screen with full-screen zoom; AI can capture the current page or long pages and send them to a vision model to understand images, charts and complex layouts. |
-| **Android Control**           | Accessibility-driven tap / swipe / input (numbered element targeting with coordinate-gesture fallback) plus native tools for device info / calendar / alarms / media control; tool screenshots can be handed directly to a vision model. |
-| **Image Generation**          | Call a configured image generation model with a text prompt and render the result inline; the message long-press menu also supports multi-provider text-to-image and image-to-image. |
-| **Linux Sandbox**             | Built-in Alpine Linux + PRoot, supports package installation, running scripts, launching background processes and reusing the command-line environment; interactive REPL sessions (python3 and more) and a cross-session shared workspace mounted at `/shared` are supported.                                                      |
-| **Session Terminal**          | A full-screen PTY terminal (VT/ANSI, 256 colors, Ctrl+C, Tab completion and full-screen programs like vi/top) can be opened from the top-right menu of an Agent session, directly operating the session's `/workspace`; a companion sandbox file browser supports directory browsing, editing of text files up to 16 KB and read-only preview of larger files.                                                                         |
-| **Files & Images**            | Read, write, edit precisely, list, parse and send workspace files; can call vision models to understand local images. File changes are surfaced as a git summary card with per-file diffs.                                                                                        |
-| **Skills & MCP**              | Agent can read enabled local Skills and call tools provided by connected MCP servers.                                                                                                                        |
-| **Execution Guard**           | High-risk commands require confirmation; authorizations are remembered by fingerprint (approving `git status` does not allow `git push`), while interpreter and installer commands cannot be remembered; tool parameters are fixed and validated before execution; repeated, no-progress calls are auto-stopped; the maximum number of tool calls is configurable (150 by default).                                                             |
-| **Agent Settings**            | Tool-call limit, output and progress-preview truncation, browser User-Agent / viewport / JavaScript / tab limit, sandbox mirrors and rootfs reset, global and per-session sandbox environment variables, default toolset for new sessions, automatic long-term memory and automatic Skill distillation. |
-| **Background Execution**      | Foreground service and persistent notification are enabled during Agent work, reducing the chance of Android killing tasks when going to the background.                                                     |
+| Capability                    | Description                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Multi-turn Tool Execution** | Models can plan and call tools continuously, with parallel execution for read-only tools in the same batch; the progress card displays reasoning, parameters, results, errors and execution duration in real time, and the expanded state is preserved across new tool events.                                                                                                      |
+| **Subagents**                 | Delegate independent tasks to subagents with their own context; supports foreground synchronous and background asynchronous execution, depth-limited nesting and a background concurrency cap. Progress streams into dedicated cards, with an enable switch and nesting-depth / tool-call limits.                                                                                   |
+| **Session Tool Catalog**      | Tools are grouped by category; toggle the current session's toolset by category or individual tool from the chat panel. Custom sets are persisted per session, all tools enabled by default; built-in Minimal / Standard / Roleplay / Android / All modes plus custom modes, and a configurable default toolset for new sessions.                                                   |
+| **Roleplay Agent**            | Agent sessions bound to a character can enable "inherit full character abilities" to load the character card, memory, world books and relationship state, inject real-time continuity and day-night rhythm, and run proactive chat and character life simulation.                                                                                                                   |
+| **Tasks & Q&A**               | `todo_write` collapsible task panel and `ask_user_question` structured Q&A (single choice / multi-select / free text), paired with `/goal` persistent session goals and `/spec` spec-driven development.                                                                                                                                                                            |
+| **Pending Reminders**         | Command authorizations and structured questions are registered while waiting; a system notification is sent when the user is not in that session, and the session list shows a "pending" badge that jumps straight to the session.                                                                                                                                                  |
+| **Native Browser**            | Multi-tab support, click, input, scroll, forward/back, JavaScript, viewport and User-Agent switching.                                                                                                                                                                                                                                                                               |
+| **Web Reading**               | Read body content, dynamic DOM source, interaction skeletons and structured URLs; supports Cookie-authenticated requests and file downloads.                                                                                                                                                                                                                                        |
+| **Browser Preview**           | View the current page in real time on the chat screen with full-screen zoom; AI can capture the current page or long pages and send them to a vision model to understand images, charts and complex layouts.                                                                                                                                                                        |
+| **Android Control**           | Accessibility-driven tap / swipe / input (numbered element targeting with coordinate-gesture fallback) plus native tools for device info / calendar / alarms / media control; tool screenshots can be handed directly to a vision model.                                                                                                                                            |
+| **Image Generation**          | Call a configured image generation model with a text prompt and render the result inline; the message long-press menu also supports multi-provider text-to-image and image-to-image.                                                                                                                                                                                                |
+| **Linux Sandbox**             | Built-in Alpine Linux + PRoot, supports package installation, running scripts, launching background processes and reusing the command-line environment; interactive REPL sessions (python3 and more) and a cross-session shared workspace mounted at `/shared` are supported.                                                                                                       |
+| **Session Terminal**          | A full-screen PTY terminal (VT/ANSI, 256 colors, Ctrl+C, Tab completion and full-screen programs like vi/top) can be opened from the top-right menu of an Agent session, directly operating the session's `/workspace`; a companion sandbox file browser supports directory browsing, editing of text files up to 16 KB and read-only preview of larger files.                      |
+| **Files & Images**            | Read, write, edit precisely, list, parse and send workspace files; can call vision models to understand local images. File changes are surfaced as a git summary card with per-file diffs.                                                                                                                                                                                          |
+| **Skills & MCP**              | Agent can read enabled local Skills and call tools provided by connected MCP servers.                                                                                                                                                                                                                                                                                               |
+| **Execution Guard**           | High-risk commands require confirmation; authorizations are remembered by fingerprint (approving `git status` does not allow `git push`), while interpreter and installer commands cannot be remembered; tool parameters are fixed and validated before execution; repeated, no-progress calls are auto-stopped; the maximum number of tool calls is configurable (150 by default). |
+| **Agent Settings**            | Tool-call limit, output and progress-preview truncation, browser User-Agent / viewport / JavaScript / tab limit, sandbox mirrors and rootfs reset, global and per-session sandbox environment variables, default toolset for new sessions, automatic long-term memory and automatic Skill distillation.                                                                             |
+| **Background Execution**      | Foreground service and persistent notification are enabled during Agent work, reducing the chance of Android killing tasks when going to the background.                                                                                                                                                                                                                            |
 
 ### Sandbox Data & Session Isolation
 
@@ -127,13 +127,13 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 
 ## Dual Mode Architecture
 
-|                   | Server Mode                            | Local Mode                                                 |
-| ----------------- | ----------------------------------------- | ------------------------------------------------------------- |
-| **Backend**       | Connect to the NekoBot Web backend        | No backend, direct connection to OpenAI-compatible API        |
-| **Communication** | REST + Socket.IO real-time streaming      | Local direct AI API requests                                  |
-| **Data Storage**  | Server + local cache                      | Room database + session workspace + writable Linux rootfs     |
-| **Agent**         | Depends on server capabilities            | Built-in browser, Linux sandbox, PTY terminal, plugin pages, Skills, MCP, subagents and Android control     |
-| **Use Cases**     | Full feature ecosystem, multi-device sync | Privacy-first, local data, your own API keys, on-device Agent |
+|                   | Server Mode                               | Local Mode                                                                                              |
+| ----------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Backend**       | Connect to the NekoBot Web backend        | No backend, direct connection to OpenAI-compatible API                                                  |
+| **Communication** | REST + Socket.IO real-time streaming      | Local direct AI API requests                                                                            |
+| **Data Storage**  | Server + local cache                      | Room database + session workspace + writable Linux rootfs                                               |
+| **Agent**         | Depends on server capabilities            | Built-in browser, Linux sandbox, PTY terminal, plugin pages, Skills, MCP, subagents and Android control |
+| **Use Cases**     | Full feature ecosystem, multi-device sync | Privacy-first, local data, your own API keys, on-device Agent                                           |
 
 ## Install
 
@@ -308,17 +308,17 @@ app/src/main/kotlin/com/nekobot/app/
 
 ## Permissions
 
-| Permission                                            | Purpose                                                         |
-| ----------------------------------------------------- | --------------------------------------------------------------- |
-| `INTERNET`                                            | Network communication, Agent browser and sandbox network access |
-| `ACCESS_NETWORK_STATE`                                | Detect network status                                           |
-| `RECORD_AUDIO`                                        | Voice input (server mode)                                       |
-| `POST_NOTIFICATIONS`                                  | Session notifications and Agent background status               |
-| `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` | Agent long-running tasks continue in the foreground service     |
-| `WAKE_LOCK`                                           | Avoid early CPU sleep during Agent execution |
+| Permission                                            | Purpose                                                                        |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `INTERNET`                                            | Network communication, Agent browser and sandbox network access                |
+| `ACCESS_NETWORK_STATE`                                | Detect network status                                                          |
+| `RECORD_AUDIO`                                        | Voice input (server mode)                                                      |
+| `POST_NOTIFICATIONS`                                  | Session notifications and Agent background status                              |
+| `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` | Agent long-running tasks continue in the foreground service                    |
+| `WAKE_LOCK`                                           | Avoid early CPU sleep during Agent execution                                   |
 | `WRITE_EXTERNAL_STORAGE` (Android 9 and below)        | Export token records, Skills and other files to the public Downloads directory |
-| `REQUEST_INSTALL_PACKAGES`                            | Install APK updates downloaded in-app |
-| `USE_BIOMETRIC` / `USE_FINGERPRINT`                   | Biometric unlock for the privacy lock                    |
+| `REQUEST_INSTALL_PACKAGES`                            | Install APK updates downloaded in-app                                          |
+| `USE_BIOMETRIC` / `USE_FINGERPRINT`                   | Biometric unlock for the privacy lock                                          |
 
 > The accessibility service and notification listener service are optional; they power Android control, notification reading and quick replies. Accessibility settings support excluding specific apps, in-app updates verify the APK package name and signature, and plugin network requests are blocked from reaching intranet addresses.
 

@@ -27,14 +27,14 @@
 
 <table>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/sessions.jpg" alt="会话列表" /><br /><sub>会话管理</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/chat.jpg" alt="角色聊天" /><br /><sub>沉浸式聊天</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/characters.jpg" alt="角色卡列表" /><br /><sub>角色卡</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/会话.jpg" alt="会话列表" /><br /><sub>会话管理</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/对话.jpg" alt="角色聊天" /><br /><sub>沉浸式聊天</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/角色卡.jpg" alt="角色卡列表" /><br /><sub>角色卡</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/dashboard-widget.jpg" alt="负一屏数据概览" /><br /><sub>负一屏数据概览</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/usage.jpg" alt="Token 用量统计" /><br /><sub>Token 用量</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="更多功能" /><br /><sub>更多功能</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/数据概览负一屏.jpg" alt="负一屏数据概览" /><br /><sub>负一屏数据概览</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/token用量.jpg" alt="Token 用量统计" /><br /><sub>Token 用量</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/我的.jpg" alt="我的与设置" /><br /><sub>我的与设置</sub></td>
   </tr>
 </table>
 
@@ -45,14 +45,14 @@
 
 <table>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/worldbooks.jpg" alt="世界书" /><br /><sub>世界书</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/memories.jpg" alt="角色记忆" /><br /><sub>角色记忆</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/achievements.jpg" alt="成就系统" /><br /><sub>成就系统</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/世界书.jpg" alt="世界书" /><br /><sub>世界书</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/角色记忆.jpg" alt="角色记忆" /><br /><sub>角色记忆</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/成就.jpg" alt="成就系统" /><br /><sub>成就系统</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/assets/screenshots/state-history-trend.jpg" alt="角色状态趋势" /><br /><sub>状态趋势与差分</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/state-history-overview.jpg" alt="角色状态历程" /><br /><sub>关系状态历程</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/expansion.jpg" alt="拓展功能" /><br /><sub>拓展功能</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/状态历程1.jpg" alt="状态历程" /><br /><sub>状态历程</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/能力.jpg" alt="能力中心" /><br /><sub>能力中心</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/zh/扩展.jpg" alt="扩展功能" /><br /><sub>扩展功能</sub></td>
   </tr>
 </table>
 
@@ -113,7 +113,7 @@ Agent 模式运行在本地模式中，让支持 Function Calling / Tool Use 的
 | **文件与图片工具**      | 支持读取、写入、精确编辑、列出、解析和发送工作区文件，也可调用视觉模型理解本地图片；文件变更以 git 摘要卡片与逐文件 diff 展示                                                              |
 | **Skills 与 MCP** | Agent 可读取已启用的本地 Skills，并调用已连接 MCP 服务提供的工具                                                                                         |
 | **运行保护**         | 高风险命令需要确认，命令授权按指纹记忆（批准 `git status` 不会放行 `git push`），解释器与安装类命令不可记忆；工具参数会在执行前修复和校验，连续重复且无进展的调用会自动停止，最大工具调用次数可配置（默认 150）            |
-| **Agent 设置**     | 工具调用上限、输出与进度预览截断、浏览器 User-Agent / 视口 / JavaScript / 标签页上限、沙箱镜像源与 rootfs 重置、全局及会话级沙箱环境变量、新会话默认工具集、自动长期记忆与自动 Skill 沉淀 |
+| **Agent 设置**     | 工具调用上限、输出与进度预览截断、浏览器 User-Agent / 视口 / JavaScript / 标签页上限、沙箱镜像源与 rootfs 重置、全局及会话级沙箱环境变量、新会话默认工具集、自动长期记忆与自动 Skill 沉淀               |
 | **后台执行**         | Agent 工作期间启用前台服务和常驻通知，降低切到后台后任务被 Android 提前终止的概率                                                                                  |
 
 ### 沙箱数据与会话隔离
