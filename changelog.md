@@ -2,6 +2,58 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.8.7 - 2026-10-26
+
+### 新增
+
+- 全新外层界面：导航重组为「会话 / 内容库 / 能力 / 我的」四个标签，底栏与侧栏改为扁平样式，主题色板改为中性浅底配单一强调色，并新增 NekoShell 组件库。
+- 会话首页新增问候区：结合角色卡与角色记忆生成 AI 问候，可更换欢迎立绘并取景裁切，记忆变化后自动重新生成；本地候选文案随语言切换重写缓存。
+- 会话首页新增 banner 支持固定角色：尚无会话的角色也可固定，点击可直接进入、新建会话或弹出固定角色的会话选择面板。
+- Agent 新会话新增欢迎页：基于长期记忆生成四条起步建议，点击直接发送，支持换一批并按记忆与语言缓存。
+- 新增 AI 模型余额查询：支持 DeepSeek、OpenRouter、Moonshot（Kimi）、SiliconFlow 及 OpenAI 兼容计费接口，查询记录按档案隔离保存，支持密钥脱敏存储。
+- 新增 Kimi（月之暗面）模型提供商：接入 Kimi Code 设备码授权登录，模型编辑器与快速设置提供 Kimi 预设。
+- AI 模型编辑弹窗重构为三步骤分步全屏编辑器：用途与预设 / 连接与模型 / 参数与确认，提供字段级校验、未保存退出确认与草稿保留。
+- 引导页会话模型配置复用分步模型编辑器，支持协议选择、API Key 记忆与模型拉取。
+- 会话页新增负一屏概览转场独立组件，概览与会话列表滑动衔接更流畅。
+- 版本更新检查支持预发布版语义化排序：正式版优先、rc 数字后缀正确比较。
+
+### 修复
+
+- 修复会话切换与首屏加载时的界面闪烁，等待资料就绪后再渲染并丢弃过期的旧请求结果。
+- 修复会话操作横条按各项文案单独计算宽度，解决「置顶/取消置顶」宽度不同时的点击错位。
+- 修复长按动作条在窄屏/平板分屏下最右侧动作无法点击的问题，补齐无障碍点击语义。
+- 修复一次性辅助任务的 token 用量误记入上一个聊天会话的统计。
+- 修复 CI 打包 OOM 与崩溃记录版本号读取兼容问题（minSdk 26 下 longVersionCode 崩溃）。
+- 修复派生索引表导致的数据完整性校验误报，FTS 搜索影子表不再被当作未登记表。
+
+### 优化
+
+- 统一设置与列表页面的布局样式：内容限宽居中、分组标题主色、分隔线与箭头图标统一。
+- 全局搜索与用量页扁平化改造，新增快捷入口与最近会话。
+- 应用默认字号调整为 17sp；全局搜索刷新时机按数据源版本防过期。
+
+### English
+
+- Brand-new outer interface: navigation reorganized into four tabs (Sessions / Library / Capabilities / Profile), flat bottom bar and rail, a near-white neutral palette with a single accent color, and a new NekoShell component library.
+- The sessions home adds a greeting area with AI greetings from character cards and memories, swappable portrait with crop, regenerated when memories change; local greeting candidates rewrite per language.
+- The sessions home banner supports pinned characters, including those without sessions, with direct entry, new-session dialog, or a pinned-character session picker.
+- New Agent sessions get a welcome page with four memory-based starter suggestions that can be sent directly, refreshed, and cached by memory and language.
+- Added AI model balance queries for DeepSeek, OpenRouter, Moonshot (Kimi), SiliconFlow, and OpenAI-compatible billing endpoints, with per-profile isolated records and redacted keys.
+- Added the Kimi (Moonshot AI) model provider with Kimi Code device-code login and Kimi presets in the model editor and quick setup.
+- The AI model editor dialog is now a three-step full-screen editor (purpose & presets / connection & models / parameters & confirm) with per-field validation, unsaved-changes confirmation, and draft retention.
+- Onboarding model configuration reuses the step-by-step model editor with protocol choice, API key memory, and model fetching.
+- Extracted the dashboard overview transition into a standalone pager component for smoother swiping.
+- Update checks now sort pre-release versions semantically: releases beat pre-releases and numeric rc suffixes compare correctly.
+- Fixed UI flicker when switching sessions and on first load; stale responses are discarded.
+- Fixed session action-strip hit areas by measuring each item's own text width, fixing tap misalignment between pin/unpin.
+- Fixed the long-press action strip so rightmost actions are reachable on narrow and split screens, with proper a11y semantics.
+- Fixed one-shot helper tasks polluting the previous chat session's token usage stats.
+- Fixed CI packaging OOM and crash-recorder version reading on minSdk 26 (longVersionCode crash).
+- Fixed data-integrity false positives from derived index tables and FTS shadow tables.
+- Unified layout styling across settings and list pages: centered max-width content, accent group titles, consistent dividers and arrows.
+- Flattened the global search and usage pages with quick entries and recent sessions.
+- The default app font size is now 17sp; global search refreshes discard stale results by data-source revision.
+
 ## v0.8.6-rc2 - 2026-10-23
 
 ### 新增
