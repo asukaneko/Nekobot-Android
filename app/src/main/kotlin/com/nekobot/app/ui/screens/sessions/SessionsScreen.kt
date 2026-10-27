@@ -67,6 +67,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
@@ -458,6 +459,7 @@ fun SessionsScreen(
     val refreshDesc = stringResource(R.string.sessions_refresh)
     val newSessionDesc = stringResource(R.string.sessions_new)
     val agentChatName = stringResource(R.string.sessions_agent_chat)
+    val temporaryChatName = stringResource(R.string.temporary_session)
     val noMatchTitle = stringResource(R.string.sessions_no_match)
     val filterEmptyTitle = stringResource(R.string.sessions_filter_empty)
     val emptyTitleText = stringResource(R.string.sessions_empty)
@@ -662,6 +664,27 @@ fun SessionsScreen(
                                                 userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
                                             )
                                         ) { session ->
+                                            session.id?.takeIf { it.isNotBlank() }?.let(handleOpenChat)
+                                        }
+                                    }
+                                )
+                                if (ServiceContainer.prefs.isLocalMode) DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.temporary_session),
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Outlined.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = SessionModeLabel.AGENT.color()
+                                        )
+                                    },
+                                    onClick = {
+                                        showCreateModeMenu = false
+                                        viewModel.createTemporarySession(temporaryChatName) { session ->
                                             session.id?.takeIf { it.isNotBlank() }?.let(handleOpenChat)
                                         }
                                     }
@@ -1648,6 +1671,15 @@ internal fun SessionItem(
                     Spacer(Modifier.height(3.dp))
                     // 第二行：模式图标 + 最后一条消息，一直延伸到右边缘
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (row.isTemporary) {
+                            Text(
+                                text = stringResource(R.string.temporary_session_badge),
+                                style = nekoCaptionStyle(),
+                                color = modeColor,
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
                         Icon(
                             row.modeLabel.icon(),
                             contentDescription = row.modeLabel.title(),
@@ -2182,6 +2214,36 @@ class SessionsViewModel : BaseViewModel() {
             onSuccess = { session ->
                 if (version == dataSourceVersion) {
                     showToast(string(R.string.sessions_created_toast))
+                    loadSessions()
+                    onSuccess(session)
+                }
+            },
+            onError = { message ->
+                if (version == dataSourceVersion) {
+                    _sessionCreationState.value = _sessionCreationState.value.copy(error = message)
+                    showError(message)
+                }
+            }
+        )
+    }
+
+    /** 新建临时 Agent 会话：不保存记录、不使用全局记忆，成功后回调。 */
+    fun createTemporarySession(name: String, onSuccess: (Session) -> Unit = {}) {
+        if (_sessionCreationState.value.creating) return
+        val version = dataSourceVersion
+        _sessionCreationState.value = _sessionCreationState.value.copy(creating = true, error = null)
+        launchResult(
+            block = {
+                try {
+                    unified.createTemporarySession(name)
+                } finally {
+                    if (version == dataSourceVersion) {
+                        _sessionCreationState.value = _sessionCreationState.value.copy(creating = false)
+                    }
+                }
+            },
+            onSuccess = { session ->
+                if (version == dataSourceVersion) {
                     loadSessions()
                     onSuccess(session)
                 }

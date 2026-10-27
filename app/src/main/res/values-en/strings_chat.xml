@@ -39,6 +39,13 @@
     <string name="sessions_mode_role">Role mode</string>
     <string name="sessions_mode_agent">Agent mode</string>
     <string name="sessions_mode_group">Group chat mode</string>
+    <string name="temporary_session">Temporary chat</string>
+    <string name="temporary_session_badge">Temp</string>
+    <string name="temporary_session_header">Temporary chat · not saved</string>
+    <string name="temporary_session_end">End temporary chat</string>
+    <string name="temporary_session_end_title">End temporary chat</string>
+    <string name="temporary_session_end_confirm">This chat will be cleared and no record will be kept.</string>
+    <string name="temporary_session_local_only">Temporary chat is available in local mode only</string>
     <string name="sessions_name_optional">Chat name (optional)</string>
     <string name="sessions_agent_no_inherit">Agent mode does not inherit character card config, suitable for pure tool conversations</string>
     <string name="sessions_strategy">Speaking strategy</string>

@@ -1359,6 +1359,8 @@ class LocalRepository(
         userMessage: String,
         assistantMessage: String
     ) {
+        // 临时会话不产生长期记忆。
+        if (TemporarySession.isTemporary(sessionId)) return
         val current = kotlinx.coroutines.runBlocking { sessionDao.getById(sessionId) }
         if (current?.usesCompanionMemory() == true) {
             scheduleCompanionMemoryExtraction(current, assistantMessage, userMessage)
@@ -1442,6 +1444,8 @@ class LocalRepository(
         assistantMessage: String,
         toolTrace: List<Map<String, Any>>
     ) {
+        // 临时会话不沉淀技能。
+        if (TemporarySession.isTemporary(sessionId)) return
         if (!ServiceContainer.prefs.agentAutoSkillEnabled) return
         val extractor = com.nekobot.app.data.local.ai.AgentSkillExtractor
         val turnToolCalls = completedAgentToolCallCount(toolTrace)
@@ -1871,9 +1875,18 @@ class LocalRepository(
         }
     }
 
-    suspend fun createSession(req: CreateSessionRequest): Session = withContext(Dispatchers.IO) {
+    /**
+     * 新建本地会话。
+     *
+     * @param temporary 临时会话：ID 带 [TemporarySession.ID_PREFIX] 前缀，
+     *   关闭自动命名，不写入成就统计；消息与设置仅在本次进程内保留。
+     */
+    suspend fun createSession(
+        req: CreateSessionRequest,
+        temporary: Boolean = false
+    ): Session = withContext(Dispatchers.IO) {
         val now = nowIso()
-        val id = UUID.randomUUID().toString()
+        val id = if (temporary) TemporarySession.newId() else UUID.randomUUID().toString()
         val character = req.characterId?.let { characterDao.getById(it) }
         if (req.companionMode && (character == null || !req.sessionMode.equals("agent", true))) {
             throw CompanionCreationException(CompanionEligibility.MissingCharacter)
@@ -1899,6 +1912,8 @@ class LocalRepository(
             companionMode = req.companionMode,
             inheritCharacter = req.companionMode,
             longConversationEnabled = req.companionMode,
+            // 临时会话不做自动命名：标题固定由入口给出。
+            autoNameInterval = if (temporary) 0 else 10,
             groupId = if (isGroup) "gc_${UUID.randomUUID().toString().replace("-", "").take(12)}" else null,
             characterIds = groupCharacterIds.takeIf { isGroup }
                 ?.let { gson.toJson(it) },
@@ -1920,15 +1935,16 @@ class LocalRepository(
             if (entity.companionMode) CompanionMemoryStore(db).ensureScope(entity)
         }
 
-        // 新建本地 Agent 会话可沿用 Agent 设置中的默认 YOLO 状态。
-        if (req.sessionMode.equals("agent", ignoreCase = true) &&
+        // 新建本地 Agent 会话可沿用 Agent 设置中的默认 YOLO 状态；临时会话默认不授权。
+        if (!temporary &&
+            req.sessionMode.equals("agent", ignoreCase = true) &&
             ServiceContainer.prefs.agentDefaultYoloEnabled
         ) {
             localExecAuthorizationManager.enableYolo(id)
         }
 
-        // 成就触发：会话数量
-        kotlin.runCatching {
+        // 成就触发：会话数量（临时会话不计入）
+        if (!temporary) kotlin.runCatching {
             reportAchievementProgress(
                 AchievementManager.Target.Metric.SESSIONS,
                 sessionDao.count().toLong()
@@ -2543,6 +2559,31 @@ class LocalRepository(
         ServiceContainer.prefs.clearAgentMemoryNotice(id)
         ServiceContainer.prefs.clearCompanionRecallSession(db.dbName, id)
         ServiceContainer.prefs.setSessionChatModelOrder(id, emptyList(), db.dbName)
+        if (TemporarySession.isTemporary(id)) {
+            // 临时会话不保留旁路记录：路由日志与消息收藏没有会话外键，不会随会话级联删除。
+            runCatching { db.routingDecisionLogDao().deleteBySession(id) }
+                .onFailure {
+                    LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, "$id: ${it.message}")
+                }
+            runCatching { db.messageFavoriteDao().deleteBySession(id) }
+        }
+    }
+
+    /**
+     * 清理所有临时会话（连同消息、图片与会话级设置）。
+     *
+     * 应用启动与切换档案时调用：临时会话只服务当前进程，
+     * 上一次运行遗留的数据不能变成历史记录。
+     */
+    suspend fun purgeTemporarySessions() = withContext(Dispatchers.IO) {
+        sessionDao.listAll()
+            .filter { TemporarySession.isTemporary(it) }
+            .forEach { session ->
+                runCatching { deleteSession(session.id) }
+                    .onFailure {
+                        LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, "${session.id}: ${it.message}")
+                    }
+            }
     }
 
     /**
@@ -5886,6 +5927,8 @@ class LocalRepository(
         cacheWritePricePerMillion: Double? = null
     ) {
         val prefs = tokenUsagePrefs ?: return
+        // 临时会话不产生用量记录，避免在统计与排行榜里留下痕迹。
+        if (TemporarySession.isTemporary(sessionId)) return
         synchronized(tokenUsageLock) {
             val existing = prefs.getString("records", "[]") ?: "[]"
             try {
@@ -7146,14 +7189,18 @@ class LocalRepository(
             ctx.promptStack.addAgentSpecPrompt(
                 com.nekobot.app.data.model.AgentSessionSpec.fromJson(session.agentSpec)
             )
-            val globalAgentMemory = if (session.usesCompanionMemory()) "" else runCatching { ServiceContainer.globalAgentMemory.read().content }
+            // 临时会话不使用全局 Agent 记忆：既不读取，也不注入。
+            val temporarySession = TemporarySession.isTemporary(session)
+            val globalAgentMemory = if (temporarySession || session.usesCompanionMemory()) "" else runCatching { ServiceContainer.globalAgentMemory.read().content }
                 .onFailure {
                     LocalLogger.w(TAG, R.string.log_repo_read_global_memory_failed, it.message)
                 }
                 .getOrDefault("")
             // 按当前用户消息检索相关小节，而不是每轮注入整份长期记忆。
             // 该入口没有用户消息（后台/主动触发），退化为按原文顺序注入。
-            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory, query = session.agentGoal.orEmpty())
+            if (!temporarySession) {
+                ctx.promptStack.addGlobalAgentMemory(globalAgentMemory, query = session.agentGoal.orEmpty())
+            }
             buildEnabledSkillsPrompt().takeIf { it.isNotBlank() }?.let { skillsPrompt ->
                 ctx.promptStack.add(
                     key = "skills.available",
@@ -7855,13 +7902,17 @@ class LocalRepository(
             ctx.promptStack.addAgentSpecPrompt(
                 com.nekobot.app.data.model.AgentSessionSpec.fromJson(promptSession.agentSpec)
             )
-            val globalAgentMemory = if (session.usesCompanionMemory()) "" else runCatching { ServiceContainer.globalAgentMemory.read().content }
+            // 临时会话不使用全局 Agent 记忆：既不读取，也不注入。
+            val temporarySession = TemporarySession.isTemporary(session)
+            val globalAgentMemory = if (temporarySession || session.usesCompanionMemory()) "" else runCatching { ServiceContainer.globalAgentMemory.read().content }
                 .onFailure {
                     com.nekobot.app.data.local.LocalLogger.w(TAG, R.string.log_repo_read_global_memory_failed, it.message)
                 }
                 .getOrDefault("")
             // 按当前用户消息检索相关小节，而不是每轮注入整份长期记忆。
-            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory, query = effectiveUserMessage)
+            if (!temporarySession) {
+                ctx.promptStack.addGlobalAgentMemory(globalAgentMemory, query = effectiveUserMessage)
+            }
             val skillsPrompt = buildEnabledSkillsPrompt()
             if (skillsPrompt.isNotBlank()) {
                 ctx.promptStack.add(
@@ -8812,7 +8863,8 @@ class LocalRepository(
         definitions: List<Map<String, Any>>
     ): List<Map<String, Any>> {
         val session = kotlinx.coroutines.runBlocking { sessionDao.getById(sessionId) }
-        val independent = session?.usesCompanionMemory() == true
+        // 临时会话与独立的陪伴记忆一样，不提供全局记忆读写工具。
+        val independent = session?.usesCompanionMemory() == true || TemporarySession.isTemporary(sessionId)
         val allowed = if (session?.companionMode == true) com.nekobot.app.data.local.ai.FusedCompanionTools.definitions(definitions)
         else if (independent) definitions.filterNot {
             @Suppress("UNCHECKED_CAST")

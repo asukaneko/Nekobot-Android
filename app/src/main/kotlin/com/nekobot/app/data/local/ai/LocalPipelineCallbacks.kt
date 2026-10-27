@@ -286,7 +286,7 @@ internal class LocalPipelineCallbacks(
             },
             generationController = generationController,
             sharedWorkspaceRoot = sharedWorkspaceRoot,
-            globalAgentMemoryStore = if (session.usesCompanionMemory()) null else runCatching { ServiceContainer.globalAgentMemory }.getOrNull(),
+            globalAgentMemoryStore = if (session.usesCompanionMemory() || com.nekobot.app.data.local.TemporarySession.isTemporary(session.id)) null else runCatching { ServiceContainer.globalAgentMemory }.getOrNull(),
             isolateCompanionMemory = session.companionMode,
             recallReader = recallReader,
             askUserQuestionManager = askUserQuestionManager,

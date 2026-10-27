@@ -39,6 +39,13 @@
     <string name="sessions_mode_role">ロールモード</string>
     <string name="sessions_mode_agent">エージェントモード</string>
     <string name="sessions_mode_group">グループチャットモード</string>
+    <string name="temporary_session">一時セッション</string>
+    <string name="temporary_session_badge">一時</string>
+    <string name="temporary_session_header">一時セッション・記録なし</string>
+    <string name="temporary_session_end">一時セッションを終了</string>
+    <string name="temporary_session_end_title">一時セッションを終了</string>
+    <string name="temporary_session_end_confirm">終了するとこの会話は消去され、記録は残りません。</string>
+    <string name="temporary_session_local_only">一時セッションはローカルモードのみ対応</string>
     <string name="sessions_name_optional">チャット名 (任意)</string>
     <string name="sessions_agent_no_inherit">エージェントモードはキャラクターカード設定を引き継ぎません、純粋なツール会話向けです</string>
     <string name="sessions_strategy">発言戦略</string>

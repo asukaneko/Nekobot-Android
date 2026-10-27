@@ -1508,6 +1508,9 @@ interface RoutingDecisionLogDao {
     @Query("SELECT * FROM routing_decision_logs WHERE id = :id")
     suspend fun getById(id: String): RoutingDecisionLogEntity?
 
+    @Query("DELETE FROM routing_decision_logs WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: String)
+
     @Query("DELETE FROM routing_decision_logs WHERE created_at < :beforeDate")
     suspend fun deleteBefore(beforeDate: String)
 

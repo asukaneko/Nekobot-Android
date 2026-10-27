@@ -44,7 +44,9 @@ data class SessionListRow(
     val modeLabel: SessionModeLabel = SessionModeLabel.CHARACTER,
     /** 绑定的角色 ID（角色会话/单角色会话），首页「固定角色」按它聚合。 */
     val characterId: String? = null,
-    val listTitleOverride: String? = null
+    val listTitleOverride: String? = null,
+    /** 临时会话：仅当前进程保留，关闭后清除。 */
+    val isTemporary: Boolean = false
 ) {
     /** Tool chats are tasks; companion and character chats are people. */
     val listTitle: String get() = com.nekobot.app.data.model.sessionTitle(listTitleOverride, when (modeLabel) {
@@ -203,7 +205,8 @@ fun buildSessionListRows(
             modeLabel = modeLabel,
             characterId = session.characterId?.takeIf {
                 it.isNotBlank() && (modeLabel == SessionModeLabel.CHARACTER || modeLabel == SessionModeLabel.COMPANION)
-            }
+            },
+            isTemporary = com.nekobot.app.data.local.TemporarySession.isTemporary(sessionId)
         )
     }
 }

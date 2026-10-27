@@ -284,6 +284,8 @@ internal class SessionNameGenerator(
         characterScenario: String = ""
     ): String? {
         if (session.companionMode) return null
+        // 临时会话不自动命名：标题保持入口给出的固定名称。
+        if (com.nekobot.app.data.local.TemporarySession.isTemporary(session.id)) return null
         val sessionId = session.id
 
         // 会话级命名间隔：0 = 关闭自动命名。

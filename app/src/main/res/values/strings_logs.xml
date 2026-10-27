@@ -224,6 +224,7 @@
     <string name="log_repo_session_autoname_failed2">会话自动命名失败（不影响主流程）: %1$s</string>
     <string name="log_repo_session_autonamed">会话自动命名: %1$s -&gt; %2$s</string>
     <string name="log_repo_skill_extract_failed">Agent 技能沉淀失败（不影响主流程）: %1$s</string>
+    <string name="log_repo_temp_session_purge_failed">清理临时会话失败: %1$s</string>
     <string name="log_repo_state_cache_write_failed">状态历程缓存写入失败: %1$s</string>
     <string name="log_repo_oversize_row_repair_retry">消息行超出 CursorWindow 限制，修复后重试: %1$s</string>
     <string name="log_repo_task_expired">任务「%1$s」上次执行点已过期，顺延到 %2$s</string>

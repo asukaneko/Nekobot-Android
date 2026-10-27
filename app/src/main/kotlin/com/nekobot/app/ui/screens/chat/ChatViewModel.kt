@@ -4094,6 +4094,37 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
+    /**
+     * 离开临时会话时立即归档。
+     *
+     * 归档后会话不再出现在常规会话列表，需要时可从「归档」筛选继续查看；
+     * 应用重启或手动结束后仍会连同消息一起清除。
+     */
+    fun archiveTemporarySessionOnLeave(sessionId: String = currentSessionId) {
+        if (!com.nekobot.app.data.local.TemporarySession.isTemporary(sessionId)) return
+        if (sessionId == currentSessionId && _session.value?.archived == true) return
+        // ViewModel 可能随之被清理，归档请求交给应用级作用域完成。
+        val repository = ServiceContainer.unified
+        ServiceContainer.applicationScope.launch {
+            runCatching { repository.archiveSession(sessionId) }
+                .onSuccess { ServiceContainer.notifySessionChanged(sessionId) }
+        }
+    }
+
+    /** 结束临时会话：删除会话与其全部消息，成功后返回列表。 */
+    fun endTemporarySession(onDone: () -> Unit = {}) {
+        val sid = currentSessionId.takeIf { it.isNotBlank() } ?: return onDone()
+        // 先停止本轮生成，避免删除后仍有事件回写已不存在的会话。
+        if (_sending.value) stop()
+        launchResult(
+            block = { unified.deleteSession(sid) },
+            onSuccess = {
+                _messages.value = emptyList()
+                onDone()
+            }
+        )
+    }
+
     override fun onCleared() {
         stopRealtimeLiveTurn()
         messageImagesJob?.cancel()
@@ -4243,13 +4274,15 @@ class ChatViewModel : BaseViewModel() {
         if (!force && _agentWelcomeState.value.suggestions.isNotEmpty()) return
         agentWelcomeJob = viewModelScope.launch {
             val defaults = defaultAgentWelcomeSuggestions()
-            val memory = withContext(Dispatchers.IO) {
+            // 临时会话不读取全局 Agent 记忆，也不把候选写进设置缓存。
+            val temporary = com.nekobot.app.data.local.TemporarySession.isTemporary(currentSessionId)
+            val memory = if (temporary) "" else withContext(Dispatchers.IO) {
                 runCatching { ServiceContainer.unified.readGlobalAgentMemory().content }
                     .getOrDefault("")
             }
             val prefs = ServiceContainer.prefs
             val cacheKey = "${memory.hashCode()}|${AiOutputLanguage.languageTag()}"
-            val cached = if (!force && prefs.agentWelcomeKey == cacheKey) {
+            val cached = if (!temporary && !force && prefs.agentWelcomeKey == cacheKey) {
                 AgentWelcomeSuggestions.decode(prefs.agentWelcomeSuggestions)
             } else {
                 emptyList()
@@ -4289,7 +4322,7 @@ class ChatViewModel : BaseViewModel() {
                 // 生成失败：「换一批」保留原候选，首次进入回退默认候选。
                 _agentWelcomeState.value.suggestions.ifEmpty { defaults }
             }
-            if (generated.isNotEmpty()) {
+            if (generated.isNotEmpty() && !temporary) {
                 prefs.agentWelcomeSuggestions = AgentWelcomeSuggestions.encode(finalItems)
                 prefs.agentWelcomeKey = cacheKey
             }

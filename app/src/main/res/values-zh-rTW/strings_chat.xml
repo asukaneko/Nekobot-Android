@@ -39,6 +39,13 @@
     <string name="sessions_mode_role">角色模式</string>
     <string name="sessions_mode_agent">Agent 模式</string>
     <string name="sessions_mode_group">群聊模式</string>
+    <string name="temporary_session">臨時會話</string>
+    <string name="temporary_session_badge">臨時</string>
+    <string name="temporary_session_header">臨時會話 · 不儲存記錄</string>
+    <string name="temporary_session_end">結束臨時會話</string>
+    <string name="temporary_session_end_title">結束臨時會話</string>
+    <string name="temporary_session_end_confirm">結束後將清除本次對話內容，且不保留任何記錄。</string>
+    <string name="temporary_session_local_only">臨時會話僅支援本機模式</string>
     <string name="sessions_name_optional">會話名稱（可選）</string>
     <string name="sessions_agent_no_inherit">Agent 模式不繼承角色卡配置，適合純工具對話</string>
     <string name="sessions_strategy">發言策略</string>

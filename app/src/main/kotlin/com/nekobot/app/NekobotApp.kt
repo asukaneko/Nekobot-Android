@@ -306,6 +306,10 @@ object ServiceContainer {
         migrateLegacyPlotStoryProfile(app, prefs.activeDbName, db)
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
+        // 临时会话不跨进程保留：启动时清理上次运行遗留的临时记录（同步执行，避免列表短暂闪出残留项）。
+        runCatching {
+            runBlocking(Dispatchers.IO) { localRepository.purgeTemporarySessions() }
+        }
         pluginGrants = PluginGrants(app)
         pluginMetaStore = PluginMetaStore(app)
         pluginManager = PluginManager(app, pluginGrants, pluginMetaStore)
@@ -400,6 +404,10 @@ object ServiceContainer {
             bindGlobalAgentMemory(ctx, profileName)
             localRepository = LocalRepository(db, LocalAiClient(), ctx)
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
+            // 切换档案后同样清理新档案里遗留的临时记录。
+            runCatching {
+                runBlocking(Dispatchers.IO) { localRepository.purgeTemporarySessions() }
+            }
             com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
             _dataSourceRevision.value += 1L
             clearGeneratingSessions()

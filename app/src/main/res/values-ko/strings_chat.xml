@@ -39,6 +39,13 @@
     <string name="sessions_mode_role">역할 모드</string>
     <string name="sessions_mode_agent">에이전트 모드</string>
     <string name="sessions_mode_group">그룹 대화 모드</string>
+    <string name="temporary_session">임시 세션</string>
+    <string name="temporary_session_badge">임시</string>
+    <string name="temporary_session_header">임시 세션 · 기록 안 함</string>
+    <string name="temporary_session_end">임시 세션 종료</string>
+    <string name="temporary_session_end_title">임시 세션 종료</string>
+    <string name="temporary_session_end_confirm">종료하면 이 대화가 삭제되고 기록이 남지 않아요.</string>
+    <string name="temporary_session_local_only">임시 세션은 로컬 모드에서만 지원돼요</string>
     <string name="sessions_name_optional">대화 이름(선택)</string>
     <string name="sessions_agent_no_inherit">에이전트 모드는 캐릭터 카드 설정을 상속하지 않아요. 순수 도구 대화에 적합해요</string>
     <string name="sessions_strategy">발화 전략</string>

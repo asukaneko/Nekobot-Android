@@ -174,6 +174,36 @@ class UnifiedRepository(
             }
         } else remote.createSession(req)
 
+    /**
+     * 新建临时 Agent 会话。
+     *
+     * 临时会话只在当前进程内存在：不保存聊天记录、不使用全局 Agent 记忆，
+     * 也不参与自动记忆 / 自动命名；结束会话或重启应用后自动清除。
+     */
+    suspend fun createTemporarySession(name: String): Resource<Session> =
+        if (isLocal) {
+            try {
+                Resource.Success(
+                    local.createSession(
+                        req = CreateSessionRequest(
+                            name = name,
+                            sessionMode = "agent",
+                            systemPrompt = "",
+                            firstMessage = "",
+                            senderName = "Agent",
+                            characterId = "",
+                            userId = prefs.username.takeIf { it.isNotBlank() }
+                        ),
+                        temporary = true
+                    )
+                )
+            } catch (e: com.nekobot.app.data.local.CompanionCreationException) {
+                Resource.Error(ServiceContainer.getString(e.messageRes))
+            }
+        } else {
+            Resource.Error(ServiceContainer.getString(com.nekobot.app.R.string.temporary_session_local_only))
+        }
+
     suspend fun companionCreationEligibility(characterId: String?) = local.companionCreationEligibility(characterId)
 
     suspend fun getSession(id: String): Resource<Session> =

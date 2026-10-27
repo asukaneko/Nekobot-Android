@@ -335,6 +335,8 @@ fun ChatScreen(
     val companionPortrait = companionPhotoPath(session?.portrait, session?.characterAvatar)
     val showAiAvatar = companionChat || session?.sessionMode != "agent" || inheritsCharacter
     val fillAiWidth = !companionChat && session?.sessionMode == "agent" && !inheritsCharacter
+    // 临时会话：不保存记录、不使用全局记忆，随时可以结束并清除。
+    val temporarySession = com.nekobot.app.data.local.TemporarySession.isTemporary(sessionId)
     val groupCharacters by viewModel.groupCharacters.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
@@ -374,7 +376,9 @@ fun ChatScreen(
         (session?.messageCount ?: 0) == 0 &&
         session?.sessionMode.equals("agent", ignoreCase = true) &&
         !inheritsCharacter &&
-        !companionChat
+        !companionChat &&
+        // 临时会话不展示 Agent 推荐开始页，直接进入空白输入状态。
+        !temporarySession
     LaunchedEffect(showAgentWelcome) {
         if (showAgentWelcome) viewModel.ensureAgentWelcomeSuggestions()
     }
@@ -464,6 +468,7 @@ fun ChatScreen(
         mutableStateOf<LocalMessageImageEntity?>(null)
     }
     var showClearConfirm by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var showEndTemporaryConfirm by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showMyMessages by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showRestoreArchiveDialog by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showArchiveViewer by rememberSaveable(sessionId) { mutableStateOf(false) }
@@ -491,6 +496,22 @@ fun ChatScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
+    // 离开临时会话时立即归档：不再占用常规会话列表，可在「归档」筛选里继续查看。
+    val hostActivity = remember(context) {
+        var ctx: android.content.Context? = context
+        while (ctx is android.content.ContextWrapper && ctx !is android.app.Activity) {
+            ctx = ctx.baseContext
+        }
+        ctx as? android.app.Activity
+    }
+    DisposableEffect(sessionId) {
+        onDispose {
+            // 旋转屏幕等配置变更会触发重组，不代表用户离开会话。
+            if (hostActivity?.isChangingConfigurations != true) {
+                viewModel.archiveTemporarySessionOnLeave(sessionId)
+            }
+        }
+    }
     LaunchedEffect(toast) {
         toast?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -992,9 +1013,12 @@ fun ChatScreen(
                                     )
                                     // 陪伴聊天只在实际回复中显示输入状态，不展示消息统计。
                                     Text(
-                                        text = if (sending) typingLabel
-                                        else if (companionChat) stringResource(R.string.sessions_filter_agent_characters)
-                                        else stringResource(R.string.chat_message_count, totalMessageCount),
+                                        text = when {
+                                            temporarySession -> stringResource(R.string.temporary_session_header)
+                                            sending -> typingLabel
+                                            companionChat -> stringResource(R.string.sessions_filter_agent_characters)
+                                            else -> stringResource(R.string.chat_message_count, totalMessageCount)
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (companionChat) companionChatPalette().secondary
                                         else if (sending) MaterialTheme.colorScheme.primary
@@ -1103,6 +1127,15 @@ fun ChatScreen(
                                             showClearConfirm = true
                                         }
                                     )
+                                    if (temporarySession) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.temporary_session_end), color = Color(0xFFFF6B6B)) },
+                                            onClick = {
+                                                menuExpanded = false
+                                                showEndTemporaryConfirm = true
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         },
@@ -2027,6 +2060,20 @@ fun ChatScreen(
             confirmText = stringResource(R.string.common_clear),
             onConfirm = {
                 viewModel.clearMessages(sessionId) { showClearConfirm = false }
+            }
+        )
+    }
+
+    // 结束临时会话：清除本次对话内容并返回会话列表
+    if (showEndTemporaryConfirm) {
+        NekoDialog(
+            onDismiss = { showEndTemporaryConfirm = false },
+            title = stringResource(R.string.temporary_session_end_title),
+            message = stringResource(R.string.temporary_session_end_confirm),
+            confirmText = stringResource(R.string.temporary_session_end),
+            onConfirm = {
+                showEndTemporaryConfirm = false
+                viewModel.endTemporarySession { onBack() }
             }
         )
     }
