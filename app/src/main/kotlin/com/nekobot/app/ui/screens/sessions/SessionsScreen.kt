@@ -85,6 +85,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -115,6 +116,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
@@ -162,6 +165,7 @@ import com.nekobot.app.ui.adaptive.listItemSemantics
 import com.nekobot.app.ui.adaptive.rememberShouldUseTwoPane
 import com.nekobot.app.ui.screens.chat.ModernChatScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -438,6 +442,7 @@ fun SessionsScreen(
     val characters by viewModel.characters.collectAsStateWithLifecycle()
     val sessionCreationState by viewModel.sessionCreationState.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val toast by viewModel.toast.collectAsStateWithLifecycle()
     // 有等待用户处理的 Agent 事件的会话（授权/提问），在列表中显示提示
@@ -518,7 +523,6 @@ fun SessionsScreen(
 
     // 弹窗状态
     var showCreateModeMenu by remember { mutableStateOf(false) }
-    var showOverflowMenu by remember { mutableStateOf(false) }
     var createConfigMode by rememberSaveable { mutableStateOf<String?>(null) }
     // 新建角色会话时预选的角色（如首页 banner 固定角色直接新建）
     var createCharacterId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -590,31 +594,8 @@ fun SessionsScreen(
                         NekoIconAction(Icons.Filled.Search, stringResource(R.string.global_search_title)) {
                             onNavigate(Routes.GLOBAL_SEARCH)
                         }
-                        Box {
-                            NekoIconAction(Icons.Filled.MoreVert, stringResource(R.string.shell_more_actions)) {
-                                showOverflowMenu = true
-                            }
-                            DropdownMenu(
-                                expanded = showOverflowMenu,
-                                onDismissRequest = { showOverflowMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(refreshDesc) },
-                                    leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        viewModel.loadAll()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(importDesc) },
-                                    leadingIcon = { Icon(Icons.Filled.FileUpload, contentDescription = null) },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        importFileLauncher.launch("*/*")
-                                    }
-                                )
-                            }
+                        NekoIconAction(Icons.Filled.FileUpload, importDesc) {
+                            importFileLauncher.launch("*/*")
                         }
                         Box {
                             NekoIconAction(
@@ -786,68 +767,62 @@ fun SessionsScreen(
                         pageSize = it.size
                     }
             ) {
-                when {
-                    loading && sessionRows.isEmpty() -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = NekoPageHorizontalPadding)
-                        ) {
-                            homeHeader()
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 56.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                PullToRefreshBox(
+                    isRefreshing = refreshing,
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.fillMaxSize().semantics {
+                        customActions = listOf(
+                            CustomAccessibilityAction(refreshDesc) {
+                                viewModel.refresh()
+                                true
                             }
-                        }
+                        )
                     }
-                    sessionRows.isEmpty() -> {
-                        val emptyTitle = when {
-                            searchQuery.isNotBlank() -> noMatchTitle
-                            filter != SessionFilter.ALL -> filterEmptyTitle
-                            else -> emptyTitleText
-                        }
-                        val emptyHint = when {
-                            searchQuery.isNotBlank() -> noMatchHint
-                            filter != SessionFilter.ALL -> filterEmptyHint
-                            else -> emptyHintText
-                        }
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = NekoPageHorizontalPadding)
-                        ) {
+                ) {
+                    // 空态也使用可滚动容器，确保无会话或筛选无结果时仍可下拉刷新。
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        state = sessionListState,
+                        contentPadding = PaddingValues(
+                            start = NekoPageHorizontalPadding,
+                            end = NekoPageHorizontalPadding,
+                            top = 4.dp,
+                            bottom = bottomBarClearance + 24.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        item(key = "home-header", contentType = "home-header") {
                             homeHeader()
-                            NekoEmpty(
-                                title = emptyTitle,
-                                hint = emptyHint,
-                                icon = Icons.AutoMirrored.Outlined.Chat
-                            )
                         }
-                    }
-                    else -> {
-                        // 头部作为首个 item 跟随列表一起滚动
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            state = sessionListState,
-                            contentPadding = PaddingValues(
-                                start = NekoPageHorizontalPadding,
-                                end = NekoPageHorizontalPadding,
-                                top = 4.dp,
-                                bottom = bottomBarClearance + 24.dp
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(0.dp)
-                        ) {
-                            item(
-                                key = "home-header",
-                                contentType = "home-header"
-                            ) {
-                                homeHeader()
+                        when {
+                            loading && sessionRows.isEmpty() && !refreshing -> item(key = "loading") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 56.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                }
                             }
-                            itemsIndexed(
+                            sessionRows.isEmpty() -> item(key = "empty") {
+                                val emptyTitle = when {
+                                    searchQuery.isNotBlank() -> noMatchTitle
+                                    filter != SessionFilter.ALL -> filterEmptyTitle
+                                    else -> emptyTitleText
+                                }
+                                val emptyHint = when {
+                                    searchQuery.isNotBlank() -> noMatchHint
+                                    filter != SessionFilter.ALL -> filterEmptyHint
+                                    else -> emptyHintText
+                                }
+                                NekoEmpty(
+                                    title = emptyTitle,
+                                    hint = emptyHint,
+                                    icon = Icons.AutoMirrored.Outlined.Chat
+                                )
+                            }
+                            else -> itemsIndexed(
                                 items = sessionRows,
                                 key = { _, row -> row.key },
                                 contentType = { _, _ -> "session-row" }
@@ -1727,6 +1702,8 @@ class SessionsViewModel : BaseViewModel() {
     val listScrollState = LazyListState()
 
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
     private val _dashboardTokenStats = MutableStateFlow<TokenStats?>(null)
     private val _dashboardRankings = MutableStateFlow<TokenRankings?>(null)
     private val _dashboardHighAffectionCharacterCount = MutableStateFlow(0)
@@ -1951,6 +1928,51 @@ class SessionsViewModel : BaseViewModel() {
         loadSessions(version)
         loadCharacters(version)
         loadSessionCreationCharacters(version)
+    }
+
+    /** 下拉刷新独立管理进度，保留列表并等待全部请求完成，避免重复触发。 */
+    fun refresh() {
+        if (!_refreshing.compareAndSet(expect = false, update = true)) return
+        val version = dataSourceVersion
+        viewModelScope.launch {
+            try {
+                val (sessionsResult, charactersResult, creationCharactersResult) = coroutineScope {
+                    val sessionsRequest = async { unified.listSessions() }
+                    val charactersRequest = async { unified.listCharacters() }
+                    val creationCharactersRequest = async { unified.listCharactersForSessionCreation() }
+                    Triple(sessionsRequest.await(), charactersRequest.await(), creationCharactersRequest.await())
+                }
+                if (version != dataSourceVersion) return@launch
+                when (sessionsResult) {
+                    is Resource.Success -> _sessions.value = sessionsResult.data ?: emptyList()
+                    is Resource.Error -> showError(sessionsResult.message)
+                    is Resource.Loading -> {}
+                }
+                when (charactersResult) {
+                    is Resource.Success -> _characters.value = charactersResult.data ?: emptyList()
+                    is Resource.Error -> showError(charactersResult.message)
+                    is Resource.Loading -> {}
+                }
+                when (creationCharactersResult) {
+                    is Resource.Success -> _sessionCreationState.value = _sessionCreationState.value.copy(
+                        characters = creationCharactersResult.data ?: emptyList(),
+                        error = null
+                    )
+                    is Resource.Error -> _sessionCreationState.value = _sessionCreationState.value.copy(
+                        error = creationCharactersResult.message
+                    )
+                    is Resource.Loading -> {}
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (version == dataSourceVersion) {
+                    showError(e.message ?: string(R.string.common_unknown_error))
+                }
+            } finally {
+                _refreshing.value = false
+            }
+        }
     }
 
     private var lastDataSourceKey: Pair<AppMode, Long>? = null
