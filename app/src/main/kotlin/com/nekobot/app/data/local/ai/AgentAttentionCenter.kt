@@ -286,9 +286,14 @@ object AgentAttentionCenter {
     }
 
     private fun publish() {
+        // 按类型优先级 + 文案排序：entries 是并发表，遍历顺序不固定，
+        // 不排序会让会话列表的「等待内容」在每次发布时跳变。
         _pendingBySession.value = entries.values
             .groupBy { it.sessionId }
-            .mapValues { (_, list) -> list.map { it.item } }
+            .mapValues { (_, list) ->
+                list.sortedWith(compareBy({ it.item.kind.ordinal }, { it.item.text }))
+                    .map { it.item }
+            }
     }
 
     private fun localizedString(resId: Int, vararg args: Any): String? {

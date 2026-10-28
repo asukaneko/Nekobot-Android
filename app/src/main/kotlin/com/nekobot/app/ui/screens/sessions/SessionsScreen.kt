@@ -50,6 +50,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.Help
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -67,8 +68,10 @@ import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -127,6 +130,8 @@ import androidx.lifecycle.viewModelScope
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.R
 import com.nekobot.app.data.local.AppMode
+import com.nekobot.app.data.local.ai.AgentAttentionItem
+import com.nekobot.app.data.local.ai.AgentAttentionKind
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.RandomCharacterIdea
@@ -948,7 +953,9 @@ fun SessionsScreen(
                                         row = row,
                                         first = index == 0,
                                         last = index == sessionRows.lastIndex,
-                                        hasAttention = row.id?.let { attentionBySession.containsKey(it) } == true,
+                                        attention = sessionAttentionStatus(
+                                            row.id?.let { attentionBySession[it] }.orEmpty()
+                                        ),
                                         isGenerating = row.id != null && row.id in generatingSessions,
                                         // 抽屉展开时点击行只收起抽屉，不进入会话
                                         onClick = {
@@ -1594,14 +1601,50 @@ private fun RowScope.SelectionBarAction(spec: SelectionBarActionSpec) {
     }
 }
 
-/** 单个会话行：头像 + 标题 + 最后一条消息 + 时间，长按直接进入多选。 */
+/** 等待事项正文压成单行时复用的空白匹配（避免每帧重新构造正则）。 */
+private val ATTENTION_WHITESPACE = Regex("\\s+")
+
+/** 把该会话的等待事项压成一行状态；没有等待事项时返回 null。 */
+@Composable
+private fun sessionAttentionStatus(items: List<AgentAttentionItem>): SessionAttentionStatus? {
+    val lead = items.firstOrNull() ?: return null
+    val label = when (lead.kind) {
+        AgentAttentionKind.ExecAuthorization -> stringResource(R.string.sessions_attention_exec)
+        AgentAttentionKind.Question -> stringResource(R.string.sessions_attention_question)
+        AgentAttentionKind.PluginInstall -> stringResource(R.string.sessions_attention_plugin)
+    }
+    // 提问正文可能自带换行与缩进：压成单行后交给行内省略号处理
+    val body = lead.text.replace(ATTENTION_WHITESPACE, " ").trim()
+    val more = if (items.size > 1) {
+        stringResource(R.string.sessions_attention_more, items.size - 1)
+    } else {
+        null
+    }
+    return SessionAttentionStatus(
+        kind = lead.kind,
+        text = buildString {
+            append(label)
+            if (body.isNotEmpty()) {
+                append(" · ")
+                append(body)
+            }
+            more?.let {
+                append(' ')
+                append(it)
+            }
+        }
+    )
+}
+
+/** 单个会话行：头像 + 标题 + 最后一条消息（有待处理事项时换成等待状态） + 时间，长按直接进入多选。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SessionItem(
     row: SessionListRow,
     first: Boolean,
     last: Boolean,
-    hasAttention: Boolean = false,
+    /** 该会话当前等待用户处理的事项（命令授权 / 提问 / 插件安装）。 */
+    attention: SessionAttentionStatus? = null,
     isGenerating: Boolean = false,
     onClick: () -> Unit,
     /** 长按：直接进入多选，并把当前会话作为第一个选中项。 */
@@ -1652,6 +1695,10 @@ internal fun SessionItem(
     // 长按成立时给一次明确的触感反馈（进入多选）
     val haptic = LocalHapticFeedback.current
 
+    // 等待用户处理的状态占用「最后一条消息」的位置：直接说清在等什么，
+    // 比只在头像上亮一个小圆点更容易在列表里被发现。
+    val subtitleText = attention?.text ?: row.lastMessage ?: noMessageText
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1675,7 +1722,7 @@ internal fun SessionItem(
                     R.string.sessions_item_description,
                     row.listTitle,
                     listOfNotNull(
-                        row.lastMessage ?: noMessageText,
+                        subtitleText,
                         row.updatedAt
                     ).joinToString(" · ")
                 )
@@ -1730,7 +1777,7 @@ internal fun SessionItem(
                         }
                     }
                     // 等待处理 / 正在生成：头像角标，不做整行高亮
-                    if (hasAttention || isGenerating) {
+                    if (attention != null || isGenerating) {
                         Box(
                             Modifier
                                 .align(Alignment.BottomEnd)
@@ -1821,7 +1868,7 @@ internal fun SessionItem(
                         }
                     }
                     Spacer(Modifier.height(3.dp))
-                    // 第二行：模式图标 + 最后一条消息，一直延伸到右边缘
+                    // 第二行：模式图标 + 最后一条消息；有待处理事项时改为状态图标 + 等待内容
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (row.isTemporary) {
                             Text(
@@ -1832,17 +1879,35 @@ internal fun SessionItem(
                             )
                             Spacer(Modifier.width(6.dp))
                         }
-                        Icon(
-                            row.modeLabel.icon(),
-                            contentDescription = row.modeLabel.title(),
-                            tint = modeColor,
-                            modifier = Modifier.size(12.dp)
-                        )
+                        if (attention != null) {
+                            Icon(
+                                imageVector = when (attention.kind) {
+                                    AgentAttentionKind.ExecAuthorization -> Icons.Outlined.Terminal
+                                    AgentAttentionKind.Question -> Icons.AutoMirrored.Outlined.Help
+                                    AgentAttentionKind.PluginInstall -> Icons.Outlined.Extension
+                                },
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        } else {
+                            Icon(
+                                row.modeLabel.icon(),
+                                contentDescription = row.modeLabel.title(),
+                                tint = modeColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
                         Spacer(Modifier.width(5.dp))
                         Text(
-                            text = row.lastMessage ?: noMessageText,
+                            text = subtitleText,
                             style = nekoRowSubtitleStyle(),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (attention != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontWeight = if (attention != null) FontWeight.Medium else null,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)

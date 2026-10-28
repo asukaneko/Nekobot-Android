@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.sessions
 
 import androidx.compose.runtime.Immutable
+import com.nekobot.app.data.local.ai.AgentAttentionKind
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.Session
 
@@ -57,6 +58,17 @@ data class SessionListRow(
         if (it.length == 10 && it[4] == '-' && it[7] == '-') it.substring(5) else it
     }
 }
+
+/**
+ * 会话行上的「等待用户处理」状态（命令授权 / 提问 / 插件安装）。
+ *
+ * 文案直接占用原来放最后一条消息的位置；[kind] 决定行首图标。
+ */
+@Immutable
+data class SessionAttentionStatus(
+    val kind: AgentAttentionKind,
+    val text: String
+)
 
 /**
  * 列表只展示日期部分，避免完整 ISO 时间戳挤占会话标题和消息预览的空间。

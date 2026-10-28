@@ -101,6 +101,10 @@
     <string name="sessions_two_pane_drag_handle">ドラッグしてリストとチャットの幅を調整。端までドラッグすると片側を全画面表示できます</string>
     <string name="sessions_item_description">会話：%1$s、%2$s</string>
     <string name="sessions_no_message">メッセージなし</string>
+    <string name="sessions_attention_exec">承認待ち</string>
+    <string name="sessions_attention_question">回答待ち</string>
+    <string name="sessions_attention_plugin">確認待ち</string>
+    <string name="sessions_attention_more">他 %1$d 件</string>
     <string name="models_none_available">使用可能なモデルがありません</string>
     <string name="worldbook_select_for_details">世界書を選択して詳細を表示</string>
     <string name="worldbook_item_description">世界書：%1$s、%2$s、%3$d 件の項目</string>

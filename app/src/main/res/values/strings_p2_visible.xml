@@ -108,6 +108,10 @@
     <string name="sessions_two_pane_drag_handle">拖动调整列表与聊天的宽度，拖到两端可让一侧全屏</string>
     <string name="sessions_item_description">会话：%1$s，%2$s</string>
     <string name="sessions_no_message">无消息</string>
+    <string name="sessions_attention_exec">待授权</string>
+    <string name="sessions_attention_question">待回答</string>
+    <string name="sessions_attention_plugin">待确认</string>
+    <string name="sessions_attention_more">+%1$d 项</string>
     <string name="models_none_available">无可用模型</string>
     <string name="worldbook_select_for_details">选择一本世界书查看详情</string>
     <string name="worldbook_item_description">世界书：%1$s，%2$s，%3$d 条条目</string>
