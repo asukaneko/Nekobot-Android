@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sessions_filter_character_sessions">キャラ</string>
     <string name="sessions_filter_agent_sessions">Agent</string>
@@ -85,6 +85,22 @@
     <string name="sessions_unpinned_toast">ピン留めを解除しました</string>
     <string name="sessions_archived_toast">アーカイブしました</string>
     <string name="sessions_unarchived_toast">アーカイブを解除しました</string>
+    <string name="sessions_multi_select">選択</string>
+    <string name="sessions_selected_count">%1$d 件選択中</string>
+    <string name="sessions_select_all">すべて選択</string>
+    <string name="sessions_select_none">選択解除</string>
+    <string name="sessions_multi_select_exit">選択を終了</string>
+    <string name="sessions_batch_empty">先にチャットを選択してください</string>
+    <string name="sessions_batch_delete_confirm">選択した %1$d 件のチャットを削除しますか？元に戻せません。</string>
+    <string name="sessions_batch_pinned_toast">%1$d 件をピン留めしました</string>
+    <string name="sessions_batch_favorited_toast">%1$d 件をお気に入りにしました</string>
+    <string name="sessions_batch_archived_toast">%1$d 件をアーカイブしました</string>
+    <string name="sessions_batch_deleted_toast">%1$d 件を削除しました</string>
+    <string name="sessions_batch_partial">成功 %1$d 件、失敗 %2$d 件</string>
+    <string name="sessions_batch_failed">%1$d 件の操作に失敗しました</string>
+    <string name="sessions_batch_unpinned_toast">%1$d 件のピン留めを解除しました</string>
+    <string name="sessions_batch_unfavorited_toast">%1$d 件をお気に入りから外しました</string>
+    <string name="sessions_batch_unarchived_toast">%1$d 件のアーカイブを解除しました</string>
 
     <!-- ==================== チャット詳細 (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">チャット詳細</string>

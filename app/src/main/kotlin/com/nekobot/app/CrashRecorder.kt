@@ -3,6 +3,7 @@ package com.nekobot.app
 import android.content.Context
 import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
+import com.nekobot.app.data.local.LocalLogger
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -54,6 +55,8 @@ internal object CrashRecorder {
             append(writer.toString().take(MAX_CHARS))
         }
         android.util.Log.e(TAG, text)
+        // 同时写进应用内日志（更多 → 日志查看可直接看到，不必再取文件）
+        runCatching { LocalLogger.e(TAG, text) }
         val target = File(crashDir(context), FILE_NAME)
         runCatching { target.parentFile?.mkdirs() }
         target.writeText(text)

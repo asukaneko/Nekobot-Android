@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sessions_filter_character_sessions">캐릭터</string>
     <string name="sessions_filter_agent_sessions">Agent</string>
@@ -85,6 +85,22 @@
     <string name="sessions_unpinned_toast">고정을 해제했어요</string>
     <string name="sessions_archived_toast">보관했어요</string>
     <string name="sessions_unarchived_toast">보관을 해제했어요</string>
+    <string name="sessions_multi_select">선택</string>
+    <string name="sessions_selected_count">%1$d개 선택됨</string>
+    <string name="sessions_select_all">전체 선택</string>
+    <string name="sessions_select_none">전체 해제</string>
+    <string name="sessions_multi_select_exit">선택 종료</string>
+    <string name="sessions_batch_empty">먼저 대화를 선택하세요</string>
+    <string name="sessions_batch_delete_confirm">선택한 대화 %1$d개를 삭제할까요? 삭제 후에는 되돌릴 수 없어요.</string>
+    <string name="sessions_batch_pinned_toast">대화 %1$d개를 고정했어요</string>
+    <string name="sessions_batch_favorited_toast">대화 %1$d개를 즐겨찾기에 추가했어요</string>
+    <string name="sessions_batch_archived_toast">대화 %1$d개를 보관했어요</string>
+    <string name="sessions_batch_deleted_toast">대화 %1$d개를 삭제했어요</string>
+    <string name="sessions_batch_partial">성공 %1$d개, 실패 %2$d개</string>
+    <string name="sessions_batch_failed">대화 %1$d개 작업에 실패했어요</string>
+    <string name="sessions_batch_unpinned_toast">대화 %1$d개의 고정을 해제했어요</string>
+    <string name="sessions_batch_unfavorited_toast">대화 %1$d개를 즐겨찾기에서 뺐어요</string>
+    <string name="sessions_batch_unarchived_toast">대화 %1$d개의 보관을 해제했어요</string>
 
     <!-- ==================== 대화 상세 (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">대화 상세</string>

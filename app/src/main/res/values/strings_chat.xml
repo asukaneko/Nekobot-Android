@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- ==================== 会话列表页 (SessionsScreen) ==================== -->
     <string name="sessions_filter_all">全部会话</string>
@@ -91,6 +91,22 @@
     <string name="sessions_unpinned_toast">已取消置顶</string>
     <string name="sessions_archived_toast">已归档</string>
     <string name="sessions_unarchived_toast">已取消归档</string>
+    <string name="sessions_multi_select">多选</string>
+    <string name="sessions_selected_count">已选 %1$d 项</string>
+    <string name="sessions_select_all">全选</string>
+    <string name="sessions_select_none">全不选</string>
+    <string name="sessions_multi_select_exit">退出多选</string>
+    <string name="sessions_batch_empty">请先选择会话</string>
+    <string name="sessions_batch_delete_confirm">确定删除选中的 %1$d 个会话？删除后无法恢复。</string>
+    <string name="sessions_batch_pinned_toast">已置顶 %1$d 个会话</string>
+    <string name="sessions_batch_favorited_toast">已收藏 %1$d 个会话</string>
+    <string name="sessions_batch_archived_toast">已归档 %1$d 个会话</string>
+    <string name="sessions_batch_deleted_toast">已删除 %1$d 个会话</string>
+    <string name="sessions_batch_partial">成功 %1$d 个，失败 %2$d 个</string>
+    <string name="sessions_batch_failed">%1$d 个会话操作失败</string>
+    <string name="sessions_batch_unpinned_toast">已取消置顶 %1$d 个会话</string>
+    <string name="sessions_batch_unfavorited_toast">已取消收藏 %1$d 个会话</string>
+    <string name="sessions_batch_unarchived_toast">已取消归档 %1$d 个会话</string>
 
     <!-- ==================== 会话详情页 (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">会话详情</string>

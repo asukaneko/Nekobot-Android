@@ -15,9 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border as materialBorder
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -34,8 +33,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,15 +54,16 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -91,7 +93,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -101,14 +102,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -117,13 +112,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.onLongClick
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -149,9 +143,6 @@ import com.nekobot.app.ui.components.NekoIconAction
 import com.nekobot.app.ui.components.NekoPageHorizontalPadding
 import com.nekobot.app.ui.components.NekoPageTopBar
 import com.nekobot.app.ui.components.NekoTag
-import com.nekobot.app.ui.components.NekoSheet
-import com.nekobot.app.ui.components.NekoSheetHeader
-import com.nekobot.app.ui.components.NekoChoiceRow
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
@@ -178,9 +169,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import android.content.Context
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.FileUpload
@@ -203,6 +194,11 @@ enum class SessionFilter(val labelResId: Int) {
 
 /** 频道筛选项：value 为 null 表示全部频道。 */
 data class ChannelOption(val label: String, val value: String?)
+
+/** 会话多选后的批量操作。 */
+enum class SessionBatchAction {
+    PIN, FAVORITE, ARCHIVE, DELETE
+}
 
 private data class DashboardMetricsLoadResults(
     val stats: Resource<TokenStats>,
@@ -421,8 +417,8 @@ private fun TwoPaneDragHandle(
 }
 
 /**
- * 会话列表页：展示所有会话，支持新建、重命名、删除、收藏 / 置顶切换、筛选、搜索。
- * 点击会话项调用 [onOpenChat]。
+ * 会话列表页：展示所有会话，支持新建、删除、收藏 / 置顶切换、筛选、搜索与多选批量操作。
+ * 点击会话项调用 [onOpenChat]，长按直接进入多选。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -432,7 +428,9 @@ fun SessionsScreen(
     onOpenStoryGraph: (String) -> Unit = onOpenChat,
     onNavigate: (String) -> Unit = {},
     /** 双栏模式下聊天全屏状态变化（用于隐藏底部导航栏）。 */
-    onTwoPaneChatMaximizedChange: (Boolean) -> Unit = {}
+    onTwoPaneChatMaximizedChange: (Boolean) -> Unit = {},
+    /** 多选模式变化：用于隐藏底部导航栏，交给页面自己的批量操作栏。 */
+    onSelectionModeChange: (Boolean) -> Unit = {}
 ) {
     val viewModel: SessionsViewModel = viewModel()
     val sessionRows by viewModel.displayedSessionRows.collectAsStateWithLifecycle()
@@ -471,15 +469,21 @@ fun SessionsScreen(
     val noMatchHint = stringResource(R.string.sessions_no_match_hint)
     val filterEmptyHint = stringResource(R.string.sessions_filter_empty_hint)
     val emptyHintText = stringResource(R.string.sessions_empty_hint)
-    val renameTitle = stringResource(R.string.sessions_rename_title)
-    val saveText = stringResource(R.string.common_save)
-    val sessionNameLabel = stringResource(R.string.sessions_name_label)
     val deleteTitle = stringResource(R.string.sessions_delete_title)
     val deleteConfirmFmt = stringResource(R.string.sessions_delete_confirm)
     val deleteText = stringResource(R.string.common_delete)
     val dashboardTitle = stringResource(R.string.stats_dashboard_title)
     val dashboardRefreshDesc = stringResource(R.string.stats_dashboard_refresh)
     val importDesc = stringResource(R.string.sessions_import)
+    // 多选顶栏 / 左滑抽屉用到的文案
+    val pinText = stringResource(R.string.sessions_pin)
+    val unpinText = stringResource(R.string.sessions_unpin)
+    val favoriteText = stringResource(R.string.sessions_favorite)
+    val unfavoriteText = stringResource(R.string.sessions_unfavorite)
+    val archiveText = stringResource(R.string.sessions_archive)
+    val unarchiveText = stringResource(R.string.sessions_unarchive)
+    val batchEmptyHint = stringResource(R.string.sessions_batch_empty)
+    val batchDeleteConfirmFmt = stringResource(R.string.sessions_batch_delete_confirm)
 
     val context = LocalContext.current
     val importFileLauncher = rememberLauncherForActivityResult(
@@ -494,11 +498,32 @@ fun SessionsScreen(
     // 滚动状态由 ViewModel 持有：进入聊天/详情再返回时仍停在原位置；
     // LazyListState 会按会话 key 记住首个可见项，列表因聊天更新排序后也不会跳回顶部。
     val sessionListState = viewModel.listScrollState
-    // 长按会话弹出的横向动作条（取代每行右侧的三点菜单）
-    val sessionActionStrip = remember { SessionActionStripState() }
-    // 内容区在窗口中的位置与尺寸：动作条按"触发行的纵坐标"摆放，需要窗口坐标换算
-    var pageOrigin by remember { mutableStateOf(Offset.Zero) }
-    var pageSize by remember { mutableStateOf(IntSize.Zero) }
+    // 多选模式：进入后点击会话行即勾选，顶栏与底栏换成批量操作
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedSessionIds by remember { mutableStateOf(emptySet<String>()) }
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+    // 左滑抽屉：同一时刻只允许一行展开
+    var openSwipeRowKey by remember { mutableStateOf<String?>(null) }
+    // 列表滚动时收起已展开的抽屉
+    LaunchedEffect(sessionListState.isScrollInProgress) {
+        if (sessionListState.isScrollInProgress) openSwipeRowKey = null
+    }
+    // 多选时隐藏底部导航栏，由页面自己的批量操作栏占位
+    LaunchedEffect(selectionMode) { onSelectionModeChange(selectionMode) }
+    val exitSelection: () -> Unit = {
+        selectionMode = false
+        selectedSessionIds = emptySet()
+    }
+    // 批量操作：提交后立即退出多选，结果由 ViewModel 汇总提示
+    val runBatchAction: (SessionBatchAction, Boolean) -> Unit = { action, enable ->
+        val ids = selectedSessionIds
+        if (ids.isEmpty()) {
+            viewModel.showToast(batchEmptyHint)
+        } else {
+            viewModel.batchUpdateSessions(action, ids, enable)
+            exitSelection()
+        }
+    }
 
     // 模式切换时自动刷新会话列表
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
@@ -526,7 +551,6 @@ fun SessionsScreen(
     var createConfigMode by rememberSaveable { mutableStateOf<String?>(null) }
     // 新建角色会话时预选的角色（如首页 banner 固定角色直接新建）
     var createCharacterId by rememberSaveable { mutableStateOf<String?>(null) }
-    var renaming by remember { mutableStateOf<SessionListRow?>(null) }
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
     var showSearchPanel by rememberSaveable { mutableStateOf(false) }
     var showDashboardLayout by rememberSaveable { mutableStateOf(false) }
@@ -572,6 +596,17 @@ fun SessionsScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            if (selectionMode && !dashboardVisible) {
+                SessionSelectionTopBar(
+                    selectedCount = selectedSessionIds.size,
+                    totalCount = sessionRows.size,
+                    onSelectAll = {
+                        selectedSessionIds = sessionRows.mapNotNull { it.id }.toSet()
+                    },
+                    onClearAll = { selectedSessionIds = emptySet() },
+                    onCancel = exitSelection
+                )
+            } else {
             NekoPageTopBar(
                 title = if (dashboardVisible) dashboardTitle else titleText,
                 badge = if (dashboardVisible) {
@@ -686,6 +721,51 @@ fun SessionsScreen(
                     }
                 }
             )
+            }
+        },
+        bottomBar = {
+            // 多选时把四个批量操作放到原底部导航栏的位置。
+            // 置顶 / 收藏 / 归档 跟随所选会话状态：全部已置顶则变为「取消置顶」，
+            // 全部未置顶为普通状态，既有选中又有未选中（混合）时置灰不可点。
+            if (selectionMode && !dashboardVisible) {
+                val selectedRows = sessionRows.filter { it.id != null && it.id in selectedSessionIds }
+                val hasSelection = selectedRows.isNotEmpty()
+                val allPinned = hasSelection && selectedRows.all { it.pinned }
+                val anyPinned = selectedRows.any { it.pinned }
+                val allFavorited = hasSelection && selectedRows.all { it.favorite }
+                val anyFavorited = selectedRows.any { it.favorite }
+                val allArchived = hasSelection && selectedRows.all { it.archived }
+                val anyArchived = selectedRows.any { it.archived }
+                SessionSelectionActionBar(
+                    actions = listOf(
+                        SelectionBarActionSpec(
+                            icon = Icons.Filled.PushPin,
+                            label = if (allPinned) unpinText else pinText,
+                            enabled = hasSelection && (allPinned || !anyPinned),
+                            onClick = { runBatchAction(SessionBatchAction.PIN, !allPinned) }
+                        ),
+                        SelectionBarActionSpec(
+                            icon = if (allFavorited) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            label = if (allFavorited) unfavoriteText else favoriteText,
+                            enabled = hasSelection && (allFavorited || !anyFavorited),
+                            onClick = { runBatchAction(SessionBatchAction.FAVORITE, !allFavorited) }
+                        ),
+                        SelectionBarActionSpec(
+                            icon = if (allArchived) Icons.Filled.Unarchive else Icons.Filled.Archive,
+                            label = if (allArchived) unarchiveText else archiveText,
+                            enabled = hasSelection && (allArchived || !anyArchived),
+                            onClick = { runBatchAction(SessionBatchAction.ARCHIVE, !allArchived) }
+                        ),
+                        SelectionBarActionSpec(
+                            icon = Icons.Outlined.Delete,
+                            label = deleteText,
+                            enabled = hasSelection,
+                            destructive = true,
+                            onClick = { showBatchDeleteConfirm = true }
+                        )
+                    )
+                )
+            }
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -759,14 +839,7 @@ fun SessionsScreen(
                     }
                 )
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .onGloballyPositioned {
-                        pageOrigin = it.positionInWindow()
-                        pageSize = it.size
-                    }
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 PullToRefreshBox(
                     isRefreshing = refreshing,
                     onRefresh = viewModel::refresh,
@@ -787,12 +860,16 @@ fun SessionsScreen(
                             start = NekoPageHorizontalPadding,
                             end = NekoPageHorizontalPadding,
                             top = 4.dp,
-                            bottom = bottomBarClearance + 24.dp
+                            // 多选时底栏换成批量操作栏，底部留白按 Scaffold 的 padding 计算即可
+                            bottom = if (selectionMode) 16.dp else bottomBarClearance + 24.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        item(key = "home-header", contentType = "home-header") {
-                            homeHeader()
+                        // 多选时收起首屏头部，把高度留给会话行
+                        if (!selectionMode) {
+                            item(key = "home-header", contentType = "home-header") {
+                                homeHeader()
+                            }
                         }
                         when {
                             loading && sessionRows.isEmpty() && !refreshing -> item(key = "loading") {
@@ -827,39 +904,86 @@ fun SessionsScreen(
                                 key = { _, row -> row.key },
                                 contentType = { _, _ -> "session-row" }
                             ) { index, row ->
-                                SessionItem(
-                                    row = row,
-                                    first = index == 0,
-                                    last = index == sessionRows.lastIndex,
-                                    hasAttention = row.id?.let { attentionBySession.containsKey(it) } == true,
-                                    isGenerating = row.id != null && row.id in generatingSessions,
-                                    onClick = { row.id?.let(handleOpenChat) },
-                                    onOpenDetail = { row.id?.let(onOpenDetail) },
-                                    onRename = { if (row.id != null) renaming = row },
-                                    onDelete = { if (row.id != null) deleting = row },
-                                    onToggleFavorite = {
-                                        row.id?.let { viewModel.toggleFavorite(it, row.favorite) }
-                                    },
-                                    onTogglePinned = {
-                                        row.id?.let { viewModel.togglePinned(it, row.pinned) }
-                                    },
-                                    onToggleArchived = {
-                                        row.id?.let { viewModel.toggleArchived(it, row.archived) }
-                                    },
-                                    onOpenStoryGraph = { row.id?.let(onOpenStoryGraph) },
-                                    actionStrip = sessionActionStrip
+                                val rowId = row.id
+                                val rowSelected = rowId != null && rowId in selectedSessionIds
+                                val swipeActions = listOf(
+                                    SessionSwipeAction(
+                                        icon = Icons.Filled.PushPin,
+                                        contentDescription = if (row.pinned) unpinText else pinText,
+                                        tint = if (row.pinned) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    ) { rowId?.let { viewModel.togglePinned(it, row.pinned) } },
+                                    SessionSwipeAction(
+                                        icon = if (row.favorite) Icons.Filled.FavoriteBorder else Icons.Filled.Favorite,
+                                        contentDescription = if (row.favorite) unfavoriteText else favoriteText,
+                                        tint = if (row.favorite) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    ) { rowId?.let { viewModel.toggleFavorite(it, row.favorite) } },
+                                    SessionSwipeAction(
+                                        icon = Icons.Filled.Archive,
+                                        contentDescription = if (row.archived) unarchiveText else archiveText,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ) { rowId?.let { viewModel.toggleArchived(it, row.archived) } },
+                                    SessionSwipeAction(
+                                        icon = Icons.Outlined.Delete,
+                                        contentDescription = deleteText,
+                                        tint = MaterialTheme.colorScheme.error
+                                    ) { if (rowId != null) deleting = row }
                                 )
+                                SessionSwipeRow(
+                                    rowKey = row.key,
+                                    openKey = openSwipeRowKey,
+                                    onOpenKeyChange = { openSwipeRowKey = it },
+                                    shape = sessionItemShape(index == 0, index == sessionRows.lastIndex),
+                                    enabled = !selectionMode,
+                                    actions = swipeActions
+                                ) {
+                                    SessionItem(
+                                        row = row,
+                                        first = index == 0,
+                                        last = index == sessionRows.lastIndex,
+                                        hasAttention = row.id?.let { attentionBySession.containsKey(it) } == true,
+                                        isGenerating = row.id != null && row.id in generatingSessions,
+                                        // 抽屉展开时点击行只收起抽屉，不进入会话
+                                        onClick = {
+                                            when {
+                                                openSwipeRowKey == row.key -> openSwipeRowKey = null
+                                                // 已展开别的行：先收起抽屉，不误触进入会话
+                                                openSwipeRowKey != null -> openSwipeRowKey = null
+                                                else -> rowId?.let(handleOpenChat)
+                                            }
+                                        },
+                                        // 长按直接进入多选，并勾选当前会话
+                                        onLongPress = {
+                                            rowId?.let { id ->
+                                                openSwipeRowKey = null
+                                                selectionMode = true
+                                                selectedSessionIds = setOf(id)
+                                            }
+                                        },
+                                        selectionMode = selectionMode,
+                                        selected = rowSelected,
+                                        onToggleSelection = {
+                                            rowId?.let { id ->
+                                                selectedSessionIds = if (id in selectedSessionIds) {
+                                                    selectedSessionIds - id
+                                                } else {
+                                                    selectedSessionIds + id
+                                                }
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
                 }
-
-                // 长按打开常用操作条，松手后点选执行。
-                SessionActionStripOverlay(
-                    state = sessionActionStrip,
-                    origin = pageOrigin,
-                    containerSize = pageSize
-                )
 
                 // 错误提示统一走系统 Toast（屏幕下方横条）
                 ErrorToast(message = error, onShown = { viewModel.clearError() })
@@ -869,6 +993,22 @@ fun SessionsScreen(
     }
     } // 结束 SessionDashboardPager
     } // 结束 TwoPaneSessionsWrapper
+
+    // 多选模式下返回键先退出多选，不直接返回上一页
+    BackHandler(enabled = selectionMode) { exitSelection() }
+
+    if (showBatchDeleteConfirm) {
+        NekoDialog(
+            onDismiss = { showBatchDeleteConfirm = false },
+            title = deleteTitle,
+            message = batchDeleteConfirmFmt.format(selectedSessionIds.size),
+            confirmText = deleteText,
+            onConfirm = {
+                showBatchDeleteConfirm = false
+                runBatchAction(SessionBatchAction.DELETE, true)
+            }
+        )
+    }
 
     if (showDashboardLayout) {
         DashboardLayoutDialog(
@@ -927,28 +1067,6 @@ fun SessionsScreen(
                 initialCharacterId = createCharacterId
             )
         }
-    }
-
-    // 重命名弹窗
-    renaming?.let { row ->
-        var name by rememberSaveable(row.key) { mutableStateOf(row.listTitle) }
-        NekoDialog(
-            onDismiss = { renaming = null },
-            title = renameTitle,
-            confirmText = saveText,
-            onConfirm = {
-                viewModel.renameSession(row.id.orEmpty(), name) { renaming = null }
-            },
-            content = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(sessionNameLabel) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        )
     }
 
     // 删除确认弹窗
@@ -1342,7 +1460,142 @@ private fun CreateGroupSessionDialog(
     )
 }
 
-/** 单个会话行：头像 + 标题 + 最后一条消息 + 时间，长按弹出横向操作条。 */
+/**
+ * 多选顶栏：左侧「全选 / 全不选」，中间已选数量，右侧「取消」。
+ */
+@Composable
+private fun SessionSelectionTopBar(
+    selectedCount: Int,
+    totalCount: Int,
+    onSelectAll: () -> Unit,
+    onClearAll: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val allSelected = totalCount > 0 && selectedCount >= totalCount
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .heightIn(min = 64.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 全选 / 全不选是同一个按钮的两个状态
+        SelectionTextAction(
+            text = stringResource(
+                if (allSelected) R.string.sessions_select_none else R.string.sessions_select_all
+            ),
+            enabled = totalCount > 0,
+            onClick = if (allSelected) onClearAll else onSelectAll
+        )
+        Text(
+            text = stringResource(R.string.sessions_selected_count, selectedCount),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        SelectionTextAction(
+            text = stringResource(R.string.common_cancel),
+            enabled = true,
+            onClick = onCancel
+        )
+    }
+}
+
+/** 顶栏文字动作：可点区域够大，禁用时降到次要色。 */
+@Composable
+private fun SelectionTextAction(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+            },
+            maxLines = 1
+        )
+    }
+}
+
+/**
+ * 多选底部操作栏：占原底部导航栏的位置，四个批量操作（置顶 / 收藏 / 归档 / 删除）。
+ */
+@Composable
+private fun SessionSelectionActionBar(actions: List<SelectionBarActionSpec>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            actions.forEach { spec -> SelectionBarAction(spec) }
+        }
+    }
+}
+
+/** 底部批量操作栏里的一项（文案与启用状态跟随所选会话）。 */
+private data class SelectionBarActionSpec(
+    val icon: ImageVector,
+    val label: String,
+    val enabled: Boolean,
+    val destructive: Boolean = false,
+    val onClick: () -> Unit
+)
+
+/** 批量操作栏里的单个操作：图标在上、文字在下，与底部导航栏同一套节奏。 */
+@Composable
+private fun RowScope.SelectionBarAction(spec: SelectionBarActionSpec) {
+    val tint = when {
+        !spec.enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        spec.destructive -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = spec.enabled, role = Role.Button, onClick = spec.onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(spec.icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = spec.label,
+            style = MaterialTheme.typography.labelMedium,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** 单个会话行：头像 + 标题 + 最后一条消息 + 时间，长按直接进入多选。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SessionItem(
     row: SessionListRow,
@@ -1351,34 +1604,20 @@ internal fun SessionItem(
     hasAttention: Boolean = false,
     isGenerating: Boolean = false,
     onClick: () -> Unit,
-    onRename: () -> Unit,
-    onDelete: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onTogglePinned: () -> Unit,
-    onOpenDetail: () -> Unit = {},
-    onToggleArchived: () -> Unit = {},
-    onOpenStoryGraph: () -> Unit = {},
-    actionStrip: SessionActionStripState = remember { SessionActionStripState() }
+    /** 长按：直接进入多选，并把当前会话作为第一个选中项。 */
+    onLongPress: () -> Unit = {},
+    /** 多选模式：点击整行改为勾选/取消勾选。 */
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelection: () -> Unit = {}
 ) {
     val textResources = LocalResources.current
     // 提取本地化字符串
     val pinnedBadge = stringResource(R.string.sessions_pinned_badge)
     val favoritedBadge = stringResource(R.string.sessions_favorited_badge)
     val archivedBadge = stringResource(R.string.sessions_archived_badge)
-    val detailMenuText = stringResource(R.string.sessions_detail_menu)
-    val renameMenuText = stringResource(R.string.sessions_rename_menu)
-    val unpinText = stringResource(R.string.sessions_unpin)
-    val pinText = stringResource(R.string.sessions_pin)
-    val unfavoriteText = stringResource(R.string.sessions_unfavorite)
-    val favoriteText = stringResource(R.string.sessions_favorite)
-    val unarchiveText = stringResource(R.string.sessions_unarchive)
-    val archiveText = stringResource(R.string.sessions_archive)
-    val storyGraphText = stringResource(R.string.sessions_story_graph)
-    val deleteText = stringResource(R.string.common_delete)
     val noMessageText = stringResource(R.string.sessions_no_message)
-    val moreActionsLabel = stringResource(R.string.shell_more_actions)
-    val moreLabel = stringResource(R.string.shell_action_more)
-    var showMoreActions by remember(row.key) { mutableStateOf(false) }
+    val moreActionsLabel = stringResource(R.string.sessions_multi_select)
     val context = LocalContext.current
     val portraitRequest = remember(context, row.portraitUrl) {
         row.portraitUrl?.let { portraitUrl ->
@@ -1392,10 +1631,7 @@ internal fun SessionItem(
         }
     }
     // 只给整组首尾加圆角：多行拼成一张分组卡，中间行保持直角与细线分隔
-    val itemShape = RoundedCornerShape(
-        topStart = if (first) 18.dp else 0.dp, topEnd = if (first) 18.dp else 0.dp,
-        bottomStart = if (last) 18.dp else 0.dp, bottomEnd = if (last) 18.dp else 0.dp
-    )
+    val itemShape = sessionItemShape(first, last)
     // 置顶行用极浅的强调色底：一眼看出它被固定在顶部，又不需要额外的徽标或彩色描边
     val baseColor = if (row.pinned) {
         lerp(
@@ -1407,111 +1643,33 @@ internal fun SessionItem(
         MaterialTheme.colorScheme.surface
     }
     val modeColor = row.modeLabel.color()
-    val stripActive = actionStrip.targetKey == row.key
-    val containerColor = if (stripActive) {
-        lerp(baseColor, MaterialTheme.colorScheme.primaryContainer, 0.45f)
-    } else {
-        baseColor
+    val containerColor = when {
+        // 多选：选中行用更明显的强调色底
+        selectionMode && selected ->
+            lerp(baseColor, MaterialTheme.colorScheme.primaryContainer, 0.8f)
+        else -> baseColor
     }
-    // 常用操作放在第一层，管理操作收进二级面板。
-    val stripActions = rememberUpdatedState(
-        listOf(
-            SessionAction(
-                if (row.pinned) unpinText else pinText,
-                Icons.Filled.PushPin
-            ) { onTogglePinned() },
-            SessionAction(
-                if (row.favorite) unfavoriteText else favoriteText,
-                if (row.favorite) Icons.Filled.FavoriteBorder else Icons.Filled.Favorite
-            ) { onToggleFavorite() },
-            SessionAction(
-                if (row.archived) unarchiveText else archiveText,
-                Icons.Filled.Archive
-            ) { onToggleArchived() },
-            SessionAction(deleteText, Icons.Outlined.Delete, destructive = true) { onDelete() },
-            SessionAction(moreLabel, Icons.Filled.MoreVert) { showMoreActions = true }
-        )
-    )
-    var rowBounds by remember(row.key) { mutableStateOf(Rect.Zero) }
-    // 长按成立时给一次明确的触感反馈（弹出动作条）
+    // 长按成立时给一次明确的触感反馈（进入多选）
     val haptic = LocalHapticFeedback.current
 
-    if (showMoreActions) {
-        NekoSheet(onDismissRequest = { showMoreActions = false }) {
-            NekoSheetHeader(title = row.listTitle, onClose = { showMoreActions = false })
-            listOf(
-                SessionAction(detailMenuText, Icons.Outlined.Info) { onOpenDetail() },
-                SessionAction(renameMenuText, Icons.Outlined.Edit) { onRename() },
-                SessionAction(storyGraphText, Icons.Outlined.AccountTree) { onOpenStoryGraph() }
-            ).forEach { action ->
-                NekoChoiceRow(
-                    title = action.label,
-                    leading = {
-                        Icon(
-                            action.icon,
-                            contentDescription = null,
-                            tint = if (action.destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    onClick = {
-                        showMoreActions = false
-                        action.onSelect()
-                    }
-                )
-            }
-        }
-    }
-
     Surface(
-        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .onGloballyPositioned { rowBounds = it.boundsInWindow() }
-            // 长按弹出横向动作条：在 Initial 阶段先于内部的 clickable 消费事件，
-            // 否则长按结束时抬起会被当成一次点击，直接进入会话。
-            .pointerInput(row.key) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(
-                        requireUnconsumed = false,
-                        pass = PointerEventPass.Initial
-                    )
-                    val longPressed = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull { it.id == down.id }
-                                ?: return@withTimeoutOrNull false
-                            // 提前抬起 = 普通点击；移动超过阈值 = 列表滚动，两种情况都不拦截
-                            if (!change.pressed) return@withTimeoutOrNull false
-                            if ((change.position - down.position).getDistance() >
-                                viewConfiguration.touchSlop
-                            ) {
-                                return@withTimeoutOrNull false
-                            }
-                        }
-                        @Suppress("UNREACHABLE_CODE")
-                        false
-                    } == null
-                    if (!longPressed) return@awaitEachGesture
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    actionStrip.show(
-                        row.key,
-                        stripActions.value,
-                        rowBounds.top,
-                        rowBounds.bottom
-                    )
-                    // 长按成立后吞掉整段手势：拖动切换高亮，抬起保留横条
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        change.consume()
-                        if (!change.pressed) {
-                            actionStrip.release()
-                            break
-                        }
-                        actionStrip.updatePointer(change.position.x + rowBounds.left)
+            .clip(itemShape)
+            // 点击进入会话 / 长按直接进入多选：用标准 combinedClickable，
+            // 由它自己区分长按与抬手，不会把长按后的抬起再当成一次点击。
+            .combinedClickable(
+                role = Role.Button,
+                onClickLabel = null,
+                onLongClickLabel = moreActionsLabel,
+                onClick = { if (selectionMode) onToggleSelection() else onClick() },
+                onLongClick = {
+                    if (!selectionMode) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongPress()
                     }
                 }
-            }
+            )
             .listItemSemantics(
                 stringResource(
                     R.string.sessions_item_description,
@@ -1521,19 +1679,7 @@ internal fun SessionItem(
                         row.updatedAt
                     ).joinToString(" · ")
                 )
-            )
-            // 无障碍：长按动作条也提供一个语义动作，TalkBack / 开关控制可以打开它
-            .semantics {
-                onLongClick(label = moreActionsLabel) {
-                    actionStrip.show(
-                        row.key,
-                        stripActions.value,
-                        rowBounds.top,
-                        rowBounds.bottom
-                    )
-                    true
-                }
-            },
+            ),
         shape = itemShape,
         color = containerColor,
         border = null,
@@ -1641,6 +1787,37 @@ internal fun SessionItem(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
                             )
+                        }
+                        // 多选：行尾勾选圈，选中填色打勾
+                        if (selectionMode) {
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                    .materialBorder(
+                                        1.5.dp,
+                                        if (selected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.outline
+                                        },
+                                        CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (selected) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.height(3.dp))
@@ -2438,8 +2615,94 @@ class SessionsViewModel : BaseViewModel() {
         )
     }
 
-    /** 根据频道过滤会话（先于其他筛选）。channelValue 为 null 时返回全部。 */
-    private fun applyChannelFilter(all: List<Session>, channelValue: String?): List<Session> {
+    /**
+     * 批量操作：置顶 / 收藏 / 归档 / 删除。
+     *
+     * [enable] 为目标状态：所选会话已全部置顶时传 false 即批量取消置顶，
+     * 收藏与归档同理。逐个会话提交，单个失败不影响其余会话。
+     */
+    fun batchUpdateSessions(
+        action: SessionBatchAction,
+        sessionIds: Collection<String>,
+        enable: Boolean = true
+    ) {
+        val targets = sessionIds.filter { it.isNotBlank() }
+        if (targets.isEmpty()) return
+        val version = dataSourceVersion
+        viewModelScope.launch {
+            setLoading(true)
+            var success = 0
+            var failed = 0
+            try {
+                targets.forEach { id ->
+                    val ok = try {
+                        when (action) {
+                            SessionBatchAction.PIN ->
+                                unified.updateSession(id, UpdateSessionRequest(pinned = enable)) is Resource.Success
+
+                            SessionBatchAction.FAVORITE ->
+                                unified.updateSession(id, UpdateSessionRequest(favorite = enable)) is Resource.Success
+
+                            SessionBatchAction.ARCHIVE ->
+                                if (enable) {
+                                    unified.archiveSession(id) is Resource.Success
+                                } else {
+                                    unified.restoreSession(id) is Resource.Success
+                                }
+
+                            SessionBatchAction.DELETE -> {
+                                // 与单条删除一致：成功后才撤回待发的延迟回复
+                                ChatSessionManager.pauseDelayedReplyTimer(id)
+                                val result = unified.deleteSession(id)
+                                if (result is Resource.Success) {
+                                    ChatSessionManager.cancelDelayedReply(id, removeBubbles = true)
+                                }
+                                result is Resource.Success
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (ok) success++ else failed++
+                }
+            } finally {
+                setLoading(false)
+            }
+            if (version != dataSourceVersion) return@launch
+            loadSessions()
+            when {
+                success == 0 -> showError(string(R.string.sessions_batch_failed, failed))
+                failed == 0 -> showToast(string(batchSuccessToastRes(action, enable), success))
+                else -> showToast(string(R.string.sessions_batch_partial, success, failed))
+            }
+        }
+    }
+
+    private fun batchSuccessToastRes(action: SessionBatchAction, enable: Boolean): Int = when (action) {
+        SessionBatchAction.PIN -> if (enable) {
+            R.string.sessions_batch_pinned_toast
+        } else {
+            R.string.sessions_batch_unpinned_toast
+        }
+
+        SessionBatchAction.FAVORITE -> if (enable) {
+            R.string.sessions_batch_favorited_toast
+        } else {
+            R.string.sessions_batch_unfavorited_toast
+        }
+
+        SessionBatchAction.ARCHIVE -> if (enable) {
+            R.string.sessions_batch_archived_toast
+        } else {
+            R.string.sessions_batch_unarchived_toast
+        }
+
+        SessionBatchAction.DELETE -> R.string.sessions_batch_deleted_toast
+    }
+
+    /** 根据频道过滤会话（先于其他筛选）。channelValue 为 null 时返回全部。 */    private fun applyChannelFilter(all: List<Session>, channelValue: String?): List<Session> {
         if (channelValue == null) return all
         return all.filter { s ->
             val type = s.type?.lowercase()?.trim() ?: "web"

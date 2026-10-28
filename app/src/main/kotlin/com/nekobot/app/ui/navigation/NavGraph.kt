@@ -234,9 +234,11 @@ fun NekobotNavGraph() {
     // 仅当确实停留在会话页时才生效，避免滑动到其他 Tab 后底栏仍然消失。
     // 侧栏形态不受此影响：侧栏贴在屏幕左侧、不占用聊天高度，始终可见以便随时切换 Tab。
     var twoPaneChatMaximized by remember { mutableStateOf(false) }
+    // 会话列表多选：列表页自己的批量操作栏会占用底部导航栏的位置，期间隐藏导航栏。
+    var sessionSelectionMode by remember { mutableStateOf(false) }
     val showNavRail = useNavRail && currentRoute in mainRoutes
     val showBottomBar = !useNavRail && currentRoute in mainRoutes && !(
-        twoPaneChatMaximized &&
+        (twoPaneChatMaximized || sessionSelectionMode) &&
             currentRoute == Routes.SESSIONS &&
             selectedMainRoute == Routes.SESSIONS
         )
@@ -441,6 +443,9 @@ fun NekobotNavGraph() {
                                     },
                                     onTwoPaneChatMaximizedChange = { maximized ->
                                         twoPaneChatMaximized = maximized
+                                    },
+                                    onSelectionModeChange = { selecting ->
+                                        sessionSelectionMode = selecting
                                     }
                                 )
 

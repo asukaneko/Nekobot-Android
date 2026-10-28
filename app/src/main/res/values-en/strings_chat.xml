@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sessions_filter_character_sessions">Character</string>
     <string name="sessions_filter_agent_sessions">Agent</string>
@@ -85,6 +85,22 @@
     <string name="sessions_unpinned_toast">Unpinned</string>
     <string name="sessions_archived_toast">Archived</string>
     <string name="sessions_unarchived_toast">Unarchived</string>
+    <string name="sessions_multi_select">Select</string>
+    <string name="sessions_selected_count">%1$d selected</string>
+    <string name="sessions_select_all">Select all</string>
+    <string name="sessions_select_none">Select none</string>
+    <string name="sessions_multi_select_exit">Exit selection</string>
+    <string name="sessions_batch_empty">Select a chat first</string>
+    <string name="sessions_batch_delete_confirm">Delete the %1$d selected chats? This cannot be undone.</string>
+    <string name="sessions_batch_pinned_toast">Pinned %1$d chats</string>
+    <string name="sessions_batch_favorited_toast">Favorited %1$d chats</string>
+    <string name="sessions_batch_archived_toast">Archived %1$d chats</string>
+    <string name="sessions_batch_deleted_toast">Deleted %1$d chats</string>
+    <string name="sessions_batch_partial">%1$d succeeded, %2$d failed</string>
+    <string name="sessions_batch_failed">%1$d chats failed</string>
+    <string name="sessions_batch_unpinned_toast">Unpinned %1$d chats</string>
+    <string name="sessions_batch_unfavorited_toast">Removed %1$d chats from favorites</string>
+    <string name="sessions_batch_unarchived_toast">Unarchived %1$d chats</string>
 
     <!-- ==================== Session detail (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">Chat details</string>
