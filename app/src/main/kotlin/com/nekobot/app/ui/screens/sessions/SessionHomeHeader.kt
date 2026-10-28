@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -96,7 +97,6 @@ import com.nekobot.app.ui.components.NekoChoiceRow
 import com.nekobot.app.ui.components.NekoIconAction
 import com.nekobot.app.ui.components.NekoLetterAvatar
 import com.nekobot.app.ui.components.NekoPrimaryAction
-import com.nekobot.app.ui.components.NekoSectionHeader
 import com.nekobot.app.ui.components.NekoSegmentedControl
 import com.nekobot.app.ui.components.NekoSheet
 import com.nekobot.app.ui.components.NekoSheetHeader
@@ -104,6 +104,7 @@ import com.nekobot.app.ui.components.NekoSheetNote
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
+import com.nekobot.app.ui.components.nekoSectionLabelStyle
 import com.nekobot.app.ui.components.nekoWelcomeTitleStyle
 import com.nekobot.app.ui.components.nekoTextSize
 import com.nekobot.app.ui.components.resolveAvatarUrl
@@ -223,30 +224,53 @@ fun SessionHomeHeaderContent(
             )
         }
         // 分段控件覆盖三类会话；其它筛选（收藏 / 归档 / 频道 / 按角色）由「筛选」抽屉承担。
-        // 抽屉里选中非分段项时，右侧直接显示当前筛选项，避免出现"什么都不像选中"的困惑。
+        // 右侧胶囊：左段是归档快捷开关，右段打开筛选抽屉，抽屉里选中非分段项时直接显示该筛选项。
         val filterLabel = if (filter in sessionSegmentFilters) {
             stringResource(R.string.shell_filter)
         } else {
             stringResource(filter.labelResId)
         }
-        NekoSectionHeader(
-            title = stringResource(R.string.shell_your_chats),
-            meta = stringResource(R.string.shell_chat_count, totalCount),
-            actionText = filterLabel,
-            onAction = onOpenFilter,
-            actionLeading = {
+        val filterActive = filter !in sessionSegmentFilters
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp, bottom = 8.dp)
+                .heightIn(min = 38.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.shell_your_chats),
+                style = nekoSectionLabelStyle(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = stringResource(R.string.shell_chat_count, totalCount),
+                style = nekoCaptionStyle(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.width(8.dp))
+            val capsuleShape = RoundedCornerShape(12.dp)
+            Row(
+                modifier = Modifier
+                    .clip(capsuleShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, capsuleShape)
+                    .heightIn(min = 38.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 // 归档会话快速筛选：点一下只看归档，再点回到全部
                 val archivedActive = filter == SessionFilter.ARCHIVED
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(11.dp))
                         .clickable {
                             onSelectFilter(
                                 if (archivedActive) SessionFilter.ALL else SessionFilter.ARCHIVED
                             )
                         }
-                        .heightIn(min = 40.dp)
-                        .padding(horizontal = 6.dp),
+                        .heightIn(min = 38.dp)
+                        .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -257,11 +281,48 @@ fun SessionHomeHeaderContent(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
-                        modifier = Modifier.size(17.dp)
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .height(16.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(11.dp))
+                        .clickable(onClick = onOpenFilter)
+                        .heightIn(min = 38.dp)
+                        .padding(start = 10.dp, end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Tune,
+                        contentDescription = null,
+                        tint = if (filterActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = filterLabel,
+                        style = nekoCaptionStyle(),
+                        color = if (filterActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
                     )
                 }
             }
-        )
+        }
         NekoSegmentedControl(
             options = listOf(
                 stringResource(R.string.shell_seg_all),

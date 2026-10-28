@@ -17,12 +17,13 @@ import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -56,11 +57,12 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -73,7 +75,6 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import com.nekobot.app.ui.screens.chat.ChatSessionManager
@@ -81,9 +82,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -142,15 +141,25 @@ import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
+import com.nekobot.app.ui.components.NekoCheckMark
 import com.nekobot.app.ui.components.NekoCountBadge
+import com.nekobot.app.ui.components.NekoDivider
 import com.nekobot.app.ui.components.NekoEmpty
+import com.nekobot.app.ui.components.NekoGroup
 import com.nekobot.app.ui.components.NekoIconAction
+import com.nekobot.app.ui.components.NekoIconTile
 import com.nekobot.app.ui.components.NekoPageHorizontalPadding
 import com.nekobot.app.ui.components.NekoPageTopBar
+import com.nekobot.app.ui.components.NekoSecondaryAction
+import com.nekobot.app.ui.components.NekoSectionHeader
+import com.nekobot.app.ui.components.NekoSheet
+import com.nekobot.app.ui.components.NekoSheetHeader
 import com.nekobot.app.ui.components.NekoTag
+import com.nekobot.app.ui.components.NekoTone
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
+import com.nekobot.app.ui.theme.nekoAccentSoft
 import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.ui.navigation.rememberBottomBarClearance
 import com.nekobot.app.ui.components.ErrorToast
@@ -557,7 +566,7 @@ fun SessionsScreen(
     // 新建角色会话时预选的角色（如首页 banner 固定角色直接新建）
     var createCharacterId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
-    var showSearchPanel by rememberSaveable { mutableStateOf(false) }
+    var showFilterSheet by rememberSaveable { mutableStateOf(false) }
     var showDashboardLayout by rememberSaveable { mutableStateOf(false) }
     var showGeneratingCharacter by remember { mutableStateOf(false) }
     var randomCharacterIdeas by remember { mutableStateOf(emptyList<RandomCharacterIdea>()) }
@@ -836,7 +845,7 @@ fun SessionsScreen(
                     homeRows = homeRows,
                     onOpenSession = handleOpenChat,
                     onNewChat = { showCreateModeMenu = true },
-                    onOpenFilter = { showSearchPanel = true },
+                    onOpenFilter = { showFilterSheet = true },
                     onSelectFilter = viewModel::setFilter,
                     onCreateSessionForCharacter = { characterId ->
                         createCharacterId = characterId.takeIf { it.isNotBlank() }
@@ -1096,35 +1105,68 @@ fun SessionsScreen(
         }
     }
 
-    // 半屏搜索面板
-    if (showSearchPanel) {
-        ModalBottomSheet(
-            onDismissRequest = { showSearchPanel = false },
-            containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = { BottomSheetDefaults.DragHandle() }
-        ) {
-            SearchPanelContent(
-                searchQuery = searchQuery,
-                onSearchChange = viewModel::setSearchQuery,
-                filter = filter,
-                onFilterChange = viewModel::setFilter,
-                channelFilterValue = channelFilterValue,
-                availableChannels = availableChannels,
-                onChannelFilterChange = viewModel::setChannelFilter,
-                characters = characters,
-                characterFilterId = characterFilterId,
-                onCharacterFilterChange = viewModel::setCharacterFilter
-            )
-        }
+    // 半屏筛选抽屉（搜索交给顶栏的全局搜索，这里只保留筛选）
+    if (showFilterSheet) {
+        SessionFilterSheet(
+            filter = filter,
+            onFilterChange = viewModel::setFilter,
+            channelFilterValue = channelFilterValue,
+            availableChannels = availableChannels,
+            onChannelFilterChange = viewModel::setChannelFilter,
+            characters = characters,
+            characterFilterId = characterFilterId,
+            onCharacterFilterChange = viewModel::setCharacterFilter,
+            onDismiss = { showFilterSheet = false }
+        )
     }
 }
 
-/** 半屏搜索面板内容：搜索框 + 频道筛选 + 会话筛选 + 角色筛选。 */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 会话类型筛选：与首页分段控件一一对应的三种会话形态 + 最近会话。 */
+private val sessionTypeFilters = listOf(
+    SessionFilter.ALL,
+    SessionFilter.CHARACTER_SESSIONS,
+    SessionFilter.AGENT_SESSIONS,
+    SessionFilter.AGENT_CHARACTERS
+)
+
+/** 其它筛选：收藏 / 置顶 / 归档 / 公开 / 按角色，胶囊互斥单选。 */
+private val sessionStateFilters = listOf(
+    SessionFilter.FAVORITE,
+    SessionFilter.PINNED,
+    SessionFilter.UNARCHIVED,
+    SessionFilter.ARCHIVED,
+    SessionFilter.PUBLIC,
+    SessionFilter.BY_CHARACTER
+)
+
+/** 每种筛选的图形：会话类型沿用列表里的模式图标。 */
+private fun SessionFilter.iconVector(): ImageVector = when (this) {
+    SessionFilter.ALL -> Icons.Filled.History
+    SessionFilter.CHARACTER_SESSIONS -> SessionModeLabel.CHARACTER.icon()
+    SessionFilter.AGENT_SESSIONS -> SessionModeLabel.AGENT.icon()
+    SessionFilter.AGENT_CHARACTERS -> SessionModeLabel.COMPANION.icon()
+    SessionFilter.UNARCHIVED -> Icons.Filled.Unarchive
+    SessionFilter.ARCHIVED -> Icons.Filled.Archive
+    SessionFilter.FAVORITE -> Icons.Filled.FavoriteBorder
+    SessionFilter.PINNED -> Icons.Filled.PushPin
+    SessionFilter.PUBLIC -> Icons.Filled.Public
+    SessionFilter.BY_CHARACTER -> Icons.Filled.Person
+}
+
+/** 每种筛选的色相：会话类型跟随模式色，其余用强调色。 */
 @Composable
-private fun SearchPanelContent(
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
+private fun SessionFilter.iconTint(): Color = when (this) {
+    SessionFilter.ALL -> MaterialTheme.colorScheme.onSurfaceVariant
+    SessionFilter.CHARACTER_SESSIONS -> SessionModeLabel.CHARACTER.color()
+    SessionFilter.AGENT_SESSIONS -> SessionModeLabel.AGENT.color()
+    SessionFilter.AGENT_CHARACTERS -> SessionModeLabel.COMPANION.color()
+    else -> MaterialTheme.colorScheme.primary
+}
+
+/** 半屏筛选抽屉：会话类型 + 其它筛选 + 频道 + 角色。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SessionFilterSheet(
     filter: SessionFilter,
     onFilterChange: (SessionFilter) -> Unit,
     channelFilterValue: String?,
@@ -1132,176 +1174,201 @@ private fun SearchPanelContent(
     onChannelFilterChange: (String?) -> Unit,
     characters: List<CharacterPreset>,
     characterFilterId: String?,
-    onCharacterFilterChange: (String?) -> Unit
+    onCharacterFilterChange: (String?) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        val searchPlaceholder = stringResource(R.string.sessions_search_placeholder)
-        val clearDesc = stringResource(R.string.sessions_clear_input)
-        val channelText = stringResource(R.string.sessions_channel)
-        val filterLabelText = stringResource(R.string.sessions_filter_label)
-        val characterLabelText = stringResource(R.string.sessions_character_label)
-        // 搜索框
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(searchPlaceholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { onSearchChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = clearDesc, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(28.dp)
-        )
+    val filterLabelText = stringResource(R.string.sessions_filter_label)
+    val channelText = stringResource(R.string.sessions_channel)
+    val characterLabelText = stringResource(R.string.sessions_character_label)
+    val allText = stringResource(R.string.sessions_all)
+    val allCharactersText = stringResource(R.string.sessions_all_characters)
+    val resetText = stringResource(R.string.common_reset)
+    val showCharacters = filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()
+    val customized = filter != SessionFilter.ALL ||
+        channelFilterValue != null ||
+        characterFilterId != null
 
-        // 频道筛选
-        Text(channelText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        ChannelChips(
-            availableChannels = availableChannels,
-            selectedValue = channelFilterValue,
-            onSelect = onChannelFilterChange
-        )
-
-        // 会话筛选
-        Text(filterLabelText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SessionFilterChips(
-            selected = filter,
-            onSelect = { newFilter ->
-                onFilterChange(newFilter)
-                if (newFilter != SessionFilter.BY_CHARACTER) {
-                    onCharacterFilterChange(null)
+    NekoSheet(onDismissRequest = onDismiss) {
+        NekoSheetHeader(title = filterLabelText, onClose = onDismiss)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 540.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // 会话类型：图标 + 选中勾
+            NekoGroup {
+                sessionTypeFilters.forEachIndexed { index, item ->
+                    if (index > 0) NekoDivider(startInset = 61.dp)
+                    SessionFilterTypeRow(
+                        filter = item,
+                        selected = filter == item,
+                        onClick = { onFilterChange(item) }
+                    )
                 }
             }
-        )
-
-        // 角色筛选（仅按角色时显示）
-        if (filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()) {
-            Text(characterLabelText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            CharacterChips(
-                characters = characters,
-                selectedId = characterFilterId,
-                onSelect = onCharacterFilterChange
-            )
+            Spacer(Modifier.height(14.dp))
+            // 其它筛选：再点一次回到「最近会话」
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                sessionStateFilters.forEach { item ->
+                    val selected = filter == item
+                    FilterPill(
+                        label = stringResource(item.labelResId),
+                        icon = item.iconVector(),
+                        selected = selected,
+                        onClick = {
+                            val next = if (selected) SessionFilter.ALL else item
+                            onFilterChange(next)
+                            if (next != SessionFilter.BY_CHARACTER) onCharacterFilterChange(null)
+                        }
+                    )
+                }
+            }
+            // 频道筛选
+            NekoSectionHeader(title = channelText)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterPill(
+                    label = allText,
+                    selected = channelFilterValue == null,
+                    onClick = { onChannelFilterChange(null) }
+                )
+                availableChannels.forEach { ch ->
+                    FilterPill(
+                        label = ch.label,
+                        selected = channelFilterValue == ch.value,
+                        onClick = { onChannelFilterChange(ch.value) }
+                    )
+                }
+            }
+            // 角色筛选（仅「按角色」时显示）
+            if (showCharacters) {
+                NekoSectionHeader(title = characterLabelText)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterPill(
+                        label = allCharactersText,
+                        selected = characterFilterId == null,
+                        onClick = { onCharacterFilterChange(null) }
+                    )
+                    characters.forEach { c ->
+                        FilterPill(
+                            label = c.displayName,
+                            selected = c.id == characterFilterId,
+                            onClick = { onCharacterFilterChange(c.id) }
+                        )
+                    }
+                }
+            }
+            if (customized) {
+                Spacer(Modifier.height(20.dp))
+                NekoSecondaryAction(
+                    text = resetText,
+                    onClick = {
+                        onFilterChange(SessionFilter.ALL)
+                        onChannelFilterChange(null)
+                        onCharacterFilterChange(null)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
 
-/** 频道选择 Chips（含「全部」）。 */
+/** 会话类型行：图标底座 + 名称 + 单选勾。 */
 @Composable
-private fun ChannelChips(
-    availableChannels: List<ChannelOption>,
-    selectedValue: String?,
-    onSelect: (String?) -> Unit
-) {
-    val allLabel = stringResource(R.string.sessions_all)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        SelectableChip(
-            label = allLabel,
-            selected = selectedValue == null,
-            onClick = { onSelect(null) }
-        )
-        availableChannels.forEach { ch ->
-            SelectableChip(
-                label = ch.label,
-                selected = selectedValue == ch.value,
-                onClick = { onSelect(ch.value) }
-            )
-        }
-    }
-}
-
-/** 会话筛选 Chips。 */
-@Composable
-private fun SessionFilterChips(
-    selected: SessionFilter,
-    onSelect: (SessionFilter) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        SessionFilter.values().forEach { f ->
-            SelectableChip(
-                label = stringResource(f.labelResId),
-                selected = f == selected,
-                onClick = { onSelect(f) }
-            )
-        }
-    }
-}
-
-/** 角色选择 Chips（含「全部角色」）。 */
-@Composable
-private fun CharacterChips(
-    characters: List<CharacterPreset>,
-    selectedId: String?,
-    onSelect: (String?) -> Unit
-) {
-    val allCharactersLabel = stringResource(R.string.sessions_all_characters)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        SelectableChip(
-            label = allCharactersLabel,
-            selected = selectedId == null,
-            onClick = { onSelect(null) }
-        )
-        characters.forEach { c ->
-            SelectableChip(
-                label = c.displayName,
-                selected = c.id == selectedId,
-                onClick = { onSelect(c.id) }
-            )
-        }
-    }
-}
-
-/** 可选中 Chip：选中时 MaterialTheme.colorScheme.primary 背景，未选中时透明背景。直接用Box渲染避免GlassCard内部padding。 */
-@Composable
-private fun SelectableChip(
-    label: String,
+private fun SessionFilterTypeRow(
+    filter: SessionFilter,
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Box(
+    val tint = filter.iconTint()
+    Row(
         modifier = Modifier
-            .height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant)
-            // 筛选 Chip 同样不使用点按波纹
+            .fillMaxWidth()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center
+            .heightIn(min = 54.dp)
+            .padding(horizontal = 15.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        NekoIconTile(
+            icon = filter.iconVector(),
+            tone = NekoTone.Neutral,
+            tint = tint,
+            background = tint.copy(alpha = 0.10f)
+        )
+        Spacer(Modifier.width(13.dp))
         Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            text = stringResource(filter.labelResId),
+            style = nekoRowTitleStyle(),
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        NekoCheckMark(selected = selected)
+    }
+}
+
+/** 筛选胶囊：选中时浅强调底 + 强调色描边。 */
+@Composable
+private fun FilterPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector? = null
+) {
+    val shape = RoundedCornerShape(11.dp)
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .clip(shape)
+            .background(if (selected) nekoAccentSoft() else MaterialTheme.colorScheme.surface)
+            .materialBorder(
+                width = 1.dp,
+                color = if (selected) accent.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline,
+                shape = shape
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .heightIn(min = 36.dp)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            text = label,
+            style = nekoRowSubtitleStyle(),
+            color = if (selected) accent else MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 200.dp)
         )
     }
 }
