@@ -224,6 +224,7 @@
     <string name="log_repo_session_autoname_failed2">Session auto-naming failed (main flow unaffected): %1$s</string>
     <string name="log_repo_session_autonamed">Session auto-named: %1$s -&gt; %2$s</string>
     <string name="log_repo_skill_extract_failed">Agent skill distillation failed (main flow unaffected): %1$s</string>
+    <string name="log_repo_temp_session_purge_failed">Failed to clean up temporary sessions: %1$s</string>
     <string name="log_repo_state_cache_write_failed">Failed to write state history cache: %1$s</string>
     <string name="log_repo_oversize_row_repair_retry">Message row exceeds CursorWindow limit; repaired and retrying: %1$s</string>
     <string name="log_repo_task_expired">Task \"%1$s\" last run point expired; deferred to %2$s</string>
