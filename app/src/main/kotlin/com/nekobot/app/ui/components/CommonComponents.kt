@@ -258,7 +258,28 @@ fun NekoDialog(
                 }
                 if (!message.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
-                    Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // 正文长度不可控（完整问候、报错详情等）：做成可滚动区域，超长时只滚正文，
+                    // 底部按钮始终留在可视区内（否则按钮会被正文挤出屏幕，看起来像消失了）。
+                    // 有内容区时正文最多占屏幕 40%，把剩余空间留给内容区。
+                    val messageScrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (content == null) {
+                                    Modifier.weight(1f, fill = false)
+                                } else {
+                                    Modifier.heightIn(max = maxDialogHeight * 0.4f)
+                                }
+                            )
+                            .verticalScroll(messageScrollState)
+                    ) {
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 if (content != null) {
                     Spacer(Modifier.height(8.dp))
