@@ -18,7 +18,6 @@ import androidx.compose.foundation.background
 import com.nekobot.app.ui.components.withoutBorder as border
 import com.nekobot.app.ui.screens.chat.formatCacheHitRate
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,9 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -116,6 +112,7 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.GlassDropdownMenu
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.NekoSegmentedControl
 import com.nekobot.app.ui.components.SectionHeader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -529,10 +526,9 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}, onBack: (() -> Unit)? = null
                     ErrorToast(message = it, onShown = { vm.clearError() })
                 }
 
-                // 切换栏固定在列表上方，不参与内容过渡：否则新旧两份切换栏会同时半透明叠加，
-                // 选中高亮出现重影，看起来就是闪烁。
-                TokenSegmentedBar(
-                    tabs = listOf(
+                // 会话筛选同款分段控件；固定在列表上方，不参与内容过渡
+                NekoSegmentedControl(
+                    options = listOf(
                         stringResource(R.string.tokens_tab_overview),
                         stringResource(R.string.tokens_tab_rankings),
                         stringResource(R.string.tokens_tab_records)
@@ -604,8 +600,8 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}, onBack: (() -> Unit)? = null
                                         subtitle = stringResource(R.string.tokens_rankings_scope_range)
                                     )
                                     Spacer(Modifier.height(12.dp))
-                                    TokenSegmentedBar(
-                                        tabs = listOf(
+                                    NekoSegmentedControl(
+                                        options = listOf(
                                             stringResource(R.string.tokens_ranking_sessions),
                                             stringResource(R.string.tokens_ranking_models),
                                             stringResource(R.string.tokens_ranking_purposes)
@@ -905,61 +901,6 @@ private fun TokenDateFilterButton(
                         if (range == "custom") onCustomSelect() else onRangeSelect(range)
                     }
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TokenSegmentedBar(
-    tabs: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(4.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            tabs.forEachIndexed { index, title ->
-                val selected = index == selectedIndex
-                Row(
-                    modifier = Modifier
-                        .widthIn(min = 104.dp)
-                        .heightIn(min = 44.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            if (selected) MaterialTheme.colorScheme.primary
-                            else Color.Transparent
-                        )
-                        .selectable(
-                            selected = selected,
-                            onClick = { onSelect(index) },
-                            role = Role.Tab
-                        )
-                        .padding(horizontal = 6.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
         }
     }

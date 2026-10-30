@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -445,7 +447,6 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item { SkillInfoCard() }
                 error?.let { message ->
                     item {
                         ErrorToast(message = message, onShown = { vm.clearError() })
@@ -528,23 +529,6 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
 }
 
 @Composable
-private fun SkillInfoCard() {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.skills_storage_standard),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = stringResource(R.string.skills_storage_standard_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
 private fun SkillCard(
     skill: Skill,
     onEdit: () -> Unit,
@@ -553,46 +537,29 @@ private fun SkillCard(
     onOpenStorage: () -> Unit,
     onExportZip: () -> Unit
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+        // 标题单独占满一行左侧宽度，状态徽标与文件数移到下一行，长标题不会被徽标挤掉。
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = skill.displayName,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (skill.hasStorage) {
-                    Text(
-                        text = stringResource(R.string.skills_storage_file_count, skill.files.size),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            val (statusText, statusColor) = if (skill.enabled) {
-                stringResource(R.string.skills_status_enabled) to SuccessGreen
-            } else {
-                stringResource(R.string.skills_status_disabled) to WarningAmber
-            }
-            Box(
-                modifier = Modifier
-                    .background(statusColor.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(statusText, style = MaterialTheme.typography.labelSmall, color = statusColor)
-            }
-            Spacer(Modifier.width(8.dp))
+            Text(
+                text = skill.displayName,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(
                         Icons.Filled.MoreVert,
                         contentDescription = stringResource(R.string.skills_action),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
                 GlassDropdownMenu(
@@ -622,6 +589,33 @@ private fun SkillCard(
                         onClick = { menuExpanded = false; onDelete() }
                     )
                 }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val (statusText, statusColor) = if (skill.enabled) {
+                stringResource(R.string.skills_status_enabled) to SuccessGreen
+            } else {
+                stringResource(R.string.skills_status_disabled) to WarningAmber
+            }
+            Box(
+                modifier = Modifier
+                    .background(statusColor.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(statusText, style = MaterialTheme.typography.labelSmall, color = statusColor)
+            }
+            if (skill.hasStorage) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.skills_storage_file_count, skill.files.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
 
@@ -1176,24 +1170,20 @@ private fun SkillFileRow(file: SkillFileInfo, onOpen: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            // 「查看」本身就是入口：点击即预览，行尾不再重复放一个三点按钮。
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .clickable(onClick = onOpen)
+                    .heightIn(min = 34.dp)
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = stringResource(R.string.skill_file_open),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onOpen) {
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = stringResource(R.string.skill_file_open),
-                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }
