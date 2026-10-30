@@ -35,7 +35,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
@@ -391,12 +390,6 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showInstaller = true }) {
-                        Icon(
-                            Icons.Filled.CloudDownload,
-                            contentDescription = stringResource(R.string.skills_install_url)
-                        )
-                    }
                     Box {
                         IconButton(onClick = { showAddMenu = true }) {
                             Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.skills_new))
@@ -411,6 +404,13 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
                                     showAddMenu = false
                                     editingItem = null
                                     showForm = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.skills_install_url)) },
+                                onClick = {
+                                    showAddMenu = false
+                                    showInstaller = true
                                 }
                             )
                             DropdownMenuItem(
