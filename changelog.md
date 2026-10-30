@@ -2,6 +2,48 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.8.8 - 2026-10-30
+
+### 新增
+
+- 新增 Agent 工具循环 Hook：覆盖消息 / 角色 / 模型 / Agent 四类事件，可在工具调用前后提醒或拦截，支持按角色、会话、用户过滤与条件匹配，子代理调用同样生效。
+- 新增可视化 Hook 编辑器：可在表单与 JSON 之间双向切换编辑，保留未知字段，并提供工具审计、删除操作守卫、任务完成提醒等模板。
+- 插件新增终端权限：可在会话沙箱中执行命令并返回输出、退出码与耗时，高风险命令仍被拦截，需手动授权。
+- 工作区支持多选：可批量移动（含跨工作区）、下载、删除，并能在当前目录新建文件夹。
+- 待发送附件改为本地暂存：退出会话后附件仍保留，点击发送时才上传，图片与文件支持一次多选，图片可全屏预览。
+- 新增 Agent 临时会话：不写入长期记忆、不沉淀技能、不记录用量，结束后自动清理。
+- 会话列表支持下拉刷新，加载态与空态也可下拉；右上角改为直接显示导入按钮。
+- 会话列表支持左滑快捷操作，长按进入多选后可批量置顶、收藏、归档、删除。
+- 会话列表展示待处理事项状态：命令授权 / 提问 / 插件安装占用副标题位置，并按类型切换图标。
+- 会话筛选改为半屏筛选抽屉：标题栏双段胶囊入口，支持会话类型与收藏、置顶、归档、公开、按角色筛选及一键重置。
+
+### 修复
+
+- 修复对话框正文过长时底部按钮被挤出屏幕的问题，正文区域改为可滚动。
+- 补齐临时会话清理失败提示的多语言文案，修复缺翻译导致的构建检查失败。
+
+### 优化
+
+- 优化技能页与令牌页布局：技能卡片标题独占一行，操作菜单收窄，令牌页分段控件统一。
+- 「从 URL 安装」与「从 ZIP 安装」入口统一收进新增下拉菜单。
+
+### English
+
+- Added Agent tool-loop hooks covering message, character, model, and agent events; they can notify or block before and after tool calls, filter by character, session, user and conditions, and also apply to subagent calls.
+- Added a visual hook editor with two-way form/JSON editing that keeps unknown fields, plus templates for tool auditing, delete guards, and task-completion reminders.
+- Plugins gain a terminal permission to run commands in the session sandbox and read output, exit code and duration; high-risk commands are still blocked and the permission must be granted manually.
+- The workspace supports multi-select with batch move (including across workspaces), download, and delete, plus creating folders in the current directory.
+- Pending attachments are now staged locally and survive leaving the session; they upload only when you hit send, support multi-select, and images can be previewed full screen.
+- Added temporary Agent sessions that skip long-term memory, skill distillation, and token usage, and are cleaned up automatically afterwards.
+- The session list supports pull-to-refresh, including in loading and empty states; the overflow menu is replaced by a direct import button.
+- The session list has swipe shortcuts, and long-press enters multi-select for batch pin, favorite, archive, and delete.
+- The session list shows pending items (command approval, questions, plugin installs) in the subtitle with a matching leading icon.
+- Session filters move to a half-screen filter sheet with a dual-segment header entry, covering session type plus favorite, pinned, archived, public, and by-character filters with a reset action.
+- Fixed dialog action buttons being pushed off-screen by long body text; the body area now scrolls.
+- Added missing translations for temporary-session cleanup failures, fixing a build check failure.
+- Refined the skills and tokens page layouts: skill titles take a full line, action menus are narrower, and the tokens page uses a unified segmented control.
+- Moved both "install from URL" and "install from ZIP" into the add dropdown menu.
+
 ## v0.8.7 - 2026-10-26
 
 ### 新增
