@@ -183,14 +183,17 @@ fun SessionHomeHeaderContent(
                 } else {
                     shownRow?.listTitle.orEmpty()
                 },
-                // 固定角色还没有会话时，这里展示角色简介
-                subtitle = if (pinnedActive) {
-                    shownRow?.lastMessage
-                        ?: pinnedCharacter?.description?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.shell_banner_no_session)
+                // 固定角色时只展示角色简介：不再把最新会话的消息内容挂在角色名下方
+                subtitle = if (pinnedActive && pinnedCharacter != null) {
+                    pinnedCharacter.description?.trim()?.takeIf { it.isNotBlank() }
+                        ?: if (pinnedSessions.isEmpty()) stringResource(R.string.shell_banner_no_session) else null
+                } else if (pinnedActive) {
+                    shownRow?.lastMessage ?: stringResource(R.string.shell_banner_no_session)
                 } else {
                     shownRow?.lastMessage
                 },
+                // 固定角色没有简介时整行隐藏，避免露出会话内容或占位空行
+                showEmptySubtitle = !(pinnedActive && pinnedCharacter != null),
                 portraitUrl = if (pinnedActive) {
                     pinnedCharacter?.let(::characterPortraitUrl) ?: shownRow?.portraitUrl
                 } else {
@@ -440,7 +443,8 @@ private fun HomeSessionBanner(
     isGroupSession: Boolean,
     pinned: Boolean,
     onOpen: () -> Unit,
-    onChoose: () -> Unit
+    onChoose: () -> Unit,
+    showEmptySubtitle: Boolean = true
 ) {
     val shape = RoundedCornerShape(18.dp)
     Row(
@@ -489,14 +493,17 @@ private fun HomeSessionBanner(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = subtitle ?: stringResource(R.string.sessions_no_message),
-                style = nekoRowSubtitleStyle(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            val visibleSubtitle = subtitle?.takeIf { it.isNotBlank() }
+            if (visibleSubtitle != null || showEmptySubtitle) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = visibleSubtitle ?: stringResource(R.string.sessions_no_message),
+                    style = nekoRowSubtitleStyle(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         Spacer(Modifier.width(4.dp))
         NekoIconAction(

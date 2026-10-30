@@ -623,6 +623,26 @@
     <string name="workspace_download">다운로드</string>
     <string name="workspace_file_actions">파일 작업</string>
     <string name="workspace_open_terminal">터미널 열기</string>
+    <string name="workspace_selected_count">%1$d개 선택됨</string>
+    <string name="workspace_move_to_folder">이동…</string>
+    <string name="workspace_move_picker_title">이동 위치</string>
+    <string name="workspace_move_picker_desc">대상 폴더 선택</string>
+    <string name="workspace_move_picker_empty">하위 폴더가 없습니다</string>
+    <string name="workspace_move_here">여기로 이동</string>
+    <string name="workspace_move_here_blocked">선택한 폴더 안으로 이동할 수 없습니다</string>
+    <string name="workspace_move_here_already">이미 이 폴더에 있습니다</string>
+    <string name="workspace_move_done">%1$d개 이동됨</string>
+    <string name="workspace_move_partial">%1$d개 이동, %2$d개 실패</string>
+    <string name="workspace_delete_selected_confirm">선택한 %1$d개를 삭제할까요?</string>
+    <string name="workspace_delete_done">%1$d개 삭제됨</string>
+    <string name="workspace_delete_partial">%1$d개 삭제, %2$d개 실패</string>
+    <string name="workspace_download_done">파일 %1$d개 다운로드됨</string>
+    <string name="workspace_download_partial">%1$d개 다운로드, %2$d개 실패</string>
+    <string name="workspace_download_no_target">선택한 항목에 다운로드할 파일이 없습니다</string>
+    <string name="workspace_up_level">상위</string>
+    <string name="workspace_root">루트</string>
+    <string name="workspace_create_folder_failed">폴더를 만들 수 없습니다</string>
+    <string name="workspace_folder_name_invalid">이름은 비울 수 없고 / 도 사용할 수 없습니다</string>
 
     <string name="chat_exec_confirm_title">명령 실행 권한</string>
     <string name="chat_exec_confirm_description">AI가 다음 명령 실행을 요청했어요. 안전 허용 목록에 없는 명령이므로 신뢰하는 작업일 때만 허용하세요.</string>

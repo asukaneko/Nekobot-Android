@@ -623,6 +623,26 @@
     <string name="workspace_download">ダウンロード</string>
     <string name="workspace_file_actions">ファイル操作</string>
     <string name="workspace_open_terminal">ターミナルを開く</string>
+    <string name="workspace_selected_count">%1$d 件選択中</string>
+    <string name="workspace_move_to_folder">移動…</string>
+    <string name="workspace_move_picker_title">移動先</string>
+    <string name="workspace_move_picker_desc">移動先のフォルダを選択</string>
+    <string name="workspace_move_picker_empty">サブフォルダはありません</string>
+    <string name="workspace_move_here">ここに移動</string>
+    <string name="workspace_move_here_blocked">選択したフォルダ内には移動できません</string>
+    <string name="workspace_move_here_already">すでにこのフォルダ内にあります</string>
+    <string name="workspace_move_done">%1$d 件を移動しました</string>
+    <string name="workspace_move_partial">%1$d 件を移動、%2$d 件失敗</string>
+    <string name="workspace_delete_selected_confirm">選択した %1$d 件を削除しますか？</string>
+    <string name="workspace_delete_done">%1$d 件を削除しました</string>
+    <string name="workspace_delete_partial">%1$d 件を削除、%2$d 件失敗</string>
+    <string name="workspace_download_done">%1$d 個のファイルを保存しました</string>
+    <string name="workspace_download_partial">%1$d 個を保存、%2$d 個失敗</string>
+    <string name="workspace_download_no_target">選択項目に保存できるファイルがありません</string>
+    <string name="workspace_up_level">上へ</string>
+    <string name="workspace_root">ルート</string>
+    <string name="workspace_create_folder_failed">フォルダーを作成できませんでした</string>
+    <string name="workspace_folder_name_invalid">名前は空にできず、/ も使用できません</string>
 
     <string name="chat_exec_confirm_title">コマンド実行の承認</string>
     <string name="chat_exec_confirm_description">AI が次のコマンドの実行を要求しています。安全リストにないため、信頼できる操作の場合のみ許可してください。</string>

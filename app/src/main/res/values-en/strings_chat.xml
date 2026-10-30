@@ -665,6 +665,26 @@
     <string name="workspace_download">Download</string>
     <string name="workspace_file_actions">File actions</string>
     <string name="workspace_open_terminal">Open terminal</string>
+    <string name="workspace_selected_count">%1$d selected</string>
+    <string name="workspace_move_to_folder">Move to…</string>
+    <string name="workspace_move_picker_title">Move to</string>
+    <string name="workspace_move_picker_desc">Choose a destination folder</string>
+    <string name="workspace_move_picker_empty">No subfolders</string>
+    <string name="workspace_move_here">Move here</string>
+    <string name="workspace_move_here_blocked">Can’t move into the selected folder</string>
+    <string name="workspace_move_here_already">Already in this folder</string>
+    <string name="workspace_move_done">Moved %1$d item(s)</string>
+    <string name="workspace_move_partial">Moved %1$d, %2$d failed</string>
+    <string name="workspace_delete_selected_confirm">Delete the %1$d selected items?</string>
+    <string name="workspace_delete_done">Deleted %1$d item(s)</string>
+    <string name="workspace_delete_partial">Deleted %1$d, %2$d failed</string>
+    <string name="workspace_download_done">Downloaded %1$d file(s)</string>
+    <string name="workspace_download_partial">Downloaded %1$d, %2$d failed</string>
+    <string name="workspace_download_no_target">No downloadable files in the selection</string>
+    <string name="workspace_up_level">Up</string>
+    <string name="workspace_root">Root</string>
+    <string name="workspace_create_folder_failed">Could not create folder</string>
+    <string name="workspace_folder_name_invalid">Name must not be empty or contain /</string>
 
     <!-- ==================== Multimedia content (MultimediaContent) ==================== -->
     <string name="chat_media_image">Image</string>

@@ -12,14 +12,19 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
@@ -32,13 +37,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.nekobot.app.R
 import com.nekobot.app.data.local.ai.SANDBOX_SHARED_MOUNT
@@ -50,7 +59,14 @@ import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.GlassDropdownMenu
+import com.nekobot.app.ui.components.NekoChoiceRow
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.NekoDivider
+import com.nekobot.app.ui.components.NekoPrimaryAction
+import com.nekobot.app.ui.components.NekoSheet
+import com.nekobot.app.ui.components.NekoSheetHeader
+import com.nekobot.app.ui.components.NekoSheetNote
+import com.nekobot.app.ui.components.nekoRowTitleStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -230,26 +246,189 @@ class WorkspaceViewModel : BaseViewModel() {
 
     fun openDirectory(path: String) = load(path)
 
-    /** 长按后在当前工作区内把文件或文件夹放入目标文件夹。 */
-    fun moveWithinPrivate(sourcePath: String, targetPath: String) {
-        if (sessionId.isBlank() || sourcePath == targetPath) return
-        launchResult(
-            block = { unified.moveWorkspaceFile(sessionId, sourcePath, targetPath) },
-            onSuccess = {
-                showToast("已移动到 $targetPath")
-                load()
+    // ---- 移动到…（选择目标文件夹后批量移动，与系统文件管理器一致） ----
+
+    /** 目标文件夹选择器状态：当前目录 + 其下子文件夹。 */
+    @Immutable
+    data class MovePickerState(
+        val path: String = "",
+        val folders: List<WorkspaceFile> = emptyList(),
+        val loading: Boolean = false
+    )
+
+    private val _movePicker = MutableStateFlow(MovePickerState())
+    val movePicker: StateFlow<MovePickerState> = _movePicker.asStateFlow()
+
+    /** 读取 [path] 下的子文件夹，供「移动到…」选择目标目录。 */
+    fun loadMoveFolders(path: String, isShared: Boolean) {
+        val normalized = normalizeWorkspaceBrowserPath(path)
+        if (!isShared && sessionId.isBlank()) return
+        _movePicker.value = MovePickerState(path = normalized, loading = true)
+        viewModelScope.launch {
+            val folders = when (
+                val res = if (isShared) {
+                    unified.listSharedFiles(normalized.ifBlank { null })
+                } else {
+                    unified.listWorkspaceFiles(sessionId, normalized.ifBlank { null })
+                }
+            ) {
+                is Resource.Success -> parseFiles(res.data).filter { it.isDirectory }
+                is Resource.Error -> emptyList()
+                is Resource.Loading -> emptyList()
             }
-        )
+            if (_movePicker.value.path == normalized) {
+                _movePicker.value = MovePickerState(normalized, folders, loading = false)
+            }
+        }
     }
 
-    fun moveWithinShared(sourcePath: String, targetPath: String) {
-        if (sourcePath == targetPath) return
-        launchResult(
-            block = { unified.moveSharedFile(sourcePath, targetPath) },
-            onSuccess = {
-                showToast("已移动到 $targetPath")
-                loadShared()
+    /** 当前工作区内批量移动：逐项移动并汇总成功/失败数量。 */
+    fun moveWithin(sources: Collection<String>, targetPath: String, isShared: Boolean) {
+        if (!isShared && sessionId.isBlank()) return
+        val target = normalizeWorkspaceBrowserPath(targetPath)
+        // 已在目标目录内的项跳过（与文件管理器一致），避免自我覆盖
+        val paths = sources.filter {
+            it.isNotBlank() &&
+                normalizeWorkspaceBrowserPath(it) != target &&
+                parentWorkspaceBrowserPath(it) != target
+        }
+        if (paths.isEmpty()) return
+        viewModelScope.launch {
+            setLoading(true)
+            val counts = try {
+                runBatch(paths) { path ->
+                    if (isShared) unified.moveSharedFile(path, target)
+                    else unified.moveWorkspaceFile(sessionId, path, target)
+                }
+            } finally {
+                setLoading(false)
             }
+            if (isShared) loadShared() else load()
+            showBatchToast(counts, R.string.workspace_move_done, R.string.workspace_move_partial)
+        }
+    }
+
+    /** 批量移到共享工作区。 */
+    fun moveSelectedToShared(sources: Collection<String>) {
+        if (sessionId.isBlank()) return
+        val paths = sources.filter { it.isNotBlank() }
+        if (paths.isEmpty()) return
+        viewModelScope.launch {
+            setLoading(true)
+            val counts = try {
+                runBatch(paths) { path -> unified.moveToShared(sessionId, path) }
+            } finally {
+                setLoading(false)
+            }
+            load()
+            loadShared()
+            showBatchToast(counts, R.string.workspace_move_done, R.string.workspace_move_partial)
+        }
+    }
+
+    /** 批量把共享文件移回当前会话。 */
+    fun moveSelectedSharedToPrivate(sources: Collection<String>) {
+        if (sessionId.isBlank()) return
+        val paths = sources.filter { it.isNotBlank() }
+        if (paths.isEmpty()) return
+        viewModelScope.launch {
+            setLoading(true)
+            val counts = try {
+                runBatch(paths) { path -> unified.moveSharedToPrivate(path, sessionId) }
+            } finally {
+                setLoading(false)
+            }
+            loadShared()
+            load()
+            showBatchToast(counts, R.string.workspace_move_done, R.string.workspace_move_partial)
+        }
+    }
+
+    /** 批量删除所选文件/文件夹。 */
+    fun deleteFiles(files: Collection<WorkspaceFile>, isShared: Boolean) {
+        if (!isShared && sessionId.isBlank()) return
+        val paths = files.map { it.path }.filter { it.isNotBlank() }
+        if (paths.isEmpty()) return
+        viewModelScope.launch {
+            setLoading(true)
+            val counts = try {
+                runBatch(paths) { path ->
+                    if (isShared) unified.deleteSharedFile(path)
+                    else unified.deleteWorkspaceFile(sessionId, path)
+                }
+            } finally {
+                setLoading(false)
+            }
+            if (isShared) loadShared() else load()
+            showBatchToast(counts, R.string.workspace_delete_done, R.string.workspace_delete_partial)
+        }
+    }
+
+    /** 在当前目录下新建文件夹（只取单层名称）。 */
+    fun createFolder(folderName: String, isShared: Boolean) {
+        if (!isShared && sessionId.isBlank()) return
+        val name = folderName.trim()
+        if (name.isEmpty() || name.contains('/') || name.contains('\\') ||
+            name == "." || name == ".."
+        ) {
+            showError(string(R.string.workspace_folder_name_invalid))
+            return
+        }
+        val base = if (isShared) _sharedPath.value else _currentPath.value
+        val path = if (base.isBlank()) name else "$base/$name"
+        viewModelScope.launch {
+            setLoading(true)
+            val result = try {
+                if (isShared) unified.createSharedFolder(path)
+                else unified.createWorkspaceFolder(sessionId, path)
+            } finally {
+                setLoading(false)
+            }
+            if (result.isOperationOk()) {
+                showToast(string(R.string.shared_folder_created))
+                if (isShared) loadShared() else load()
+            } else {
+                val message = (result as? Resource.Error)?.message
+                showError(message?.takeIf { it.isNotBlank() }
+                    ?: string(R.string.workspace_create_folder_failed))
+            }
+        }
+    }
+
+    /** 逐项执行，返回 (成功, 失败)；单次失败不影响其余项。 */
+    private suspend fun runBatch(
+        paths: List<String>,
+        operation: suspend (String) -> Resource<JsonElement>
+    ): Pair<Int, Int> {
+        var done = 0
+        var failed = 0
+        for (path in paths) {
+            if (operation(path).isOperationOk()) done++ else failed++
+        }
+        return done to failed
+    }
+
+    /** 本地实现的失败放在 JSON 的 success 里，这里统一判定操作结果。 */
+    private fun Resource<JsonElement>.isOperationOk(): Boolean = when (this) {
+        is Resource.Success -> {
+            val obj = data.takeIf { it.isJsonObject }?.asJsonObject
+            when {
+                obj == null -> true
+                obj.has("success") -> runCatching { obj.get("success").asBoolean }.getOrDefault(true)
+                obj.has("error") -> false
+                else -> true
+            }
+        }
+        is Resource.Error -> false
+        is Resource.Loading -> false
+    }
+
+    private fun showBatchToast(counts: Pair<Int, Int>, doneRes: Int, partialRes: Int) {
+        val (done, failed) = counts
+        if (done == 0 && failed == 0) return
+        showToast(
+            if (failed == 0) string(doneRes, done)
+            else string(partialRes, done, failed)
         )
     }
 
@@ -288,28 +467,6 @@ class WorkspaceViewModel : BaseViewModel() {
                 _uploading.value = false
             }
         }
-    }
-
-    /** 删除工作区文件 */
-    fun delete(workspacePath: String) {
-        if (sessionId.isBlank()) return
-        launchResult(
-            block = { unified.deleteWorkspaceFile(sessionId, workspacePath) },
-            onSuccess = { load() }
-        )
-    }
-
-    /** 移动文件到共享工作区 */
-    fun moveToShared(workspacePath: String) {
-        if (sessionId.isBlank()) return
-        launchResult(
-            block = { unified.moveToShared(sessionId, workspacePath) },
-            onSuccess = {
-                showToast(string(R.string.shared_file_moved_to_shared, workspacePath.substringAfterLast('/')))
-                load()
-                loadShared()
-            }
-        )
     }
 
     // ==================== 共享工作区操作 ====================
@@ -372,30 +529,6 @@ class WorkspaceViewModel : BaseViewModel() {
                 _uploading.value = false
             }
         }
-    }
-
-    /** 删除共享工作区文件 */
-    fun deleteShared(filename: String) {
-        launchResult(
-            block = { unified.deleteSharedFile(filename) },
-            onSuccess = {
-                showToast(string(R.string.shared_delete_success))
-                loadShared()
-            }
-        )
-    }
-
-    /** 把共享文件移回当前会话 */
-    fun moveSharedToPrivate(filename: String) {
-        if (sessionId.isBlank()) return
-        launchResult(
-            block = { unified.moveSharedToPrivate(filename, sessionId) },
-            onSuccess = {
-                showToast(string(R.string.shared_file_moved_to_private, filename.substringAfterLast('/')))
-                loadShared()
-                load()
-            }
-        )
     }
 
     /** 准备共享文件到缓存目录供预览 */
@@ -677,18 +810,51 @@ fun WorkspaceScreen(
     val scope = rememberCoroutineScope()
 
     var tabIndex by remember { mutableStateOf(0) } // 0=会话工作区, 1=共享工作区
-    var deletingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
-    var movingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
-    var draggingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
+    // 多选：长按进入、点按切换，与系统文件管理器一致；切换目录/Tab 自动退出
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingDelete by remember { mutableStateOf<WorkspaceDeleteRequest?>(null) }
+    var moveRequest by remember { mutableStateOf<WorkspaceMoveRequest?>(null) }
+    var creatingFolder by remember { mutableStateOf(false) }
+    var folderName by remember { mutableStateOf("") }
     var downloading by remember { mutableStateOf<String?>(null) }
     var previewFile by remember { mutableStateOf<java.io.File?>(null) }
     var previewFileName by remember { mutableStateOf("") }
     var previewFileMime by remember { mutableStateOf("") }
     var previewLoading by remember { mutableStateOf(false) }
-    var pendingLegacyDownload by remember { mutableStateOf<Pair<WorkspaceFile, Boolean>?>(null) } // (file, isShared)
+    // Android 9 及以下：系统「创建文档」选择器一次只能存一个文件，用下标驱动队列
+    var legacyDownloads by remember { mutableStateOf<List<Pair<WorkspaceFile, Boolean>>>(emptyList()) }
+    var legacyIndex by remember { mutableIntStateOf(-1) }
+    var legacySaved by remember { mutableIntStateOf(0) }
     var showTerminal by remember { mutableStateOf(false) }
     var terminalDir by remember { mutableStateOf("") }
     val snackbarHost = remember { SnackbarHostState() }
+
+    val isSharedTab = tabIndex == 1
+    val activePath = if (isSharedTab) sharedPath else currentPath
+    val displayFiles = if (isSharedTab) sharedFiles else files
+    val selectedFiles = remember(displayFiles, selectedPaths) {
+        displayFiles.filter { it.path in selectedPaths }
+    }
+    val movePicker by viewModel.movePicker.collectAsStateWithLifecycle()
+
+    // 新建文件夹：只允许单层名称，避免输入 / 或 .. 跳出当前目录
+    val trimmedFolderName = folderName.trim()
+    val folderNameValid = trimmedFolderName.isNotEmpty() &&
+        trimmedFolderName != "." &&
+        trimmedFolderName != ".." &&
+        !trimmedFolderName.contains('/') &&
+        !trimmedFolderName.contains('\\')
+
+    val exitSelection: () -> Unit = {
+        selectionMode = false
+        selectedPaths = emptySet()
+    }
+    val toggleSelection: (WorkspaceFile) -> Unit = { file ->
+        val next = if (file.path in selectedPaths) selectedPaths - file.path else selectedPaths + file.path
+        selectedPaths = next
+        selectionMode = next.isNotEmpty()
+    }
 
     LaunchedEffect(sessionId) { viewModel.init(sessionId) }
     LaunchedEffect(tabIndex) {
@@ -700,15 +866,28 @@ fun WorkspaceScreen(
     LaunchedEffect(error) {
         if (error != null) { snackbarHost.showSnackbar(error!!); viewModel.clearError() }
     }
+    // 目录或来源切换后旧选中项已不在列表里，直接退出多选
+    LaunchedEffect(currentPath, sharedPath, tabIndex) { exitSelection() }
+    // 打开「移动到…」时从当前目录开始浏览
+    LaunchedEffect(moveRequest) {
+        val request = moveRequest ?: return@LaunchedEffect
+        viewModel.loadMoveFolders(
+            if (request.isShared) viewModel.sharedPath.value else viewModel.currentPath.value,
+            request.isShared
+        )
+    }
 
     // 终端仿真器按会话持有：关掉浮层再打开时输出与回滚历史仍在
     val terminalEmulator = remember(sessionId) { TerminalEmulator() }
     LaunchedEffect(terminalEmulator) {
         viewModel.terminalOutput.collect { bytes -> terminalEmulator.feed(bytes) }
     }
-    val activePath = if (tabIndex == 0) currentPath else sharedPath
-    BackHandler(enabled = activePath.isNotBlank()) {
-        if (tabIndex == 0) viewModel.navigateUp() else viewModel.navigateSharedUp()
+    BackHandler(enabled = selectionMode || activePath.isNotBlank()) {
+        when {
+            selectionMode -> exitSelection()
+            tabIndex == 0 -> viewModel.navigateUp()
+            else -> viewModel.navigateSharedUp()
+        }
     }
 
     // 文件选择器：根据当前 Tab 上传到不同工作区
@@ -723,63 +902,259 @@ fun WorkspaceScreen(
     val createDownloadDocument = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*")
     ) { uri ->
-        val pending = pendingLegacyDownload
-        pendingLegacyDownload = null
-        if (uri == null || pending == null) {
-            downloading = null
-        } else {
-            val (file, isShared) = pending
-            scope.launch {
+        val index = legacyIndex
+        val item = legacyDownloads.getOrNull(index)
+        when {
+            item == null -> {
+                legacyDownloads = emptyList()
+                legacyIndex = -1
+                downloading = null
+            }
+            // 在系统选择器里取消：结束整条下载队列
+            uri == null -> {
+                legacyDownloads = emptyList()
+                legacyIndex = -1
+                downloading = null
+            }
+            else -> scope.launch {
+                val (file, isShared) = item
                 val saved = if (isShared) viewModel.saveSharedToUri(context, file, uri)
-                             else viewModel.saveToUri(context, file, uri)
+                            else viewModel.saveToUri(context, file, uri)
+                if (saved) legacySaved += 1
+                legacyIndex = index + 1
+            }
+        }
+    }
+    // 队列推进：上一份写完后弹下一个文件的保存位置
+    LaunchedEffect(legacyIndex, legacyDownloads) {
+        val queue = legacyDownloads
+        val item = queue.getOrNull(legacyIndex)
+        if (item != null) {
+            downloading = item.first.path
+            createDownloadDocument.launch(item.first.name)
+        } else if (legacyIndex >= 0 && queue.isNotEmpty()) {
+            val saved = legacySaved
+            val total = queue.size
+            legacyDownloads = emptyList()
+            legacyIndex = -1
+            legacySaved = 0
+            downloading = null
+            snackbarHost.showSnackbar(
+                when {
+                    saved == total && total == 1 ->
+                        context.getString(R.string.workspace_downloaded_to, queue.first().first.name)
+                    saved == total -> context.getString(R.string.workspace_download_done, saved)
+                    else -> context.getString(R.string.workspace_download_partial, saved, total - saved)
+                }
+            )
+        }
+    }
+
+    // 批量下载：Android 10+ 直接写公共 Download，旧系统逐个走系统选择器
+    val startDownload: (List<WorkspaceFile>, Boolean) -> Unit = { targets, isShared ->
+        val downloadable = targets.filter { !it.isDirectory }
+        when {
+            downloadable.isEmpty() -> {
+                scope.launch {
+                    snackbarHost.showSnackbar(context.getString(R.string.workspace_download_no_target))
+                }
+            }
+            downloading != null -> Unit
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> {
+                legacyDownloads = downloadable.map { it to isShared }
+                legacySaved = 0
+                legacyIndex = 0
+            }
+            else -> scope.launch {
+                var savedCount = 0
+                var failedCount = 0
+                for (file in downloadable) {
+                    downloading = file.path
+                    val savedName = if (isShared) viewModel.saveSharedToDownloads(context, file)
+                                    else viewModel.saveToDownloads(context, file)
+                    if (savedName != null) savedCount++ else failedCount++
+                }
                 downloading = null
                 snackbarHost.showSnackbar(
-                    if (saved) {
-                        context.getString(R.string.workspace_downloaded_to, file.name)
-                    } else {
-                        context.getString(R.string.workspace_download_failed)
+                    when {
+                        failedCount == 0 && savedCount == 1 ->
+                            context.getString(R.string.workspace_downloaded_to, downloadable.first().name)
+                        failedCount == 0 -> context.getString(R.string.workspace_download_done, savedCount)
+                        else -> context.getString(R.string.workspace_download_partial, savedCount, failedCount)
                     }
                 )
             }
         }
     }
 
+    val openPreview: (WorkspaceFile, Boolean) -> Unit = { file, isShared ->
+        if (!previewLoading && previewFile == null) {
+            previewFileName = file.path
+            previewFileMime = file.mimeType
+            previewLoading = true
+            scope.launch {
+                val saved = if (isShared) viewModel.prepareSharedForOpen(context, file.path)
+                            else viewModel.prepareForOpen(context, file.path)
+                previewLoading = false
+                if (saved != null) {
+                    when {
+                        // Markdown / 纯文本（txt）等走内置预览弹窗，不交给外部应用
+                        isBuiltInPreviewable(file.name, file.mimeType) -> {
+                            previewFile = saved
+                        }
+                        isPdfWorkspaceFile(file.name, file.mimeType) -> {
+                            openLocalWorkspaceFile(context, saved)
+                            previewFileName = ""
+                        }
+                        else -> previewFile = saved
+                    }
+                } else {
+                    snackbarHost.showSnackbar(context.getString(R.string.workspace_preview_load_failed))
+                }
+            }
+        }
+    }
+
+    // 点按：多选时切换选中；否则文件夹进入、文件预览
+    val openFile: (WorkspaceFile) -> Unit = { file ->
+        when {
+            selectionMode -> toggleSelection(file)
+            file.isDirectory -> {
+                if (isSharedTab) viewModel.openSharedDirectory(file.path)
+                else viewModel.openDirectory(file.path)
+            }
+            else -> openPreview(file, isSharedTab)
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = if (activePath.isBlank()) {
-                            stringResource(R.string.workspace_title)
-                        } else {
-                            "${stringResource(R.string.workspace_title)} / $activePath"
-                        },
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (tabIndex == 0) {
-                                if (!viewModel.navigateUp()) onBack()
-                            } else {
-                                if (!viewModel.navigateSharedUp()) onBack()
-                            }
+            if (selectionMode) {
+                val allSelected = displayFiles.isNotEmpty() && selectedPaths.size >= displayFiles.size
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.workspace_selected_count, selectedPaths.size),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = exitSelection) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.common_cancel),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { pickFile.launch("*/*") }, enabled = !uploading) {
-                        Icon(Icons.Filled.UploadFile, contentDescription = stringResource(R.string.workspace_upload_file), tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = {
+                                if (allSelected) exitSelection()
+                                else selectedPaths = displayFiles.map { it.path }.toSet()
+                            }
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (allSelected) R.string.common_deselect_all
+                                    else R.string.common_select_all
+                                )
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = if (activePath.isBlank()) {
+                                stringResource(R.string.workspace_title)
+                            } else {
+                                "${stringResource(R.string.workspace_title)} / $activePath"
+                            },
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                if (tabIndex == 0) {
+                                    if (!viewModel.navigateUp()) onBack()
+                                } else {
+                                    if (!viewModel.navigateSharedUp()) onBack()
+                                }
+                            }
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                folderName = ""
+                                creatingFolder = true
+                            }
+                        ) {
+                            Icon(
+                                Icons.Filled.CreateNewFolder,
+                                contentDescription = stringResource(R.string.shared_create_folder),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(onClick = { pickFile.launch("*/*") }, enabled = !uploading) {
+                            Icon(Icons.Filled.UploadFile, contentDescription = stringResource(R.string.workspace_upload_file), tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                )
+            }
+        },
+        bottomBar = {
+            if (selectionMode) {
+                WorkspaceSelectionBar(
+                    actions = listOf(
+                        WorkspaceBarAction(
+                            icon = Icons.AutoMirrored.Filled.DriveFileMove,
+                            label = stringResource(R.string.workspace_move_to_folder),
+                            enabled = selectedFiles.isNotEmpty(),
+                            onClick = { moveRequest = WorkspaceMoveRequest(selectedFiles, isSharedTab) }
+                        ),
+                        WorkspaceBarAction(
+                            icon = if (isSharedTab) Icons.AutoMirrored.Filled.ArrowBack else Icons.Filled.FolderShared,
+                            label = stringResource(
+                                if (isSharedTab) R.string.shared_move_to_private
+                                else R.string.shared_move_to_shared
+                            ),
+                            enabled = selectedFiles.isNotEmpty(),
+                            onClick = {
+                                val paths = selectedFiles.map { it.path }
+                                exitSelection()
+                                if (isSharedTab) viewModel.moveSelectedSharedToPrivate(paths)
+                                else viewModel.moveSelectedToShared(paths)
+                            }
+                        ),
+                        WorkspaceBarAction(
+                            icon = Icons.Filled.Download,
+                            label = stringResource(R.string.workspace_download),
+                            enabled = selectedFiles.any { !it.isDirectory },
+                            onClick = { startDownload(selectedFiles, isSharedTab) }
+                        ),
+                        WorkspaceBarAction(
+                            icon = Icons.Filled.Delete,
+                            label = stringResource(R.string.common_delete),
+                            enabled = selectedFiles.isNotEmpty(),
+                            destructive = true,
+                            onClick = { pendingDelete = WorkspaceDeleteRequest(selectedFiles, isSharedTab) }
+                        )
+                    )
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHost) }
     ) { padding ->
@@ -788,7 +1163,7 @@ fun WorkspaceScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Tab 切换栏
+            // Tab 切换栏：切换工作区时退出多选，避免误操作另一个工作区
             TabRow(
                 selectedTabIndex = tabIndex,
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -796,12 +1171,16 @@ fun WorkspaceScreen(
             ) {
                 Tab(
                     selected = tabIndex == 0,
-                    onClick = { tabIndex = 0 },
+                    onClick = {
+                        exitSelection()
+                        tabIndex = 0
+                    },
                     text = { Text(stringResource(R.string.shared_workspace_tab_session)) }
                 )
                 Tab(
                     selected = tabIndex == 1,
                     onClick = {
+                        exitSelection()
                         tabIndex = 1
                         viewModel.loadShared()
                     },
@@ -809,27 +1188,7 @@ fun WorkspaceScreen(
                 )
             }
 
-            draggingFile?.let { source ->
-                GlassCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "正在移动：${source.name}，点击目标文件夹放置",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        TextButton(onClick = { draggingFile = null }) {
-                            Text(stringResource(R.string.common_cancel))
-                        }
-                    }
-                }
-            }
-
             Box(modifier = Modifier.fillMaxSize()) {
-                val displayFiles = if (tabIndex == 0) files else sharedFiles
                 when {
                     displayFiles.isEmpty() && loading -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -838,8 +1197,8 @@ fun WorkspaceScreen(
                     }
                     displayFiles.isEmpty() -> {
                         EmptyState(
-                            title = if (tabIndex == 0) stringResource(R.string.workspace_empty_title)
-                                    else stringResource(R.string.shared_workspace_empty),
+                            title = if (isSharedTab) stringResource(R.string.shared_workspace_empty)
+                                    else stringResource(R.string.workspace_empty_title),
                             hint = stringResource(R.string.workspace_empty_hint),
                             icon = { Icon(Icons.Filled.InsertDriveFile, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         )
@@ -851,82 +1210,40 @@ fun WorkspaceScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(displayFiles, key = { it.path }) { f ->
-                                val isShared = tabIndex == 1
                                 WorkspaceFileItem(
                                     file = f,
-                                    isSharedMode = isShared,
+                                    isSharedMode = isSharedTab,
                                     downloading = downloading == f.path,
                                     previewLoading = previewLoading && previewFileName == f.path,
                                     terminalAvailable = terminalAvailable,
-                                    onOpenDirectory = {
-                                        val source = draggingFile
-                                        if (source != null) {
-                                            draggingFile = null
-                                            if (source.path != f.path && !f.path.startsWith("${source.path}/")) {
-                                                if (isShared) viewModel.moveWithinShared(source.path, f.path)
-                                                else viewModel.moveWithinPrivate(source.path, f.path)
-                                            }
-                                        } else if (isShared) viewModel.openSharedDirectory(f.path)
-                                        else viewModel.openDirectory(f.path)
+                                    selectionMode = selectionMode,
+                                    selected = f.path in selectedPaths,
+                                    onClick = { openFile(f) },
+                                    onLongClick = {
+                                        if (selectionMode) {
+                                            toggleSelection(f)
+                                        } else {
+                                            selectionMode = true
+                                            selectedPaths = setOf(f.path)
+                                        }
                                     },
-                                    onLongClick = { draggingFile = f },
-                                    onDelete = { deletingFile = f },
-                                    onMove = { movingFile = f },
+                                    onDelete = {
+                                        pendingDelete = WorkspaceDeleteRequest(listOf(f), isSharedTab)
+                                    },
+                                    onMove = {
+                                        moveRequest = WorkspaceMoveRequest(listOf(f), isSharedTab)
+                                    },
+                                    onMoveAcross = {
+                                        if (isSharedTab) viewModel.moveSelectedSharedToPrivate(listOf(f.path))
+                                        else viewModel.moveSelectedToShared(listOf(f.path))
+                                    },
                                     onOpenTerminal = {
                                         // 浏览器里的相对路径映射到沙箱内挂载点
-                                        val mount = if (isShared) SANDBOX_SHARED_MOUNT else SANDBOX_WORKSPACE_MOUNT
+                                        val mount = if (isSharedTab) SANDBOX_SHARED_MOUNT else SANDBOX_WORKSPACE_MOUNT
                                         terminalDir = "$mount/${f.path.trim('/')}"
                                         showTerminal = true
                                     },
-                                    onDownload = {
-                                        if (downloading == null) {
-                                            downloading = f.path
-                                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                                                pendingLegacyDownload = f to isShared
-                                                createDownloadDocument.launch(f.name)
-                                            } else {
-                                                scope.launch {
-                                                    val savedName = if (isShared) viewModel.saveSharedToDownloads(context, f)
-                                                                    else viewModel.saveToDownloads(context, f)
-                                                    downloading = null
-                                                    snackbarHost.showSnackbar(
-                                                        if (savedName != null) {
-                                                            context.getString(R.string.workspace_downloaded_to, savedName)
-                                                        } else {
-                                                            context.getString(R.string.workspace_download_failed)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onPreview = {
-                                        if (!previewLoading && previewFile == null) {
-                                            previewFileName = f.path
-                                            previewFileMime = f.mimeType
-                                            previewLoading = true
-                                            scope.launch {
-                                                val saved = if (isShared) viewModel.prepareSharedForOpen(context, f.path)
-                                                             else viewModel.prepareForOpen(context, f.path)
-                                                previewLoading = false
-                                                if (saved != null) {
-                                                    when {
-                                                        // Markdown / 纯文本（txt）等走内置预览弹窗，不交给外部应用
-                                                        isBuiltInPreviewable(f.name, f.mimeType) -> {
-                                                            previewFile = saved
-                                                        }
-                                                        isPdfWorkspaceFile(f.name, f.mimeType) -> {
-                                                            openLocalWorkspaceFile(context, saved)
-                                                            previewFileName = ""
-                                                        }
-                                                        else -> previewFile = saved
-                                                    }
-                                                } else {
-                                                    snackbarHost.showSnackbar(context.getString(R.string.workspace_preview_load_failed))
-                                                }
-                                            }
-                                        }
-                                    }
+                                    onDownload = { startDownload(listOf(f), isSharedTab) }
                                 )
                             }
                         }
@@ -936,41 +1253,71 @@ fun WorkspaceScreen(
         }
     }
 
-    // 删除确认
-    if (deletingFile != null) {
-        val isShared = tabIndex == 1
+    // 删除确认：单项显示文件名，多选显示数量
+    pendingDelete?.let { request ->
         NekoDialog(
-            onDismiss = { deletingFile = null },
+            onDismiss = { pendingDelete = null },
             title = stringResource(R.string.workspace_delete_file_title),
-            message = stringResource(R.string.workspace_delete_confirm, deletingFile!!.name),
+            message = if (request.files.size == 1) {
+                stringResource(R.string.workspace_delete_confirm, request.files.first().name)
+            } else {
+                stringResource(R.string.workspace_delete_selected_confirm, request.files.size)
+            },
             confirmText = stringResource(R.string.common_delete),
             onConfirm = {
-                val f = deletingFile!!
-                deletingFile = null
-                if (isShared) viewModel.deleteShared(f.path) else viewModel.delete(f.path)
+                pendingDelete = null
+                exitSelection()
+                viewModel.deleteFiles(request.files, request.isShared)
             }
         )
     }
 
-    // 移动文件确认：文案是「是否移动」的询问，移动结果由 toast 提示
-    if (movingFile != null) {
-        val isShared = tabIndex == 1
-        val moveTargetFile = movingFile!!
-        NekoDialog(
-            onDismiss = { movingFile = null },
-            title = stringResource(if (isShared) R.string.shared_move_to_private else R.string.shared_move_to_shared),
-            message = stringResource(
-                if (isShared) R.string.shared_move_to_private_confirm
-                else R.string.shared_move_to_shared_confirm,
-                moveTargetFile.name
-            ),
-            confirmText = stringResource(if (isShared) R.string.shared_move_to_private else R.string.shared_move_to_shared),
+    // 移动到…：先选目标文件夹，再统一移动
+    moveRequest?.let { request ->
+        WorkspaceMovePickerSheet(
+            request = request,
+            picker = movePicker,
+            onNavigate = { path -> viewModel.loadMoveFolders(path, request.isShared) },
+            onUp = { viewModel.loadMoveFolders(parentWorkspaceBrowserPath(movePicker.path), request.isShared) },
             onConfirm = {
-                movingFile = null
-                if (isShared) viewModel.moveSharedToPrivate(moveTargetFile.path)
-                else viewModel.moveToShared(moveTargetFile.path)
-            }
+                val target = movePicker.path
+                moveRequest = null
+                exitSelection()
+                viewModel.moveWithin(request.files.map { it.path }, target, request.isShared)
+            },
+            onDismiss = { moveRequest = null }
         )
+    }
+
+    // 新建文件夹：在当前目录下创建，名称非法时禁用「创建」
+    if (creatingFolder) {
+        NekoDialog(
+            onDismiss = { creatingFolder = false },
+            title = stringResource(R.string.shared_create_folder),
+            confirmText = stringResource(R.string.common_create),
+            confirmEnabled = folderNameValid,
+            onConfirm = {
+                val name = trimmedFolderName
+                creatingFolder = false
+                folderName = ""
+                viewModel.createFolder(name, isSharedTab)
+            },
+            onCancel = { creatingFolder = false }
+        ) {
+            OutlinedTextField(
+                value = folderName,
+                onValueChange = { folderName = it.take(64) },
+                label = { Text(stringResource(R.string.shared_folder_name)) },
+                singleLine = true,
+                isError = folderName.isNotEmpty() && !folderNameValid,
+                supportingText = {
+                    if (folderName.isNotEmpty() && !folderNameValid) {
+                        Text(stringResource(R.string.workspace_folder_name_invalid))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 
     // 文件预览 Dialog：支持图片/文本/HTML/PDF
@@ -1012,26 +1359,48 @@ private fun WorkspaceFileItem(
     downloading: Boolean,
     previewLoading: Boolean,
     terminalAvailable: Boolean = false,
-    onOpenDirectory: () -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onClick: () -> Unit,
     onLongClick: () -> Unit,
     onDelete: () -> Unit,
     onMove: () -> Unit,
+    onMoveAcross: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
-    onDownload: () -> Unit,
-    onPreview: () -> Unit
+    onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 14) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 14,
+        containerColor = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        },
+        borderWidth = if (selected) 1 else 0,
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+        contentPadding = PaddingValues(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
                     enabled = !previewLoading,
-                    onClick = { if (file.isDirectory) onOpenDirectory() else onPreview() },
+                    onClick = onClick,
                     onLongClick = onLongClick
                 )
         ) {
+            // 多选时左侧给勾选框，点按整行即可切换
+            if (selectionMode) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = null,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             Icon(
                 if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
                 contentDescription = null,
@@ -1064,80 +1433,271 @@ private fun WorkspaceFileItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            // 右侧操作收入「⋯」菜单，避免一排图标挤占文件名空间
-            Box {
-                IconButton(onClick = { menuExpanded = true }, enabled = !downloading) {
-                    if (downloading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Icon(
-                            Icons.Filled.MoreVert,
-                            contentDescription = stringResource(R.string.workspace_file_actions),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            // 多选时不显示「⋯」，避免与批量操作冲突
+            if (!selectionMode) {
+                // 右侧操作收入「⋯」菜单，避免一排图标挤占文件名空间
+                Box {
+                    IconButton(onClick = { menuExpanded = true }, enabled = !downloading) {
+                        if (downloading) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = stringResource(R.string.workspace_file_actions),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                }
-                GlassDropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false }
-                ) {
-                    if (file.isDirectory && terminalAvailable) {
+                    GlassDropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        if (file.isDirectory && terminalAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.workspace_open_terminal)) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.Terminal,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenTerminal()
+                                }
+                            )
+                        }
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.workspace_open_terminal)) },
+                            text = { Text(stringResource(R.string.workspace_move_to_folder)) },
                             leadingIcon = {
                                 Icon(
-                                    Icons.Filled.Terminal,
+                                    Icons.AutoMirrored.Filled.DriveFileMove,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },
                             onClick = {
                                 menuExpanded = false
-                                onOpenTerminal()
+                                onMove()
                             }
                         )
-                    }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(if (isSharedMode) R.string.shared_move_to_private else R.string.shared_move_to_shared)) },
-                        leadingIcon = {
-                            Icon(
-                                if (isSharedMode) Icons.AutoMirrored.Filled.ArrowBack else Icons.Filled.FolderShared,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onMove()
-                        }
-                    )
-                    if (!file.isDirectory) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.workspace_download)) },
+                            text = { Text(stringResource(if (isSharedMode) R.string.shared_move_to_private else R.string.shared_move_to_shared)) },
                             leadingIcon = {
-                                Icon(Icons.Filled.Download, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(
+                                    if (isSharedMode) Icons.AutoMirrored.Filled.ArrowBack else Icons.Filled.FolderShared,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             },
                             onClick = {
                                 menuExpanded = false
-                                onDownload()
+                                onMoveAcross()
+                            }
+                        )
+                        if (!file.isDirectory) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.workspace_download)) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Download, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onDownload()
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onDelete()
                             }
                         )
                     }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = {
-                            Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onDelete()
-                        }
+                }
+            }
+        }
+    }
+}
+
+/** 批量操作请求：记录来源工作区，切 Tab 后也不会作用到另一个工作区。 */
+private data class WorkspaceDeleteRequest(val files: List<WorkspaceFile>, val isShared: Boolean)
+
+private data class WorkspaceMoveRequest(val files: List<WorkspaceFile>, val isShared: Boolean)
+
+/** 多选底栏的一项操作。 */
+private data class WorkspaceBarAction(
+    val icon: ImageVector,
+    val label: String,
+    val enabled: Boolean,
+    val destructive: Boolean = false,
+    val onClick: () -> Unit
+)
+
+/** 多选底栏：移动到…、跨工作区、下载、删除。 */
+@Composable
+private fun WorkspaceSelectionBar(actions: List<WorkspaceBarAction>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            actions.forEach { action ->
+                val tint = when {
+                    !action.enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    action.destructive -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.primary
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 56.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(enabled = action.enabled, role = Role.Button, onClick = action.onClick),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(action.icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = action.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = tint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
     }
 }
+
+/**
+ * 「移动到…」目标文件夹选择：从当前目录开始逐层浏览，避免把文件拖进看不见的目录。
+ *
+ * 选中项自身或其子目录不可作为目标，已在该目录时禁用确认。
+ */
+@Composable
+private fun WorkspaceMovePickerSheet(
+    request: WorkspaceMoveRequest,
+    picker: WorkspaceViewModel.MovePickerState,
+    onNavigate: (String) -> Unit,
+    onUp: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val targetPath = picker.path
+    val blocked = request.files.any {
+        it.isDirectory && (targetPath == it.path || targetPath.startsWith("${it.path}/"))
+    }
+    val alreadyHere = request.files.isNotEmpty() && request.files.all {
+        parentWorkspaceBrowserPath(it.path) == targetPath
+    }
+    val hint = when {
+        blocked -> stringResource(R.string.workspace_move_here_blocked)
+        alreadyHere -> stringResource(R.string.workspace_move_here_already)
+        else -> null
+    }
+    NekoSheet(onDismissRequest = onDismiss) {
+        NekoSheetHeader(
+            title = stringResource(R.string.workspace_move_picker_title),
+            description = stringResource(R.string.workspace_move_picker_desc),
+            onClose = onDismiss
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (targetPath.isBlank()) stringResource(R.string.workspace_root) else "/$targetPath",
+                style = nekoRowTitleStyle(),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onUp, enabled = targetPath.isNotBlank()) {
+                Text(stringResource(R.string.workspace_up_level))
+            }
+        }
+        NekoDivider()
+        when {
+            picker.loading -> Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(140.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+            picker.folders.isEmpty() -> Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(96.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.workspace_move_picker_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            else -> LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+            ) {
+                items(picker.folders, key = { it.path }) { folder ->
+                    NekoChoiceRow(
+                        title = folder.name,
+                        showChevron = false,
+                        leading = {
+                            Icon(
+                                Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = { onNavigate(folder.path) }
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        NekoPrimaryAction(
+            text = stringResource(R.string.workspace_move_here),
+            leadingIcon = Icons.AutoMirrored.Filled.DriveFileMove,
+            trailingChevron = false,
+            enabled = !picker.loading && !blocked && !alreadyHere,
+            onClick = onConfirm
+        )
+        hint?.let { NekoSheetNote(it) }
+    }
+}
+
 
 private fun formatSize(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"

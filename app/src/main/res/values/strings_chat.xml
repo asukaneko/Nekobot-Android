@@ -671,6 +671,26 @@
     <string name="workspace_download">下载</string>
     <string name="workspace_file_actions">文件操作</string>
     <string name="workspace_open_terminal">打开终端</string>
+    <string name="workspace_selected_count">已选择 %1$d 项</string>
+    <string name="workspace_move_to_folder">移动到…</string>
+    <string name="workspace_move_picker_title">移动到</string>
+    <string name="workspace_move_picker_desc">选择目标文件夹</string>
+    <string name="workspace_move_picker_empty">没有子文件夹</string>
+    <string name="workspace_move_here">移动到这里</string>
+    <string name="workspace_move_here_blocked">不能移动到所选文件夹内</string>
+    <string name="workspace_move_here_already">已在目标文件夹内</string>
+    <string name="workspace_move_done">已移动 %1$d 项</string>
+    <string name="workspace_move_partial">已移动 %1$d 项，%2$d 项失败</string>
+    <string name="workspace_delete_selected_confirm">确认删除所选的 %1$d 项吗？</string>
+    <string name="workspace_delete_done">已删除 %1$d 项</string>
+    <string name="workspace_delete_partial">已删除 %1$d 项，%2$d 项失败</string>
+    <string name="workspace_download_done">已下载 %1$d 个文件</string>
+    <string name="workspace_download_partial">已下载 %1$d 个，%2$d 个失败</string>
+    <string name="workspace_download_no_target">所选项目没有可下载的文件</string>
+    <string name="workspace_up_level">上一级</string>
+    <string name="workspace_root">根目录</string>
+    <string name="workspace_create_folder_failed">创建文件夹失败</string>
+    <string name="workspace_folder_name_invalid">名称不能为空，也不能包含 /</string>
 
     <!-- ==================== 多媒体内容 (MultimediaContent) ==================== -->
     <string name="chat_media_image">图片</string>
