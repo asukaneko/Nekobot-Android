@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sessions_filter_character_sessions">Character</string>
     <string name="sessions_filter_agent_sessions">Agent</string>
@@ -336,6 +336,9 @@
     <string name="chat_file_attached">File attached: %1$s</string>
     <string name="chat_uploaded_to_workspace">Uploaded to workspace: %1$s</string>
     <string name="chat_upload_failed">Upload failed: %1$s</string>
+    <string name="chat_attachments_added">Added %1$d attachments</string>
+    <string name="chat_attachments_uploaded">Uploaded %1$d files to workspace</string>
+    <string name="chat_attachments_failed">%1$d attachments failed to upload</string>
     <string name="chat_operation_failed">Operation failed: %1$s</string>
     <string name="chat_load_favorites_failed">Failed to load favorites: %1$s</string>
     <string name="chat_selected_count">%1$d selected</string>

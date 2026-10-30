@@ -7,6 +7,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -154,6 +155,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -1093,8 +1096,17 @@ private fun ModernChatComposer(
     var filePickMode by remember { mutableStateOf<String?>(null) }
     var fileBusy by remember { mutableStateOf(false) }
     // 待发送附件：图片显示缩略图，其他文件显示文件卡片（不再把引用写进输入框）
+    // 只暂存在应用私有目录并按会话持久化，退出会话重进后依然保留；发送时才真正上传到工作区
     var pendingAttachments by remember(sessionId) {
-        mutableStateOf<List<Map<String, Any>>>(emptyList())
+        mutableStateOf(PendingAttachmentStore.load(context, sessionId))
+    }
+
+    // 统一的候选附件写入：同步持久化，并删除被移除附件的暂存文件
+    fun applyPendingAttachments(next: List<Map<String, Any>>) {
+        val removed = pendingAttachments.filter { previous -> next.none { it === previous } }
+        pendingAttachments = next
+        PendingAttachmentStore.save(context, sessionId, next)
+        removed.forEach { previous -> PendingAttachmentStore.deleteStaged(context, previous["path"] as? String) }
     }
     var showClearConfirm by remember { mutableStateOf(false) }
     var showMyMessages by remember { mutableStateOf(false) }
@@ -1247,66 +1259,157 @@ private fun ModernChatComposer(
         if (granted) startVoiceRecording() else toast(context.getString(R.string.chat_voice_permission_required))
     }
 
-    val pickFile = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        val mode = filePickMode
-        filePickMode = null
-        if (uri == null || mode == null) return@rememberLauncherForActivityResult
-
+    // 批量上传：逐个上传选中的文件，全部结束后按结果汇总提示一次
+    // 选中的图片/文件只复制到应用私有暂存目录，作为候选附件等待发送（不立即上传工作区）
+    fun stagePickedUris(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
         fileBusy = true
         scope.launch {
+            var addedCount = 0
+            var failedCount = 0
             try {
-                val (name, bytes) = withContext(Dispatchers.IO) {
-                    modernReadUriFile(context, uri) ?: error(context.getString(R.string.chat_read_file_failed))
-                }
-                val body = bytes.toRequestBody(modernGuessMime(name).toMediaTypeOrNull())
-                val part = MultipartBody.Part.createFormData("file", name, body)
-                when (val result = ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
-                    is Resource.Success -> {
-                        if (mode == "send") {
-                            val baseAttachment = buildWorkspaceChatAttachment(
-                                uploadResult = result.data,
-                                sessionId = sessionId,
-                                originalName = name,
-                                fallbackMime = modernGuessMime(name)
-                            )
-                            val uploadedName = baseAttachment["name"]?.toString() ?: name
-                            val mime = baseAttachment["type"]?.toString() ?: modernGuessMime(uploadedName)
-                            // 本地模式记录工作区绝对路径，供文件卡片与附件解析使用
-                            val localFile = if (ServiceContainer.prefs.isLocalMode) {
-                                resolveLocalWorkspaceFile(context, sessionId, uploadedName)
-                            } else {
+                val staged = withContext(Dispatchers.IO) {
+                    uris.mapNotNull { uri ->
+                        val payload = modernReadUriFile(context, uri)
+                        if (payload == null) {
+                            failedCount++
+                            return@mapNotNull null
+                        }
+                        val (name, bytes) = payload
+                        PendingAttachmentStore.stage(context, sessionId, name, modernGuessMime(name), bytes)
+                            ?: run {
+                                failedCount++
                                 null
                             }
-                            // 图片与非图片统一作为待发送附件展示在输入框上方，不再写入输入框
-                            pendingAttachments = pendingAttachments + buildWorkspaceChatAttachment(
-                                uploadResult = result.data,
-                                sessionId = sessionId,
-                                originalName = uploadedName,
-                                fallbackMime = mime,
-                                localPath = localFile?.absolutePath
-                            )
-                            toast(
-                                context.getString(
-                                    if (mime.startsWith("image/")) R.string.chat_image_attached
-                                    else R.string.chat_file_attached,
-                                    uploadedName
-                                )
-                            )
-                        } else {
-                            toast(context.getString(R.string.chat_uploaded_to_workspace_colon, name))
-                        }
                     }
-                    is Resource.Error -> toast(context.getString(R.string.chat_upload_failed, result.message))
-                    is Resource.Loading -> Unit
                 }
-            } catch (e: Exception) {
-                toast(context.getString(R.string.chat_operation_failed, e.message ?: context.getString(R.string.common_unknown_error)))
+                addedCount = staged.size
+                if (staged.isNotEmpty()) applyPendingAttachments(pendingAttachments + staged)
             } finally {
                 fileBusy = false
             }
+            if (addedCount > 0) toast(context.getString(R.string.chat_attachments_added, addedCount))
+            if (failedCount > 0) toast(context.getString(R.string.chat_attachments_failed, failedCount))
         }
+    }
+
+    // 快捷工具栏的“上传到工作区”：用户主动上传，立即传到工作区，不进入候选附件
+    fun uploadPickedUrisToWorkspace(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
+        fileBusy = true
+        scope.launch {
+            var uploadedCount = 0
+            var failedCount = 0
+            try {
+                uris.forEach { uri ->
+                    try {
+                        val payload = withContext(Dispatchers.IO) { modernReadUriFile(context, uri) }
+                        if (payload == null) {
+                            failedCount++
+                            return@forEach
+                        }
+                        val (name, bytes) = payload
+                        val part = MultipartBody.Part.createFormData(
+                            "file",
+                            name,
+                            bytes.toRequestBody(modernGuessMime(name).toMediaTypeOrNull())
+                        )
+                        when (ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
+                            is Resource.Success -> uploadedCount++
+                            is Resource.Error -> failedCount++
+                            Resource.Loading -> Unit
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        failedCount++
+                    }
+                }
+            } finally {
+                fileBusy = false
+            }
+            if (uploadedCount > 0) toast(context.getString(R.string.chat_attachments_uploaded, uploadedCount))
+            if (failedCount > 0) toast(context.getString(R.string.chat_attachments_failed, failedCount))
+        }
+    }
+
+    // 发送前把候选附件真正上传到工作区；任一个失败则返回 null（保留候选附件，输入内容不丢）
+    suspend fun uploadPendingAttachments(source: List<Map<String, Any>>): List<Map<String, Any>>? {
+        if (source.isEmpty()) return emptyList()
+        val uploaded = mutableListOf<Map<String, Any>>()
+        var failedCount = 0
+        for (attachment in source) {
+            val name = attachment["name"] as? String ?: continue
+            val path = attachment["path"] as? String
+            val file = path?.let { java.io.File(it) }?.takeIf { it.isFile }
+            if (file == null) {
+                failedCount++
+                continue
+            }
+            try {
+                val mime = attachment["type"] as? String ?: modernGuessMime(name)
+                val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+                val part = MultipartBody.Part.createFormData(
+                    "file",
+                    name,
+                    bytes.toRequestBody(mime.toMediaTypeOrNull())
+                )
+                when (val result = ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
+                    is Resource.Success -> {
+                        val baseAttachment = buildWorkspaceChatAttachment(
+                            uploadResult = result.data,
+                            sessionId = sessionId,
+                            originalName = name,
+                            fallbackMime = mime
+                        )
+                        val uploadedName = baseAttachment["name"]?.toString() ?: name
+                        val uploadedMime = baseAttachment["type"]?.toString() ?: mime
+                        // 本地模式记录工作区绝对路径，供文件卡片与附件解析使用
+                        val localFile = if (ServiceContainer.prefs.isLocalMode) {
+                            resolveLocalWorkspaceFile(context, sessionId, uploadedName)
+                        } else {
+                            null
+                        }
+                        uploaded += buildWorkspaceChatAttachment(
+                            uploadResult = result.data,
+                            sessionId = sessionId,
+                            originalName = uploadedName,
+                            fallbackMime = uploadedMime,
+                            localPath = localFile?.absolutePath
+                        )
+                    }
+                    is Resource.Error -> failedCount++
+                    Resource.Loading -> Unit
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                failedCount++
+            }
+        }
+        if (failedCount > 0) {
+            toast(context.getString(R.string.chat_attachments_failed, failedCount))
+            return null
+        }
+        return uploaded
+    }
+
+    // 图片：系统照片选择器，可一次多选
+    val pickImages = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(MAX_BATCH_ATTACHMENT_PICK)
+    ) { uris ->
+        val mode = filePickMode ?: "send"
+        filePickMode = null
+        if (mode == "upload") uploadPickedUrisToWorkspace(uris) else stagePickedUris(uris)
+    }
+
+    // 文件：系统文档选择器，可一次多选
+    val pickFile = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        val mode = filePickMode ?: "send"
+        filePickMode = null
+        if (mode == "upload") uploadPickedUrisToWorkspace(uris) else stagePickedUris(uris)
     }
 
     val pendingShare by ServiceContainer.pendingShare.collectAsStateWithLifecycle()
@@ -1349,42 +1452,20 @@ private fun ModernChatComposer(
                     append(share.text)
                 })
             }
-            share.attachments.forEach { attachment ->
-                val file = java.io.File(attachment.localPath)
-                if (!file.isFile) return@forEach
-                val bytes = withContext(Dispatchers.IO) { file.readBytes() }
-                val mime = attachment.mimeType.ifBlank { modernGuessMime(attachment.name) }
-                val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
-                val part = MultipartBody.Part.createFormData("file", attachment.name, body)
-                when (val result = ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
-                    is Resource.Success -> {
-                        val baseAttachment = buildWorkspaceChatAttachment(
-                            uploadResult = result.data,
-                            sessionId = sessionId,
-                            originalName = attachment.name,
-                            fallbackMime = mime
-                        )
-                        val uploadedName = baseAttachment["name"]?.toString() ?: attachment.name
-                        val uploadedMime = baseAttachment["type"]?.toString() ?: mime
-                        // 分享进来的文件同样作为待发送附件，图片与非图片一致展示在输入框上方
-                        val localFile = if (ServiceContainer.prefs.isLocalMode) {
-                            resolveLocalWorkspaceFile(context, sessionId, uploadedName)
-                        } else {
-                            null
-                        }
-                        pendingAttachments = pendingAttachments + buildWorkspaceChatAttachment(
-                            uploadResult = result.data,
-                            sessionId = sessionId,
-                            originalName = uploadedName,
-                            fallbackMime = uploadedMime,
-                            localPath = localFile?.absolutePath
-                        )
+            // 分享进来的文件只复制到暂存目录，作为候选附件等待发送，不立即上传工作区
+            val staged = withContext(Dispatchers.IO) {
+                share.attachments.mapNotNull { attachment ->
+                    val file = java.io.File(attachment.localPath)
+                    if (!file.isFile) {
+                        return@mapNotNull null
                     }
-                    is Resource.Error -> toast(context.getString(R.string.chat_upload_failed, result.message))
-                    is Resource.Loading -> Unit
+                    val mime = attachment.mimeType.ifBlank { modernGuessMime(attachment.name) }
+                    PendingAttachmentStore
+                        .stageFromFile(context, sessionId, file, attachment.name, mime)
+                        ?.also { runCatching { file.delete() } }
                 }
-                withContext(Dispatchers.IO) { runCatching { file.delete() } }
             }
+            if (staged.isNotEmpty()) applyPendingAttachments(pendingAttachments + staged)
             if (share.attachments.isNotEmpty()) {
                 toast(context.getString(R.string.share_imported, share.attachments.size))
             }
@@ -1440,7 +1521,9 @@ private fun ModernChatComposer(
             }
             ChatQuickAction.IMAGE -> {
                 filePickMode = "send"
-                pickFile.launch("image/*")
+                pickImages.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
             }
             ChatQuickAction.FILE -> {
                 filePickMode = "send"
@@ -1706,7 +1789,9 @@ private fun ModernChatComposer(
                     Column(Modifier.fillMaxWidth()) {
                         if (pendingAttachments.isNotEmpty()) {
                             PendingChatAttachments(sessionId = sessionId, attachments = pendingAttachments,
-                                onRemove = { target -> pendingAttachments = pendingAttachments.filterNot { it === target } })
+                                onRemove = { target ->
+                                    applyPendingAttachments(pendingAttachments.filterNot { it === target })
+                                })
                         }
                         CompanionChatInput(
                             value = inputField,
@@ -1725,17 +1810,32 @@ private fun ModernChatComposer(
                             onSticker = { handleQuickAction(ChatQuickAction.STICKER) },
                             onVoice = { requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO) },
                             onStop = onStop,
-                            onSend = {
+                            onSend = send@{
+                                // 附件上传中：忽略重复点击，避免重复发送
+                                if (fileBusy) return@send
                                 val text = input
                                 val choiceId = pendingPlotChoiceId
                                 val attachments = pendingAttachments
-                                val keepComposerOpen = shouldKeepComposerOpen(text, choiceId == null)
-                                updateInput("")
-                                inputExpanded = keepComposerOpen
-                                pendingPlotChoiceId = null
-                                pendingAttachments = emptyList()
-                                closePanel()
-                                onSend(text, null, attachments, readReasoningEffort())
+                                // 候选附件在点击发送时才上传到工作区；上传失败则保留草稿与附件
+                                val dispatch: (List<Map<String, Any>>) -> Unit = { ready ->
+                                    val keepComposerOpen = shouldKeepComposerOpen(text, choiceId == null)
+                                    updateInput("")
+                                    inputExpanded = keepComposerOpen
+                                    pendingPlotChoiceId = null
+                                    applyPendingAttachments(emptyList())
+                                    closePanel()
+                                    onSend(text, null, ready, readReasoningEffort())
+                                }
+                                if (attachments.isEmpty()) {
+                                    dispatch(emptyList())
+                                } else {
+                                    fileBusy = true
+                                    scope.launch {
+                                        val ready = uploadPendingAttachments(attachments)
+                                        fileBusy = false
+                                        if (ready != null) dispatch(ready)
+                                    }
+                                }
                             }
                         )
                         AnimatedVisibility(visible = panelExpanded) {
@@ -1778,7 +1878,7 @@ private fun ModernChatComposer(
                             sessionId = sessionId,
                             attachments = pendingAttachments,
                             onRemove = { target ->
-                                pendingAttachments = pendingAttachments.filterNot { it === target }
+                                applyPendingAttachments(pendingAttachments.filterNot { it === target })
                             }
                         )
                     }
@@ -1875,21 +1975,35 @@ private fun ModernChatComposer(
                             val onPrimaryAction: () -> Unit = {
                                 when (action) {
                                     ModernComposerAction.STOP -> onStop()
-                                    ModernComposerAction.SEND -> {
+                                    // 附件上传中：忽略重复点击，避免重复发送
+                                    ModernComposerAction.SEND -> if (!fileBusy) {
                                         val text = input
                                         val choiceId = pendingPlotChoiceId
                                         val attachments = pendingAttachments
-                                        val keepComposerOpen = shouldKeepComposerOpen(
-                                            text,
-                                            choiceId == null
-                                        )
-                                        updateInput("")
-                                        inputExpanded = keepComposerOpen
-                                        pendingPlotChoiceId = null
-                                        pendingAttachments = emptyList()
-                                        closePanel()
-                                        if (!keepComposerOpen) keyboard?.hide()
-                                        onSend(text, choiceId, attachments, readReasoningEffort())
+                                        // 候选附件在点击发送时才上传到工作区；上传失败则保留草稿与附件
+                                        val dispatch: (List<Map<String, Any>>) -> Unit = { ready ->
+                                            val keepComposerOpen = shouldKeepComposerOpen(
+                                                text,
+                                                choiceId == null
+                                            )
+                                            updateInput("")
+                                            inputExpanded = keepComposerOpen
+                                            pendingPlotChoiceId = null
+                                            applyPendingAttachments(emptyList())
+                                            closePanel()
+                                            if (!keepComposerOpen) keyboard?.hide()
+                                            onSend(text, choiceId, ready, readReasoningEffort())
+                                        }
+                                        if (attachments.isEmpty()) {
+                                            dispatch(emptyList())
+                                        } else {
+                                            fileBusy = true
+                                            scope.launch {
+                                                val ready = uploadPendingAttachments(attachments)
+                                                fileBusy = false
+                                                if (ready != null) dispatch(ready)
+                                            }
+                                        }
                                     }
                                     ModernComposerAction.VOICE -> requestMicPermission.launch(
                                         android.Manifest.permission.RECORD_AUDIO
@@ -2413,7 +2527,7 @@ private fun ComposerToolRow(
 }
 
 /**
- * 输入框上方的待发送附件预览：图片显示缩略图，其他文件显示文件卡片（类型图标 + 文件名）。
+ * 输入框上方的待发送附件预览：图片显示缩略图（可点击查看大图），其他文件显示文件卡片（类型图标 + 文件名）。
  */
 @Composable
 private fun PendingChatAttachments(
@@ -2422,6 +2536,8 @@ private fun PendingChatAttachments(
     onRemove: (Map<String, Any>) -> Unit
 ) {
     val context = LocalContext.current
+    // 点击候选图片 → 全屏查看
+    var previewImage by remember { mutableStateOf<Pair<String, Any>?>(null) }
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -2452,11 +2568,14 @@ private fun PendingChatAttachments(
                     if (isImage) {
                         val model: Any? = localFile ?: buildWorkspaceFileUrl(sessionId, name)
                         if (model != null) {
+                            val previewModel = model
                             AsyncImage(
-                                model = model,
+                                model = previewModel,
                                 contentDescription = name,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { previewImage = name to previewModel }
                             )
                         }
                     } else {
@@ -2496,6 +2615,57 @@ private fun PendingChatAttachments(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    // 候选图片全屏查看：点击图片打开，点击空白或关闭按钮退出
+    previewImage?.let { (name, model) ->
+        Dialog(
+            onDismissRequest = { previewImage = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.94f))
+                    .clickable { previewImage = null },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = model,
+                    contentDescription = name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp, vertical = 56.dp)
+                )
+                IconButton(
+                    onClick = { previewImage = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.common_close),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                )
             }
         }
     }
@@ -4170,6 +4340,9 @@ internal fun estimateModernChatDraftTokens(text: String): Int {
     val otherCount = text.length - chineseCount
     return (chineseCount + otherCount / 4).coerceAtLeast(1)
 }
+
+/** 单次批量上传的附件数量上限（图片/文件选择器） */
+private const val MAX_BATCH_ATTACHMENT_PICK = 20
 
 private fun modernReadUriFile(
     context: android.content.Context,

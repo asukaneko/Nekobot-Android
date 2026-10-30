@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- ==================== 会话列表页 (SessionsScreen) ==================== -->
     <string name="sessions_filter_all">全部會話</string>
@@ -342,6 +342,9 @@
     <string name="chat_file_attached">檔案已附加: %1$s</string>
     <string name="chat_uploaded_to_workspace">已上傳到工作區: %1$s</string>
     <string name="chat_upload_failed">上傳失敗: %1$s</string>
+    <string name="chat_attachments_added">已新增 %1$d 個附件</string>
+    <string name="chat_attachments_uploaded">已上傳 %1$d 個檔案到工作區</string>
+    <string name="chat_attachments_failed">%1$d 個附件上傳失敗</string>
     <string name="chat_operation_failed">操作失敗: %1$s</string>
     <string name="chat_load_favorites_failed">載入收藏夾失敗: %1$s</string>
     <string name="chat_selected_count">已選 %1$d 條</string>

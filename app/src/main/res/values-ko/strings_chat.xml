@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sessions_filter_character_sessions">캐릭터</string>
     <string name="sessions_filter_agent_sessions">Agent</string>
@@ -336,6 +336,9 @@
     <string name="chat_file_attached">파일이 첨부되었습니다: %1$s</string>
     <string name="chat_uploaded_to_workspace">워크스페이스에 업로드됨: %1$s</string>
     <string name="chat_upload_failed">업로드 실패: %1$s</string>
+    <string name="chat_attachments_added">첨부 %1$d개 추가됨</string>
+    <string name="chat_attachments_uploaded">파일 %1$d개를 워크스페이스에 업로드했습니다</string>
+    <string name="chat_attachments_failed">첨부 %1$d개 업로드 실패</string>
     <string name="chat_operation_failed">작업 실패: %1$s</string>
     <string name="chat_load_favorites_failed">즐겨찾기 불러오기 실패: %1$s</string>
     <string name="chat_selected_count">%1$d개 선택됨</string>
