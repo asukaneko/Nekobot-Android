@@ -158,6 +158,7 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | `memory.read` | `ctx.api.memoryRead()` | 读取 Agent 长期记忆，返回 `{ content, charCount }`。 |
 | `workspace` | `ctx.api.workspace.save/list/read/delete(...)` | 读写工作区中本插件的专属文件夹，见下文「工作区文件」。 |
 | `files` | `ctx.api.files.list/read/delete(...)` | 访问本插件私有目录中用户上传的文件，见下文「插件私有文件」。 |
+| `terminal` | `ctx.api.terminal.exec({command, timeout?})` | 发起会话的沙箱终端里执行命令并取回输出，也支持 `ctx.api.terminal.exec("ls", {timeout: 30})`，见下文「会话终端」。 |
 | 免 | `ctx.api.render(template, data)` | 内置模板渲染（Handlebars 子集），返回 HTML 字符串。 |
 
 ### 权限分级与用户授权
@@ -168,11 +169,12 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | 读取 | `chat.read`、`characters.read`、`worldbooks.read`、`memory.read` | 安装时默认勾选 |
 | 网络 | `network` | **需用户手动授权** |
 | 写入 | `chat.write`、`memory.write`、`characters.write`、`workspace` | **需用户手动授权** |
+| 终端 | `terminal` | **需用户手动授权** |
 | AI | `ai.call` | **需用户手动授权** |
 
-调用宿主 API 必须同时满足「清单已声明」与「用户已授权」。危险权限（网络/写入/AI）在 AI 创建或安装插件时**不会自动授予**，用户需要在插件卡片的「权限」入口勾选；未授权时调用会失败并返回 `permission_denied`（错误对象含 `code` 字段）。
+调用宿主 API 必须同时满足「清单已声明」与「用户已授权」。危险权限（网络/写入/终端/AI）在 AI 创建或安装插件时**不会自动授予**，用户需要在插件卡片的「权限」入口勾选；未授权时调用会失败并返回 `permission_denied`（错误对象含 `code` 字段）。
 
-写入类 API 会直接改动用户数据（会话消息、Agent 记忆），因此授权前请确认插件来源可信。
+写入类 API 会直接改动用户数据（会话消息、Agent 记忆），`terminal` 更会在会话沙箱里执行任意命令，因此授权前请确认插件来源可信。
 
 存储按插件 ID 隔离。键不能为空、最多 128 个字符，且不能包含换行。卸载插件会删除它自己的存储数据。
 
@@ -348,6 +350,31 @@ NekoPlugin.registerCommand("export", async (ctx) => {
 | `host.files.delete(name)`（命令侧 `ctx.api.files.delete(name)`） | 删除文件；不存在报 `not_found`。 |
 
 限制：单个文件 ≤ 16 MiB、每个插件最多 100 个文件、总量 ≤ 64 MiB；超出分别报 `too_large`、`too_many_files`、`quota_exceeded`。文件名取选择器显示的原始名（去掉路径与危险字符），同名自动追加序号；卸载插件会删除私有文件，工作区文件不受影响。
+
+### 会话终端（`terminal`）
+
+`ctx.api.terminal.exec(...)`（页面侧 `host.terminal.exec(...)`）在**发起会话的 Alpine Linux 沙箱**里执行一条命令并取回输出：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `command` | 是 | 要执行的命令，≤ 4000 字符；与 Agent 的 `exec_command` 走同一套命令策略，`rm -rf`、`mkfs`、`shutdown` 这类高风险操作会被拒绝（`command_blocked`） |
+| `timeout` | 否 | 超时秒数，默认 30、范围 1-120；超时返回 `timedOut: true`，退出码为 124 |
+| `sessionId` | 否 | 页面侧可显式指定会话；命令运行时固定为发起会话 |
+
+返回 `{ sessionId, command, output, truncated, exitCode, timedOut, durationMs, success }`。`output` 是合并后的 stdout + stderr，最多 20000 字符，超出时置 `truncated: true` 并在末尾追加截断提示。
+
+- 只有 **Agent 会话**存在沙箱终端；其它会话返回 `unavailable`。页面从非会话入口打开时请显式传 `sessionId`。
+- 与 Agent 的 `exec_command` 共用同一个会话 shell、同一个 `/workspace` 与同一套环境变量：`cd`、`export` 和已安装的软件在后续调用中保持连续，适合「装依赖 → 跑脚本 → 读结果」的连续流程。
+- 命令运行时单条命令最长 120 秒；声明 `terminal` 的插件命令总超时放宽到 150 秒（页面侧 `host.terminal.exec` 同样 150 秒）。没有 TTY 与 stdin，不要用它启动交互式程序或常驻服务。
+- `terminal` 属于危险权限，安装时默认不勾选，需要在插件卡片的「权限」入口手动授权。
+
+```js
+NekoPlugin.registerCommand("count", async (ctx) => {
+  const result = await ctx.api.terminal.exec({ command: "find /workspace -maxdepth 1 -type f | wc -l" });
+  if (!result.success) return "执行失败（exit=" + result.exitCode + "）：" + result.output;
+  return "工作区顶层文件数：" + result.output.trim();
+});
+```
 
 ### 模板渲染（免权限）
 
@@ -539,7 +566,7 @@ NekoPlugin.register({
 
 处理器可返回字符串，也可返回可 JSON 序列化的对象；对象会作为 JSON 文本发送到聊天。返回 `null` 或 `undefined` 时发送空结果。抛出异常或 Promise 拒绝会显示为命令执行失败。
 
-单次执行最长 20 秒，最终回复最多 20,000 个字符。不要在模块顶层启动长期循环，也不要依赖上一次执行留下的 JavaScript 内存状态；需要持久化的数据应使用 `storage`。
+单次执行最长 20 秒（声明 `ai.call` 时 120 秒，声明 `terminal` 时 150 秒），最终回复最多 20,000 个字符。不要在模块顶层启动长期循环，也不要依赖上一次执行留下的 JavaScript 内存状态；需要持久化的数据应使用 `storage`。
 
 ### 事件钩子
 
@@ -577,7 +604,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 - 禁止直接文件访问、内容提供器访问、DOM Storage、多窗口和页面导航；文件上传只能由用户通过系统文件选择器发起（`files` 权限），副本存入插件私有目录。
 - 禁止 WebView 自行联网；网络只能通过声明了 `network` 权限的受控 HTTPS GET API。
-- 写入类 API（`chat.write`、`memory.write`、`characters.write`）只能追加消息、读写 Agent 记忆、创建/修改角色卡，**没有删除能力**；`workspace` 的删除只作用于本插件专属文件夹，没有任意命令执行、相机、麦克风或 Android Intent 等 API。
+- 写入类 API（`chat.write`、`memory.write`、`characters.write`）只能追加消息、读写 Agent 记忆、创建/修改角色卡，**没有删除能力**；`workspace` 的删除只作用于本插件专属文件夹。命令执行仅通过 `terminal` 提供：只在发起会话的 Alpine 沙箱内运行（受宿主命令策略拦截高风险操作），没有相机、麦克风或 Android Intent 等 API。
 - 事件钩子（`hooks`）由清单声明后即可运行，不需要额外权限；`message.beforeSend` 只能改写用户正在发送的那条消息，插件卡片会展示已声明钩子，供用户确认。
 - 不能访问其他插件的存储数据；`workspace` 权限只能读写工作区中本插件的专属文件夹 `plugins/<插件id>/`，`files` 权限只能访问本插件私有目录中用户上传的文件，无法访问用户与其他插件的文件。
 - 用户安装 ZIP 前必须明确接受第三方插件风险提示。
@@ -606,7 +633,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 `builtin.jm`（JM 漫画）和 `builtin.light-novel`（轻小说）是应用随附的内置插件。它们可以停用，但不能卸载、覆盖或作为第三方 ZIP 的 `id` 使用。
 
-第三方插件 API 当前为 v2（App 同时接受 v1 清单）。新增能力优先通过 `host.system.info().capabilities` 做能力协商，而不是抬高版本号；会话洞察能力对应 `chat.context`、`chat.session.config`、`chat.prompt.stack`、`chat.tool.calls`（需 `chat.read` 权限）。升级应用后，请重新验证插件的清单、权限、命令与页面是否仍符合本指南；不受支持的 `api_version` 会在安装时被拒绝。
+第三方插件 API 当前为 v2（App 同时接受 v1 清单）。新增能力优先通过 `host.system.info().capabilities` 做能力协商，而不是抬高版本号；会话洞察能力对应 `chat.context`、`chat.session.config`、`chat.prompt.stack`、`chat.tool.calls`（需 `chat.read` 权限），会话终端能力对应 `terminal`（需 `terminal` 权限）。升级应用后，请重新验证插件的清单、权限、命令与页面是否仍符合本指南；不受支持的 `api_version` 会在安装时被拒绝。
 
 ## 9. 插件页面
 
@@ -637,7 +664,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 
 ### 9.3 `host.*` API
 
-全部返回 `Promise`；单次调用超时 10 秒、并发上限 4、响应上限 256 KiB；失败时 Promise 拒绝，错误对象带 `message` 与 `code`。原生弹窗等待用户回答，最长 5 分钟，超时按取消处理；`host.system.info().capabilities` 含 `ui.openPage`、`ui.alert`、`ui.confirm`、`ui.prompt`、`ui.select` 时对应能力可用。
+全部返回 `Promise`；单次调用超时 10 秒（`host.ai.complete` 120 秒、`host.terminal.exec` 150 秒）、并发上限 4、响应上限 256 KiB；失败时 Promise 拒绝，错误对象带 `message` 与 `code`。原生弹窗等待用户回答，最长 5 分钟，超时按取消处理；`host.system.info().capabilities` 含 `ui.openPage`、`ui.alert`、`ui.confirm`、`ui.prompt`、`ui.select` 时对应能力可用。
 
 | API | 权限 | 说明 |
 | --- | --- | --- |
@@ -670,6 +697,7 @@ NekoPlugin.on("message.beforeSend", async (ctx) => {
 | `host.memory.write(content)` / `append(content)` / `edit(oldText, newText)` | `memory.write` | 覆盖 / 追加 / 替换记忆，返回 `{charCount}` |
 | `host.workspace.save({path, content})` / `list({path?})` / `read({path})` / `delete({path})` | `workspace` | 读写插件专属工作区文件夹（有会话时在会话工作区，否则共享工作区），见第 4 章「工作区文件」 |
 | `host.files.list()` / `read(name, encoding?)` / `delete(name)` | `files` | 插件私有文件：列出 / 读取（`text`/`base64`，≤128 KiB）/ 删除；上传与 URL 用法见 9.9 |
+| `host.terminal.exec(command, options?)` | `terminal` | 在会话沙箱终端执行命令，返回 `{sessionId, command, output, truncated, exitCode, timedOut, durationMs, success}`；`options = {timeout?, sessionId?}`，见第 4 章「会话终端」 |
 | `host.ai.complete(options)` | `ai.call` | 走聊天故障转移队列的单次生成，返回 `{content, model, usage}`；超时 120 秒，限额见第 4 章 |
 | `host.http.get(url, options?)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`（≤ 512 KiB）；`options.headers` 可选自定义请求头 |
 | `host.http.post(url, options?)` | `network` | 仅 HTTPS 公网地址，返回 `{status, body}`；`options.body` 为字符串请求体，`options.headers` 可选自定义请求头 |

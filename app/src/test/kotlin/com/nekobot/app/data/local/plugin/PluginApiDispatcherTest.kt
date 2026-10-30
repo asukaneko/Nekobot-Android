@@ -2,6 +2,7 @@ package com.nekobot.app.data.local.plugin
 
 import com.google.gson.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -161,5 +162,32 @@ class PluginApiDispatcherTest {
         assertEquals(100, PluginApiDispatcher.LEGACY_MESSAGE_MAX_LIMIT)
         assertEquals(50, PluginApiDispatcher.MESSAGE_DEFAULT_LIMIT)
         assertEquals(200, PluginApiDispatcher.MESSAGE_MAX_LIMIT)
+    }
+
+    @Test
+    fun terminalApisAreRegisteredForBothRuntimes() {
+        assertTrue("terminal.exec" in PluginApiDispatcher.LEGACY_API_NAMES)
+        assertTrue("terminal.exec" in PluginApiDispatcher.PAGE_API_NAMES)
+        assertTrue("terminal" in PluginApiDispatcher.CAPABILITIES)
+        assertTrue(PluginApiDispatcher.MAX_TERMINAL_COMMAND_CHARS > 0)
+        assertTrue(PluginApiDispatcher.MAX_TERMINAL_OUTPUT_CHARS > 0)
+        assertTrue(
+            PluginApiDispatcher.TERMINAL_DEFAULT_TIMEOUT_SECONDS in
+                1..PluginApiDispatcher.TERMINAL_MAX_TIMEOUT_SECONDS
+        )
+    }
+
+    @Test
+    fun terminalPermissionStaysDangerousAndGrouped() {
+        assertTrue("terminal" in PluginManifestValidator.supportedPermissions)
+        assertTrue("terminal" in PluginManifestValidator.dangerousPermissions)
+        assertFalse(
+            "terminal" in PluginManifestValidator.defaultGrantedPermissions(
+                listOf("terminal", "storage")
+            )
+        )
+        // 授权界面按 permissionGroups 渲染，漏组会让用户在界面上看不到该权限
+        val grouped = PluginManifestValidator.permissionGroups.flatMap { it.second }.toSet()
+        assertEquals(PluginManifestValidator.supportedPermissions, grouped)
     }
 }

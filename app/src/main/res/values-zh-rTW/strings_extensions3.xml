@@ -147,6 +147,7 @@
     <string name="plugin_perm_group_read">讀取</string>
     <string name="plugin_perm_group_network">網路</string>
     <string name="plugin_perm_group_write">寫入</string>
+    <string name="plugin_perm_group_terminal">終端</string>
     <string name="plugin_perm_group_ai">AI</string>
     <string name="plugin_perm_storage">鍵值儲存</string>
     <string name="plugin_perm_notify">顯示通知</string>
@@ -161,6 +162,7 @@
     <string name="plugin_perm_memory_write">寫入 Agent 記憶</string>
     <string name="plugin_perm_characters_write">建立/修改角色卡</string>
     <string name="plugin_perm_workspace">讀寫工作區檔案</string>
+    <string name="plugin_perm_terminal">在會話終端執行指令</string>
     <string name="plugin_perm_ai_call">呼叫 AI</string>
     <string name="plugins_compat_label">兼容級別：%1$s</string>
     <string name="plugins_compat_native">原生</string>

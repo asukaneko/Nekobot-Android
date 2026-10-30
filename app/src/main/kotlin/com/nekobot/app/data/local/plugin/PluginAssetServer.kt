@@ -300,6 +300,17 @@ class PluginAssetServer(
                   },
                   delete: function (name) { return callHost("files.delete", { name: name }); }
                 },
+                terminal: {
+                  exec: function (command, options) {
+                    if (command && typeof command === "object") {
+                      return callHost("terminal.exec", command);
+                    }
+                    var payload = { command: command };
+                    if (options && options.timeout != null) payload.timeout = options.timeout;
+                    if (options && options.sessionId) payload.sessionId = String(options.sessionId);
+                    return callHost("terminal.exec", payload);
+                  }
+                },
                 http: {
                   get: function (url, options) {
                     return callHost("http.get", {

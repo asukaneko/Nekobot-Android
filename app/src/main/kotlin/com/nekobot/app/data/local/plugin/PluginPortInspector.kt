@@ -312,9 +312,11 @@ object PluginPortInspector {
                     "sessionConfig" -> "chat.session.config"
                     "promptStack" -> "chat.prompt.stack"
                     "toolCalls" -> "chat.tool.calls"
+                    "terminalExec" -> "terminal.exec"
                     "storage" -> null
                     "workspace" -> null
                     "files" -> null
+                    "terminal" -> null
                     else -> name
                 }
                 if (candidate != null && candidate !in PluginApiDispatcher.LEGACY_API_NAMES) {
@@ -345,6 +347,7 @@ object PluginPortInspector {
                         "workspace.save", "workspace.list", "workspace.read", "workspace.delete"
                     )
                     "files" -> name in setOf("files.list", "files.read", "files.delete")
+                    "terminal" -> name == "terminal.exec"
                     "http" -> name in setOf("http.get", "http.post")
                     "progress" -> name == "progress.update"
                     "ai" -> name == "ai.complete"

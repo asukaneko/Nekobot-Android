@@ -606,6 +606,8 @@ internal class PluginPageHost(
             scope.launch {
                 val timeoutMs = when (name) {
                     "ai.complete" -> AI_TIMEOUT_MS
+                    // 沙箱命令要等跑完（单条命令上限 120 秒），不能按普通 API 的 10 秒超时
+                    "terminal.exec" -> TERMINAL_TIMEOUT_MS
                     // 原生弹窗要等用户回答，不能按普通 API 的 10 秒超时
                     "ui.alert", "ui.confirm", "ui.prompt", "ui.select" -> DIALOG_TIMEOUT_MS
                     else -> API_TIMEOUT_MS
@@ -676,6 +678,9 @@ internal class PluginPageHost(
 
         /** AI 调用需要等待模型生成。 */
         const val AI_TIMEOUT_MS = 120_000L
+
+        /** 会话终端命令需要等待沙箱执行完（分派器把单条命令限制在 120 秒）。 */
+        const val TERMINAL_TIMEOUT_MS = 150_000L
         const val MAX_CONCURRENT_CALLS = 4
         const val MAX_RESPONSE_CHARS = 256 * 1024
 

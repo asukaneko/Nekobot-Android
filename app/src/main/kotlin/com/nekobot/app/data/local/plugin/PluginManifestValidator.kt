@@ -24,7 +24,8 @@ object PluginManifestValidator {
         "memory.write",
         "characters.write",
         "ai.call",
-        "workspace"
+        "workspace",
+        "terminal"
     )
 
     /** 支持的事件钩子：声明后由无界面运行时执行入口脚本注册。 */
@@ -40,15 +41,17 @@ object PluginManifestValidator {
         "memory.write",
         "characters.write",
         "ai.call",
-        "workspace"
+        "workspace",
+        "terminal"
     )
 
-    /** 权限分组：授权界面按「基础 / 读取 / 网络 / 写入 / AI」渲染。 */
+    /** 权限分组：授权界面按「基础 / 读取 / 网络 / 写入 / 终端 / AI」渲染。 */
     val permissionGroups: List<Pair<String, List<String>>> = listOf(
         "basic" to listOf("storage", "notify", "chat.progress", "files"),
         "read" to listOf("chat.read", "characters.read", "worldbooks.read", "memory.read"),
         "network" to listOf("network"),
         "write" to listOf("chat.write", "memory.write", "characters.write", "workspace"),
+        "terminal" to listOf("terminal"),
         "ai" to listOf("ai.call")
     )
 

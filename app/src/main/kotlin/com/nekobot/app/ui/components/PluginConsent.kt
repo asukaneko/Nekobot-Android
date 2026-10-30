@@ -115,6 +115,7 @@ private fun permissionGroupRes(group: String): Int = when (group) {
     "read" -> R.string.plugin_perm_group_read
     "network" -> R.string.plugin_perm_group_network
     "write" -> R.string.plugin_perm_group_write
+    "terminal" -> R.string.plugin_perm_group_terminal
     else -> R.string.plugin_perm_group_ai
 }
 
@@ -132,5 +133,6 @@ private fun permissionNameRes(permission: String): Int = when (permission) {
     "memory.write" -> R.string.plugin_perm_memory_write
     "characters.write" -> R.string.plugin_perm_characters_write
     "workspace" -> R.string.plugin_perm_workspace
+    "terminal" -> R.string.plugin_perm_terminal
     else -> R.string.plugin_perm_ai_call
 }

@@ -330,11 +330,12 @@ class PluginManager(
         }
         if (source.length > MAX_SCRIPT_CHARS) return "插件入口文件过大"
 
-        // 声明 ai.call 的插件可能等待模型生成，单次调用上限放宽到 120 秒。
-        val runtimeTimeoutMs = if ("ai.call" in plugin.permissions) {
-            RUNTIME_TIMEOUT_WITH_AI_MS
-        } else {
-            RUNTIME_TIMEOUT_MS
+        // 声明 ai.call 的插件可能等待模型生成，单次调用上限放宽到 120 秒；
+        // 声明 terminal 的插件要等沙箱命令跑完，放宽到 150 秒。
+        val runtimeTimeoutMs = when {
+            "terminal" in plugin.permissions -> RUNTIME_TIMEOUT_WITH_TERMINAL_MS
+            "ai.call" in plugin.permissions -> RUNTIME_TIMEOUT_WITH_AI_MS
+            else -> RUNTIME_TIMEOUT_MS
         }
         return try {
             withTimeout(runtimeTimeoutMs) {
@@ -1121,6 +1122,18 @@ class PluginManager(
                   },
                   delete: function(name) { return __api("files_delete", { name: name }); }
                 },
+                terminal: {
+                  exec: function(command, options) {
+                    if (command && typeof command === "object") return __api("terminal.exec", command);
+                    var payload = { command: command };
+                    if (options && options.timeout != null) payload.timeout = options.timeout;
+                    return __api("terminal.exec", payload);
+                  }
+                },
+                // 兼容早期文档里的 ctx.api.terminalExec(...) 写法；标准形式是 ctx.api.terminal.exec(...)
+                terminalExec: function(command, options) {
+                  return api.terminal.exec(command, options);
+                },
                 storage: {
                   get: function(key) { return __api("storage_get", { key: key }); },
                   set: function(key, value) { return __api("storage_set", { key: key, value: value }); },
@@ -1315,6 +1328,9 @@ class PluginManager(
         const val RUNTIME_TIMEOUT_MS = 20_000L
         /** 声明 ai.call 的插件命令需要等待模型生成，放宽总超时。 */
         const val RUNTIME_TIMEOUT_WITH_AI_MS = 120_000L
+
+        /** 声明 terminal 的插件命令要等沙箱命令跑完（单条命令上限 120 秒）。 */
+        const val RUNTIME_TIMEOUT_WITH_TERMINAL_MS = 150_000L
 
         /** 钩子在消息发送路径上执行，超时后保持原文，避免拖慢发送。 */
         const val HOOK_TIMEOUT_MS = 8_000L

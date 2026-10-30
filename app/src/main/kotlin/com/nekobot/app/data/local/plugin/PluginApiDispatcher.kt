@@ -16,6 +16,7 @@ import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.ai.estimateLocalTextTokens
+import com.nekobot.app.data.local.ai.evaluateLocalCommand
 import com.nekobot.app.data.model.AgentTodo
 import com.nekobot.app.data.model.AiConfig
 import com.nekobot.app.data.model.CharacterPreset
@@ -470,6 +471,7 @@ internal class PluginApiDispatcher(
             "files.list" -> pluginFilesList(context)
             "files.read" -> pluginFilesRead(context, payload)
             "files.delete" -> pluginFilesDelete(context, payload)
+            "terminal.exec" -> pluginTerminalExec(context, payload)
             "progress.update" -> {
                 // 没有关联的用户消息时（如 plugin_use 的 execute 测试、无会话上下文的页面）
                 // 静默忽略：这是宿主环境的差异，不该让插件调用本身失败。
@@ -743,6 +745,48 @@ internal class PluginApiDispatcher(
         return mapOf("name" to name, "deleted" to true)
     }
 
+    /**
+     * `terminal.exec`：在当前会话的 Alpine Linux 沙箱（PRoot）里执行一条命令并取回输出。
+     *
+     * 与 Agent 的 `exec_command` 共用同一个会话 shell、同一个 `/workspace` 与同一套环境变量，
+     * 因此 `cd`、`export` 与已安装的软件在同一会话的多次调用之间保持连续。
+     * 仍先过命令策略：`rm -rf`、`mkfs`、`shutdown` 这类高风险操作直接拒绝，
+     * 不做「先给插件终端、再让它绕过宿主防护」的例外。
+     *
+     * @return `{sessionId, command, output, truncated, exitCode, timedOut, durationMs, success}`
+     */
+    private suspend fun pluginTerminalExec(context: CallContext, payload: JsonObject): Map<String, Any?> {
+        val sessionId = resolveSessionId(context, payload)
+        val repository = repository(context)
+        val session = requireSession(repository, sessionId)
+        if (!session.sessionMode.orEmpty().equals("agent", ignoreCase = true)) {
+            throw PluginApiException("只有 Agent 会话可以执行终端命令", "unavailable")
+        }
+        val command = payload.string("command").trim()
+        if (command.isBlank()) throw PluginApiException("terminal.exec 需要 command", "invalid_argument")
+        if (command.length > MAX_TERMINAL_COMMAND_CHARS) {
+            throw PluginApiException("命令最多 $MAX_TERMINAL_COMMAND_CHARS 个字符", "invalid_argument")
+        }
+        evaluateLocalCommand(command).blockedReason?.let { reason ->
+            throw PluginApiException(reason, "command_blocked")
+        }
+        val timeoutSeconds = jsonInt(payload.get("timeout"), TERMINAL_DEFAULT_TIMEOUT_SECONDS)
+            .coerceIn(1, TERMINAL_MAX_TIMEOUT_SECONDS)
+        val result = repository.executeSandboxCommand(sessionId, command, timeoutSeconds)
+        result.error?.let { throw PluginApiException(it, "terminal_failed") }
+        val output = result.output.take(MAX_TERMINAL_OUTPUT_CHARS)
+        return mapOf(
+            "sessionId" to sessionId,
+            "command" to result.command,
+            "output" to output,
+            "truncated" to (result.output.length > output.length),
+            "exitCode" to result.exitCode,
+            "timedOut" to result.timedOut,
+            "durationMs" to result.durationMs,
+            "success" to result.isSuccess
+        )
+    }
+
     private fun pluginFileEntry(pluginId: String, entry: PluginFileStore.Entry): Map<String, Any?> = mapOf(
         "name" to entry.name,
         "size" to entry.size,
@@ -835,6 +879,7 @@ internal class PluginApiDispatcher(
         "memory.write", "memory.append", "memory.edit" -> "memory.write"
         "workspace.save", "workspace.list", "workspace.read", "workspace.delete" -> "workspace"
         "files.list", "files.read", "files.delete" -> "files"
+        "terminal.exec" -> "terminal"
         "http.get", "http.post" -> "network"
         "progress.update" -> "chat.progress"
         else -> null
@@ -1535,6 +1580,7 @@ internal class PluginApiDispatcher(
             "progress",
             "workspace",
             "files",
+            "terminal",
             "ai.call",
             "chat.context",
             "chat.session.config",
@@ -1552,6 +1598,7 @@ internal class PluginApiDispatcher(
             "create_character", "update_character",
             "workspace_save", "workspace_list", "workspace_read", "workspace_delete",
             "files_list", "files_read", "files_delete",
+            "terminal.exec",
             "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
 
@@ -1567,6 +1614,7 @@ internal class PluginApiDispatcher(
             "memory.read", "memory.write", "memory.append", "memory.edit",
             "workspace.save", "workspace.list", "workspace.read", "workspace.delete",
             "files.list", "files.read", "files.delete",
+            "terminal.exec",
             "http.get", "http.post", "progress.update", "ai.complete",
             "chat.context", "chat.session.config", "chat.prompt.stack", "chat.tool.calls"
         )
@@ -1625,6 +1673,12 @@ internal class PluginApiDispatcher(
         /** 插件私有文件 API：单次读取上限与支持的编码。 */
         const val MAX_FILES_READ_BYTES = 128L * 1024
         val FILE_READ_ENCODINGS: Set<String> = setOf("text", "base64")
+
+        /** 会话终端 API：单条命令长度、超时区间与单次返回的输出上限。 */
+        const val MAX_TERMINAL_COMMAND_CHARS = 4_000
+        const val TERMINAL_DEFAULT_TIMEOUT_SECONDS = 30
+        const val TERMINAL_MAX_TIMEOUT_SECONDS = 120
+        const val MAX_TERMINAL_OUTPUT_CHARS = 20_000
 
         /** `host.ui.openPage` 启动参数与原生弹窗的字段上限。 */
         const val MAX_LAUNCH_ARGS_CHARS = 1_000

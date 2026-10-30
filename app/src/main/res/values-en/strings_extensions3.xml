@@ -147,6 +147,7 @@
     <string name="plugin_perm_group_read">Read</string>
     <string name="plugin_perm_group_network">Network</string>
     <string name="plugin_perm_group_write">Write</string>
+    <string name="plugin_perm_group_terminal">Terminal</string>
     <string name="plugin_perm_group_ai">AI</string>
     <string name="plugin_perm_storage">Key-value storage</string>
     <string name="plugin_perm_notify">Show notifications</string>
@@ -161,6 +162,7 @@
     <string name="plugin_perm_memory_write">Write agent memory</string>
     <string name="plugin_perm_characters_write">Create/edit characters</string>
     <string name="plugin_perm_workspace">Read/write workspace files</string>
+    <string name="plugin_perm_terminal">Run commands in the session terminal</string>
     <string name="plugin_perm_ai_call">Call AI</string>
     <string name="plugins_compat_label">Compatibility: %1$s</string>
     <string name="plugins_compat_native">Native</string>
