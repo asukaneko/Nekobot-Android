@@ -22,4 +22,124 @@
     <string name="hook_template_relationship_memory_content">The relationship between the user and character is growing closer, and the character will express affection more naturally.</string>
     <string name="hook_template_relationship_log">Relationship growth memory recorded</string>
     <string name="hook_template_model_log">Model call completed</string>
+
+    <!-- ==================== Hook event catalog ==================== -->
+    <string name="hook_group_message">Message</string>
+    <string name="hook_group_character">Character</string>
+    <string name="hook_group_model">Model</string>
+    <string name="hook_group_agent">Agent</string>
+
+    <string name="hook_evt_message_before_send">Before message send</string>
+    <string name="hook_evt_message_before_send_desc">Fires before the user message is written to the session.</string>
+    <string name="hook_evt_message_after_receive">After reply generated</string>
+    <string name="hook_evt_message_after_receive_desc">Fires after the assistant final reply is produced.</string>
+    <string name="hook_evt_character_before_turn">Before character turn</string>
+    <string name="hook_evt_character_before_turn_desc">Fires after state and relationship are computed, before the model call.</string>
+    <string name="hook_evt_character_after_turn">After character turn</string>
+    <string name="hook_evt_character_after_turn_desc">Fires after this turn\'s reply completes.</string>
+    <string name="hook_evt_model_after_call">After model call</string>
+    <string name="hook_evt_model_after_call_desc">Fires after every model call returns.</string>
+    <string name="hook_evt_agent_session_start">Agent session start</string>
+    <string name="hook_evt_agent_session_start_desc">Fires when the Agent tool loop starts.</string>
+    <string name="hook_evt_agent_session_end">Agent session end</string>
+    <string name="hook_evt_agent_session_end_desc">Fires when the Agent tool loop ends.</string>
+    <string name="hook_evt_agent_iteration_start">Agent iteration start</string>
+    <string name="hook_evt_agent_iteration_start_desc">Fires before each model decision round.</string>
+    <string name="hook_evt_agent_tool_before">Before tool call</string>
+    <string name="hook_evt_agent_tool_before_desc">Fires before a tool runs; use tool_block to intercept.</string>
+    <string name="hook_evt_agent_tool_after">After tool call</string>
+    <string name="hook_evt_agent_tool_after_desc">Fires after a tool finishes.</string>
+    <string name="hook_evt_agent_context_trimmed">Context trimmed</string>
+    <string name="hook_evt_agent_context_trimmed_desc">Fires after the tool loop trims the context.</string>
+    <string name="hook_evt_agent_error">Agent error</string>
+    <string name="hook_evt_agent_error_desc">Fires when the Agent tool loop raises an error.</string>
+
+    <string name="hooks_events_title">Event catalog</string>
+    <string name="hooks_event_pick">Pick event</string>
+    <string name="hooks_event_blockable">Blockable</string>
+    <string name="hooks_event_wildcard_hint">Wildcards supported, e.g. agent.*</string>
+
+    <!-- ==================== Agent hook templates ==================== -->
+    <string name="hook_template_agent_audit_title">Agent tool audit</string>
+    <string name="hook_template_agent_audit_desc">Log every Agent tool call.</string>
+    <string name="hook_template_agent_audit_name">Agent tool audit</string>
+    <string name="hook_template_agent_audit_log">The agent executed a tool call</string>
+    <string name="hook_template_agent_guard_title">Delete operation guard</string>
+    <string name="hook_template_agent_guard_desc">Block tools whose name contains delete so the agent cannot remove data on its own.</string>
+    <string name="hook_template_agent_guard_name">Delete operation guard</string>
+    <string name="hook_template_agent_guard_reason">Delete tools are blocked by a hook; please do it manually</string>
+    <string name="hook_template_agent_guard_log">A delete tool call was blocked</string>
+    <string name="hook_template_agent_recap_title">Agent completion notice</string>
+    <string name="hook_template_agent_recap_desc">Push a notice when the Agent session ends.</string>
+    <string name="hook_template_agent_recap_name">Agent completion notice</string>
+    <string name="hook_template_agent_recap_message">The agent finished this turn\'s task</string>
+
+    <!-- ==================== Hook condition / action form editing ==================== -->
+    <string name="hook_form_mode_form">Form</string>
+    <string name="hook_form_mode_json">JSON</string>
+    <string name="hook_form_section_conditions">Conditions</string>
+    <string name="hook_form_section_actions">Actions</string>
+    <string name="hook_form_add_condition">Add condition</string>
+    <string name="hook_form_add_action">Add action</string>
+    <string name="hook_form_conditions_empty">No conditions; fires every time</string>
+    <string name="hook_form_actions_empty">No actions yet; add at least one</string>
+
+    <string name="hook_condition_label">%1$s %2$s</string>
+    <string name="hook_param_delta_of">%1$s change</string>
+    <string name="hook_value_number">Number</string>
+    <string name="hook_value_text">Text</string>
+    <string name="hook_value_list">Comma separated, e.g. shell_job,exec_command</string>
+    <string name="hook_value_true">Yes</string>
+    <string name="hook_value_false">No</string>
+
+    <string name="hook_op_gte">≥</string>
+    <string name="hook_op_lte">≤</string>
+    <string name="hook_op_equals">equals</string>
+    <string name="hook_op_contains">contains</string>
+    <string name="hook_op_in">is one of</string>
+
+    <string name="hook_field_affection">Affection</string>
+    <string name="hook_field_trust">Trust</string>
+    <string name="hook_field_familiarity">Familiarity</string>
+    <string name="hook_field_dependency">Dependency</string>
+    <string name="hook_field_security">Security</string>
+    <string name="hook_field_jealousy">Jealousy</string>
+    <string name="hook_field_energy">Energy</string>
+    <string name="hook_field_mood">Mood</string>
+    <string name="hook_field_model">Model name</string>
+    <string name="hook_field_user_message">User input</string>
+    <string name="hook_field_assistant_message">Assistant reply</string>
+    <string name="hook_field_tool_name">Tool name</string>
+    <string name="hook_field_tool_success">Tool succeeded</string>
+    <string name="hook_field_subagent">From subagent</string>
+    <string name="hook_field_iteration">Iteration</string>
+
+    <string name="hook_action_log">Log</string>
+    <string name="hook_action_notify">Notice</string>
+    <string name="hook_action_memory_write">Write memory</string>
+    <string name="hook_action_prompt_inject">Inject prompt</string>
+    <string name="hook_action_state_delta">Change character state</string>
+    <string name="hook_action_relationship_delta">Change relationship</string>
+    <string name="hook_action_message">Append message</string>
+    <string name="hook_action_world_book_add">Add world book entry</string>
+    <string name="hook_action_tool_block">Block tool call</string>
+    <string name="hook_action_custom">Custom (%1$s)</string>
+    <string name="hook_action_custom_hint">Action type %1$s cannot be edited in the form; switch to JSON mode</string>
+    <string name="hook_action_tool_block_hint">Only applies to tool.before_call events</string>
+
+    <string name="hook_param_level">Level</string>
+    <string name="hook_param_message">Message</string>
+    <string name="hook_param_title">Title</string>
+    <string name="hook_param_title_optional">Title (optional)</string>
+    <string name="hook_param_content">Content</string>
+    <string name="hook_param_category">Memory category</string>
+    <string name="hook_param_importance">Importance 0-1</string>
+    <string name="hook_param_priority">Priority</string>
+    <string name="hook_param_scope">Scope</string>
+    <string name="hook_param_mood">Mood</string>
+    <string name="hook_param_mood_intensity">Mood intensity change</string>
+    <string name="hook_param_entry_name">Entry name</string>
+    <string name="hook_param_keywords">Keywords (comma separated)</string>
+    <string name="hook_param_always_on">Always-on entry</string>
+    <string name="hook_param_reason">Block reason</string>
 </resources>

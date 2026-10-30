@@ -22,4 +22,124 @@
     <string name="hook_template_relationship_memory_content">사용자와 캐릭터의 관계가 가까워지고 있으며 캐릭터가 친밀감을 더 자연스럽게 표현합니다.</string>
     <string name="hook_template_relationship_log">관계 발전 기억을 기록했습니다</string>
     <string name="hook_template_model_log">모델 호출 완료</string>
+
+    <!-- ==================== Hook 이벤트 목록 ==================== -->
+    <string name="hook_group_message">메시지</string>
+    <string name="hook_group_character">캐릭터</string>
+    <string name="hook_group_model">모델</string>
+    <string name="hook_group_agent">Agent</string>
+
+    <string name="hook_evt_message_before_send">메시지 전송 전</string>
+    <string name="hook_evt_message_before_send_desc">사용자 메시지가 세션에 저장되기 전에 실행됩니다.</string>
+    <string name="hook_evt_message_after_receive">답변 생성 후</string>
+    <string name="hook_evt_message_after_receive_desc">어시스턴트 최종 답변이 생성된 후 실행됩니다.</string>
+    <string name="hook_evt_character_before_turn">캐릭터 턴 전</string>
+    <string name="hook_evt_character_before_turn_desc">상태와 관계 계산이 끝나고 모델 호출 전에 실행됩니다.</string>
+    <string name="hook_evt_character_after_turn">캐릭터 턴 후</string>
+    <string name="hook_evt_character_after_turn_desc">이번 턴의 답변이 끝난 후 실행됩니다.</string>
+    <string name="hook_evt_model_after_call">모델 호출 후</string>
+    <string name="hook_evt_model_after_call_desc">모델 호출이 반환될 때마다 실행됩니다.</string>
+    <string name="hook_evt_agent_session_start">Agent 세션 시작</string>
+    <string name="hook_evt_agent_session_start_desc">Agent 도구 루프가 시작될 때 실행됩니다.</string>
+    <string name="hook_evt_agent_session_end">Agent 세션 종료</string>
+    <string name="hook_evt_agent_session_end_desc">Agent 도구 루프가 끝날 때 실행됩니다.</string>
+    <string name="hook_evt_agent_iteration_start">Agent 반복 시작</string>
+    <string name="hook_evt_agent_iteration_start_desc">매 라운드 모델 판단 전에 실행됩니다.</string>
+    <string name="hook_evt_agent_tool_before">도구 호출 전</string>
+    <string name="hook_evt_agent_tool_before_desc">도구 실행 전에 실행되며 tool_block 으로 차단할 수 있습니다.</string>
+    <string name="hook_evt_agent_tool_after">도구 호출 후</string>
+    <string name="hook_evt_agent_tool_after_desc">도구 실행이 끝난 후 실행됩니다.</string>
+    <string name="hook_evt_agent_context_trimmed">컨텍스트 정리</string>
+    <string name="hook_evt_agent_context_trimmed_desc">도구 루프가 컨텍스트를 정리한 후 실행됩니다.</string>
+    <string name="hook_evt_agent_error">Agent 오류</string>
+    <string name="hook_evt_agent_error_desc">Agent 도구 루프에서 예외가 발생하면 실행됩니다.</string>
+
+    <string name="hooks_events_title">이벤트 목록</string>
+    <string name="hooks_event_pick">이벤트 선택</string>
+    <string name="hooks_event_blockable">차단 가능</string>
+    <string name="hooks_event_wildcard_hint">와일드카드 지원, 예: agent.*</string>
+
+    <!-- ==================== Agent Hook 템플릿 ==================== -->
+    <string name="hook_template_agent_audit_title">Agent 도구 감사</string>
+    <string name="hook_template_agent_audit_desc">Agent 의 모든 도구 호출을 로그로 기록합니다.</string>
+    <string name="hook_template_agent_audit_name">Agent 도구 감사</string>
+    <string name="hook_template_agent_audit_log">Agent 가 도구를 실행했습니다</string>
+    <string name="hook_template_agent_guard_title">삭제 작업 가드</string>
+    <string name="hook_template_agent_guard_desc">이름에 delete 가 포함된 도구를 차단해 Agent 가 임의로 데이터를 삭제하지 못하게 합니다.</string>
+    <string name="hook_template_agent_guard_name">삭제 작업 가드</string>
+    <string name="hook_template_agent_guard_reason">삭제 도구는 Hook 에 의해 차단되었습니다. 직접 실행하세요</string>
+    <string name="hook_template_agent_guard_log">삭제 도구 호출을 차단했습니다</string>
+    <string name="hook_template_agent_recap_title">Agent 완료 알림</string>
+    <string name="hook_template_agent_recap_desc">Agent 세션이 끝나면 알림을 표시합니다.</string>
+    <string name="hook_template_agent_recap_name">Agent 완료 알림</string>
+    <string name="hook_template_agent_recap_message">Agent 가 이번 작업을 마쳤습니다</string>
+
+    <!-- ==================== Hook 조건 / 동작 폼 편집 ==================== -->
+    <string name="hook_form_mode_form">폼</string>
+    <string name="hook_form_mode_json">JSON</string>
+    <string name="hook_form_section_conditions">조건</string>
+    <string name="hook_form_section_actions">동작</string>
+    <string name="hook_form_add_condition">조건 추가</string>
+    <string name="hook_form_add_action">동작 추가</string>
+    <string name="hook_form_conditions_empty">조건 없음, 매번 실행</string>
+    <string name="hook_form_actions_empty">동작이 없습니다. 하나 이상 추가하세요</string>
+
+    <string name="hook_condition_label">%1$s %2$s</string>
+    <string name="hook_param_delta_of">%1$s 변화</string>
+    <string name="hook_value_number">숫자</string>
+    <string name="hook_value_text">텍스트</string>
+    <string name="hook_value_list">쉼표로 구분, 예: shell_job,exec_command</string>
+    <string name="hook_value_true">예</string>
+    <string name="hook_value_false">아니오</string>
+
+    <string name="hook_op_gte">≥</string>
+    <string name="hook_op_lte">≤</string>
+    <string name="hook_op_equals">같음</string>
+    <string name="hook_op_contains">포함</string>
+    <string name="hook_op_in">중 하나</string>
+
+    <string name="hook_field_affection">호감도</string>
+    <string name="hook_field_trust">신뢰</string>
+    <string name="hook_field_familiarity">친밀도</string>
+    <string name="hook_field_dependency">의존</string>
+    <string name="hook_field_security">안정감</string>
+    <string name="hook_field_jealousy">질투</string>
+    <string name="hook_field_energy">에너지</string>
+    <string name="hook_field_mood">기분</string>
+    <string name="hook_field_model">모델 이름</string>
+    <string name="hook_field_user_message">사용자 입력</string>
+    <string name="hook_field_assistant_message">어시스턴트 응답</string>
+    <string name="hook_field_tool_name">도구 이름</string>
+    <string name="hook_field_tool_success">도구 성공</string>
+    <string name="hook_field_subagent">서브에이전트</string>
+    <string name="hook_field_iteration">반복 횟수</string>
+
+    <string name="hook_action_log">로그</string>
+    <string name="hook_action_notify">알림</string>
+    <string name="hook_action_memory_write">기억 쓰기</string>
+    <string name="hook_action_prompt_inject">프롬프트 주입</string>
+    <string name="hook_action_state_delta">캐릭터 상태 변경</string>
+    <string name="hook_action_relationship_delta">관계 변경</string>
+    <string name="hook_action_message">메시지 추가</string>
+    <string name="hook_action_world_book_add">세계관 항목 추가</string>
+    <string name="hook_action_tool_block">도구 호출 차단</string>
+    <string name="hook_action_custom">사용자 정의(%1$s)</string>
+    <string name="hook_action_custom_hint">동작 유형 %1$s 은(는) 폼 편집을 지원하지 않습니다. JSON 모드로 전환하세요</string>
+    <string name="hook_action_tool_block_hint">tool.before_call 이벤트에서만 적용</string>
+
+    <string name="hook_param_level">레벨</string>
+    <string name="hook_param_message">메시지</string>
+    <string name="hook_param_title">제목</string>
+    <string name="hook_param_title_optional">제목(선택)</string>
+    <string name="hook_param_content">내용</string>
+    <string name="hook_param_category">기억 카테고리</string>
+    <string name="hook_param_importance">중요도 0-1</string>
+    <string name="hook_param_priority">우선순위</string>
+    <string name="hook_param_scope">범위</string>
+    <string name="hook_param_mood">기분</string>
+    <string name="hook_param_mood_intensity">기분 강도 변화</string>
+    <string name="hook_param_entry_name">항목 이름</string>
+    <string name="hook_param_keywords">키워드(쉼표 구분)</string>
+    <string name="hook_param_always_on">상시 항목</string>
+    <string name="hook_param_reason">차단 사유</string>
 </resources>

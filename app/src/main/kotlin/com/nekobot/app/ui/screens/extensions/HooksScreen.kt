@@ -4,6 +4,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import com.nekobot.app.ui.components.GlassExposedDropdownMenu as ExposedDropdownMenu
 import androidx.compose.material3.Icon
@@ -46,6 +48,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,6 +66,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.R
+import com.nekobot.app.data.local.ai.HookEventCatalog
 import com.nekobot.app.data.model.Hook
 import com.nekobot.app.data.model.HookExecutionLog
 import com.nekobot.app.data.model.HookRequest
@@ -417,7 +421,16 @@ private fun HookCard(
         Spacer(Modifier.height(8.dp))
 
         // 信息行
-        Text(stringResource(R.string.hooks_event, hook.event), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            stringResource(R.string.hooks_event, hook.event),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        hookEventLabel(hook.event)?.let { label ->
+            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        }
         Text(stringResource(R.string.hooks_scope, hook.scope), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(stringResource(R.string.hooks_priority, hook.priority), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!hook.description.isNullOrBlank()) {
@@ -499,18 +512,56 @@ private fun HookFormDialog(
     var conditionLogic by remember { mutableStateOf(initial?.conditionLogic ?: "and") }
     var timeoutMs by remember { mutableStateOf(initial?.timeoutMs?.toString() ?: "3000") }
     var maxRetries by remember { mutableStateOf(initial?.maxRetries?.toString() ?: "0") }
-    var conditionsText by remember {
-        mutableStateOf(initial?.conditions?.toString()?.takeUnless { it == "null" } ?: "{}")
+
+    // 结构化草稿：表单模式下的唯一数据来源；JSON 模式仅用于直接编辑原文
+    val initialConditions = remember { parseConditions(initial?.conditions) }
+    val conditionRows = remember {
+        mutableStateListOf<HookConditionDraft>().apply { addAll(initialConditions.rows) }
     }
+    var conditionExtras by remember { mutableStateOf(initialConditions.extras) }
+    val actionRows = remember {
+        mutableStateListOf<HookActionDraft>().apply { addAll(parseActions(initial?.actions.orEmpty())) }
+    }
+    var jsonMode by remember { mutableStateOf(false) }
+    var conditionsText by remember { mutableStateOf(conditionsToPrettyText(initialConditions)) }
     var actionsText by remember {
-        mutableStateOf(
-            initial?.actions?.takeIf { it.isNotEmpty() }
-                ?.joinToString(prefix = "[", postfix = "]") { it.toString() }
-                ?: "[]"
-        )
+        mutableStateOf(actionsToPrettyText(parseActions(initial?.actions.orEmpty())))
     }
     var jsonError by remember { mutableStateOf<String?>(null) }
+    var showEventPicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    /** JSON 模式 → 表单：解析失败时保留 JSON 模式并给出错误。 */
+    fun applyJsonToForm() {
+        val parsedConditions = try {
+            parseConditions(JsonParser.parseString(conditionsText.ifBlank { "{}" }))
+        } catch (_: Exception) {
+            jsonError = context.getString(R.string.hooks_json_invalid)
+            return
+        }
+        val parsedActions = try {
+            val parsed = JsonParser.parseString(actionsText.ifBlank { "[]" })
+            if (!parsed.isJsonArray) throw IllegalArgumentException("actions must be array")
+            parseActions(parsed.asJsonArray.toList())
+        } catch (_: Exception) {
+            jsonError = context.getString(R.string.hooks_json_invalid)
+            return
+        }
+        conditionRows.clear()
+        conditionRows.addAll(parsedConditions.rows)
+        conditionExtras = parsedConditions.extras
+        actionRows.clear()
+        actionRows.addAll(parsedActions)
+        jsonError = null
+        jsonMode = false
+    }
+
+    /** 表单 → JSON 模式：把当前草稿序列化成可读 JSON。 */
+    fun syncFormToJson() {
+        conditionsText = conditionsToPrettyText(HookConditionsDraft(conditionRows.toList(), conditionExtras))
+        actionsText = actionsToPrettyText(actionRows.toList())
+        jsonMode = true
+    }
 
     NekoDialog(
         onDismiss = onDismiss,
@@ -518,24 +569,29 @@ private fun HookFormDialog(
         confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank() || event.isBlank()) return@NekoDialog
-            // 校验 JSON
-            val conditionsEl = try {
-                if (conditionsText.isBlank()) null
-                else JsonParser.parseString(conditionsText)
-            } catch (_: Exception) {
-                jsonError = context.getString(R.string.hooks_json_invalid)
-                return@NekoDialog
-            }
-            val actionsList = try {
-                val parsed = JsonParser.parseString(actionsText)
-                if (!parsed.isJsonArray) {
+            val conditionsEl: JsonElement?
+            val actionsList: List<JsonElement>
+            if (jsonMode) {
+                conditionsEl = try {
+                    if (conditionsText.isBlank()) null else JsonParser.parseString(conditionsText)
+                } catch (_: Exception) {
                     jsonError = context.getString(R.string.hooks_json_invalid)
                     return@NekoDialog
                 }
-                parsed.asJsonArray.toList()
-            } catch (_: Exception) {
-                jsonError = context.getString(R.string.hooks_json_invalid)
-                return@NekoDialog
+                actionsList = try {
+                    val parsed = JsonParser.parseString(actionsText.ifBlank { "[]" })
+                    if (!parsed.isJsonArray) {
+                        jsonError = context.getString(R.string.hooks_json_invalid)
+                        return@NekoDialog
+                    }
+                    parsed.asJsonArray.toList()
+                } catch (_: Exception) {
+                    jsonError = context.getString(R.string.hooks_json_invalid)
+                    return@NekoDialog
+                }
+            } else {
+                conditionsEl = HookConditionsDraft(conditionRows.toList(), conditionExtras).toJson()
+                actionsList = actionRows.map { it.toJson() }
             }
             jsonError = null
             val req = HookRequest(
@@ -572,17 +628,40 @@ private fun HookFormDialog(
             )
             Spacer(Modifier.height(8.dp))
 
-            // 事件（必填）
+            // 事件（必填）：可手输通配符，也可从事件库选择
             LabeledField(stringResource(R.string.hooks_event_required))
-            OutlinedTextField(
-                value = event,
-                onValueChange = { event = it },
-                singleLine = true,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = fieldColors(),
-                placeholder = { Text(stringResource(R.string.hooks_event_placeholder)) }
-            )
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = event,
+                    onValueChange = { event = it },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors(),
+                    placeholder = { Text(stringResource(R.string.hooks_event_placeholder)) }
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = { showEventPicker = true }) {
+                    Icon(
+                        Icons.Filled.LibraryBooks,
+                        contentDescription = stringResource(R.string.hooks_event_pick),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            hookEventLabel(event.trim())?.let { label ->
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+            if (event.contains('*')) {
+                Text(
+                    stringResource(R.string.hooks_event_wildcard_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(Modifier.height(8.dp))
 
             // 作用域下拉
@@ -665,34 +744,61 @@ private fun HookFormDialog(
             )
             Spacer(Modifier.height(8.dp))
 
-            // 条件 JSON
-            LabeledField(stringResource(R.string.hooks_conditions_label))
-            OutlinedTextField(
-                value = conditionsText,
-                onValueChange = { conditionsText = it },
-                singleLine = false,
-                minLines = 2,
-                maxLines = 5,
+            // 条件与动作：表单模式可视化编辑，JSON 模式直接改原文
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = fieldColors(),
-                placeholder = { Text(stringResource(R.string.hooks_conditions_hint)) }
-            )
-            Spacer(Modifier.height(8.dp))
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = !jsonMode,
+                    onClick = { if (jsonMode) applyJsonToForm() },
+                    label = { Text(stringResource(R.string.hook_form_mode_form)) }
+                )
+                Spacer(Modifier.width(8.dp))
+                FilterChip(
+                    selected = jsonMode,
+                    onClick = { if (!jsonMode) syncFormToJson() },
+                    label = { Text(stringResource(R.string.hook_form_mode_json)) }
+                )
+            }
 
-            // 动作 JSON 数组
-            LabeledField(stringResource(R.string.hooks_actions_label))
-            OutlinedTextField(
-                value = actionsText,
-                onValueChange = { actionsText = it },
-                singleLine = false,
-                minLines = 3,
-                maxLines = 8,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = fieldColors(),
-                placeholder = { Text(stringResource(R.string.hooks_actions_hint)) }
-            )
+            if (jsonMode) {
+                // 条件 JSON
+                LabeledField(stringResource(R.string.hooks_conditions_label))
+                OutlinedTextField(
+                    value = conditionsText,
+                    onValueChange = { conditionsText = it },
+                    singleLine = false,
+                    minLines = 2,
+                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors(),
+                    placeholder = { Text(stringResource(R.string.hooks_conditions_hint)) }
+                )
+                Spacer(Modifier.height(8.dp))
+
+                // 动作 JSON 数组
+                LabeledField(stringResource(R.string.hooks_actions_label))
+                OutlinedTextField(
+                    value = actionsText,
+                    onValueChange = { actionsText = it },
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 8,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors(),
+                    placeholder = { Text(stringResource(R.string.hooks_actions_hint)) }
+                )
+            } else {
+                HookConditionsEditor(conditionRows)
+                Spacer(Modifier.height(4.dp))
+                HookActionsEditor(
+                    rows = actionRows,
+                    allowBlock = HookEventCatalog.isBlockableEvent(event.trim())
+                )
+            }
 
             // JSON 错误提示
             jsonError?.let { err ->
@@ -703,9 +809,107 @@ private fun HookFormDialog(
                     color = ErrorRed
                 )
             }
+
+            // 事件库选择弹窗
+            if (showEventPicker) {
+                HookEventPickerDialog(
+                    onPick = { picked ->
+                        event = picked
+                        showEventPicker = false
+                    },
+                    onDismiss = { showEventPicker = false }
+                )
+            }
         }
     }
 }
+
+/**
+ * 事件库选择弹窗：按大类列出本地管线真正会触发的 Hook 事件。
+ */
+@Composable
+private fun HookEventPickerDialog(
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.hooks_events_title),
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = onDismiss,
+        cancelText = null,
+        onCancel = null
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 460.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            HookEventCatalog.grouped().forEach { (group, specs) ->
+                item(key = "group_${group.name}") {
+                    Text(
+                        text = stringResource(group.titleRes),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+                items(specs, key = { it.id }) { spec ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onPick(spec.id) }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(spec.nameRes),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (spec.blockable) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.hooks_event_blockable),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = spec.id,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(spec.descRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 事件显示名：命中事件库时展示本地化名称；自定义或通配符事件返回 null。 */
+@Composable
+private fun hookEventLabel(event: String): String? =
+    HookEventCatalog.find(event)?.let { stringResource(it.nameRes) }
 
 /**
  * Hook 内置模板选择弹窗

@@ -22,4 +22,124 @@
     <string name="hook_template_relationship_memory_content">用户与角色的关系正在升温，角色会更自然地表达亲近。</string>
     <string name="hook_template_relationship_log">已记录关系升温记忆</string>
     <string name="hook_template_model_log">模型调用完成</string>
+
+    <!-- ==================== Hook 事件库 ==================== -->
+    <string name="hook_group_message">消息</string>
+    <string name="hook_group_character">角色</string>
+    <string name="hook_group_model">模型</string>
+    <string name="hook_group_agent">Agent</string>
+
+    <string name="hook_evt_message_before_send">消息发送前</string>
+    <string name="hook_evt_message_before_send_desc">用户消息写入会话前触发。</string>
+    <string name="hook_evt_message_after_receive">回复生成后</string>
+    <string name="hook_evt_message_after_receive_desc">助手最终回复产生后触发。</string>
+    <string name="hook_evt_character_before_turn">角色回合前</string>
+    <string name="hook_evt_character_before_turn_desc">角色状态与关系计算完成、模型调用前触发。</string>
+    <string name="hook_evt_character_after_turn">角色回合后</string>
+    <string name="hook_evt_character_after_turn_desc">本轮回复完成后触发。</string>
+    <string name="hook_evt_model_after_call">模型调用后</string>
+    <string name="hook_evt_model_after_call_desc">每次模型调用返回后触发。</string>
+    <string name="hook_evt_agent_session_start">Agent 会话开始</string>
+    <string name="hook_evt_agent_session_start_desc">Agent 工具循环开始时触发。</string>
+    <string name="hook_evt_agent_session_end">Agent 会话结束</string>
+    <string name="hook_evt_agent_session_end_desc">Agent 工具循环结束时触发。</string>
+    <string name="hook_evt_agent_iteration_start">Agent 迭代开始</string>
+    <string name="hook_evt_agent_iteration_start_desc">每轮模型决策前触发。</string>
+    <string name="hook_evt_agent_tool_before">工具调用前</string>
+    <string name="hook_evt_agent_tool_before_desc">工具执行前触发，可用 tool_block 拦截。</string>
+    <string name="hook_evt_agent_tool_after">工具调用后</string>
+    <string name="hook_evt_agent_tool_after_desc">工具执行完成后触发。</string>
+    <string name="hook_evt_agent_context_trimmed">上下文裁剪</string>
+    <string name="hook_evt_agent_context_trimmed_desc">工具循环裁剪上下文后触发。</string>
+    <string name="hook_evt_agent_error">Agent 出错</string>
+    <string name="hook_evt_agent_error_desc">Agent 工具循环异常时触发。</string>
+
+    <string name="hooks_events_title">事件库</string>
+    <string name="hooks_event_pick">选择事件</string>
+    <string name="hooks_event_blockable">可拦截</string>
+    <string name="hooks_event_wildcard_hint">支持通配符，如 agent.*</string>
+
+    <!-- ==================== Agent Hook 模板 ==================== -->
+    <string name="hook_template_agent_audit_title">Agent 工具审计</string>
+    <string name="hook_template_agent_audit_desc">在日志中记录 Agent 每次工具调用。</string>
+    <string name="hook_template_agent_audit_name">Agent 工具审计</string>
+    <string name="hook_template_agent_audit_log">Agent 执行了一次工具调用</string>
+    <string name="hook_template_agent_guard_title">删除操作守卫</string>
+    <string name="hook_template_agent_guard_desc">工具名含 delete 时拦截，避免 Agent 擅自删除数据。</string>
+    <string name="hook_template_agent_guard_name">删除操作守卫</string>
+    <string name="hook_template_agent_guard_reason">删除类工具已被 Hook 拦截，请手动操作</string>
+    <string name="hook_template_agent_guard_log">已拦截一次删除类工具调用</string>
+    <string name="hook_template_agent_recap_title">Agent 完成提醒</string>
+    <string name="hook_template_agent_recap_desc">Agent 会话结束时推送一条提示。</string>
+    <string name="hook_template_agent_recap_name">Agent 完成提醒</string>
+    <string name="hook_template_agent_recap_message">Agent 本轮任务已结束</string>
+
+    <!-- ==================== Hook 条件 / 动作界面化编辑 ==================== -->
+    <string name="hook_form_mode_form">表单</string>
+    <string name="hook_form_mode_json">JSON</string>
+    <string name="hook_form_section_conditions">触发条件</string>
+    <string name="hook_form_section_actions">执行动作</string>
+    <string name="hook_form_add_condition">添加条件</string>
+    <string name="hook_form_add_action">添加动作</string>
+    <string name="hook_form_conditions_empty">无条件，每次触发</string>
+    <string name="hook_form_actions_empty">还没有动作，至少添加一个</string>
+
+    <string name="hook_condition_label">%1$s %2$s</string>
+    <string name="hook_param_delta_of">%1$s变化</string>
+    <string name="hook_value_number">数值</string>
+    <string name="hook_value_text">文本</string>
+    <string name="hook_value_list">逗号分隔，如 shell_job,exec_command</string>
+    <string name="hook_value_true">是</string>
+    <string name="hook_value_false">否</string>
+
+    <string name="hook_op_gte">≥</string>
+    <string name="hook_op_lte">≤</string>
+    <string name="hook_op_equals">等于</string>
+    <string name="hook_op_contains">包含</string>
+    <string name="hook_op_in">属于其一</string>
+
+    <string name="hook_field_affection">好感度</string>
+    <string name="hook_field_trust">信任</string>
+    <string name="hook_field_familiarity">熟悉度</string>
+    <string name="hook_field_dependency">依赖</string>
+    <string name="hook_field_security">安全感</string>
+    <string name="hook_field_jealousy">嫉妒</string>
+    <string name="hook_field_energy">精力</string>
+    <string name="hook_field_mood">心情</string>
+    <string name="hook_field_model">模型名</string>
+    <string name="hook_field_user_message">用户输入</string>
+    <string name="hook_field_assistant_message">助手回复</string>
+    <string name="hook_field_tool_name">工具名</string>
+    <string name="hook_field_tool_success">工具执行成功</string>
+    <string name="hook_field_subagent">来自子代理</string>
+    <string name="hook_field_iteration">迭代轮次</string>
+
+    <string name="hook_action_log">日志</string>
+    <string name="hook_action_notify">提示</string>
+    <string name="hook_action_memory_write">写入记忆</string>
+    <string name="hook_action_prompt_inject">注入提示词</string>
+    <string name="hook_action_state_delta">修改角色状态</string>
+    <string name="hook_action_relationship_delta">修改关系</string>
+    <string name="hook_action_message">追加消息</string>
+    <string name="hook_action_world_book_add">添加世界书条目</string>
+    <string name="hook_action_tool_block">拦截工具调用</string>
+    <string name="hook_action_custom">自定义（%1$s）</string>
+    <string name="hook_action_custom_hint">动作类型 %1$s 暂不支持表单编辑，请切到 JSON 模式</string>
+    <string name="hook_action_tool_block_hint">仅 tool.before_call 事件生效</string>
+
+    <string name="hook_param_level">级别</string>
+    <string name="hook_param_message">消息内容</string>
+    <string name="hook_param_title">标题</string>
+    <string name="hook_param_title_optional">标题（可选）</string>
+    <string name="hook_param_content">内容</string>
+    <string name="hook_param_category">记忆类别</string>
+    <string name="hook_param_importance">重要度 0-1</string>
+    <string name="hook_param_priority">优先级</string>
+    <string name="hook_param_scope">作用域</string>
+    <string name="hook_param_mood">心情</string>
+    <string name="hook_param_mood_intensity">心情强度变化</string>
+    <string name="hook_param_entry_name">条目名称</string>
+    <string name="hook_param_keywords">关键词（逗号分隔）</string>
+    <string name="hook_param_always_on">常驻条目</string>
+    <string name="hook_param_reason">拦截原因</string>
 </resources>

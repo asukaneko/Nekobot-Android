@@ -140,7 +140,11 @@ internal object SubagentRunner {
             },
             onToolMessageAppended = { message ->
                 SubagentTaskStore.appendConversationMessage(taskId, message)
-            }
+            },
+            // Agent Hook：子代理内部复用主会话的 agent.tool.* 事件，
+            // 这样"拦截高危工具"之类的守卫对子代理同样生效。
+            onAgentToolBeforeCall = delegate.agentToolBeforeCall,
+            onAgentToolAfterCall = delegate.agentToolAfterCall
         )
 
         // 子代理模型调用仍走与主会话相同的故障转移队列。
@@ -267,10 +271,16 @@ internal object SubagentRunner {
 
 /**
  * 子代理运行时委托作用域：提供模型调用与工具执行，由 LocalPipelineCallbacks 装配。
+ *
+ * [agentToolBeforeCall] / [agentToolAfterCall] 是可选的 Agent Hook 桥接：
+ * 子代理执行工具时同样触发主会话的 agent.tool.* 事件。
  */
 internal class SubagentDelegateScope(
     internal val buildModelCall: () -> ModelCall,
-    internal val toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>
+    internal val toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
+    /** 返回非空字符串表示拦截本次子代理工具调用。 */
+    internal val agentToolBeforeCall: (suspend (Map<String, Any>, Int) -> String?)? = null,
+    internal val agentToolAfterCall: (suspend (Map<String, Any>, Map<String, Any>, Int) -> Unit)? = null
 )
 
 /**

@@ -328,7 +328,7 @@ data class ToolLoopHooks(
     /** 一整批 tool_calls 都写入对应 tool 结果后的安全检查点。 */
     val onCheckpoint: ((Int, List<Map<String, Any>>) -> Unit)? = null,
     /** 裁剪后的有效上下文；持久化轨迹必须同步，否则 UI 和续跑会恢复裁剪前的正文。 */
-    val onContextTrimmed: ((List<Map<String, Any>>) -> Unit)? = null,
+    val onContextTrimmed: (suspend (List<Map<String, Any>>) -> Unit)? = null,
     /**
      * 本轮模型输出不是最终答复（循环将继续）时回调该轮正文。
      *
@@ -342,7 +342,20 @@ data class ToolLoopHooks(
      * 落库动作必须发生在消息产生的当下，而不是等整轮结束：
      * 一轮任务可能有上百次工具调用，中断或进程回收时只有即时落库的内容能恢复。
      */
-    val onToolMessageAppended: ((Map<String, Any>) -> Unit)? = null
+    val onToolMessageAppended: ((Map<String, Any>) -> Unit)? = null,
+    /**
+     * Agent Hook：每轮模型决策前触发（agent.iteration.start）。
+     * 与 [onIterationStart] 分开，是因为 Hook 需要 suspend 才能读写数据库。
+     */
+    val onAgentIterationStart: (suspend (iteration: Int, messages: List<Map<String, Any>>) -> Unit)? = null,
+    /**
+     * Agent Hook：工具执行前触发（agent.tool.before_call）。
+     *
+     * @return 非空字符串表示拦截本次工具调用（该字符串作为失败原因返回给模型）。
+     */
+    val onAgentToolBeforeCall: (suspend (toolCall: Map<String, Any>, iteration: Int) -> String?)? = null,
+    /** Agent Hook：工具执行后触发（agent.tool.after_call）。 */
+    val onAgentToolAfterCall: (suspend (toolCall: Map<String, Any>, result: Map<String, Any>, iteration: Int) -> Unit)? = null
 )
 
 /** 工具循环结果 */
@@ -1184,6 +1197,7 @@ suspend fun runToolCallLoop(
         }
 
         hooks?.onIterationStart?.invoke(iteration, toolMessages.map { it.toMap() })
+        hooks?.onAgentIterationStart?.invoke(iteration, toolMessages.map { it.toMap() })
 
         // 循环内上下文管理：一次长任务可能产生几十个工具结果，全部堆在上下文里既会超预算
         // 也会稀释注意力。这里在每次模型调用前检查预算，超限时按"从最旧到最新"就地裁剪
@@ -1283,7 +1297,8 @@ suspend fun runToolCallLoop(
                 if (batch.isEmpty()) break
 
                 // 1) 预检串行执行：守卫与参数校验的顺序必须稳定，越界调用直接返回错误结果。
-                val prepared = batch.map { toolCall ->
+                val prepared = mutableListOf<Triple<Map<String, Any>, String?, String?>>()
+                for (toolCall in batch) {
                     hooks?.onToolStart?.invoke(
                         sanitizeSensitiveAgentToolCall(toolCall),
                         thinkingContent,
@@ -1294,8 +1309,17 @@ suspend fun runToolCallLoop(
                     if (loopAbortMessage == null && loopGuardMessage != null) {
                         loopAbortMessage = loopGuardMessage
                     }
-                    val validationMessage = validateAgentToolCall(toolCall)
-                    Triple(toolCall, loopGuardMessage, validationMessage)
+                    // Agent Hook：工具执行前拦截（agent.tool.before_call + tool_block 动作）
+                    val hookBlockMessage = if (loopGuardMessage == null) {
+                        hooks?.onAgentToolBeforeCall
+                            ?.invoke(sanitizeSensitiveAgentToolCall(toolCall), iteration)
+                            ?.takeIf(String::isNotBlank)
+                            ?.let { "工具调用已被 Hook 拦截：$it" }
+                    } else {
+                        null
+                    }
+                    val validationMessage = validateAgentToolCall(toolCall) ?: hookBlockMessage
+                    prepared.add(Triple(toolCall, loopGuardMessage, validationMessage))
                 }
 
                 // 2) 执行：只读工具并行，其余（含单个调用）串行。
@@ -1359,6 +1383,13 @@ suspend fun runToolCallLoop(
                     }
                     val toolCall = outcome.toolCall
                     val toolResult = outcome.result
+
+                    // Agent Hook：工具执行后（agent.tool.after_call）
+                    hooks?.onAgentToolAfterCall?.invoke(
+                        sanitizeSensitiveAgentToolCall(toolCall),
+                        toolResult,
+                        iteration
+                    )
 
                     var toolHistoryMessage: Map<String, Any>? = null
                     if (hooks?.onToolResult != null) {

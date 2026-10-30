@@ -307,7 +307,13 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
             params(
                 mapOf(
                     "name" to str("Hook 名称（必填）"),
-                    "event" to str("触发事件，如 character.before_turn / character.after_turn（必填）"),
+                    "event" to str(
+                        "触发事件（必填）：message.before_send / message.after_receive / " +
+                            "character.before_turn.finished / character.after_turn.finished / model.after_call / " +
+                            "agent.session.start / agent.session.end / agent.iteration.start / " +
+                            "agent.tool.before_call / agent.tool.after_call / agent.context.trimmed / agent.error；" +
+                            "支持通配如 agent.*"
+                    ),
                     "description" to str("描述"),
                     "enabled" to bool("是否启用，默认 true"),
                     "scope" to str("作用域：global / character / conversation / user，默认 global"),
@@ -317,7 +323,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "permissions" to obj("权限 JSON"),
                     "timeout_ms" to int("超时毫秒，默认 3000"),
                     "max_retries" to int("最大重试次数，默认 0"),
-                    "trigger_mode" to str("触发模式：always / once / cooldown，默认 always"),
+                    "trigger_mode" to str("触发模式：always / once_per_conversation，默认 always"),
                     "condition_logic" to str("条件逻辑：and / or，默认 and"),
                     "character_id" to str("绑定角色卡 ID（scope=character 时）"),
                     "conversation_id" to str("绑定会话 ID（scope=conversation 时）"),
@@ -333,7 +339,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                 mapOf(
                     "hook_id" to str("Hook ID（必填）"),
                     "name" to str("Hook 名称"),
-                    "event" to str("触发事件"),
+                    "event" to str("触发事件（含 message.* / character.* / model.* / agent.*）"),
                     "description" to str("描述"),
                     "enabled" to bool("是否启用"),
                     "scope" to str("作用域"),

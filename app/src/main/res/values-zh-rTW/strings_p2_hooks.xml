@@ -22,4 +22,124 @@
     <string name="hook_template_relationship_memory_content">用戶與角色的關係正在升溫，角色會更自然地表達親近。</string>
     <string name="hook_template_relationship_log">已記錄關係升溫記憶</string>
     <string name="hook_template_model_log">模型呼叫完成</string>
+
+    <!-- ==================== Hook 事件庫 ==================== -->
+    <string name="hook_group_message">訊息</string>
+    <string name="hook_group_character">角色</string>
+    <string name="hook_group_model">模型</string>
+    <string name="hook_group_agent">Agent</string>
+
+    <string name="hook_evt_message_before_send">訊息傳送前</string>
+    <string name="hook_evt_message_before_send_desc">使用者訊息寫入工作階段前觸發。</string>
+    <string name="hook_evt_message_after_receive">回覆產生後</string>
+    <string name="hook_evt_message_after_receive_desc">助理最終回覆產生後觸發。</string>
+    <string name="hook_evt_character_before_turn">角色回合前</string>
+    <string name="hook_evt_character_before_turn_desc">角色狀態與關係計算完成、模型呼叫前觸發。</string>
+    <string name="hook_evt_character_after_turn">角色回合後</string>
+    <string name="hook_evt_character_after_turn_desc">本輪回覆完成後觸發。</string>
+    <string name="hook_evt_model_after_call">模型呼叫後</string>
+    <string name="hook_evt_model_after_call_desc">每次模型呼叫返回後觸發。</string>
+    <string name="hook_evt_agent_session_start">Agent 工作階段開始</string>
+    <string name="hook_evt_agent_session_start_desc">Agent 工具迴圈開始時觸發。</string>
+    <string name="hook_evt_agent_session_end">Agent 工作階段結束</string>
+    <string name="hook_evt_agent_session_end_desc">Agent 工具迴圈結束時觸發。</string>
+    <string name="hook_evt_agent_iteration_start">Agent 迭代開始</string>
+    <string name="hook_evt_agent_iteration_start_desc">每輪模型決策前觸發。</string>
+    <string name="hook_evt_agent_tool_before">工具呼叫前</string>
+    <string name="hook_evt_agent_tool_before_desc">工具執行前觸發，可用 tool_block 攔截。</string>
+    <string name="hook_evt_agent_tool_after">工具呼叫後</string>
+    <string name="hook_evt_agent_tool_after_desc">工具執行完成後觸發。</string>
+    <string name="hook_evt_agent_context_trimmed">上下文裁剪</string>
+    <string name="hook_evt_agent_context_trimmed_desc">工具迴圈裁剪上下文後觸發。</string>
+    <string name="hook_evt_agent_error">Agent 出錯</string>
+    <string name="hook_evt_agent_error_desc">Agent 工具迴圈發生例外時觸發。</string>
+
+    <string name="hooks_events_title">事件庫</string>
+    <string name="hooks_event_pick">選擇事件</string>
+    <string name="hooks_event_blockable">可攔截</string>
+    <string name="hooks_event_wildcard_hint">支援萬用字元，如 agent.*</string>
+
+    <!-- ==================== Agent Hook 範本 ==================== -->
+    <string name="hook_template_agent_audit_title">Agent 工具稽核</string>
+    <string name="hook_template_agent_audit_desc">在日誌中記錄 Agent 每次工具呼叫。</string>
+    <string name="hook_template_agent_audit_name">Agent 工具稽核</string>
+    <string name="hook_template_agent_audit_log">Agent 執行了一次工具呼叫</string>
+    <string name="hook_template_agent_guard_title">刪除操作守衛</string>
+    <string name="hook_template_agent_guard_desc">工具名稱含 delete 時攔截，避免 Agent 擅自刪除資料。</string>
+    <string name="hook_template_agent_guard_name">刪除操作守衛</string>
+    <string name="hook_template_agent_guard_reason">刪除類工具已被 Hook 攔截，請手動操作</string>
+    <string name="hook_template_agent_guard_log">已攔截一次刪除類工具呼叫</string>
+    <string name="hook_template_agent_recap_title">Agent 完成提醒</string>
+    <string name="hook_template_agent_recap_desc">Agent 工作階段結束時推送一則提示。</string>
+    <string name="hook_template_agent_recap_name">Agent 完成提醒</string>
+    <string name="hook_template_agent_recap_message">Agent 本輪任務已結束</string>
+
+    <!-- ==================== Hook 條件 / 動作介面化編輯 ==================== -->
+    <string name="hook_form_mode_form">表單</string>
+    <string name="hook_form_mode_json">JSON</string>
+    <string name="hook_form_section_conditions">觸發條件</string>
+    <string name="hook_form_section_actions">執行動作</string>
+    <string name="hook_form_add_condition">新增條件</string>
+    <string name="hook_form_add_action">新增動作</string>
+    <string name="hook_form_conditions_empty">無條件，每次觸發</string>
+    <string name="hook_form_actions_empty">還沒有動作，至少新增一個</string>
+
+    <string name="hook_condition_label">%1$s %2$s</string>
+    <string name="hook_param_delta_of">%1$s變化</string>
+    <string name="hook_value_number">數值</string>
+    <string name="hook_value_text">文字</string>
+    <string name="hook_value_list">逗號分隔，如 shell_job,exec_command</string>
+    <string name="hook_value_true">是</string>
+    <string name="hook_value_false">否</string>
+
+    <string name="hook_op_gte">≥</string>
+    <string name="hook_op_lte">≤</string>
+    <string name="hook_op_equals">等於</string>
+    <string name="hook_op_contains">包含</string>
+    <string name="hook_op_in">屬於其一</string>
+
+    <string name="hook_field_affection">好感度</string>
+    <string name="hook_field_trust">信任</string>
+    <string name="hook_field_familiarity">熟悉度</string>
+    <string name="hook_field_dependency">依賴</string>
+    <string name="hook_field_security">安全感</string>
+    <string name="hook_field_jealousy">嫉妒</string>
+    <string name="hook_field_energy">精力</string>
+    <string name="hook_field_mood">心情</string>
+    <string name="hook_field_model">模型名稱</string>
+    <string name="hook_field_user_message">使用者輸入</string>
+    <string name="hook_field_assistant_message">助理回覆</string>
+    <string name="hook_field_tool_name">工具名稱</string>
+    <string name="hook_field_tool_success">工具執行成功</string>
+    <string name="hook_field_subagent">來自子代理</string>
+    <string name="hook_field_iteration">迭代輪次</string>
+
+    <string name="hook_action_log">日誌</string>
+    <string name="hook_action_notify">提示</string>
+    <string name="hook_action_memory_write">寫入記憶</string>
+    <string name="hook_action_prompt_inject">注入提示詞</string>
+    <string name="hook_action_state_delta">修改角色狀態</string>
+    <string name="hook_action_relationship_delta">修改關係</string>
+    <string name="hook_action_message">附加訊息</string>
+    <string name="hook_action_world_book_add">新增世界書條目</string>
+    <string name="hook_action_tool_block">攔截工具呼叫</string>
+    <string name="hook_action_custom">自訂（%1$s）</string>
+    <string name="hook_action_custom_hint">動作類型 %1$s 暫不支援表單編輯，請切到 JSON 模式</string>
+    <string name="hook_action_tool_block_hint">僅 tool.before_call 事件生效</string>
+
+    <string name="hook_param_level">等級</string>
+    <string name="hook_param_message">訊息內容</string>
+    <string name="hook_param_title">標題</string>
+    <string name="hook_param_title_optional">標題（選填）</string>
+    <string name="hook_param_content">內容</string>
+    <string name="hook_param_category">記憶類別</string>
+    <string name="hook_param_importance">重要度 0-1</string>
+    <string name="hook_param_priority">優先級</string>
+    <string name="hook_param_scope">作用域</string>
+    <string name="hook_param_mood">心情</string>
+    <string name="hook_param_mood_intensity">心情強度變化</string>
+    <string name="hook_param_entry_name">條目名稱</string>
+    <string name="hook_param_keywords">關鍵詞（逗號分隔）</string>
+    <string name="hook_param_always_on">常駐條目</string>
+    <string name="hook_param_reason">攔截原因</string>
 </resources>

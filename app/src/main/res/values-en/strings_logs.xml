@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!-- 本地日志文案（LocalLogger 资源化消息）。由 logtools/gen_logs.py 生成，请勿手工编辑。 -->
 <resources>
     <string name="log_a11y_connected">Accessibility service connected</string>
@@ -84,6 +84,8 @@
     <string name="log_hook_state_updated">[Hook:%1$s] state updated: mood=%2$s energy=%3$s</string>
     <string name="log_hook_test_triggered">Hook test triggered: %1$s -&gt; %2$s</string>
     <string name="log_hook_triggered">Hook triggered: %1$s [%2$s] -&gt; %3$s</string>
+    <string name="log_hook_notify">[Hook:%1$s] notice: %2$s</string>
+    <string name="log_hook_tool_blocked">[Hook:%1$s] blocked tool %2$s: %3$s</string>
     <string name="log_hook_unknown_action">Unknown action type: %1$s (hook=%2$s)</string>
     <string name="log_hook_workflow_unsupported">workflow action not supported in local mode (hook=%1$s)</string>
     <string name="log_hook_worldbook_added">[Hook:%1$s] world book entry added: %2$s</string>

@@ -22,4 +22,124 @@
     <string name="hook_template_relationship_memory_content">ユーザーとキャラクターの関係が深まり、キャラクターはより自然に親しさを表現します。</string>
     <string name="hook_template_relationship_log">関係進展の記憶を記録しました</string>
     <string name="hook_template_model_log">モデル呼び出しが完了しました</string>
+
+    <!-- ==================== Hook イベント一覧 ==================== -->
+    <string name="hook_group_message">メッセージ</string>
+    <string name="hook_group_character">キャラクター</string>
+    <string name="hook_group_model">モデル</string>
+    <string name="hook_group_agent">Agent</string>
+
+    <string name="hook_evt_message_before_send">メッセージ送信前</string>
+    <string name="hook_evt_message_before_send_desc">ユーザーメッセージが会話に書き込まれる前に発火します。</string>
+    <string name="hook_evt_message_after_receive">返信生成後</string>
+    <string name="hook_evt_message_after_receive_desc">アシスタントの最終返信が生成された後に発火します。</string>
+    <string name="hook_evt_character_before_turn">キャラクターのターン前</string>
+    <string name="hook_evt_character_before_turn_desc">状態と関係の計算後、モデル呼び出し前に発火します。</string>
+    <string name="hook_evt_character_after_turn">キャラクターのターン後</string>
+    <string name="hook_evt_character_after_turn_desc">このターンの返信完了後に発火します。</string>
+    <string name="hook_evt_model_after_call">モデル呼び出し後</string>
+    <string name="hook_evt_model_after_call_desc">モデル呼び出しが戻るたびに発火します。</string>
+    <string name="hook_evt_agent_session_start">Agent セッション開始</string>
+    <string name="hook_evt_agent_session_start_desc">Agent のツールループ開始時に発火します。</string>
+    <string name="hook_evt_agent_session_end">Agent セッション終了</string>
+    <string name="hook_evt_agent_session_end_desc">Agent のツールループ終了時に発火します。</string>
+    <string name="hook_evt_agent_iteration_start">Agent イテレーション開始</string>
+    <string name="hook_evt_agent_iteration_start_desc">各ラウンドのモデル判断前に発火します。</string>
+    <string name="hook_evt_agent_tool_before">ツール呼び出し前</string>
+    <string name="hook_evt_agent_tool_before_desc">ツール実行前に発火し、tool_block でブロックできます。</string>
+    <string name="hook_evt_agent_tool_after">ツール呼び出し後</string>
+    <string name="hook_evt_agent_tool_after_desc">ツール実行完了後に発火します。</string>
+    <string name="hook_evt_agent_context_trimmed">コンテキスト削減</string>
+    <string name="hook_evt_agent_context_trimmed_desc">ツールループがコンテキストを削減した後に発火します。</string>
+    <string name="hook_evt_agent_error">Agent エラー</string>
+    <string name="hook_evt_agent_error_desc">Agent のツールループで例外が起きたときに発火します。</string>
+
+    <string name="hooks_events_title">イベント一覧</string>
+    <string name="hooks_event_pick">イベントを選択</string>
+    <string name="hooks_event_blockable">ブロック可</string>
+    <string name="hooks_event_wildcard_hint">ワイルドカード対応（例: agent.*）</string>
+
+    <!-- ==================== Agent Hook テンプレート ==================== -->
+    <string name="hook_template_agent_audit_title">Agent ツール監査</string>
+    <string name="hook_template_agent_audit_desc">Agent のツール呼び出しを毎回ログに記録します。</string>
+    <string name="hook_template_agent_audit_name">Agent ツール監査</string>
+    <string name="hook_template_agent_audit_log">Agent がツールを実行しました</string>
+    <string name="hook_template_agent_guard_title">削除操作ガード</string>
+    <string name="hook_template_agent_guard_desc">名前に delete を含むツールをブロックし、Agent による削除を防ぎます。</string>
+    <string name="hook_template_agent_guard_name">削除操作ガード</string>
+    <string name="hook_template_agent_guard_reason">削除系ツールは Hook によりブロックされました。手動で実行してください</string>
+    <string name="hook_template_agent_guard_log">削除系ツールの呼び出しをブロックしました</string>
+    <string name="hook_template_agent_recap_title">Agent 完了通知</string>
+    <string name="hook_template_agent_recap_desc">Agent セッション終了時に通知を表示します。</string>
+    <string name="hook_template_agent_recap_name">Agent 完了通知</string>
+    <string name="hook_template_agent_recap_message">Agent は今回のタスクを終了しました</string>
+
+    <!-- ==================== Hook 条件 / アクションのフォーム編集 ==================== -->
+    <string name="hook_form_mode_form">フォーム</string>
+    <string name="hook_form_mode_json">JSON</string>
+    <string name="hook_form_section_conditions">条件</string>
+    <string name="hook_form_section_actions">アクション</string>
+    <string name="hook_form_add_condition">条件を追加</string>
+    <string name="hook_form_add_action">アクションを追加</string>
+    <string name="hook_form_conditions_empty">条件なし（毎回実行）</string>
+    <string name="hook_form_actions_empty">アクションがありません。1 つ以上追加してください</string>
+
+    <string name="hook_condition_label">%1$s %2$s</string>
+    <string name="hook_param_delta_of">%1$sの変化</string>
+    <string name="hook_value_number">数値</string>
+    <string name="hook_value_text">テキスト</string>
+    <string name="hook_value_list">カンマ区切り（例: shell_job,exec_command）</string>
+    <string name="hook_value_true">はい</string>
+    <string name="hook_value_false">いいえ</string>
+
+    <string name="hook_op_gte">≥</string>
+    <string name="hook_op_lte">≤</string>
+    <string name="hook_op_equals">等しい</string>
+    <string name="hook_op_contains">含む</string>
+    <string name="hook_op_in">いずれか</string>
+
+    <string name="hook_field_affection">好感度</string>
+    <string name="hook_field_trust">信頼</string>
+    <string name="hook_field_familiarity">親密度</string>
+    <string name="hook_field_dependency">依存</string>
+    <string name="hook_field_security">安心感</string>
+    <string name="hook_field_jealousy">嫉妬</string>
+    <string name="hook_field_energy">エネルギー</string>
+    <string name="hook_field_mood">気分</string>
+    <string name="hook_field_model">モデル名</string>
+    <string name="hook_field_user_message">ユーザー入力</string>
+    <string name="hook_field_assistant_message">アシスタントの返信</string>
+    <string name="hook_field_tool_name">ツール名</string>
+    <string name="hook_field_tool_success">ツール成功</string>
+    <string name="hook_field_subagent">サブエージェント由来</string>
+    <string name="hook_field_iteration">イテレーション</string>
+
+    <string name="hook_action_log">ログ</string>
+    <string name="hook_action_notify">通知</string>
+    <string name="hook_action_memory_write">記憶を書き込む</string>
+    <string name="hook_action_prompt_inject">プロンプト挿入</string>
+    <string name="hook_action_state_delta">キャラクター状態を変更</string>
+    <string name="hook_action_relationship_delta">関係を変更</string>
+    <string name="hook_action_message">メッセージを追加</string>
+    <string name="hook_action_world_book_add">世界観エントリを追加</string>
+    <string name="hook_action_tool_block">ツール呼び出しをブロック</string>
+    <string name="hook_action_custom">カスタム（%1$s）</string>
+    <string name="hook_action_custom_hint">アクション種別 %1$s はフォーム編集に未対応です。JSON モードに切り替えてください</string>
+    <string name="hook_action_tool_block_hint">tool.before_call イベントのみ有効</string>
+
+    <string name="hook_param_level">レベル</string>
+    <string name="hook_param_message">メッセージ</string>
+    <string name="hook_param_title">タイトル</string>
+    <string name="hook_param_title_optional">タイトル（任意）</string>
+    <string name="hook_param_content">内容</string>
+    <string name="hook_param_category">記憶カテゴリ</string>
+    <string name="hook_param_importance">重要度 0-1</string>
+    <string name="hook_param_priority">優先度</string>
+    <string name="hook_param_scope">スコープ</string>
+    <string name="hook_param_mood">気分</string>
+    <string name="hook_param_mood_intensity">気分強度の変化</string>
+    <string name="hook_param_entry_name">エントリ名</string>
+    <string name="hook_param_keywords">キーワード（カンマ区切り）</string>
+    <string name="hook_param_always_on">常時有効エントリ</string>
+    <string name="hook_param_reason">ブロック理由</string>
 </resources>

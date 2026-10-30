@@ -1785,9 +1785,33 @@ internal class LocalPipelineCallbacks(
 
     override fun onResponseComplete(ctx: PipelineContext, result: PipelineResult) {
         com.nekobot.app.data.local.LocalLogger.d(TAG, R.string.log_pcb_response_complete, result.finalContent.length, result.error)
+        // message.after_receive：所有模式（含陪伴模式）都会在最终回复产生后触发
+        triggerMessageAfterReceiveHook(ctx, result)
         if (session.companionMode) return
         // 触发 character.after_turn.finished hook（此时 afterTurn 已完成，状态/关系已是最新）
         triggerAfterTurnHook(ctx)
+    }
+
+    /** 触发 message.after_receive 事件（助手最终回复产生后）。 */
+    private fun triggerMessageAfterReceiveHook(ctx: PipelineContext, result: PipelineResult) {
+        val executor = hookExecutor ?: return
+        val turn = ctx.characterTurn
+        kotlinx.coroutines.GlobalScope.launch {
+            executor.triggerEvent(
+                eventType = "message.after_receive",
+                conversationId = session.id,
+                characterId = characterIdentity?.characterId,
+                ctx = HookContext(
+                    state = turn?.state,
+                    relationship = turn?.relationship,
+                    targetId = characterIdentity?.targetId ?: "local-user",
+                    conditionLogic = "and",
+                    userMessage = ctx.chatRequest.content,
+                    assistantContent = result.finalContent,
+                    modelName = (ctx.metadata["model_name"] as? String) ?: activeModel.name
+                )
+            )
+        }
     }
 
     // ============== Hook 触发辅助 ==============
@@ -1849,6 +1873,41 @@ internal class LocalPipelineCallbacks(
                 )
             )
         }
+    }
+
+    /**
+     * 触发 agent.* 事件（Agent 模式专属 Hook）。
+     *
+     * 与角色事件不同，这里的调用方需要拿到执行副作用（blockReason），
+     * 因此直接在调用协程内执行，不做 GlobalScope 异步派发。
+     */
+    override suspend fun triggerAgentHook(
+        ctx: PipelineContext,
+        eventType: String,
+        payload: AgentHookPayload
+    ): String? {
+        val executor = hookExecutor ?: return null
+        val turn = ctx.characterTurn
+        val result = executor.triggerEvent(
+            eventType = eventType,
+            conversationId = session.id,
+            characterId = characterIdentity?.characterId,
+            ctx = HookContext(
+                state = turn?.state,
+                relationship = turn?.relationship,
+                targetId = characterIdentity?.targetId ?: "local-user",
+                conditionLogic = "and",
+                userMessage = ctx.chatRequest.content,
+                assistantContent = payload.content ?: payload.error.orEmpty(),
+                modelName = payload.modelName,
+                toolName = payload.toolName,
+                toolArgs = payload.toolArgs,
+                toolResult = payload.toolResult,
+                iteration = payload.iteration,
+                subagent = payload.subagent
+            )
+        )
+        return result.blockReason
     }
 
     // ---- 角色运行时 ----
@@ -3033,7 +3092,45 @@ internal class LocalPipelineCallbacks(
                 }
                 executeTool(name, callArgs, context)
             }
-        return SubagentDelegateScope(buildModelCall = { modelCall }, toolExecutor = toolExecutor)
+        // 子代理工具调用同样走 agent.tool.* Hook（payload.subagent = true 便于条件区分）
+        val executor = hookExecutor
+            ?: return SubagentDelegateScope(buildModelCall = { modelCall }, toolExecutor = toolExecutor)
+        val agentToolBeforeHook: suspend (Map<String, Any>, Int) -> String? = { toolCall, iteration ->
+            executor.triggerEvent(
+                eventType = "agent.tool.before_call",
+                conversationId = session.id,
+                characterId = characterIdentity?.characterId,
+                ctx = HookContext(
+                    targetId = characterIdentity?.targetId ?: "local-user",
+                    toolName = (toolCall["name"] as? String).orEmpty(),
+                    toolArgs = normalizeAgentToolArguments(toolCall["arguments"]),
+                    iteration = iteration,
+                    subagent = true
+                )
+            ).blockReason
+        }
+        val agentToolAfterHook: suspend (Map<String, Any>, Map<String, Any>, Int) -> Unit = { toolCall, result, iteration ->
+            executor.triggerEvent(
+                eventType = "agent.tool.after_call",
+                conversationId = session.id,
+                characterId = characterIdentity?.characterId,
+                ctx = HookContext(
+                    targetId = characterIdentity?.targetId ?: "local-user",
+                    toolName = (toolCall["name"] as? String).orEmpty(),
+                    toolArgs = normalizeAgentToolArguments(toolCall["arguments"]),
+                    toolResult = result,
+                    iteration = iteration,
+                    subagent = true
+                )
+            )
+            Unit
+        }
+        return SubagentDelegateScope(
+            buildModelCall = { modelCall },
+            toolExecutor = toolExecutor,
+            agentToolBeforeCall = agentToolBeforeHook,
+            agentToolAfterCall = agentToolAfterHook
+        )
     }
 
     /**

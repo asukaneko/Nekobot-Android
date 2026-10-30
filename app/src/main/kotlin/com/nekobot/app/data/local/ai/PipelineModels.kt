@@ -238,6 +238,22 @@ open class PipelineCallbacks {
     open fun markAgentToolRunning(ctx: PipelineContext, toolName: String) {}
 
     /**
+     * 触发 agent.* Hook 事件（Agent 模式专属）。
+     *
+     * Agent 工具循环的每个关键节点都会调用它：会话开始/结束、每轮决策、工具调用前后、
+     * 上下文裁剪与出错。默认实现什么都不做，只有本地频道（带 HookExecutor）会真正执行。
+     *
+     * @param eventType 事件 id，如 `agent.tool.before_call`
+     * @param payload 事件载荷（工具名/参数/结果、迭代轮次、模型名、正文等）
+     * @return 需要在执行前拦截本次工具调用时返回原因；null 表示放行
+     */
+    open suspend fun triggerAgentHook(
+        ctx: PipelineContext,
+        eventType: String,
+        payload: AgentHookPayload = AgentHookPayload()
+    ): String? = null
+
+    /**
      * 逐条持久化 Agent 工具循环产生的 assistant/tool 消息。
      *
      * 与 [saveAgentCheckpoint] 的区别：检查点只记录进度（不含正文），
@@ -375,3 +391,27 @@ open class PipelineCallbacks {
         toolContext: Map<String, Any>
     ): Map<String, Any> = emptyMap()
 }
+
+/**
+ * Agent Hook 事件载荷（agent.* 事件专用）。
+ *
+ * 只携带事件本身需要的数据，具体上下文（会话/角色/状态）由频道从 [PipelineContext] 补齐。
+ */
+data class AgentHookPayload(
+    /** 工具名（agent.tool.* / agent.error 使用） */
+    val toolName: String? = null,
+    /** 工具参数（已脱敏） */
+    val toolArgs: Map<String, Any> = emptyMap(),
+    /** 工具结果 */
+    val toolResult: Map<String, Any>? = null,
+    /** 工具循环轮次，从 0 开始 */
+    val iteration: Int = 0,
+    /** 实际使用的模型名 */
+    val modelName: String? = null,
+    /** 会话级正文（agent.session.end 为最终回复，agent.error 为错误摘要） */
+    val content: String? = null,
+    /** 错误信息（agent.error 使用） */
+    val error: String? = null,
+    /** 是否来自子代理的工具循环 */
+    val subagent: Boolean = false
+)

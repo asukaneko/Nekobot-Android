@@ -7454,9 +7454,21 @@ class LocalRepository(
             prepareUserMessageBatch(
                 messages = batchedUserMessages + userMessage,
                 beforeSend = { content ->
-                    runCatching {
+                    val hooked = runCatching {
                         ServiceContainer.pluginManager.runMessageBeforeSendHooks(sessionId, content)
                     }.getOrDefault(content)
+                    // 本地 Hook：message.before_send（用户消息写入会话前触发）
+                    if (content.isNotBlank()) {
+                        runCatching {
+                            hookExecutor.triggerEvent(
+                                eventType = "message.before_send",
+                                conversationId = sessionId,
+                                characterId = queueSession?.characterId,
+                                ctx = com.nekobot.app.data.local.ai.HookContext(userMessage = content)
+                            )
+                        }
+                    }
+                    hooked
                 },
                 persist = { content -> addMessage(sessionId, "user", content) }
             )

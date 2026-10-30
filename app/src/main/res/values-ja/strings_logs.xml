@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!-- 本地日志文案（LocalLogger 资源化消息）。由 logtools/gen_logs.py 生成，请勿手工编辑。 -->
 <resources>
     <string name="log_a11y_connected">ユーザー補助サービスが接続されました</string>
@@ -84,6 +84,8 @@
     <string name="log_hook_state_updated">[Hook:%1$s] 状態更新: mood=%2$s energy=%3$s</string>
     <string name="log_hook_test_triggered">Hook テストトリガー: %1$s -&gt; %2$s</string>
     <string name="log_hook_triggered">Hook トリガー: %1$s [%2$s] -&gt; %3$s</string>
+    <string name="log_hook_notify">[Hook:%1$s] 通知: %2$s</string>
+    <string name="log_hook_tool_blocked">[Hook:%1$s] ツール %2$s をブロック: %3$s</string>
     <string name="log_hook_unknown_action">不明なaction type: %1$s（hook=%2$s）</string>
     <string name="log_hook_workflow_unsupported">ローカルモードはworkflow action非対応（hook=%1$s）</string>
     <string name="log_hook_worldbook_added">[Hook:%1$s] ワールドブックエントリを追加: %2$s</string>

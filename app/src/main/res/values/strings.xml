@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nekobot</string>
     <string name="agent_accessibility_service_label">Nekobot Agent 系统操作</string>
@@ -15,6 +15,8 @@
     <string name="common_retry">重试</string>
     <string name="common_edit">编辑</string>
     <string name="common_add">添加</string>
+    <string name="common_move_up">上移</string>
+    <string name="common_move_down">下移</string>
     <string name="common_remove">移除</string>
     <string name="common_search">搜索</string>
     <string name="common_loading">加载中…</string>

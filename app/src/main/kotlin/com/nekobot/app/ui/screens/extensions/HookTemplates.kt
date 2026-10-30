@@ -111,6 +111,62 @@ val BuiltInHookTemplates: List<HookTemplate> = listOf(
                 )
             )
         }
+    ),
+    // ---- Agent 模式专属模板 ----
+    HookTemplate(
+        key = "agent_tool_audit",
+        titleRes = R.string.hook_template_agent_audit_title,
+        descRes = R.string.hook_template_agent_audit_desc,
+        buildRequest = {
+            HookRequest(
+                name = ServiceContainer.getString(R.string.hook_template_agent_audit_name),
+                event = "agent.tool.after_call",
+                scope = "global",
+                priority = 90,
+                triggerMode = "always",
+                conditions = JsonParser.parseString("""{}"""),
+                actions = listOf(
+                    logAction(R.string.hook_template_agent_audit_log)
+                )
+            )
+        }
+    ),
+    HookTemplate(
+        key = "agent_delete_guard",
+        titleRes = R.string.hook_template_agent_guard_title,
+        descRes = R.string.hook_template_agent_guard_desc,
+        buildRequest = {
+            HookRequest(
+                name = ServiceContainer.getString(R.string.hook_template_agent_guard_name),
+                event = "agent.tool.before_call",
+                scope = "global",
+                priority = 5,
+                triggerMode = "always",
+                conditions = JsonParser.parseString("""{"tool_name_contains": "delete"}"""),
+                actions = listOf(
+                    toolBlockAction(R.string.hook_template_agent_guard_reason),
+                    logAction(R.string.hook_template_agent_guard_log)
+                )
+            )
+        }
+    ),
+    HookTemplate(
+        key = "agent_session_recap",
+        titleRes = R.string.hook_template_agent_recap_title,
+        descRes = R.string.hook_template_agent_recap_desc,
+        buildRequest = {
+            HookRequest(
+                name = ServiceContainer.getString(R.string.hook_template_agent_recap_name),
+                event = "agent.session.end",
+                scope = "global",
+                priority = 95,
+                triggerMode = "always",
+                conditions = JsonParser.parseString("""{}"""),
+                actions = listOf(
+                    notifyAction(R.string.hook_template_agent_recap_message)
+                )
+            )
+        }
     )
 )
 
@@ -127,4 +183,16 @@ private fun relationshipMemoryAction() = JsonObject().apply {
     addProperty("summary", ServiceContainer.getString(R.string.hook_template_relationship_memory_summary))
     addProperty("content", ServiceContainer.getString(R.string.hook_template_relationship_memory_content))
     addProperty("importance", 0.7)
+}
+
+/** notify：推送一条聊天内联提示（Agent 专属模板使用）。 */
+private fun notifyAction(@StringRes messageRes: Int) = JsonObject().apply {
+    addProperty("type", "notify")
+    addProperty("message", ServiceContainer.getString(messageRes))
+}
+
+/** tool_block：拦截 agent.tool.before_call 的一次工具调用。 */
+private fun toolBlockAction(@StringRes reasonRes: Int) = JsonObject().apply {
+    addProperty("type", "tool_block")
+    addProperty("reason", ServiceContainer.getString(reasonRes))
 }

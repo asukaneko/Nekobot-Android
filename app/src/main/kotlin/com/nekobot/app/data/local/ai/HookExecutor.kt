@@ -26,9 +26,16 @@ import com.nekobot.app.R
  * 本地模式 Hook 执行引擎。
  *
  * 对应原仓库 nbot/hooks/manager.py + nbot/hooks/actions.py。
- * 在 AI 管线的关键节点（before_turn / after_turn / model.after_call）触发 hook，
- * 评估条件并执行 8 种内置 action：
+ * 在 AI 管线的关键节点触发 hook（事件清单见 [HookEventCatalog]）：
+ *   - 消息：message.before_send / message.after_receive
+ *   - 角色：character.before_turn.finished / character.after_turn.finished
+ *   - 模型：model.after_call
+ *   - Agent：agent.session.start / agent.session.end / agent.iteration.start /
+ *     agent.tool.before_call / agent.tool.after_call / agent.context.trimmed / agent.error
+ *
+ * 评估条件并执行 10 种内置 action：
  *   - log：写日志 + 触发 UI 成就式弹窗
+ *   - notify：推送一条聊天内联提示（可单独控制提示正文与级别）
  *   - memory_write：写入角色记忆（MemoryDao）
  *   - prompt_inject：向 PromptStack 注入额外提示词
  *   - state_delta：修改角色状态（mood/energy/mood_intensity）
@@ -36,6 +43,7 @@ import com.nekobot.app.R
  *   - message：追加 hook_messages 到上下文（不直接发送）
  *   - workflow：本地不支持，记日志
  *   - world_book_add：添加世界书条目
+ *   - tool_block：拦截本次 Agent 工具调用（仅 agent.tool.before_call 生效）
  *
  * Hook 执行成功后通过 [events] 推送 [RealtimeEvent.HookNotificationEvent]，
  * 由 ChatViewModel 收集并显示成就式弹窗（与远程模式 `hook_notification` 事件一致）。
@@ -119,19 +127,13 @@ class HookExecutor(
         conversationId: String,
         characterId: String? = null,
         ctx: HookContext = HookContext()
-    ) = withContext(Dispatchers.IO) {
+    ): HookTriggerResult = withContext(Dispatchers.IO) {
         val hooks = try {
             hookDao.listEnabled()
         } catch (e: Exception) {
             LocalLogger.w(TAG, R.string.log_hook_load_hooks_failed, e.message)
-            return@withContext
+            return@withContext HookTriggerResult()
         }
-
-        // 按事件匹配（支持通配符，如 character.* 匹配 character.before_turn.finished）
-        val matched = hooks.map { it.toHook() }.filter { hook ->
-            hook.enabled && matchesEvent(hook.event, eventType)
-        }
-        if (matched.isEmpty()) return@withContext
 
         // 附加会话/角色上下文
         val effCtx = ctx.copy(
@@ -139,6 +141,15 @@ class HookExecutor(
             characterId = characterId ?: ctx.characterId,
             eventType = eventType
         )
+
+        // 按事件匹配（支持通配符，如 character.* 匹配 character.before_turn.finished）
+        // 并应用作用域过滤：character/conversation/user 作用域的 hook 只在上下文匹配时触发。
+        val matched = hooks.map { it.toHook() }.filter { hook ->
+            hook.enabled && matchesEvent(hook.event, eventType) && matchesScope(hook, effCtx)
+        }
+        if (matched.isEmpty()) return@withContext HookTriggerResult()
+
+        var executed = 0
 
         for (hook in matched.sortedBy { it.priority }) {
             // once_per_conversation 模式：检查是否已触发
@@ -152,7 +163,7 @@ class HookExecutor(
 
             // 评估条件
             val conditionsMet = try {
-                evaluateConditions(hook.conditions, effCtx)
+                evaluateConditions(hook.conditions, effCtx, hook.conditionLogic)
             } catch (e: Exception) {
                 LocalLogger.w(TAG, R.string.log_hook_condition_error, hook.name, e.message)
                 recordHookLog(
@@ -202,6 +213,7 @@ class HookExecutor(
 
             // 仅在 success/partial 时触发通知（与后端 _notify_frontend 行为一致）
             if (status == "success" || status == "partial") {
+                executed += 1
                 if (hook.triggerMode == "once_per_conversation") {
                     triggeredKeys["${hook.id}|$conversationId"] = true
                     persistTriggeredKeys()
@@ -219,6 +231,13 @@ class HookExecutor(
                 LocalLogger.i(TAG, R.string.log_hook_triggered, hook.name, eventType, displayMessage)
             }
         }
+
+        HookTriggerResult(
+            matchedHooks = matched.size,
+            executedHooks = executed,
+            blockReason = effCtx.blockReason,
+            notices = effCtx.notices.toList()
+        )
     }
 
     /** 重置会话的 once_per_conversation 记录（用于会话重置场景） */
@@ -345,21 +364,46 @@ class HookExecutor(
         return false
     }
 
+    /**
+     * 作用域过滤。
+     *
+     * - global：总是匹配
+     * - character：hook.characterId 为空或等于当前角色
+     * - conversation：hook.conversationId 为空或等于当前会话
+     * - user：hook.userId 为空或等于当前用户
+     */
+    private fun matchesScope(hook: Hook, ctx: HookContext): Boolean = when (hook.scope.lowercase()) {
+        "character" -> hook.characterId.isNullOrBlank() || hook.characterId == ctx.characterId
+        "conversation" -> hook.conversationId.isNullOrBlank() || hook.conversationId == ctx.conversationId
+        "user" -> hook.userId.isNullOrBlank() || hook.userId == ctx.userId
+        else -> true
+    }
+
     // ============== 条件评估 ==============
 
     /**
      * 评估 hook 条件。
      *
-     * 支持的字段（来自 HookTemplates.kt）：
+     * 支持的字段（来自 HookTemplates.kt 与 HookEventCatalog）：
      *   - affection_gte / affection_lte：好感度阈值
      *   - trust_gte / trust_lte：信任阈值
      *   - energy_lte / energy_gte：精力阈值
      *   - familiarity_gte / dependency_gte / security_gte / jealousy_gte
      *   - mood_equals：心情字符串相等
+     *   - tool_name_equals / tool_name_in / tool_name_contains：Agent 工具名匹配
+     *   - iteration_gte / iteration_lte：Agent 工具循环轮次
+     *   - tool_success：工具结果是否成功（true/false）
+     *   - model_equals：模型名相等
+     *   - message_contains / response_contains：用户输入 / 助手回复包含指定子串
+     *   - subagent：是否来自子代理（true/false）
      *
      * condition_logic: and（默认，全部满足）/ or（任一满足）
      */
-    private suspend fun evaluateConditions(conditions: JsonElement?, ctx: HookContext): Boolean {
+    private suspend fun evaluateConditions(
+        conditions: JsonElement?,
+        ctx: HookContext,
+        conditionLogic: String? = null
+    ): Boolean {
         if (conditions == null || conditions.isJsonNull) return true
         val obj = conditions.asJsonObject ?: return true
         if (obj.size() == 0) return true
@@ -381,6 +425,7 @@ class HookExecutor(
                         "security" -> (rel?.security ?: 0) >= threshold
                         "jealousy" -> (rel?.jealousy ?: 0) >= threshold
                         "energy" -> (state?.energy ?: 0) >= threshold
+                        "iteration" -> ctx.iteration >= threshold
                         else -> true
                     }
                 }
@@ -395,18 +440,47 @@ class HookExecutor(
                         "security" -> (rel?.security ?: 0) <= threshold
                         "jealousy" -> (rel?.jealousy ?: 0) <= threshold
                         "energy" -> (state?.energy ?: 0) <= threshold
+                        "iteration" -> ctx.iteration <= threshold
                         else -> true
                     }
                 }
                 key == "mood_equals" -> state?.mood == value.asString
+                key == "tool_name_equals" -> ctx.toolName == value.asString
+                key == "tool_name_in" -> ctx.toolName != null && value.asStringList().contains(ctx.toolName)
+                key == "tool_name_contains" ->
+                    ctx.toolName?.contains(value.asString, ignoreCase = true) == true
+                key == "tool_success" -> toolSucceeded(ctx.toolResult) == value.asBoolean
+                key == "model_equals" -> ctx.modelName == value.asString
+                key == "message_contains" -> ctx.messageText.contains(value.asString, ignoreCase = true)
+                key == "response_contains" -> ctx.assistantContent.contains(value.asString, ignoreCase = true)
+                key == "subagent" -> ctx.subagent == value.asBoolean
                 else -> true  // 未知条件字段忽略
             }
             results.add(passed)
         }
 
+        val logic = conditionLogic?.takeIf { it.isNotBlank() } ?: ctx.conditionLogic
         return if (results.isEmpty()) true
-        else if (ctx.conditionLogic == "or") results.any { it }
+        else if (logic == "or") results.any { it }
         else results.all { it }
+    }
+
+    /** 工具结果是否视为成功（缺省视为成功）。 */
+    private fun toolSucceeded(result: Map<String, Any>?): Boolean {
+        val value = result?.get("success") ?: return true
+        return when (value) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            is String -> value.equals("true", ignoreCase = true)
+            else -> value.toString().toBoolean()
+        }
+    }
+
+    /** 条件值转为字符串列表：既接受 JSON 数组，也接受逗号分隔的单个字符串。 */
+    private fun JsonElement.asStringList(): List<String> {
+        if (isJsonNull) return emptyList()
+        if (isJsonArray) return asJsonArray.mapNotNull { it.takeUnless(JsonElement::isJsonNull)?.asString }
+        return asString.split(',').map { it.trim() }.filter(String::isNotBlank)
     }
 
     // ============== Action 执行 ==============
@@ -425,6 +499,7 @@ class HookExecutor(
 
         return when (type) {
             "log" -> actionLog(action, hook, ctx)
+            "notify" -> actionNotify(action, hook, ctx)
             "memory_write" -> actionMemoryWrite(action, hook, ctx)
             "prompt_inject" -> actionPromptInject(action, hook, ctx)
             "state_delta" -> actionStateDelta(action, hook, ctx)
@@ -435,11 +510,46 @@ class HookExecutor(
                 ActionResult(true, type, "本地模式跳过 workflow")
             }
             "world_book_add" -> actionWorldBookAdd(action, hook, ctx)
+            "tool_block" -> actionToolBlock(action, hook, ctx)
             else -> {
                 LocalLogger.w(TAG, R.string.log_hook_unknown_action, type, hook.name)
                 ActionResult(false, type, "未知 action type")
             }
         }
+    }
+
+    /**
+     * notify：推送一条聊天内联提示。
+     *
+     * 与 log 的区别：notify 会显式控制提示正文与级别（title/level），
+     * 适合"Agent 任务完成"这类需要用户看到的提示；log 只写调试日志。
+     */
+    private fun actionNotify(action: JsonObject, hook: Hook, ctx: HookContext): ActionResult {
+        val message = action.get("message")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+        if (message.isBlank()) return ActionResult(false, "notify", "提示内容为空")
+        val title = action.get("title")?.takeUnless { it.isJsonNull }?.asString
+        val text = if (title.isNullOrBlank() || title == hook.name) message else "$title：$message"
+        ctx.notices.add(text)
+        LocalLogger.i(TAG, R.string.log_hook_notify, hook.name, text.take(60))
+        return ActionResult(true, "notify", text)
+    }
+
+    /**
+     * tool_block：拦截本次 Agent 工具调用。
+     *
+     * 只对 agent.tool.before_call 生效（含 `agent.*` 通配）。拦截原因会写回
+     * [HookContext.blockReason]，由工具循环转成一次失败的工具结果返回给模型。
+     */
+    private fun actionToolBlock(action: JsonObject, hook: Hook, ctx: HookContext): ActionResult {
+        if (!HookEventCatalog.isBlockableEvent(ctx.eventType)) {
+            return ActionResult(false, "tool_block", "tool_block 仅支持 agent.tool.before_call")
+        }
+        val reason = action.get("reason")?.takeUnless { it.isJsonNull }?.asString
+            ?: action.get("message")?.takeUnless { it.isJsonNull }?.asString
+            ?: "已被 Hook「${hook.name}」拦截"
+        ctx.blockReason = reason
+        LocalLogger.i(TAG, R.string.log_hook_tool_blocked, hook.name, ctx.toolName ?: "?", reason)
+        return ActionResult(true, "tool_block", reason)
     }
 
     /** log：写日志（不直接弹窗，弹窗由整体 hook 触发） */
@@ -734,12 +844,16 @@ class HookExecutor(
 
     // ============== 辅助 ==============
 
-    /** 提取显示消息：优先 log.message，其次 message.content，最后回退 hookName */
+    /** 提取显示消息：优先 notify.message，其次 log.message，再 message.content，最后回退 hookName */
     private fun extractDisplayMessage(hook: Hook): String {
         for (action in hook.actions) {
             if (!action.isJsonObject) continue
             val obj = action.asJsonObject
             val type = obj.get("type")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+            if (type == "notify") {
+                val msg = obj.get("message")?.takeUnless { it.isJsonNull }?.asString
+                if (!msg.isNullOrBlank()) return msg
+            }
             if (type == "log") {
                 val msg = obj.get("message")?.takeUnless { it.isJsonNull }?.asString
                 if (!msg.isNullOrBlank()) return msg
@@ -780,17 +894,57 @@ class HookExecutor(
 
 /**
  * Hook 执行上下文。传递 state/relationship/promptStack 等，供 action 读写。
+ *
+ * Agent 事件额外携带工具名/参数/结果与迭代轮次，条件可据此过滤；
+ * [blockReason] 是可变回传字段，由 tool_block 动作写入。
  */
 data class HookContext(
     val eventType: String = "",
     val conversationId: String = "",
     val characterId: String? = null,
     val targetId: String = "local-user",
+    val userId: String = "local-user",
     val state: com.nekobot.app.data.local.ai.CharacterState? = null,
     val relationship: com.nekobot.app.data.local.ai.RelationshipState? = null,
     val promptStack: PromptStack? = null,
     val conditionLogic: String = "and",
-    val hookMessages: MutableList<String> = mutableListOf()
+    val hookMessages: MutableList<String> = mutableListOf(),
+    // ---- 事件载荷 ----
+    /** 本轮用户输入（message.before_send 等事件使用） */
+    val userMessage: String = "",
+    /** 本轮助手最终回复（message.after_receive / agent.session.end 使用） */
+    val assistantContent: String = "",
+    /** 实际使用的模型名（model.after_call / agent.* 使用） */
+    val modelName: String? = null,
+    /** Agent 工具名（agent.tool.* 使用） */
+    val toolName: String? = null,
+    /** Agent 工具参数（已脱敏） */
+    val toolArgs: Map<String, Any> = emptyMap(),
+    /** Agent 工具结果 */
+    val toolResult: Map<String, Any>? = null,
+    /** Agent 工具循环轮次，从 0 开始 */
+    val iteration: Int = 0,
+    /** 是否来自子代理的工具循环 */
+    val subagent: Boolean = false,
+    /** notify 动作产生的提示文本 */
+    val notices: MutableList<String> = mutableListOf(),
+    /** tool_block 动作写入的拦截原因；非空表示拦截本次工具调用 */
+    var blockReason: String? = null
+) {
+    /** 条件匹配用的"当前消息正文"（优先助手回复，其次用户输入）。 */
+    val messageText: String get() = assistantContent.ifBlank { userMessage }
+}
+
+/** 一次事件触发的汇总结果。 */
+data class HookTriggerResult(
+    /** 命中的 hook 数 */
+    val matchedHooks: Int = 0,
+    /** 执行成功/部分成功的 hook 数 */
+    val executedHooks: Int = 0,
+    /** tool_block 写入的拦截原因（仅 agent.tool.before_call） */
+    val blockReason: String? = null,
+    /** notify 动作产生的提示文本 */
+    val notices: List<String> = emptyList()
 )
 
 /** Action 执行结果 */

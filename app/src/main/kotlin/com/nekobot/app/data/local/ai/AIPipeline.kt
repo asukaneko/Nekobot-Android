@@ -878,6 +878,40 @@ class AIPipeline {
             onContextTrimmed = { messages ->
                 callbacks.synchronizeAgentToolContext(ctx, messages)
                 ctx.toolTrace = extractCurrentTurnToolCallHistory(messages, preparedMessages)
+                callbacks.triggerAgentHook(ctx, "agent.context.trimmed")
+            },
+            // ---- Agent 专属 Hook：工具循环的节点事件 ----
+            onAgentIterationStart = { iteration, _ ->
+                callbacks.triggerAgentHook(
+                    ctx,
+                    "agent.iteration.start",
+                    AgentHookPayload(iteration = iteration)
+                )
+            },
+            onAgentToolBeforeCall = { toolCall, iteration ->
+                val name = (toolCall["name"] as? String).orEmpty()
+                callbacks.triggerAgentHook(
+                    ctx,
+                    "agent.tool.before_call",
+                    AgentHookPayload(
+                        toolName = name,
+                        toolArgs = normalizeAgentToolArguments(toolCall["arguments"]),
+                        iteration = iteration
+                    )
+                )
+            },
+            onAgentToolAfterCall = { toolCall, result, iteration ->
+                val name = (toolCall["name"] as? String).orEmpty()
+                callbacks.triggerAgentHook(
+                    ctx,
+                    "agent.tool.after_call",
+                    AgentHookPayload(
+                        toolName = name,
+                        toolArgs = normalizeAgentToolArguments(toolCall["arguments"]),
+                        toolResult = result,
+                        iteration = iteration
+                    )
+                )
             }
         )
 
@@ -900,9 +934,23 @@ class AIPipeline {
             }
         )
 
+        // Agent Hook：工具循环开始（agent.session.start）
+        callbacks.triggerAgentHook(ctx, "agent.session.start")
+
         try {
             val executionResult = runToolLoopSession(session)
             val loopResult = executionResult.loopResult
+
+            // Agent Hook：工具循环结束（agent.session.end）
+            callbacks.triggerAgentHook(
+                ctx,
+                "agent.session.end",
+                AgentHookPayload(
+                    iteration = loopResult.iterations,
+                    modelName = loopResult.modelName,
+                    content = loopResult.finalContent
+                )
+            )
             // 工具循环内所有模型调用的累计耗时写入 metadata，供消息持久化与 token 用量记录共用
             // （无工具路径由 runStreaming 写同一个 key）。两者都排除工具执行时间，语义一致。
             loopResult.modelCallDurationMs?.let { ctx.metadata["duration_ms"] = it }
@@ -934,6 +982,12 @@ class AIPipeline {
         } catch (e: ToolLoopModelError) {
             val errorStr = e.message ?: "工具循环执行失败"
             com.nekobot.app.data.local.LocalLogger.e(TAG, R.string.log_pipe_tool_loop_failed, errorStr, throwable = e)
+            // Agent Hook：循环内模型调用失败（agent.error）
+            callbacks.triggerAgentHook(
+                ctx,
+                "agent.error",
+                AgentHookPayload(iteration = e.iteration, error = errorStr)
+            )
 
             // 首次模型调用失败（iteration==0）时回退到无工具对话
             if (e.iteration <= 0 && "400" in errorStr) {
@@ -947,6 +1001,8 @@ class AIPipeline {
         } catch (e: Exception) {
             val errorStr = e.message ?: "工具循环执行失败"
             com.nekobot.app.data.local.LocalLogger.e(TAG, R.string.log_pipe_tool_loop_failed, errorStr, throwable = e)
+            // Agent Hook：循环异常（agent.error）
+            callbacks.triggerAgentHook(ctx, "agent.error", AgentHookPayload(error = errorStr))
             ctx.error = errorStr
             ctx.finalContent = "工具循环执行失败: $errorStr"
         }

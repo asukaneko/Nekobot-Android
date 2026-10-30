@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nekobot</string>
 
@@ -12,6 +12,8 @@
     <string name="common_retry">재시도</string>
     <string name="common_edit">편집</string>
     <string name="common_add">추가</string>
+    <string name="common_move_up">위로 이동</string>
+    <string name="common_move_down">아래로 이동</string>
     <string name="common_remove">제거</string>
     <string name="common_search">검색</string>
     <string name="common_loading">불러오는 중…</string>
