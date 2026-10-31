@@ -6,9 +6,10 @@ package com.nekobot.app.data.local.ai
  */
 internal fun withCharacterThinkingRequest(
     messages: List<Map<String, Any>>,
-    prompt: String?
+    prompt: String?,
+    companionMode: Boolean = false
 ): List<Map<String, Any>> {
-    val section = prompt?.takeIf(String::isNotBlank)?.let { "## $CHARACTER_THINKING_STYLE_KEY\n$it" }
+    val section = prompt?.takeIf(String::isNotBlank)?.let { if (companionMode) it else "## $CHARACTER_THINKING_STYLE_KEY\n$it" }
     var inserted = section == null
     var changed = false
     val result = messages.map { message ->

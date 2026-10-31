@@ -66,8 +66,6 @@ internal fun companionShowsAvatar(message: Message, previous: Message?, startsTi
 internal fun companionBubbleMaxWidthDp(screenWidthDp: Int, isUser: Boolean): Int =
     (screenWidthDp - if (isUser) 64 else 96).coerceIn(1, 360)
 
-/** 上传立绘优先；旧图标标记不是照片，继续找头像，最后由 UI 回退姓名首字。 */
+/** 与会话列表使用同一头像优先规则；旧图标标记不作为照片。 */
 internal fun companionPhotoPath(portrait: String?, avatar: String?): String? =
-    sequenceOf(portrait, avatar).mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-        .firstOrNull { !it.startsWith("fas ") && !it.startsWith("fa-") &&
-            !it.matches(Regex("fas?fa-[a-z0-9-]+")) }
+    com.nekobot.app.data.model.characterAvatarPath(avatar, portrait)

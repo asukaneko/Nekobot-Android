@@ -1,0 +1,86 @@
+{"text": "today", "spoken": "2026-10-23", "expected": "2026-10-23", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "tomorrow", "spoken": "2026-10-23", "expected": "2026-10-24", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "the day after tomorrow", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "in 3 days", "spoken": "2026-10-23", "expected": "2026-10-26", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "yesterday", "spoken": "2026-10-23", "expected": "2026-10-22", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "the day before yesterday", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "3 days ago", "spoken": "2026-10-23", "expected": "2026-10-20", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "two days ago", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "in 2 weeks", "spoken": "2026-10-23", "expected": "2026-11-06", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2 weeks ago", "spoken": "2026-10-23", "expected": "2026-10-09", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "next Wednesday", "spoken": "2026-10-23", "expected": "2026-10-28", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "next next Monday", "spoken": "2026-10-23", "expected": "2026-11-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "this Sunday", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "last Friday", "spoken": "2026-10-23", "expected": "2026-10-16", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "5th of next month", "spoken": "2026-10-23", "expected": "2026-11-05", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "October 2", "spoken": "2026-10-23", "expected": "2026-10-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "December 31, 2025", "spoken": "2026-10-23", "expected": "2025-12-31", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "10/28/2026", "spoken": "2026-10-23", "expected": "2026-10-28", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "end of the month", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "a few days later", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "next week", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "today and tomorrow", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "Oct. 2", "spoken": "2016-11-07", "expected": "2016-10-02", "upstreamExpected": "2016-10-02", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#1"}
+{"text": "January 12, 2016", "spoken": "2016-11-07", "expected": "2016-01-12", "upstreamExpected": "2016-01-12", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#7"}
+{"text": "02/22/2016", "spoken": "2016-11-07", "expected": "2016-02-22", "upstreamExpected": "2016-02-22", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#9"}
+{"text": "21/04/2016", "spoken": "2016-11-07", "expected": null, "upstreamExpected": "2016-04-21", "adjustment": "文档限定MM/DD/YYYY，不接DD/MM/YYYY或无效日期", "source": "Recognizers-Text/English/DateParser.json#10"}
+{"text": "1st Jan", "spoken": "2016-11-07", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#25"}
+{"text": "today", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#35"}
+{"text": "tomorrow", "spoken": "2016-11-07", "expected": "2016-11-08", "upstreamExpected": "2016-11-08", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#36"}
+{"text": "yesterday", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#38"}
+{"text": "the day before yesterday", "spoken": "2016-11-07", "expected": "2016-11-05", "upstreamExpected": "2016-11-05", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#39"}
+{"text": "the day after tomorrow", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#40"}
+{"text": "The day after tomorrow", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#42"}
+{"text": "this Friday", "spoken": "2016-11-07", "expected": "2016-11-11", "upstreamExpected": "2016-11-11", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#45"}
+{"text": "next Sunday", "spoken": "2016-11-07", "expected": "2016-11-20", "upstreamExpected": "2016-11-20", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#46"}
+{"text": "last Sunday", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#47"}
+{"text": "this week Friday", "spoken": "2016-11-07", "expected": "2016-11-11", "upstreamExpected": "2016-11-11", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#48"}
+{"text": "next week Sunday", "spoken": "2016-11-07", "expected": "2016-11-20", "upstreamExpected": "2016-11-20", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#49"}
+{"text": "last week Sunday", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#50"}
+{"text": "15 June 2016", "spoken": "2016-11-07", "expected": "2016-06-15", "upstreamExpected": "2016-06-15", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#54"}
+{"text": "next week on Friday", "spoken": "2016-11-07", "expected": "2016-11-18", "upstreamExpected": "2016-11-18", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#57"}
+{"text": "two weeks from now", "spoken": "2016-11-07", "expected": "2016-11-21", "upstreamExpected": "2016-11-21", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#62"}
+{"text": "20th of next month", "spoken": "2016-11-07", "expected": "2016-12-20", "upstreamExpected": "2016-12-20", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#87"}
+{"text": "January 12, 2018", "spoken": "2016-11-07", "expected": "2018-01-12", "upstreamExpected": "2018-01-12", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#89"}
+{"text": "two days ago", "spoken": "2016-11-07", "expected": "2016-11-05", "upstreamExpected": "2016-11-05", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#91"}
+{"text": "the 20th of next month", "spoken": "2017-12-07", "expected": "2018-01-20", "upstreamExpected": "2018-01-20", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#100"}
+{"text": "5 December 1391", "spoken": "2017-12-18", "expected": "1391-12-05", "upstreamExpected": "1391-12-05", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#101"}
+{"text": "Tuesday next week", "spoken": "2018-03-20", "expected": "2018-03-27", "upstreamExpected": "2018-03-27", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#110"}
+{"text": "in 3 weeks", "spoken": "2018-07-05", "expected": "2018-07-26", "upstreamExpected": "2018-07-26", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#126"}
+{"text": "Feb 29", "spoken": "2017-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#131"}
+{"text": "Feb 29th", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#133"}
+{"text": "Feb 30", "spoken": "2020-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#134"}
+{"text": "2/29/2019", "spoken": "2020-03-22", "expected": null, "upstreamExpected": "0001-01-01", "adjustment": "文档限定MM/DD/YYYY，不接DD/MM/YYYY或无效日期", "source": "Recognizers-Text/English/DateParser.json#135"}
+{"text": "2/29/2020", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/English/DateParser.json#136"}
+{"text": "04th jan 2019", "spoken": "2016-11-07", "expected": "2019-01-04", "upstreamExpected": "2019-01-04", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#0"}
+{"text": "03rd jan 2019", "spoken": "2016-11-07", "expected": "2019-01-03", "upstreamExpected": "2019-01-03", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#1"}
+{"text": "02nd jan 2019", "spoken": "2016-11-07", "expected": "2019-01-02", "upstreamExpected": "2019-01-02", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#2"}
+{"text": "01st jan 2019", "spoken": "2016-11-07", "expected": "2019-01-01", "upstreamExpected": "2019-01-01", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#3"}
+{"text": "today", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#9"}
+{"text": "tomorrow", "spoken": "2016-11-07", "expected": "2016-11-08", "upstreamExpected": "2016-11-08", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#10"}
+{"text": "yesterday", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#11"}
+{"text": "today", "spoken": "2018-03-14", "expected": "2018-03-14", "upstreamExpected": "2018-03-14", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#105"}
+{"text": "july 1st", "spoken": "2018-04-07", "expected": "2018-07-01", "upstreamExpected": "2018-07-01", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#112"}
+{"text": "in two weeks", "spoken": "2018-07-05", "expected": "2018-07-19", "upstreamExpected": "2018-07-19", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#201"}
+{"text": "1/1/2016", "spoken": "2018-08-31", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#274"}
+{"text": "next week wednesday", "spoken": "2018-11-28", "expected": "2018-12-05", "upstreamExpected": "2018-12-05", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#336"}
+{"text": "this week monday", "spoken": "2018-11-28", "expected": "2018-11-26", "upstreamExpected": "2018-11-26", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#338"}
+{"text": "next friday", "spoken": "2019-01-31", "expected": "2019-02-08", "upstreamExpected": "2019-02-08", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#383"}
+{"text": "last wednesday", "spoken": "2019-01-31", "expected": "2019-01-23", "upstreamExpected": "2019-01-23", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#389"}
+{"text": "december 27", "spoken": "2019-07-04", "expected": "2019-12-27", "upstreamExpected": "2019-12-27", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#500"}
+{"text": "december 27", "spoken": "2019-07-04", "expected": "2019-12-27", "upstreamExpected": "2019-12-27", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#501"}
+{"text": "30 december", "spoken": "2019-07-04", "expected": "2019-12-30", "upstreamExpected": "2019-12-30", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#502"}
+{"text": "feb 30 2019", "spoken": "2020-07-30", "expected": null, "upstreamExpected": "not resolved", "adjustment": "上游无解哨兵统一成Unresolved", "source": "Recognizers-Text/English/DateTimeModel.json#543"}
+{"text": "feb 30", "spoken": "2019-01-30", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#544"}
+{"text": "feb 30", "spoken": "2019-07-30", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#545"}
+{"text": "2002-10-09", "spoken": "2020-05-14", "expected": "2002-10-09", "upstreamExpected": "2002-10-09", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#612"}
+{"text": "4th of july", "spoken": "2020-06-12", "expected": "2020-07-04", "upstreamExpected": "2020-07-04", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#639"}
+{"text": "feb 29", "spoken": "2017-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#739"}
+{"text": "feb 29th", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#741"}
+{"text": "feb 30", "spoken": "2020-03-22", "expected": null, "upstreamExpected": null, "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#742"}
+{"text": "2/29/2019", "spoken": "2020-03-22", "expected": null, "upstreamExpected": "not resolved", "adjustment": "文档限定MM/DD/YYYY，不接DD/MM/YYYY或无效日期", "source": "Recognizers-Text/English/DateTimeModel.json#743"}
+{"text": "2/29/2020", "spoken": "2020-03-22", "expected": "2020-02-29", "upstreamExpected": "2020-02-29", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#744"}
+{"text": "2020-07-01", "spoken": "2016-11-07", "expected": "2020-07-01", "upstreamExpected": "2020-07-01", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#912"}
+{"text": "2018-09-23", "spoken": "2016-11-07", "expected": "2018-09-23", "upstreamExpected": "2018-09-23", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#914"}
+{"text": "14 nov", "spoken": "2016-11-07", "expected": "2016-11-14", "upstreamExpected": "2016-11-14", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#954"}
+{"text": "14 nov 2023", "spoken": "2016-11-07", "expected": "2023-11-14", "upstreamExpected": "2023-11-14", "adjustment": null, "source": "Recognizers-Text/English/DateTimeModel.json#956"}

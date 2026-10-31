@@ -28,6 +28,17 @@ internal object CompanionSchema {
     }
 
     fun installTriggers(db: SupportSQLiteDatabase) {
+        val hasV2 = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='companion_applied_ops'").use { it.moveToFirst() }
+        if (hasV2) {
+            val updated = db.query("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='companion_message_changed'")
+                .use { it.moveToFirst() && it.getString(0).contains("companion_mode") }
+            if (!updated) db.execSQL("DROP TRIGGER IF EXISTS companion_message_changed")
+            db.execSQL("""CREATE TRIGGER IF NOT EXISTS companion_v2_message_snapshot BEFORE UPDATE OF content,deleted ON local_messages
+                WHEN (OLD.content IS NOT NEW.content OR OLD.deleted IS NOT NEW.deleted)
+                  AND EXISTS(SELECT 1 FROM local_sessions WHERE id=OLD.session_id AND companion_mode=1)
+                BEGIN UPDATE companion_sources SET messageSnapshot=COALESCE(messageSnapshot,OLD.content) WHERE messageId=OLD.id;
+                  UPDATE companion_scopes SET revision=revision+1 WHERE sessionId=OLD.session_id; END""")
+        }
         // The core tables are created before the search tables.
         val hasSearch = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='companion_vectors'").use { it.moveToFirst() }
         if (hasSearch) {
@@ -60,8 +71,9 @@ internal object CompanionSchema {
         // Timestamp changes matter even when the original text is unchanged.
         db.execSQL("""CREATE TRIGGER IF NOT EXISTS companion_message_changed
             AFTER UPDATE OF content, deleted, created_at, timestamp, role, session_id ON local_messages
-            WHEN OLD.content IS NOT NEW.content OR OLD.deleted != NEW.deleted OR OLD.created_at IS NOT NEW.created_at
-              OR OLD.timestamp IS NOT NEW.timestamp OR OLD.role IS NOT NEW.role OR OLD.session_id IS NOT NEW.session_id
+            WHEN (OLD.content IS NOT NEW.content OR OLD.deleted != NEW.deleted OR OLD.created_at IS NOT NEW.created_at
+              OR OLD.timestamp IS NOT NEW.timestamp OR OLD.role IS NOT NEW.role OR OLD.session_id IS NOT NEW.session_id)
+              ${if (hasV2) "AND (OLD.created_at IS NOT NEW.created_at OR OLD.timestamp IS NOT NEW.timestamp OR OLD.role IS NOT NEW.role OR OLD.session_id IS NOT NEW.session_id OR NOT EXISTS(SELECT 1 FROM local_sessions WHERE id=OLD.session_id AND companion_mode=1))" else ""}
             BEGIN ${invalidate("NEW.id")}
               UPDATE companion_scopes SET revision = revision + 1
                 WHERE sessionId = OLD.session_id AND OLD.session_id IS NOT NEW.session_id;

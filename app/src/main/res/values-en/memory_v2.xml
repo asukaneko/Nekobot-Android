@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memory_v2_summarizing">Summarizing memories…</string>
+    <string name="memory_v2_batch_title">Memory summary batch size</string>
+    <string name="memory_v2_batch_description">When unsummarized messages no longer fit, summarize about this many tokens, starting with the oldest complete turn.</string>
+    <string name="memory_v2_source_title">Original message</string>
+    <string name="memory_v2_source_deleted">Original message deleted</string>
+    <string name="memory_v2_source_snapshot">Saved snapshot of the original message</string>
+    <string name="memory_v2_source_locate">View original message</string>
+    <string name="memory_v2_voided">Voided</string>
+    <string name="memory_v2_void_reason">Reason</string>
+    <string name="memory_v2_void_time">Voided at</string>
+    <string name="memory_v2_restore">Restore</string>
+    <string name="memory_v2_reason_update">Replaced by a newer version</string>
+    <string name="memory_v2_reason_cancel">Cancelled</string>
+    <string name="memory_v2_reason_complete">Completed</string>
+    <string name="memory_v2_reason_retract">Retracted</string>
+    <string name="memory_v2_reason_source_deleted">Source message deleted</string>
+    <string name="memory_v2_reason_source_edited">Source message edited</string>
+    <string name="memory_v2_reason_uncertain_confirmed">New information confirmed</string>
+    <string name="memory_v2_reason_user">Edited or deleted by you</string>
+    <string name="memory_v2_linked_title">Linked memories</string>
+    <string name="memory_v2_delete_question">These memories are linked to this message. Delete them too?</string>
+    <string name="memory_v2_edit_question">This message was edited. Delete its linked memories too?</string>
+    <string name="memory_v2_regenerate_question">These memories are linked to this message and the following chat. Delete them too?</string>
+    <string name="memory_v2_delete_together">Delete both</string>
+    <string name="memory_v2_keep_delete">Delete message, keep memories</string>
+    <string name="memory_v2_keep_edit">Keep memories and continue editing</string>
+    <string name="memory_v2_cancel">Cancel</string>
+    <string name="memory_v2_more">%1$d more</string>
+    <string name="memory_v2_collapse">Collapse list</string>
+    <string name="memory_v2_bulk_delete_question">These memories are linked to the selected messages. Delete them too?</string>
+    <string name="memory_v2_review_title">Needs your decision</string>
+    <string name="memory_v2_review_question">This locked memory differs from the newly confirmed information. What would you like to do?</string>
+    <string name="memory_v2_locked">Only I can edit</string>
+    <string name="memory_v2_confirmed">Newly confirmed memory</string>
+    <string name="memory_v2_edit">Edit</string>
+    <string name="memory_v2_delete_locked">Delete this locked memory</string>
+    <string name="memory_v2_keep">Keep unchanged</string>
+    <string name="memory_v2_save">Save changes</string>
+    <string name="memory_v2_cancel_edit">Cancel editing</string>
+</resources>

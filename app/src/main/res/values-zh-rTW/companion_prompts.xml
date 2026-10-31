@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="companion_prompts_title">角色與提示詞</string>
+    <string name="companion_prompts_summary">人設、說話方式、思考提示詞</string>
+    <string name="companion_prompts_scope">只影響目前角色；不會修改其他角色。</string>
+    <string name="companion_prompt_persona">人設</string>
+    <string name="companion_prompt_persona_hint">編輯原有角色資料，不提供預設人設</string>
+    <string name="companion_prompt_speaking">說話方式</string>
+    <string name="companion_prompt_speaking_hint">放在開頭的固定規則中</string>
+    <string name="companion_prompt_thinking">思考提示詞</string>
+    <string name="companion_prompt_thinking_hint">啟用時與目前時間一起放在請求結尾</string>
+    <string name="companion_prompt_default">軟體預設</string>
+    <string name="companion_prompt_custom">已自訂</string>
+    <string name="companion_prompt_edit_hint">編輯的是這部分的完整文案，自訂會取代預設內容。留空使用軟體預設。支援 {{char}}（角色名）和 {{user}}（對方名字）。</string>
+    <string name="companion_prompt_restore_hint">還原預設只修改草稿，點擊儲存後才生效。</string>
+    <string name="companion_prompt_inactive_hint">思考提示目前未啟用；可以編輯儲存，不會自動開啟開關或變更強度。</string>
+    <string name="companion_prompt_thinking_switch">啟用思考提示詞</string>
+    <string name="companion_prompt_thinking_switch_hint">僅目前角色；編輯文案請進入「角色與提示詞」</string>
+    <string name="companion_prompt_discard_title">放棄未儲存的修改？</string>
+    <string name="companion_prompt_discard">放棄修改</string>
+    <string name="companion_prompt_keep_editing">繼續編輯</string>
+    <string name="companion_prompt_load_error">無法讀取角色設定，請重試。</string>
+    <string name="companion_prompt_save_error">儲存失敗，草稿已保留，請重試。</string>
+</resources>

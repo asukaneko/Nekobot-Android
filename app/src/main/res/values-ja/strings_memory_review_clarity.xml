@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memory_review_partial">一部の内容は確認待ち</string>
+    <string name="memory_review_unlinked">原話は未関連付け</string>
+    <string name="memory_review_imported_origin">取り込んだデータ</string>
+</resources>

@@ -2,8 +2,8 @@
 <resources>
     <string name="single_role_character_perspective_thinking_beta">角色視角思考 Beta（測試版）</string>
     <string name="single_role_think_in_chinese_in_the_character_s_first_person_voice">思考使用中文、以角色「我」的口吻。</string>
-    <string name="single_role_custom_thinking_prompt_beta">自訂思考提示詞 Beta（測試版）</string>
-    <string name="single_role_leave_blank_to_use_the_default">留空則使用預設值。</string>
+    <string name="single_role_custom_thinking_prompt_beta">思考提示詞</string>
+    <string name="single_role_leave_blank_to_use_the_default">這段會放在每次請求最末尾，控制角色用第一人稱、簡體中文來想事情。留空則使用預設值。</string>
     <string name="single_role_thinking_prompt">思考提示詞</string>
     <string name="single_role_manage_providers_and_models_here_characters_can_select_and_reorde">在這裡管理服務商與模型。角色可在「聊天模型」中選擇並排序；未個別設定的角色使用預設佇列。</string>
     <string name="single_role_primary_model_in_default_queue">預設佇列主要模型</string>
@@ -85,7 +85,7 @@
     <string name="single_role_only_affects_this_conversation">只影響目前會話</string>
     <string name="single_role_chat_usage">聊天用量</string>
     <string name="single_role_view_content_included_in_the_last_request">查看上次請求帶入的內容</string>
-    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">同時開啟顯示思考與角色視角思考後，可在訊息中展開內心想法 Beta（測試版）。正文內心獨白由獨立開關控制。</string>
+    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">同時開啟顯示思考與角色視角思考後，可在訊息中展開內心想法 Beta（測試版）。</string>
     <string name="single_role_context_breakdown_chart_locally_estimated_at_1_s_tokens">上下文組成圓環，本機估算 %1$s Token</string>
     <string name="single_role_select_1_s">選擇%1$s</string>
     <string name="single_role_no_requests_recorded">暫無請求紀錄</string>
@@ -225,7 +225,7 @@
     <string name="single_role_earlier_content">以前的內容</string>
     <string name="single_role_this_content_was_deleted">這則內容已刪除</string>
     <string name="single_role_saved_manually">手動儲存</string>
-    <string name="single_role_organized_automatically">自動整理</string>
+    <string name="single_role_organized_automatically">自動總結</string>
     <string name="single_role_save_time_not_recorded">儲存時間未記錄</string>
     <string name="single_role_original_messages_for_this_memory">這則記憶的原話</string>
     <string name="single_role_no_original_messages_to_locate">暫無可定位的原話。</string>
@@ -241,7 +241,7 @@
     <string name="single_role_keep_memory">保留記憶</string>
     <string name="single_role_deleting">正在刪除…</string>
     <string name="single_role_not_deleted_yet">尚未刪除成功</string>
-    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">這則記憶及其修改紀錄會被清除。已整理進度不變；日後新的明確表達仍可能形成新記憶。</string>
+    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">這條記憶會標為已作廢，可在修訂歷史中恢復。已總結進度不變；之後新的明確表達仍可能形成新的記憶。</string>
     <string name="single_role_memory_settings">記憶設定</string>
     <string name="single_role_retrieval_settings_all_single_session_characters">檢索設定 · 所有單會話角色通用</string>
     <string name="single_role_keyword_search">關鍵字檢索</string>
@@ -303,7 +303,7 @@
     <string name="single_role_these_memories_are_included_in_every_chat_use_the_top_right_menu">這裡的內容每次聊天都會提供給模型。點記憶右上角可移出核心，正文仍保留。模型整理舊聊天時會挑選與更新，你的手動選擇優先。</string>
     <string name="single_role_review_and_adjust_important_names_relationships_and_habits_at_any">重要的稱呼、關係與相處習慣，隨時查看和調整。</string>
     <string name="single_role_about_1_s_tokens_does_not_use_recall_quota">約 %1$d Token · 不扣主動回查額度</string>
-    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">現有核心超過精簡目標，仍會完整提供。建議縮短正文或移出部分項目；新增核心前需騰出空間。</string>
+    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">建議約 1000 Token，可繼續保留或新增。是否精簡、刪哪些由你決定；實際傳送仍受模型上下文上限約束。</string>
     <string name="single_role_memories_temporarily_unavailable">記憶暫時無法讀取</string>
     <string name="single_role_this_action_did_not_complete">這次操作未完成</string>
     <string name="single_role_no_core_memories_yet_return_to_all_memories_and_choose_set_as_cor">尚無核心記憶。返回全部記憶，點項目右上角的「設為核心記憶」；也可由模型在後續聊天整理時挑選。</string>

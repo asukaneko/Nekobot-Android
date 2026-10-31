@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_bulk_record_incoming">모든 기록에 가져온 값 사용</string>
+    <string name="import_bulk_record_keep">모든 기록의 기기 값 유지</string>
+    <string name="import_bulk_record_scope">차이가 있는 전체 %1$d개 기록에 적용합니다. 파일, 설정, 자격 증명 선택은 유지합니다.</string>
+    <string name="import_bulk_record_confirm">아직 불러오지 않은 기록을 포함하여 차이가 있는 전체 %1$d개 기록에 가져온 값을 선택할까요? 파일, 앱 설정, 자격 증명 선택은 유지합니다. 선택과 미리보기만 갱신하며 개별 항목은 계속 조정할 수 있습니다. 데이터는 마지막 가져오기 실행 시에만 저장됩니다.</string>
+    <string name="import_bulk_record_changed">차이가 있는 기록이 변경되었습니다. 일괄 선택 전에 미리보기를 갱신하세요.</string>
+</resources>

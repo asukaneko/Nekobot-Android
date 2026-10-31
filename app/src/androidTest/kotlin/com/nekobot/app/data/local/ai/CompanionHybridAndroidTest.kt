@@ -132,8 +132,8 @@ class CompanionHybridAndroidTest {
             assertEquals(1,db.companionMemoryDao().clarifications(scope.id).size)
             assertEquals(2,db.companionMemoryDao().memories(scope.id).size)
             assertEquals(pending.memoryId,db.companionMemoryDao().clarifications(scope.id).single().memoryId)
-            say(db,s,"asked",pending.question,"assistant"); store.recordClarificationQuestion(s,"asked")
-            assertNull(store.questionForReply(s))
+            say(db,s,"asked",pending.question,"assistant"); store.recordLegacyClarificationQuestion(s,"asked")
+            assertNull(store.legacyQuestionForReply(s))
             val yes=say(db,s,"yes","对，现在可以吃辣了")
             store.process(s,{_,_->response(draft(yes,"resolve","用户喜欢吃辣",target="diet",conflict=pending.memoryId))})
             assertTrue(db.companionMemoryDao().clarifications(scope.id).isEmpty())
@@ -141,7 +141,7 @@ class CompanionHybridAndroidTest {
             assertEquals("用户喜欢吃辣",all.single { it.current }.content)
             assertTrue(all.any { !it.current && it.content=="用户怕辣" })
             assertFalse(all.any { it.status=="conflict" })
-            assertNull(store.questionForReply(s))
+            assertNull(store.legacyQuestionForReply(s))
         } finally { db.close() }
     }
 
@@ -166,7 +166,7 @@ class CompanionHybridAndroidTest {
             store.process(s,{_,_->gson.toJson(mapOf("changes" to listOf(
                 draft(r,"clarify","用户喜欢吃辣",target="diet",question="现在能吃辣了吗？"),
                 draft(a,"asked",target="diet"))))})
-            assertNull(store.questionForReply(s))
+            assertNull(store.legacyQuestionForReply(s))
             assertEquals(a.id,db.companionMemoryDao().clarifications(store.ensureScope(s).id).single().questionMessageId)
         } finally { db.close() }
     }
@@ -190,7 +190,7 @@ class CompanionHybridAndroidTest {
         val db=db()
         try {
             val s=session(db); val store=CompanionMemoryStore(db); seed(db,s,store); val pending=conflict(db,s,store)
-            say(db,s,"asked",pending.question,"assistant"); store.recordClarificationQuestion(s,"asked")
+            say(db,s,"asked",pending.question,"assistant"); store.recordLegacyClarificationQuestion(s,"asked")
             val yes=say(db,s,"yes","对")
             store.process(s,{_,_->response(draft(yes,"resolve","用户现在喜欢辣椒了",target="diet",conflict=pending.memoryId))})
             assertEquals("用户喜欢吃辣",store.validatedMemories(store.ensureScope(s)).single { it.current }.content)
@@ -220,7 +220,7 @@ class CompanionHybridAndroidTest {
             val db=db()
             try {
                 val s=session(db); val store=CompanionMemoryStore(db); seed(db,s,store); val pending=conflict(db,s,store)
-                say(db,s,"asked",pending.question,"assistant"); store.recordClarificationQuestion(s,"asked")
+                say(db,s,"asked",pending.question,"assistant"); store.recordLegacyClarificationQuestion(s,"asked")
                 val yes=say(db,s,"yes","对")
                 store.process(s,{_,_->response(draft(yes,"resolve","用户喜欢吃辣",target="diet",conflict=pending.memoryId))})
                 val current=store.validatedMemories(store.ensureScope(s)).single { it.current }
@@ -241,7 +241,7 @@ class CompanionHybridAndroidTest {
         val db=db()
         try {
             val s=session(db); val store=CompanionMemoryStore(db); seed(db,s,store); var pending=conflict(db,s,store)
-            say(db,s,"asked",pending.question,"assistant"); store.recordClarificationQuestion(s,"asked")
+            say(db,s,"asked",pending.question,"assistant"); store.recordLegacyClarificationQuestion(s,"asked")
             val no=say(db,s,"no","不是，我还是怕辣")
             store.process(s,{_,_->response(draft(no,"retain",target="diet",conflict=pending.memoryId))})
             assertTrue(db.companionMemoryDao().clarifications(store.ensureScope(s).id).isEmpty())
@@ -249,12 +249,12 @@ class CompanionHybridAndroidTest {
             val r=say(db,s,"locked-change","现在我喜欢吃辣了")
             store.process(s,{_,_->response(draft(r,"update","用户喜欢吃辣",target="diet",question="现在能吃辣了吗？"))})
             pending=db.companionMemoryDao().clarifications(store.ensureScope(s).id).single()
-            say(db,s,"locked-asked",pending.question,"assistant"); store.recordClarificationQuestion(s,"locked-asked")
+            say(db,s,"locked-asked",pending.question,"assistant"); store.recordLegacyClarificationQuestion(s,"locked-asked")
             val yes=say(db,s,"locked-yes","对")
             store.process(s,{_,_->response(draft(yes,"resolve","用户喜欢吃辣",target="diet",conflict=pending.memoryId))})
             assertEquals("用户怕辣",store.validatedMemories(store.ensureScope(s)).single { it.current }.content)
             assertTrue(store.validatedMemories(store.ensureScope(s)).single { it.current }.locked)
-            assertNull(store.questionForReply(s))
+            assertNull(store.legacyQuestionForReply(s))
             assertTrue(db.companionMemoryDao().clarifications(store.ensureScope(s).id).isEmpty())
             val repeat=say(db,s,"locked-repeat","现在我喜欢吃辣了")
             store.process(s,{_,_->response(draft(repeat,"update","用户喜欢吃辣",target="diet"))})
@@ -372,13 +372,13 @@ class CompanionHybridAndroidTest {
         var db=Room.databaseBuilder(context,NekobotDatabase::class.java,name).build()
         try {
             val s=session(db); var store=CompanionMemoryStore(db); seed(db,s,store); val pending=conflict(db,s,store)
-            say(db,s,"asked",pending.question,"assistant"); store.recordClarificationQuestion(s,"asked")
+            say(db,s,"asked",pending.question,"assistant"); store.recordLegacyClarificationQuestion(s,"asked")
             val scope=store.ensureScope(s); val items=listOf(CompanionSearchItem("fact","f","text")); var calls=0
             val backend=CompanionEmbeddingBackend("persist") { inputs -> calls++; inputs.map { floatArrayOf(1f) } }
             CompanionHybridSearch(db){backend}.scores(scope,"q",items,true); assertEquals(2,calls)
             db.close(); db=Room.databaseBuilder(context,NekobotDatabase::class.java,name).build(); store=CompanionMemoryStore(db)
             calls=0; CompanionHybridSearch(db){backend}.scores(store.ensureScope(s),"q",items,true)
-            assertEquals(1,calls); assertNull(store.questionForReply(s))
+            assertEquals(1,calls); assertNull(store.legacyQuestionForReply(s))
             assertEquals("asked",db.companionMemoryDao().clarifications(scope.id).single().questionMessageId)
         } finally { db.close(); context.deleteDatabase(name) }
     }

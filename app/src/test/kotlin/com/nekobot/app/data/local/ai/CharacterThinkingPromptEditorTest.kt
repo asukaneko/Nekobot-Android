@@ -16,7 +16,7 @@ class CharacterThinkingPromptEditorTest {
     fun unchangedDefaultSavesAsFollowDefaultAndStillProducesTheSamePrompt() {
         val stored = characterThinkingPromptToSave(DEFAULT_CHARACTER_THINKING_PROMPT)
         assertEquals("", stored)
-        assertEquals(DEFAULT_CHARACTER_THINKING_PROMPT.replace("{{char}}", "林小满").replace("{{user}}", "小星") + "\n" + CHARACTER_THINKING_FORMAT_PROMPT,
+        assertEquals(DEFAULT_CHARACTER_THINKING_PROMPT.replace("{{char}}", "林小满").replace("{{user}}", "小星"),
             characterThinkingPrompt(CharacterThinkingSettings(customPrompt = stored), "林小满", "小星"))
     }
 
@@ -27,7 +27,7 @@ class CharacterThinkingPromptEditorTest {
         assertEquals(edited, stored)
         assertEquals(edited, characterThinkingPromptForEditing(CharacterThinkingSettings(customPrompt = stored)))
         assertTrue(characterThinkingPrompt(CharacterThinkingSettings(customPrompt = stored), "林小满", "小星")
-            .contains("\n  我还惦记着小星。  \n" + CHARACTER_THINKING_FORMAT_PROMPT))
+            .contains("\n  我还惦记着小星。  "))
     }
 
     @Test

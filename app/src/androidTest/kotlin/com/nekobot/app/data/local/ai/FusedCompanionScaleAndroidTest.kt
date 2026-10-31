@@ -139,9 +139,8 @@ class FusedCompanionScaleAndroidTest {
             for ((label,query,expected) in cases) {
                 started=System.nanoTime()
                 val result=store.fusedRecall(session,query,FusedCompanionPolicy.budgets(14000))
-                val core=JsonParser.parseString(result.first.substringAfter("每次提供的核心记忆：\n").substringBefore("\n本轮相关记忆：")).asJsonArray
-                val recalled=JsonParser.parseString(result.first.substringAfter("本轮相关记忆：\n")).asJsonArray
-                val ids=(core.toList()+recalled.toList()).map { it.asJsonObject["id"].asString }
+                val memoryRows=store.validatedMemories(scope)
+                val ids=memoryRows.filter { result.first.lines().contains(CompanionPromptLanguage.memory(it)) }.map { it.id }
                 val hit=expected in ids
                 if(hit)hits++
                 File(dir,"private-recall-$stage-$label.json").writeText(gson.toJson(mapOf(

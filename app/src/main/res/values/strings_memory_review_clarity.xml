@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memory_review_partial">部分内容待核实</string>
+    <string name="memory_review_unlinked">尚未关联原话</string>
+    <string name="memory_review_imported_origin">来自迁入资料</string>
+</resources>

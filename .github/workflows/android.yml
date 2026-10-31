@@ -22,6 +22,9 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
+    env:
+      # ApkFlinger 使用公共 ForkJoinPool 并行读入待压缩文件，单独限制其峰值。
+      JAVA_TOOL_OPTIONS: -Djava.util.concurrent.ForkJoinPool.common.parallelism=2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,6 +35,7 @@ jobs:
       # 之前把 test / lint / assemble 放在同一条 Gradle 命令里，lint 分析与 dex 合并共用
       # 一个 4G 堆的 daemon，导致 :app:packageDebug 在 ApkFlinger 里抛 OutOfMemoryError。
       # 这里改为：分阶段调用（每阶段独立 daemon，结束后释放内存）+ 调大堆 + 限制并发 worker。
+      # --max-workers 约束 Gradle worker，公共线程池由上面的 JVM 参数单独约束。
       - name: Verify unit tests
         run: |
           ./gradlew --no-daemon --console=plain --stacktrace \

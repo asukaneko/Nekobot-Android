@@ -77,6 +77,7 @@ internal class CompanionTransferSnapshot(private val db: NekobotDatabase) {
         save("companion_sources", "memoryId IN (SELECT id FROM companion_memories WHERE scopeId IN ($scopes))", scopeArgs)
         save("companion_forgotten_sources", "scopeId IN ($scopes)", scopeArgs)
         save("companion_clarifications", "scopeId IN ($scopes)", scopeArgs)
+        save("companion_locked_reviews", "scopeId IN ($scopes)", scopeArgs)
         val fingerprint = transferHash(hashes.entries.joinToString("\n") { "${it.key}:${it.value}:${counts[it.key]}" })
         return TransferSnapshot(source.id, character.id, character.name, chain.map { it.id }, counts, hashes, fingerprint, excludedMemories).also {
             File(directory, "manifest.json").writeText(Gson().toJson(it))

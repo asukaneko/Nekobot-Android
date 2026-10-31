@@ -234,7 +234,7 @@ class LocalWebDavBackupManager(
                     if (response.code == 401) {
                         return@withContext result.apply {
                             addProperty("status_code", response.code)
-                            addProperty("message", "认证失败 (HTTP 401)")
+                            addProperty("message", LocalLogger.str(com.nekobot.app.R.string.webdav_test_auth))
                         }
                     }
                 }
@@ -262,14 +262,14 @@ class LocalWebDavBackupManager(
                                 "content_length",
                                 response.header("Content-Length")?.toLongOrNull() ?: 0L
                             )
-                            result.addProperty("message", "连接成功，远程备份文件已存在")
+                            result.addProperty("message", LocalLogger.str(com.nekobot.app.R.string.webdav_test_existing))
                         }
 
                         404 -> {
                             result.addProperty("ok", true)
                             result.addProperty(
                                 "message",
-                                "连接成功，nekobot/ 文件夹已就绪，备份后会创建配置文件"
+                                LocalLogger.str(com.nekobot.app.R.string.webdav_test_ready)
                             )
                         }
 
@@ -278,21 +278,21 @@ class LocalWebDavBackupManager(
                             result.addProperty("ok", true)
                             result.addProperty(
                                 "message",
-                                "服务器拒绝 HEAD 检查，但备份和恢复仍可正常使用"
+                                LocalLogger.str(com.nekobot.app.R.string.webdav_test_head_denied)
                             )
                         }
 
-                        401 -> result.addProperty("message", "认证失败 (HTTP 401)")
+                        401 -> result.addProperty("message", LocalLogger.str(com.nekobot.app.R.string.webdav_test_auth))
                         else -> result.addProperty(
                             "message",
-                            "服务器返回异常状态码：HTTP ${response.code}"
+                            LocalLogger.str(com.nekobot.app.R.string.webdav_test_status, response.code)
                         )
                     }
                 }
                 result
             } catch (e: Exception) {
                 result.apply {
-                    addProperty("message", readableError("连接失败", e))
+                    addProperty("message", readableError(LocalLogger.str(com.nekobot.app.R.string.webdav_test_failed), e))
                 }
             }
         }
@@ -4244,10 +4244,10 @@ class LocalWebDavBackupManager(
                 raw
             ).use { response ->
                 if (response.code in listOf(200, 207)) {
-                    return FolderResult(true, true, false, response.code, "文件夹已存在")
+                    return FolderResult(true, true, false, response.code, LocalLogger.str(com.nekobot.app.R.string.webdav_folder_exists))
                 }
                 if (response.code == 401) {
-                    return FolderResult(false, false, false, response.code, "认证失败 (HTTP 401)")
+                    return FolderResult(false, false, false, response.code, LocalLogger.str(com.nekobot.app.R.string.webdav_test_auth))
                 }
                 // 403/404 等继续尝试 MKCOL；部分服务拒绝 PROPFIND 但允许写入。
             }
@@ -4260,10 +4260,10 @@ class LocalWebDavBackupManager(
             ).use { response ->
                 return when (response.code) {
                     200, 201, 204 ->
-                        FolderResult(true, true, true, response.code, "文件夹已创建")
+                        FolderResult(true, true, true, response.code, LocalLogger.str(com.nekobot.app.R.string.webdav_folder_created))
 
                     405 ->
-                        FolderResult(true, true, false, response.code, "文件夹已存在")
+                        FolderResult(true, true, false, response.code, LocalLogger.str(com.nekobot.app.R.string.webdav_folder_exists))
 
                     409 ->
                         FolderResult(
@@ -4271,7 +4271,7 @@ class LocalWebDavBackupManager(
                             false,
                             false,
                             response.code,
-                            "父目录不存在，请检查 WebDAV 根地址"
+                            LocalLogger.str(com.nekobot.app.R.string.webdav_folder_parent_missing)
                         )
 
                     401, 403 ->
@@ -4280,7 +4280,7 @@ class LocalWebDavBackupManager(
                             false,
                             false,
                             response.code,
-                            "无权限创建文件夹 (HTTP ${response.code})"
+                            LocalLogger.str(com.nekobot.app.R.string.webdav_folder_denied, response.code)
                         )
 
                     else ->
@@ -4289,12 +4289,12 @@ class LocalWebDavBackupManager(
                             false,
                             false,
                             response.code,
-                            "创建文件夹失败 (HTTP ${response.code})"
+                            LocalLogger.str(com.nekobot.app.R.string.webdav_folder_failed, response.code)
                         )
                 }
             }
         } catch (e: Exception) {
-            return FolderResult(false, false, false, null, readableError("连接失败", e))
+            return FolderResult(false, false, false, null, readableError(LocalLogger.str(com.nekobot.app.R.string.webdav_test_failed), e))
         }
     }
 

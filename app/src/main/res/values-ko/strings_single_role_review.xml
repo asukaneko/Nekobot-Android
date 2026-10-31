@@ -2,8 +2,8 @@
 <resources>
     <string name="single_role_character_perspective_thinking_beta">캐릭터 시점 사고 Beta(테스트 버전)</string>
     <string name="single_role_think_in_chinese_in_the_character_s_first_person_voice">중국어로 캐릭터 자신의 일인칭 시점에서 생각합니다.</string>
-    <string name="single_role_custom_thinking_prompt_beta">사용자 지정 사고 프롬프트 Beta(테스트 버전)</string>
-    <string name="single_role_leave_blank_to_use_the_default">비워 두면 기본값을 사용합니다.</string>
+    <string name="single_role_custom_thinking_prompt_beta">사고 프롬프트</string>
+    <string name="single_role_leave_blank_to_use_the_default">이 문구는 매 요청의 맨 끝에 전송되며 캐릭터가 1인칭·간체 중국어로 생각하도록 지정합니다. 비워 두면 기본값을 사용합니다.</string>
     <string name="single_role_thinking_prompt">사고 프롬프트</string>
     <string name="single_role_manage_providers_and_models_here_characters_can_select_and_reorde">여기서 제공업체와 모델을 관리합니다. 캐릭터의 ‘채팅 모델’에서 선택하고 정렬할 수 있습니다. 개별 설정이 없으면 기본 대기열을 사용합니다.</string>
     <string name="single_role_primary_model_in_default_queue">기본 대기열의 주 모델</string>
@@ -85,7 +85,7 @@
     <string name="single_role_only_affects_this_conversation">현재 대화에만 적용</string>
     <string name="single_role_chat_usage">채팅 사용량</string>
     <string name="single_role_view_content_included_in_the_last_request">지난 요청에 포함된 내용 보기</string>
-    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">사고 표시와 캐릭터 시점 사고를 모두 켜면 메시지에서 내면 생각 Beta를 펼칠 수 있습니다. 본문의 내면 독백은 별도 스위치로 설정합니다.</string>
+    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">사고 표시와 캐릭터 시점 사고를 모두 켜면 메시지에서 내면 생각 Beta를 펼칠 수 있습니다.</string>
     <string name="single_role_context_breakdown_chart_locally_estimated_at_1_s_tokens">컨텍스트 구성 차트, 로컬 추정 %1$s Token</string>
     <string name="single_role_select_1_s">%1$s 선택</string>
     <string name="single_role_no_requests_recorded">요청 기록 없음</string>
@@ -225,7 +225,7 @@
     <string name="single_role_earlier_content">이전 내용</string>
     <string name="single_role_this_content_was_deleted">이 내용은 삭제되었습니다</string>
     <string name="single_role_saved_manually">수동 저장</string>
-    <string name="single_role_organized_automatically">자동 정리</string>
+    <string name="single_role_organized_automatically">자동 요약</string>
     <string name="single_role_save_time_not_recorded">저장 시간 미기록</string>
     <string name="single_role_original_messages_for_this_memory">이 기억의 원문</string>
     <string name="single_role_no_original_messages_to_locate">이동할 원문이 없습니다.</string>
@@ -241,7 +241,7 @@
     <string name="single_role_keep_memory">기억 유지</string>
     <string name="single_role_deleting">삭제 중…</string>
     <string name="single_role_not_deleted_yet">아직 삭제되지 않았습니다</string>
-    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">이 기억과 수정 기록이 지워집니다. 정리 진행 상황은 유지됩니다. 이후 새로운 명확한 발언으로 새 기억이 만들어질 수 있습니다.</string>
+    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">이 기억은 무효화되며 변경 기록에서 복원할 수 있습니다. 요약 진행 상태는 유지되며 이후 새 발언으로 새 기억이 생길 수 있습니다.</string>
     <string name="single_role_memory_settings">기억 설정</string>
     <string name="single_role_retrieval_settings_all_single_session_characters">검색 설정 · 모든 단일 세션 캐릭터 공통</string>
     <string name="single_role_keyword_search">키워드 검색</string>
@@ -303,7 +303,7 @@
     <string name="single_role_these_memories_are_included_in_every_chat_use_the_top_right_menu">매 대화에 제공되는 기억입니다. 각 기억의 오른쪽 위 메뉴에서 핵심에서 제외할 수 있으며 내용은 남습니다. 모델이 이전 대화를 정리하며 선택하고 갱신하지만 직접 선택한 내용이 우선합니다.</string>
     <string name="single_role_review_and_adjust_important_names_relationships_and_habits_at_any">중요한 호칭, 관계, 함께하는 습관을 언제든 확인하고 조정하세요.</string>
     <string name="single_role_about_1_s_tokens_does_not_use_recall_quota">약 %1$d Token · 능동 회상 한도 미차감</string>
-    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">핵심 기억이 목표 크기를 초과해도 전체가 제공됩니다. 추가하려면 내용을 줄이거나 일부를 핵심에서 제외하세요.</string>
+    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">약 1000 Token은 권장량입니다. 그대로 유지하거나 추가할 수 있고, 줄일 내용도 직접 정할 수 있습니다. 전송에는 모델의 문맥 한도가 적용됩니다.</string>
     <string name="single_role_memories_temporarily_unavailable">일시적으로 기억을 불러올 수 없습니다</string>
     <string name="single_role_this_action_did_not_complete">작업이 완료되지 않았습니다</string>
     <string name="single_role_no_core_memories_yet_return_to_all_memories_and_choose_set_as_cor">아직 핵심 기억이 없습니다. 전체 기억으로 돌아가 항목 오른쪽 위에서 ‘핵심 기억으로 설정’을 선택하거나 이후 정리 과정에서 모델이 선택하도록 할 수 있습니다.</string>

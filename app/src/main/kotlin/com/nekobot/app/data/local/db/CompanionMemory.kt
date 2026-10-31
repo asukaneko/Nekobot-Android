@@ -20,8 +20,9 @@ data class CompanionScopeEntity(
     val embeddingModelId: String? = null
 )
 
-/** Immutable versions. Invalidated/forgotten versions are never returned to a model. */
-@Entity(tableName = "companion_memories", indices = [Index("scopeId"), Index(value = ["scopeId", "factKey", "version"], unique = true)])
+/** 单会话记忆保留作废版本；待确认记录与当前事实分开提供。 */
+@Entity(tableName = "companion_memories", indices = [Index("scopeId"), Index(value = ["scopeId", "factKey", "version"], unique = true),
+    Index(value = ["scopeId", "pendingConfirm", "voided"], name = "index_companion_memories_scope_pending")])
 data class CompanionMemoryEntity(
     @PrimaryKey val id: String,
     val scopeId: String,
@@ -44,7 +45,18 @@ data class CompanionMemoryEntity(
     val updatedAt: String,
     @ColumnInfo(defaultValue = "'native'") val provenance: String = "native",
     val expiresAt: String? = null,
-    @ColumnInfo(defaultValue = "0") val coreExcluded: Boolean = false
+    @ColumnInfo(defaultValue = "0") val coreExcluded: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val voided: Boolean = false,
+    val voidedAt: String? = null,
+    val voidedReason: String? = null,
+    val supersededById: String? = null,
+    @ColumnInfo(defaultValue = "0") val pendingConfirm: Boolean = false,
+    val uncertainTargetId: String? = null,
+    @ColumnInfo(defaultValue = "0") val uncertainInjectedTurns: Int = 0,
+    val timeText: String? = null,
+    val modelDate: String? = null,
+    val dateType: String? = null,
+    val dateSource: String? = null
 )
 
 @Entity(tableName = "companion_sources", primaryKeys = ["memoryId", "messageId"], indices = [Index("messageId")])
@@ -54,7 +66,19 @@ data class CompanionSourceEntity(
     val fingerprint: String,
     val quote: String,
     val spokenDate: String?,
-    val role: String
+    val role: String,
+    val messageSnapshot: String? = null
+)
+
+@Entity(tableName = "companion_applied_ops", primaryKeys = ["scopeId", "opKey"])
+data class CompanionAppliedOpEntity(val scopeId: String, val opKey: String, val memoryId: String?, val createdAt: String)
+
+@Entity(tableName = "companion_locked_reviews", indices = [
+    Index(value = ["sessionId", "resolvedAt"], name = "index_companion_locked_reviews_pending")])
+data class CompanionLockedReviewEntity(
+    @PrimaryKey val id: String, val scopeId: String, val sessionId: String,
+    val lockedMemoryId: String, val confirmedMemoryId: String, val createdAt: String,
+    val resolvedAt: String? = null, val resolution: String? = null
 )
 
 /** A receipt is committed with all derived facts. Missing receipts are the persistent pending queue. */
@@ -91,6 +115,38 @@ data class CompanionSourceValidation(
 
 @Dao
 interface CompanionMemoryDao {
+    @Query("SELECT * FROM companion_memories WHERE id=:id")
+    suspend fun memory(id: String): CompanionMemoryEntity?
+    @Query("SELECT * FROM companion_applied_ops WHERE scopeId=:scopeId AND opKey=:key")
+    suspend fun appliedOp(scopeId: String, key: String): CompanionAppliedOpEntity?
+    @Query("DELETE FROM companion_applied_ops WHERE scopeId=:scopeId AND opKey=:key")
+    suspend fun removeAppliedOp(scopeId: String, key: String)
+    @Query("SELECT opKey FROM companion_applied_ops WHERE scopeId=:scopeId AND substr(opKey,1,length(:prefix))=:prefix")
+    suspend fun appliedOpKeys(scopeId: String, prefix: String): List<String>
+    @Query("SELECT memoryId FROM companion_applied_ops WHERE scopeId=:scopeId AND opKey LIKE :prefix || '%' AND memoryId IS NOT NULL")
+    suspend fun injectedMemoryIds(scopeId: String, prefix: String): List<String>
+    @Insert suspend fun insertAppliedOp(row: CompanionAppliedOpEntity)
+    @Insert suspend fun insertLockedReview(row: CompanionLockedReviewEntity)
+    @Query("SELECT * FROM companion_locked_reviews WHERE id=:id")
+    suspend fun lockedReview(id: String): CompanionLockedReviewEntity?
+    @Query("SELECT * FROM companion_locked_reviews WHERE sessionId=:sessionId AND resolvedAt IS NULL ORDER BY createdAt,id")
+    suspend fun pendingLockedReviews(sessionId: String): List<CompanionLockedReviewEntity>
+    @Query("UPDATE companion_locked_reviews SET resolvedAt=:at,resolution=:resolution WHERE id=:id AND resolvedAt IS NULL")
+    suspend fun resolveLockedReview(id: String, resolution: String, at: String)
+    @Query("UPDATE companion_memories SET current=0,voided=1,voidedAt=:at,voidedReason=:reason,supersededById=:supersededBy,updatedAt=:at WHERE id=:id")
+    suspend fun voidMemory(id: String, reason: String, at: String, supersededBy: String? = null)
+    @Query("SELECT * FROM companion_memories WHERE scopeId=:scopeId AND valid=1 AND current=1 AND voided=0 AND pendingConfirm=1 ORDER BY createdAt DESC,id")
+    suspend fun pendingConfirmMemories(scopeId: String): List<CompanionMemoryEntity>
+    @Query("SELECT DISTINCT m.* FROM companion_memories m JOIN companion_sources s ON s.memoryId=m.id WHERE s.messageId IN (:ids) AND m.valid=1 AND m.current=1 AND m.voided=0 ORDER BY m.createdAt,m.id")
+    suspend fun memoriesBySourceMessages(ids: List<String>): List<CompanionMemoryEntity>
+    @Query("UPDATE companion_memories SET uncertainInjectedTurns=uncertainInjectedTurns+1 WHERE id IN (:ids) AND pendingConfirm=1 AND voided=0")
+    suspend fun incrementUncertainInjected(ids: List<String>)
+    @Query("SELECT * FROM companion_receipts WHERE scopeId=:scopeId")
+    suspend fun receipts(scopeId: String): List<CompanionReceiptEntity>
+    @Query("DELETE FROM companion_receipts WHERE scopeId=:scopeId AND messageId IN (:ids)")
+    suspend fun removeReceipts(scopeId: String, ids: List<String>)
+    @Query("UPDATE companion_scopes SET revision=revision+1,updatedAt=:at WHERE id=:scopeId")
+    suspend fun bumpRevision(scopeId: String, at: String)
     @Query("""SELECT x.memoryId, x.messageId, x.fingerprint, x.quote, x.role AS sourceRole,
         r.id AS storedId, r.session_id AS sessionId, r.role, r.content,
         r.created_at AS createdAt, r.timestamp, r.deleted
@@ -102,6 +158,8 @@ interface CompanionMemoryDao {
     suspend fun sourceAnchorIds(memoryId: String): List<String>
     @Query("SELECT * FROM companion_context_materials WHERE scopeId = :scopeId ORDER BY sequence")
     suspend fun contextMaterials(scopeId: String): List<CompanionContextMaterialEntity>
+    @Query("SELECT * FROM companion_context_materials WHERE messageId = :messageId AND scopeId IN (SELECT id FROM companion_scopes WHERE profile = :profile AND sessionId = :sessionId) LIMIT 1")
+    suspend fun diagnosticContext(profile: String, sessionId: String, messageId: String): CompanionContextMaterialEntity?
     @Upsert suspend fun saveContextMaterial(row: CompanionContextMaterialEntity)
     @Query("DELETE FROM companion_context_materials WHERE scopeId = :scopeId")
     suspend fun eraseContextMaterials(scopeId: String)
@@ -123,6 +181,10 @@ interface CompanionMemoryDao {
     suspend fun closeClarification(scopeId: String, key: String)
     @Query("DELETE FROM companion_sources WHERE memoryId = :id")
     suspend fun eraseMemorySources(id: String)
+    @Query("DELETE FROM companion_memories WHERE scopeId = :scopeId AND id = :id AND locked = 0")
+    suspend fun eraseReplacedMemory(scopeId: String, id: String)
+    @Query("DELETE FROM companion_vectors WHERE scopeId = :scopeId AND itemType IN ('memory','fact') AND itemId = :id")
+    suspend fun eraseMemoryVectors(scopeId: String, id: String)
     @Query("DELETE FROM companion_memories WHERE id = :id AND current = 0 AND status = 'conflict'")
     suspend fun eraseConflict(id: String)
     @Query("SELECT * FROM companion_scopes WHERE id = :id")
@@ -144,10 +206,14 @@ interface CompanionMemoryDao {
     suspend fun unarchived(scopeId: String, limit: Int = 512): List<LocalMessageEntity>
     @Query("SELECT * FROM companion_memories WHERE scopeId = :scopeId AND valid = 1 ORDER BY factKey, version DESC")
     suspend fun memories(scopeId: String): List<CompanionMemoryEntity>
+    @Query("SELECT DISTINCT s.memoryId FROM companion_sources s JOIN companion_memories m ON m.id=s.memoryId WHERE m.scopeId=:scopeId")
+    suspend fun memoriesWithSources(scopeId: String): List<String>
     @Query("SELECT * FROM companion_memories WHERE scopeId=:scopeId AND provenance='conversion_reference' ORDER BY factKey")
     suspend fun conversionReferences(scopeId: String): List<CompanionMemoryEntity>
     @Query("SELECT * FROM companion_memories WHERE scopeId = :scopeId AND factKey = :key ORDER BY version DESC")
     suspend fun versions(scopeId: String, key: String): List<CompanionMemoryEntity>
+    @Query("SELECT * FROM companion_memories WHERE scopeId = :scopeId AND (valid = 1 OR voided = 1) ORDER BY updatedAt DESC, factKey, version DESC")
+    suspend fun revisionHistory(scopeId: String): List<CompanionMemoryEntity>
     @Query("SELECT * FROM companion_sources WHERE memoryId = :id ORDER BY spokenDate, (SELECT rowid FROM local_messages WHERE id = messageId)")
     suspend fun sources(id: String): List<CompanionSourceEntity>
     @Upsert suspend fun saveMemory(memory: CompanionMemoryEntity)

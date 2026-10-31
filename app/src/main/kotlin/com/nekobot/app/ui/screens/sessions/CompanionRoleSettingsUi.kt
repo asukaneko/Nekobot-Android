@@ -7,6 +7,7 @@ import com.nekobot.app.R
 import com.nekobot.app.data.model.userFacingTitle
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -19,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import coil.compose.AsyncImage
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.ui.components.GlassCard
@@ -39,18 +42,24 @@ internal fun CompanionRoleSettingsContent(
     delayConfiguration: @Composable () -> Unit,
     ttsConfiguration: @Composable () -> Unit,
     proactiveConfiguration: @Composable () -> Unit,
-    notificationDescription: String
+    notificationDescription: String,
+    onAvatarClick: (() -> Unit)? = null
 ) {
     val textResources = LocalResources.current
     CompanionPreferenceGroup {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             val character = session.userFacingTitle()
-            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Surface(modifier = Modifier.testTag("companion-avatar-edit").then(
+                if (onAvatarClick != null) Modifier.clickable(role = Role.Button,
+                    onClickLabel = textResources.getString(R.string.companion_avatar_change), onClick = onAvatarClick) else Modifier),
+                shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)) {
                 Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
-                    val portrait = resolveAvatarUrl(session.portraitUrl)
-                    if (!portrait.isNullOrBlank()) AsyncImage(portrait, character, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    else Text(character.take(1), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                    com.nekobot.app.ui.components.CharacterAvatarPhoto(session.characterAvatar, session.portrait, character, Modifier.fillMaxSize())
                 }
+            }
+            if (onAvatarClick != null) Text(textResources.getString(R.string.companion_avatar_change),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(character, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)

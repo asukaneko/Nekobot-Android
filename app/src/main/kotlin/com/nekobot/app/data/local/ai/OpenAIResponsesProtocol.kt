@@ -96,9 +96,22 @@ object OpenAIResponsesProtocol : LocalProtocol {
         when (event.string("type")) {
             "response.reasoning_summary_text.delta",
             "response.reasoning_text.delta" -> event.text("delta").ifBlank { null }
-            else -> null
+            // Responses 事件结构优先；兼容把思考放在自定义字段里的服务商。
+            else -> configuredThinkingText(event.getAsJsonObject("delta"))
+                ?: configuredThinkingText(event)
         }
     }.getOrNull()
+
+    /** 按「思考内容来源」配置的字段顺序，从 JSON 对象里取第一个非空字符串。 */
+    private fun configuredThinkingText(obj: com.google.gson.JsonObject?): String? {
+        if (obj == null) return null
+        return ThinkingSourceSettings.current().fields.firstNotNullOfOrNull { key ->
+            val value = obj.get(key)
+            value?.takeIf { !it.isJsonNull && it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                ?.asString
+                ?.takeIf(String::isNotBlank)
+        }
+    }
 
     override fun parseStreamToolCallDeltas(chunkJson: String): List<LocalToolCallDelta> = runCatching {
         val event = JsonParser.parseString(chunkJson).asJsonObject
@@ -249,6 +262,14 @@ object OpenAIResponsesProtocol : LocalProtocol {
                     append(summaryText.ifBlank { extractText(objectItem["content"]).orEmpty() })
                 }
             }
+        }.ifBlank {
+            // 协议专属 reasoning item 没取到时，按配置字段在响应顶层/output 条目里兜底。
+            ThinkingSourceSettings.current().fields.firstNotNullOfOrNull { key ->
+                (response[key] as? String)?.takeIf(String::isNotBlank)
+                    ?: output.firstNotNullOfOrNull { item ->
+                        ((item as? Map<*, *>)?.get(key) as? String)?.takeIf(String::isNotBlank)
+                    }
+            }.orEmpty()
         }
         val toolCalls = output.mapNotNull { item ->
             val value = item as? Map<*, *> ?: return@mapNotNull null

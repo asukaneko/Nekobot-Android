@@ -217,6 +217,12 @@ class SessionDetailViewModel : BaseViewModel() {
     private val _characterDetail = MutableStateFlow<com.nekobot.app.data.model.CharacterPreset?>(null)
     val characterDetail: StateFlow<com.nekobot.app.data.model.CharacterPreset?> = _characterDetail.asStateFlow()
 
+    /** Refresh only the saved image so changing an avatar does not discard other form drafts. */
+    fun onAvatarSaved(path: String) {
+        _session.value = _session.value?.copy(characterAvatar = path)
+        _characterDetail.value = _characterDetail.value?.copy(avatar = path)
+    }
+
     /** 角色列表（用于绑定角色选择） */
     private val _characters = MutableStateFlow<List<com.nekobot.app.data.model.CharacterPreset>>(emptyList())
     val characters: StateFlow<List<com.nekobot.app.data.model.CharacterPreset>> = _characters.asStateFlow()
@@ -877,7 +883,11 @@ fun SessionDetailScreen(
     }
     val singleSessionRole = session?.companionMode == true
     val advancedPage = singleSessionRole && advancedOpen
-    val thinkingSettings by ServiceContainer.prefs.characterThinkingSettings.collectAsStateWithLifecycle()
+    val globalThinkingSettings by ServiceContainer.prefs.characterThinkingSettings.collectAsStateWithLifecycle()
+    val thinkingSettings = if (singleSessionRole) com.nekobot.app.data.local.ai.CharacterThinkingSettings(
+        session?.companionThinkingEnabled ?: globalThinkingSettings.enabled,
+        session?.companionThinkingPrompt ?: globalThinkingSettings.customPrompt
+    ) else globalThinkingSettings
     val reasoningRevision by ServiceContainer.prefs.reasoningSettingsRevision.collectAsStateWithLifecycle()
     val effort = reasoningRevision.let {
         if (ServiceContainer.prefs.isLocalMode && session != null) {
@@ -901,6 +911,13 @@ fun SessionDetailScreen(
     }
     val showMain = !singleSessionRole || !advancedOpen
     val showAdvanced = !singleSessionRole || advancedOpen
+    var avatarEditorOpen by remember(sessionId) { mutableStateOf(false) }
+    val avatarCharacterId = session?.characterId?.takeIf { it.isNotBlank() }
+    if (avatarEditorOpen && singleSessionRole && avatarCharacterId != null && ServiceContainer.prefs.isLocalMode) {
+        CompanionAvatarEditor(sessionId, avatarCharacterId,
+            onSaved = { path -> vm.onAvatarSaved(path); avatarEditorOpen = false },
+            onDismiss = { avatarEditorOpen = false })
+    }
     if (singleSessionRole && relationshipOpen) {
         CompanionRelationshipScreen(sessionId) { relationshipOpen = false }
         return
@@ -1171,6 +1188,7 @@ fun SessionDetailScreen(
                         if (showMain && singleSessionRole) {
                             CompanionRoleSettingsContent(
                                 session = s, name = name, tags = tagsText, pinned = pinned, favorite = favorite,
+                                onAvatarClick = if (ServiceContainer.prefs.isLocalMode && avatarCharacterId != null) ({ avatarEditorOpen = true }) else null,
                                 onNameChange = { vm.name.value = it }, onTagsChange = { vm.tagsText.value = it },
                                 onPinnedChange = { vm.pinned.value = it }, onFavoriteChange = { vm.favorite.value = it },
                                 onMemories = { onOpenExperienceArchive(sessionId) }, onRelationship = { relationshipOpen = true },

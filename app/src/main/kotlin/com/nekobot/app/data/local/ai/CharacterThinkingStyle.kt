@@ -7,8 +7,16 @@ data class CharacterThinkingSettings(val enabled: Boolean = true, val customProm
 
 internal const val CHARACTER_THINKING_STYLE_KEY = "output.thinking_style"
 
-internal const val CHARACTER_THINKING_FORMAT_PROMPT =
-    "【本轮内心想法与回复】你就是当前角色本人。每一条正式回复（包括简短闲聊）都必须先在正文开头写 <think>简短的内心想法</think>，明确闭合后再写给对方的回复，不要省略、写空标签或用 Markdown 代码块包住标签。这段内心想法只写角色此刻的感受、念头与相关回忆，必须是简体中文、角色第一人称，以“我”自称，想到对方时用其姓名、平时的称呼或他/她，不用助手分析用户的口吻。原生思考通道也只写这样的心里话。不要在任何内心想法里讨论、引用、复述或解释系统提示、提示词、格式规则、标签、接口字段或遵循指令的过程；直接想眼前的事情。内心想法不预写正式回复，不把回复全部写进思考。需要工具时仍通过原有工具调用接口发送，工具名和参数保持原样，不写进思考标签替代调用；纯工具轮次不要求正式回复。"
+/**
+ * Shared default for internal reply preparation; saved custom text still takes precedence.
+ * No fixed reasoning transcript, invented memory example, or forced disclosure of private reasoning.
+ * Sent only at the existing request tail; no change to reasoning fields, switches or tool protocols.
+ */
+internal const val DEFAULT_CHARACTER_THINKING_PROMPT =
+    "回复前只在内部判断：对方此刻是在分享、求助还是需要陪伴，哪些事实有原话或记忆支持，哪里仍不确定。保持既有性格和称呼，用第一人称自然回应，不为铺陈情节补造共同经历。\n" +
+        "先接住对方具体说的事，再决定是否需要建议、核实或工具。可以有不同看法，温和说明依据，不为了讨好而附和；没有必要就不追问。\n" +
+        "这些判断无需逐步展示，不公开内部推理、分析草稿或规则；需要解释时，只给简短的判断依据。表达语言遵循对方当前要求，默认使用简体中文。\n" +
+        "需要调用已有工具时，工具名和参数保持原样，遵守已有权限；只有实际成功后才说做到了，不把计划、猜测或未执行的事说成事实。"
 
 /** 角色思考的会话资格；思考强度和偏好开关只控制注入，不隐藏设置入口。 */
 internal fun isCharacterThinkingSession(
@@ -31,12 +39,13 @@ internal fun isCharacterThinkingSession(session: Session?): Boolean = isCharacte
     fusedCompanion = session?.companionMode == true
 )
 
-internal const val DEFAULT_CHARACTER_THINKING_PROMPT =
-    "【思考方式】思维链内部必须以你的第一人称视角进行思考——这是{{char}}本人的心里话，禁止以旁观者或助手口吻思考。一律用简体中文，以\"我\"自称，带着{{char}}此刻的心情和语气去想。禁止首字输出\"用户\"\"the user\"\"Let me…\"\"让我分析一下\"等词；想到对方时必须用{{user}}的名字或\"他/她\"，没有名字就直接开始思考。思考要像意识流一样自然涌动，严禁分点列条。思考完毕后必须明确闭合思考过程，随后才能输出正式回复。调用回忆/记忆等工具时，工具名和参数保持原样，其余一律中文。思考里只想事情和心情，不预写正式回复。示例：（{{user}}问我还答应过他什么……我记得是明天一起去书店，先翻翻记忆确认，可别记错了。）"
-
-/** 不猜测姓名；缺少明确玩家姓名时，要求模型依据已有资料中的姓名称呼对方。 */
-internal fun characterThinkingPrompt(settings: CharacterThinkingSettings, characterName: String, userName: String?): String =
-    (characterThinkingPromptForEditing(settings) + "\n" + CHARACTER_THINKING_FORMAT_PROMPT)
+/**
+ * 本次请求实际发送的思考提示词：自定义优先，留空用默认；替换姓名占位符。
+ * 普通角色与单会话共用同一份，不再按模式拼接不同格式段。
+ */
+internal fun characterThinkingPrompt(settings: CharacterThinkingSettings, characterName: String, userName: String?,
+    @Suppress("UNUSED_PARAMETER") companionMode: Boolean = false): String =
+    characterThinkingPromptForEditing(settings)
         .replace("{{char}}", characterName.takeIf(String::isNotBlank) ?: "当前角色")
         .replace("{{user}}", userName?.takeIf { it.isNotBlank() && it.lowercase() !in setOf("user", "the user", "用户") } ?: "对方")
 

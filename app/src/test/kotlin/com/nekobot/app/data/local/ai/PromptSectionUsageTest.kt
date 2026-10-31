@@ -55,6 +55,17 @@ class PromptSectionUsageTest {
         val auxiliary = CompanionRequestUsage.auxiliary("每次提供的核心记忆：\n[{\"content\":\"【关系状态参考】只是历史原话\"}]")
         assertEquals(0, counts(auxiliary)[PromptSection.RELATIONSHIP])
     }
+
+    @Test fun unifiedSystemReferenceAndTailStillUseTheirActualSections() {
+        val text = "当前角色状态、任务和参考设定：\n【关系状态参考】新的相处记录\n\n有一项需要自然核对，只问一次：去哪里？"
+        val reference = CompanionRequestUsage.auxiliary(text)
+        val tail = withCharacterThinkingRule(listOf(system("设定"), mapOf("role" to "system", "content" to "现在",
+            CHARACTER_TURN_CONTEXT to "现在")), "思考要求", true).last()
+        val result = counts(reference, tail)
+        assertTrue(result.getValue(PromptSection.RELATIONSHIP) > 0)
+        assertEquals(0, result[PromptSection.CHARACTER])
+        assertEquals(estimateLocalTextTokens(text) + estimateLocalTextTokens(tail["content"] as String), result.values.sum())
+    }
     @Test fun emptyInputReturnsAllFiveZeroSections() {
         assertEquals(PromptSection.entries.toSet(), counts().keys)
         assertEquals(0, counts().values.sum())

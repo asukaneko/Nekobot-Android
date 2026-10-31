@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_category_memory">기억과 이력</string>
+    <string name="more_category_memory_summary">캐릭터 기억, 공유 기억 및 상태 이력</string>
+    <string name="more_category_appearance">외관과 스티커</string>
+    <string name="more_category_appearance_summary">스타일, 관계 페이지 스킨 및 스티커</string>
+    <string name="more_category_ai">AI 및 확장</string>
+    <string name="more_category_ai_summary">모델, 계정, 생성 설정 및 확장 기능</string>
+    <string name="more_category_app">앱 설정</string>
+    <string name="more_category_app_summary">언어, 개인정보, 권한, 실행 및 계정</string>
+    <string name="more_category_maintenance">유지 관리 도구</string>
+    <string name="more_category_maintenance_summary">가져오기, 내보내기, 백업, 데이터베이스 및 진단</string>
+    <string name="more_ai_configuration">AI 설정</string>
+    <string name="more_ai_modules">확장 기능</string>
+    <string name="more_extensions_summary">자동화, 플러그인, 도구 및 실험실</string>
+    <string name="more_permissions_summary">접근성, 알림 및 미디어 제어 권한</string>
+    <string name="more_maintenance_diagnostics">로그 및 진단</string>
+    <string name="more_maintenance_advanced">고급 유지 관리</string>
+    <string name="more_database_summary">로컬 데이터베이스 전환, 가져오기 및 관리</string>
+    <string name="more_system_json_summary">서버 시스템 설정 JSON 편집</string>
+</resources>

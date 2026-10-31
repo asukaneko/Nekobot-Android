@@ -73,7 +73,9 @@ class CharacterThinkingProtocolTest {
         assertEquals("high", http.bodies.single()["reasoning_effort"].asString)
         assertSystemOnly(http.bodies.single())
         assertSame(user, messages.last())
-        for (required in listOf("简体中文", "角色第一人称", "林小满", "小星")) assertTrue(prompt.contains(required))
+        for (required in listOf("简体中文", "第一人称")) assertTrue(prompt.contains(required))
+        // 2026-10-22 起默认不再教独白，末尾思考提示也不写这种格式。
+        assertFalse(prompt.contains("（内心：…）"))
         assertFalse(prompt.contains("{{"))
     }
 
@@ -288,8 +290,9 @@ class CharacterThinkingProtocolTest {
 
     @Test
     fun actualJsonAndSseToolOnlyResponsesKeepNativeReasoningForNextRequest() = runBlocking {
-        for (stream in listOf(false, true)) for (native in listOf("", "我先核对记录。", "「按thinking_style放在思考和回复里。」")) {
-            val expectedThinking = native.takeIf { it.isNotBlank() && !it.contains("thinking_style") } ?: "我有点担心小星。"
+        for (bodyOnly in listOf(false, true)) for (stream in listOf(false, true)) for (native in listOf("", "Let me check the record.", "「按thinking_style放在思考和回复里。」")) {
+            val expectedThinking = if (bodyOnly) "我有点担心小星。"
+                else native.takeIf { it.isNotBlank() && !it.contains("thinking_style") } ?: "我有点担心小星。"
             val toolCall = mapOf("id" to "call-1", "type" to "function", "function" to
                 mapOf("name" to "lookup", "arguments" to "{\"query\":\"书店\"}"))
             val toolMessage = mapOf("content" to "<think>我有点担心小星。</think>",
@@ -307,12 +310,12 @@ class CharacterThinkingProtocolTest {
             val result = runToolCallLoop(messages, modelCall = { current, _ -> runBlocking {
                 val relay = CharacterThinkingStream(true, LocalAiStreamCallbacks(
                     onStart = { content.setLength(0); thinking.setLength(0) },
-                    onContentChunk = { content.append(it) }, onThinkingChunk = { thinking.append(it) }))
+                    onContentChunk = { content.append(it) }, onThinkingChunk = { thinking.append(it) }), bodyOnly = bodyOnly)
                 val raw = http.client.chatOnce(model(provider = "deepseek"),
                     characterThinkingMessages(withCharacterThinkingRequest(current, prompt), true),
                     extra(), streamCallbacks = if (stream) relay.callbacks else null)
                 relay.finish()
-                val parsed = if (stream) relay.resolve(raw) else characterThinkingResult(raw, true)
+                val parsed = if (stream) relay.resolve(raw) else characterThinkingResult(raw, true, bodyOnly = bodyOnly)
                 if (http.bodies.size == 1) {
                     assertEquals("", parsed.content)
                     assertEquals(expectedThinking, parsed.thinkingContent)

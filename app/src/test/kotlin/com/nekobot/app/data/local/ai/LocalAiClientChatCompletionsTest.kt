@@ -18,6 +18,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalAiClientChatCompletionsTest {
+    @Test fun eofWithoutCompletionFailsAllThreeStreamingEntrypoints() = runBlocking {
+        val client = LocalAiClient(sseClient(listOf("""{"choices":[{"delta":{"content":"synthetic partial answer"}}]}"""), done = false))
+        val model = chatModel("incomplete")
+        val messages = listOf(mapOf("role" to "user", "content" to "synthetic request"))
+        val direct = client.chatStream(model, messages).toList()
+        assertTrue(direct.any { it is RealtimeEvent.Error })
+        try {
+            client.chatOnce(model, messages, streamCallbacks = LocalAiStreamCallbacks())
+            org.junit.Assert.fail("Partial content must not be returned as success")
+        } catch (e: IncompleteChatStream) {
+            assertEquals(FusedSummaryFailure.Reason.INCOMPLETE, FusedSummaryFailure.from(e).reason)
+        }
+        val failover = client.chatStreamWithFailover(listOf(model), messages).toList()
+        assertTrue(failover.any { it is RealtimeEvent.Error })
+    }
+
+    @Test fun finishReasonAllowsCleanEofWithoutDoneSentinel() = runBlocking {
+        val client = LocalAiClient(sseClient(listOf("""{"choices":[{"delta":{"content":"complete"},"finish_reason":"stop"}]}"""), done = false))
+        val result = client.chatOnce(chatModel(), listOf(mapOf("role" to "user", "content" to "synthetic")), streamCallbacks = LocalAiStreamCallbacks())
+        assertEquals("complete", result.content)
+        assertEquals("stop", result.finishReason)
+    }
 
     @Test
     fun onlyUnresolvedRefusalPrefixesWaitWhileOrdinaryShortRepliesCanStream() {
@@ -250,7 +272,7 @@ class LocalAiClientChatCompletionsTest {
             .build()
 
     /** 按给定顺序逐条推送 SSE 负载，最后补发 [DONE]。 */
-    private fun sseClient(payloads: List<String>): OkHttpClient =
+    private fun sseClient(payloads: List<String>, done: Boolean = true): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->
                 Response.Builder()
@@ -264,7 +286,7 @@ class LocalAiClientChatCompletionsTest {
                                 appendLine("data: $payload")
                                 appendLine()
                             }
-                            appendLine("data: [DONE]")
+                            if (done) appendLine("data: [DONE]")
                         }.toResponseBody("text/event-stream".toMediaType())
                     )
                     .build()

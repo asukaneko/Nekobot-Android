@@ -43,7 +43,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.nekobot.app.ui.components.resolveAvatarUrl
-import com.nekobot.app.ui.components.CharacterThinkingSettingsControls
 import com.nekobot.app.data.model.CustomReasoningParam
 import com.nekobot.app.data.model.ReasoningEffort
 
@@ -93,11 +92,12 @@ internal fun CompanionPreferenceRow(
     modifier: Modifier = Modifier,
     checked: Boolean? = null, onCheckedChange: ((Boolean) -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true
 ) {
     val interaction = when {
-        checked != null && onCheckedChange != null -> Modifier.toggleable(checked, role = Role.Switch, onValueChange = onCheckedChange)
-        onClick != null -> Modifier.clickable(onClick = onClick)
+        checked != null && onCheckedChange != null -> Modifier.toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
+        onClick != null -> Modifier.clickable(enabled = enabled, onClick = onClick)
         else -> Modifier
     }
     Row(modifier.fillMaxWidth().then(interaction).heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -109,7 +109,7 @@ internal fun CompanionPreferenceRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         when {
-            checked != null -> Switch(checked, onCheckedChange = null,
+            checked != null -> Switch(checked, onCheckedChange = null, enabled = enabled,
                 colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary,
                     uncheckedTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
                     uncheckedBorderColor = Color.Transparent, uncheckedThumbColor = MaterialTheme.colorScheme.surface))
@@ -126,15 +126,21 @@ internal fun CompanionSettingsScreen(
     onDismiss: () -> Unit, onDetails: () -> Unit, onSearch: () -> Unit,
     onFavorites: () -> Unit, onUsage: () -> Unit, onArchive: (() -> Unit)? = null,
     portraitUrl: String? = null,
-    showInnerMonologue: Boolean = true,
-    onShowInnerMonologueChange: ((Boolean) -> Unit)? = null,
     reasoningEffort: ReasoningEffort = ReasoningEffort.NONE,
     customReasoning: CustomReasoningParam = CustomReasoningParam(),
     onReasoningEffortChange: (ReasoningEffort) -> Unit = {},
     onCustomReasoningChange: (CustomReasoningParam) -> Unit = {},
-    onSaved: () -> Unit = {}
+    onSaved: () -> Unit = {},
+    sessionId: String? = null,
+    characterId: String? = null
 ) {
     val textResources = LocalResources.current
+    var promptsOpen by androidx.compose.runtime.saveable.rememberSaveable(sessionId) { mutableStateOf(false) }
+    if (promptsOpen && sessionId != null && characterId != null) {
+        CompanionPromptSettingsScreen(sessionId, characterId, characterName, reasoningEffort,
+            onBack = { promptsOpen = false }, onSaved = onSaved)
+        return
+    }
     BackHandler(onBack = onDismiss)
     Surface(Modifier.fillMaxSize().testTag("companion-settings-screen"), color = companionSettingsBackground(),
         contentColor = MaterialTheme.colorScheme.onSurface) {
@@ -152,6 +158,11 @@ internal fun CompanionSettingsScreen(
                             if (onArchive != null) CompanionSettingsAction(textResources.getString(R.string.chat_view_archive), Icons.Outlined.FolderOpen, onArchive, Modifier.weight(1f))
                         }
                     }
+                    if (sessionId != null && characterId != null) CompanionPreferenceGroup {
+                        CompanionPreferenceRow(textResources.getString(R.string.companion_prompts_title), Icons.Outlined.Tune,
+                            textResources.getString(R.string.companion_prompts_summary),
+                            modifier = Modifier.testTag("companion-prompts-entry"), onClick = { promptsOpen = true })
+                    }
                     CompanionPreferenceGroup(textResources.getString(R.string.single_role_thinking)) {
                         CompanionPreferenceRow(textResources.getString(R.string.companion_chat_show_reasoning), Icons.Outlined.Description, textResources.getString(R.string.single_role_control_whether_these_thoughts_are_shown),
                             checked = checked, onCheckedChange = { onCheckedChange(it); onSaved() })
@@ -163,17 +174,11 @@ internal fun CompanionSettingsScreen(
                                 modifier = Modifier.padding(start = 72.dp, end = 16.dp, bottom = 12.dp))
                         }
                         CompanionPreferenceDivider()
-                        CharacterThinkingSettingsControls(reasoningEffort,
-                            Modifier.padding(horizontal = 16.dp, vertical = 6.dp), compact = true, onSaved = onSaved)
+                        if (sessionId != null) CompanionThinkingControls(sessionId, reasoningEffort, onSaved)
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         CompanionPreferenceGroup(textResources.getString(R.string.single_role_display_and_usage)) {
-                            if (onShowInnerMonologueChange != null) {
-                                CompanionPreferenceRow(textResources.getString(R.string.single_role_show_inner_monologue), Icons.Outlined.ChatBubbleOutline, textResources.getString(R.string.single_role_only_affects_this_conversation),
-                                    modifier = Modifier.testTag("companion-show-inner-monologue"),
-                                    checked = showInnerMonologue, onCheckedChange = { onShowInnerMonologueChange(it); onSaved() })
-                                CompanionPreferenceDivider()
-                            }
+                            // 2026-10-22 用户决定：不再提供“显示内心独白”开关，恒定显示。
                             CompanionPreferenceRow(textResources.getString(R.string.single_role_chat_usage), Icons.Outlined.BarChart, textResources.getString(R.string.single_role_view_content_included_in_the_last_request), onClick = onUsage)
                         }
                         Text(textResources.getString(R.string.single_role_enable_both_thinking_display_and_character_perspective_thinking_t), Modifier.padding(horizontal = 4.dp),

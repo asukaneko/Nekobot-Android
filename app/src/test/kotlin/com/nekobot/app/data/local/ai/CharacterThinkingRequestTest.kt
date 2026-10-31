@@ -1,4 +1,4 @@
-package com.nekobot.app.data.local.ai
+﻿package com.nekobot.app.data.local.ai
 
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.db.LocalAiModelEntity
@@ -31,7 +31,8 @@ class CharacterThinkingRequestTest {
                 messages.map { if (it["role"] == "system") it + ("content" to "重新构建的角色设定") else it }
         }
         AIPipeline().prepareContext(ctx, callbacks)
-        assertEquals("$section\n\n重新构建的角色设定", ctx.messages.first()["content"])
+        // 思考提示词不再放顶部 system：重建后的系统提示词保持原样。
+        assertEquals("重新构建的角色设定", ctx.messages.first()["content"])
         assertEquals(listOf(mapOf("role" to "user", "content" to "哈哈")), ctx.messages.filter { it["role"] == "user" })
         assertEquals(ctx.messages.first()["content"], ctx.metadata["composed_system_prompt"])
     }

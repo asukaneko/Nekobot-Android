@@ -91,11 +91,9 @@ class PortableCompanionImportIsolationTest {
         val contexts = foreign.associate { it.first to db().companionMemoryDao().contextMaterials(it.third.id) }
         repeat(2) {
             manager.import(ByteArrayInputStream(backup), "", setOf(PortableDataCategory.CONVERSATIONS))
-            assertEquals(importedState.copy(enabled = false, awaitingHistory = true, version = importedState.version + 1,
-                notice = null), db().companionRelationshipDao().state("imported"))
-            assertEquals(importedScope.copy(profile = db().dbName, baselineRowId = 0, revision = importedScope.revision + 1,
-                archiveRowId = requireNotNull(db().messageDao().cursorOf("imported-source")).rowId),
-                db().companionMemoryDao().scope(importedScope.id))
+            // An identical import is now a true no-op, including the selected owner's state and cursor.
+            assertEquals(importedState, db().companionRelationshipDao().state("imported"))
+            assertEquals(importedScope, db().companionMemoryDao().scope(importedScope.id))
             for ((id, state, memoryScope) in foreign) {
                 assertEquals("未导入角色的关系状态被改动：$id", state, db().companionRelationshipDao().state(id))
                 assertEquals("未导入角色的记忆进度被改动：$id", memoryScope, db().companionMemoryDao().scope(memoryScope.id))

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_home_common">よく使う項目</string>
+    <string name="more_home_memory">キャラクターと記憶</string>
+    <string name="more_home_appearance_chat">外観とチャット</string>
+    <string name="more_home_extensions_management">拡張と管理</string>
+    <string name="more_home_role_memory_scope">あなたや出来事の記憶をキャラクターごとに管理</string>
+    <string name="more_home_session_memory_scope">各会話に独立した経験と約束</string>
+    <string name="more_home_global_memory_scope">現在のデータベース内で会話間に共有</string>
+</resources>

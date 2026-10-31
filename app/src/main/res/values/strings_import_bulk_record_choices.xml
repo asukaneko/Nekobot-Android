@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_bulk_record_incoming">更新已有内容</string>
+    <string name="import_bulk_record_keep">保留原有内容</string>
+    <string name="import_bulk_record_scope">这次有 %1$d 条已有内容与文件不同；附件、设置和登录信息仍按各自选择。</string>
+    <string name="import_bulk_record_confirm">将这次全部 %1$d 条已有内容更新为文件中的内容？记忆和已选的原话出处会配套处理。附件、应用设置和登录信息保持当前选择。这里只更新预览，最后确认导入才会修改软件里的内容。</string>
+    <string name="import_bulk_record_changed">差异记录已变化，请重新预览后再批量选择。</string>
+</resources>

@@ -266,7 +266,8 @@ sealed class RealtimeEvent {
         val sessionId: String,
         val inProgress: Boolean,
         val compressed: Boolean = false,
-        val anchorContent: String = ""
+        val anchorContent: String = "",
+        val memorySummarizing: Boolean = false
     ) : RealtimeEvent()
     /**
      * Hook 触发通知（成就式弹窗）。

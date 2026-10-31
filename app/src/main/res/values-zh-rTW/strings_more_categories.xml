@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_category_memory">記憶與歷程</string>
+    <string name="more_category_memory_summary">角色記憶、共用記憶與狀態歷程</string>
+    <string name="more_category_appearance">外觀與表情</string>
+    <string name="more_category_appearance_summary">樣式、關係頁面佈景與表情包</string>
+    <string name="more_category_ai">AI 與擴充</string>
+    <string name="more_category_ai_summary">模型、帳號、生成參數與擴充功能</string>
+    <string name="more_category_app">應用程式設定</string>
+    <string name="more_category_app_summary">語言、隱私、授權、執行與帳號</string>
+    <string name="more_category_maintenance">維護工具</string>
+    <string name="more_category_maintenance_summary">匯入匯出、備份、資料庫與診斷</string>
+    <string name="more_ai_configuration">AI 設定</string>
+    <string name="more_ai_modules">擴充功能</string>
+    <string name="more_extensions_summary">自動化、外掛、工具與實驗室</string>
+    <string name="more_permissions_summary">輔助使用、通知與媒體控制授權</string>
+    <string name="more_maintenance_diagnostics">記錄與診斷</string>
+    <string name="more_maintenance_advanced">進階維護</string>
+    <string name="more_database_summary">切換、匯入與管理本機資料庫</string>
+    <string name="more_system_json_summary">編輯伺服器系統設定 JSON</string>
+</resources>

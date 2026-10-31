@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="more_category_memory">记忆与历程</string>
+    <string name="more_category_memory_summary">角色记忆、全局记忆与状态历程</string>
+    <string name="more_category_appearance">外观与表情</string>
+    <string name="more_category_appearance_summary">样式、关系页皮肤与表情包</string>
+    <string name="more_category_ai">AI 与扩展</string>
+    <string name="more_category_ai_summary">模型、账户、生成参数与扩展功能</string>
+    <string name="more_category_app">应用设置</string>
+    <string name="more_category_app_summary">语言、隐私、授权、运行与账号</string>
+    <string name="more_category_maintenance">维护工具</string>
+    <string name="more_category_maintenance_summary">导入导出、备份、数据库与诊断</string>
+    <string name="more_ai_configuration">AI 配置</string>
+    <string name="more_ai_modules">扩展功能</string>
+    <string name="more_extensions_summary">自动化、插件、工具与实验室</string>
+    <string name="more_permissions_summary">辅助功能、通知与媒体控制授权</string>
+    <string name="more_maintenance_diagnostics">日志与诊断</string>
+    <string name="more_maintenance_advanced">进阶维护</string>
+    <string name="more_database_summary">切换、导入与管理本地数据库</string>
+    <string name="more_system_json_summary">编辑服务端系统配置 JSON</string>
+</resources>

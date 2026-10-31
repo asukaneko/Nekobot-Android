@@ -5,6 +5,21 @@ internal enum class PromptSection { CHARACTER, CORE_MEMORY, RELATIONSHIP, PLAYER
 
 private val promptSectionHeading = Regex("(?m)^## ([a-z][a-z0-9_.-]*)[ \\t]*$")
 
+/** 标题不再发送给角色，统计改用本机标记；原有普通模式仍按原标题计数。 */
+internal fun markCompanionSystem(message: Map<String, Any>, items: List<PromptStack.PromptInjection>): Map<String, Any> {
+    val total = estimateLocalTextTokens(message["content"] as? String ?: "")
+    var remaining = total
+    val sections = PromptSection.entries.associate { it.name to 0 }.toMutableMap()
+    for (item in items) {
+        val section = if (item.key == "user.persona") PromptSection.PLAYER else PromptSection.OTHER
+        val size = estimateLocalTextTokens(item.content).coerceIn(0, remaining)
+        sections[section.name] = sections.getValue(section.name) + size
+        remaining -= size
+    }
+    sections[PromptSection.CHARACTER.name] = remaining
+    return message + (CompanionRequestUsage.SYSTEM_SECTIONS to sections)
+}
+
 /** 按实际发送的 system 和有软件来源标记的辅助上下文统计；玩家仿写标题不计入。 */
 internal fun promptSectionCounts(messages: List<Map<String, Any>>): Map<PromptSection, Int> {
     val counts = PromptSection.entries.associateWith { 0L }.toMutableMap()
@@ -13,7 +28,16 @@ internal fun promptSectionCounts(messages: List<Map<String, Any>>): Map<PromptSe
     }
     for (message in messages) {
         val text = message["content"] as? String ?: continue
-        if (message["role"] == "system") {
+        if (message.containsKey(CHARACTER_TURN_CONTEXT) || message[CHARACTER_THINKING_RULE] == true) {
+            add(PromptSection.OTHER, estimateLocalTextTokens(text))
+            continue
+        }
+        if (message["role"] == "system" && !message.containsKey(CompanionRequestUsage.META)) {
+            val localSections = message[CompanionRequestUsage.SYSTEM_SECTIONS] as? Map<*, *>
+            if (localSections != null) {
+                PromptSection.entries.forEach { add(it, (localSections[it.name] as? Number)?.toInt() ?: 0) }
+                continue
+            }
             val headings = promptSectionHeading.findAll(text).toList()
             add(PromptSection.CHARACTER, estimateLocalTextTokens(text.take(headings.firstOrNull()?.range?.first ?: text.length)))
             headings.forEachIndexed { index, heading ->
@@ -33,8 +57,11 @@ internal fun promptSectionCounts(messages: List<Map<String, Any>>): Map<PromptSe
             val total = estimateLocalTextTokens(text)
             val core = (((mark["core"] as? Map<*, *>)?.get("tokens") as? Number)?.toInt() ?: 0).coerceIn(0, total)
             // 关系段位于软件辅助资料的状态区，最后追加；不在原话或记忆 JSON 里找标题。
-            val dynamic = text.substringAfter("当前角色状态、任务和参考设定（世界书属于设定，不能当作已发生经历）：\n", "")
+            val dynamic = text.substringAfter("当前角色状态、任务和参考设定：\n", "").ifBlank {
+                text.substringAfter("当前角色状态、任务和参考设定（世界书属于设定，不能当作已发生经历）：\n", "")
+            }
             val relationshipText = dynamic.substringAfter("【关系状态参考】", "").substringBefore("</software_context>")
+                .substringBefore("\n\n有一项需要自然核对")
             val relationship = if (relationshipText.isBlank()) 0 else
                 estimateLocalTextTokens("【关系状态参考】$relationshipText").coerceIn(0, total - core)
             add(PromptSection.CORE_MEMORY, core)

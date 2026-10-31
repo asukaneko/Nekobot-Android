@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.db
 
 import android.database.Cursor
+import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -17,8 +18,8 @@ import java.sql.DriverManager
 @RunWith(Parameterized::class)
 class UpstreamMigrationTest(private val version: Int) {
     companion object {
-        @JvmStatic @Parameterized.Parameters(name = "v{0} to v60")
-        fun versions() = (31..59).map { arrayOf(it) }
+        @JvmStatic @Parameterized.Parameters(name = "v{0} to latest")
+        fun versions() = (31..63).map { arrayOf(it) }
     }
 
     @Test fun upgradePreservesDataAndMatchesCurrentSchemaAfterReopen() {
@@ -47,7 +48,10 @@ class UpstreamMigrationTest(private val version: Int) {
                 }
                 val database = sqliteBridge(connection)
                 connection.autoCommit = false
-                NekobotDatabase.ALL_MIGRATIONS.filter { it.startVersion >= version }.forEach { it.migrate(database) }
+                val path = RoomDatabase.MigrationContainer().apply {
+                    addMigrations(*NekobotDatabase.ALL_MIGRATIONS)
+                }.findMigrationPath(version, latestSchemaVersion())
+                requireNotNull(path).forEach { it.migrate(database) }
                 connection.commit()
                 connection.autoCommit = true
                 assertSchema(connection)
@@ -82,35 +86,50 @@ class UpstreamMigrationTest(private val version: Int) {
         } finally { file.delete() }
     }
 
-    private fun schema(version: Int): JsonObject {
+    internal fun schema(version: Int): JsonObject {
         val directory = listOf(File("schemas"), File("app/schemas")).first { it.isDirectory }
         return JsonParser.parseString(File(directory, "com.nekobot.app.data.local.db.NekobotDatabase/$version.json").readText())
             .asJsonObject.getAsJsonObject("database")
+    }
+
+    /**
+     * 期望结构跟随导出的最新 schema，不在测试里写死版本号。
+     * 产品升版本并导出 schema 后，这里自动指向新结构；漏导出则会明确报错。
+     */
+    private fun latestSchemaVersion(): Int {
+        val directory = listOf(File("schemas"), File("app/schemas")).firstOrNull { it.isDirectory }
+            ?: error("找不到 schemas 导出目录，当前工作目录=${File(".").absolutePath}")
+        val schemas = File(directory, "com.nekobot.app.data.local.db.NekobotDatabase")
+        return schemas.listFiles { file -> file.extension == "json" }
+            ?.mapNotNull { it.nameWithoutExtension.toIntOrNull() }
+            ?.maxOrNull()
+            ?: error("$schemas 下没有可用的 schema 导出文件")
     }
 
     private fun connect(file: File): Connection = DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}").also {
         it.createStatement().use { statement -> statement.execute("PRAGMA foreign_keys=ON") }
     }
 
-    private fun createSchema(connection: Connection, schema: JsonObject) {
+    internal fun createSchema(connection: Connection, schema: JsonObject) {
         connection.createStatement().use { statement ->
             schema.getAsJsonArray("entities").forEach { entry ->
                 val entity = entry.asJsonObject
                 statement.execute(entity["createSql"].asString.replace("\${TABLE_NAME}", entity["tableName"].asString))
-                entity.getAsJsonArray("indices").forEach {
+                // Room 新导出格式省略空索引数组；非空索引仍逐个创建并核对。
+                entity.getAsJsonArray("indices")?.forEach {
                     statement.execute(it.asJsonObject["createSql"].asString.replace("\${TABLE_NAME}", entity["tableName"].asString))
                 }
             }
         }
     }
 
-    private fun insert(connection: Connection, schema: JsonObject, table: String, values: Map<String, Any>) {
+    internal fun insert(connection: Connection, schema: JsonObject, table: String, values: Map<String, Any>) {
         val fields = schema.getAsJsonArray("entities").single { it.asJsonObject["tableName"].asString == table }
             .asJsonObject.getAsJsonArray("fields").map { it.asJsonObject }
         val names = fields.joinToString(",") { "`${it["columnName"].asString}`" }
         connection.prepareStatement("INSERT INTO $table ($names) VALUES (${fields.joinToString(",") { "?" }})").use { statement ->
             fields.forEachIndexed { index, field ->
-                val value = values[field["columnName"].asString] ?: if (!field["notNull"].asBoolean) null
+                val value = values[field["columnName"].asString] ?: if (field["notNull"]?.asBoolean != true) null
                     else if (field["affinity"].asString == "INTEGER") 0 else ""
                 statement.setObject(index + 1, value)
             }
@@ -118,7 +137,7 @@ class UpstreamMigrationTest(private val version: Int) {
         }
     }
 
-    private fun scalar(connection: Connection, sql: String): String? = connection.createStatement().use { statement ->
+    internal fun scalar(connection: Connection, sql: String): String? = connection.createStatement().use { statement ->
         statement.executeQuery(sql).use { rows -> assertTrue(rows.next()); rows.getString(1) }
     }
 
@@ -128,12 +147,14 @@ class UpstreamMigrationTest(private val version: Int) {
         } }
     }
 
-    private fun assertSchema(connection: Connection) {
+    internal fun assertSchema(connection: Connection) {
         // Compare PRAGMA metadata with a freshly created current Room export. Triggers are
         // migration-only; defaults are checked whenever the Room entity declares one.
+        // 期望结构取自最新导出，因此新增的表（如 portable_import_commits）也会被核对。
+        val expected = schema(latestSchemaVersion())
         DriverManager.getConnection("jdbc:sqlite::memory:").use { fresh ->
-            createSchema(fresh, schema(60))
-            schema(60).getAsJsonArray("entities").forEach { entry ->
+            createSchema(fresh, expected)
+            expected.getAsJsonArray("entities").forEach { entry ->
                 val table = entry.asJsonObject["tableName"].asString
                 val expected = rows(fresh, "PRAGMA table_info(`$table`)").associateBy { it[1] }
                 val actual = rows(connection, "PRAGMA table_info(`$table`)").associateBy { it[1] }
@@ -145,7 +166,7 @@ class UpstreamMigrationTest(private val version: Int) {
                 }
                 assertEquals("$table foreign keys", rows(fresh, "PRAGMA foreign_key_list(`$table`)"),
                     rows(connection, "PRAGMA foreign_key_list(`$table`)"))
-                entry.asJsonObject.getAsJsonArray("indices").forEach { index ->
+                entry.asJsonObject.getAsJsonArray("indices")?.forEach { index ->
                     val name = index.asJsonObject["name"].asString
                     assertEquals("$name columns", rows(fresh, "PRAGMA index_info(`$name`)").map { it[0] to it[2] },
                         rows(connection, "PRAGMA index_info(`$name`)").map { it[0] to it[2] })
@@ -157,7 +178,7 @@ class UpstreamMigrationTest(private val version: Int) {
     }
 
     /** Only adapts the SQLite transport. All migration SQL comes from production code. */
-    private fun sqliteBridge(connection: Connection): SupportSQLiteDatabase = Proxy.newProxyInstance(
+    internal fun sqliteBridge(connection: Connection): SupportSQLiteDatabase = Proxy.newProxyInstance(
         SupportSQLiteDatabase::class.java.classLoader, arrayOf(SupportSQLiteDatabase::class.java)
     ) { _, method, args ->
         when (method.name) {

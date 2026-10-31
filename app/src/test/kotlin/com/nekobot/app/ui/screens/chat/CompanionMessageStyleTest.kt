@@ -40,7 +40,7 @@ class CompanionMessageStyleTest {
         assertEquals(84, companionBubbleMaxWidthDp(180, false))
         assertEquals(1, companionBubbleMaxWidthDp(40, false))
     }
-    @Test fun uploadedPortraitHasPriority() = assertEquals("file:///portrait.jpg", companionPhotoPath("file:///portrait.jpg", "file:///avatar.jpg"))
+    @Test fun uploadedAvatarHasPriority() = assertEquals("file:///avatar.jpg", companionPhotoPath("file:///portrait.jpg", "file:///avatar.jpg"))
     @Test fun legacyIconFallsBackToPhoto() = assertEquals("file:///avatar.jpg", companionPhotoPath("fas fa-cat", "file:///avatar.jpg"))
     @Test fun missingPhotoFallsBackToInitial() = assertNull(companionPhotoPath(" ", "fasfa-cat"))
     @Test fun avatarPhotoWorksWithoutPortrait() = assertEquals("content://photo/1", companionPhotoPath(null, "content://photo/1"))
