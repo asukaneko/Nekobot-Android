@@ -22,8 +22,20 @@ internal class LocalAgentProgressReporter(
     private val nowNanos: () -> Long = System::nanoTime,
     private val streamIntervalNanos: Long = 120_000_000L,
     private val streamCharBatch: Int = 96,
-    private val cardId: String = UUID.randomUUID().toString()
+    private val cardId: String = UUID.randomUUID().toString(),
+    /**
+     * 实时 git 扫描入口：返回工作区相关仓库当前**相对 HEAD 的全部更改**。
+     * 为 null 时不启动监控（单元测试等无工作区场景）。
+     */
+    private val gitScanProvider: (() -> com.nekobot.app.data.local.WorkspaceGitDiff.GitScanResult)? = null,
+    /** 实时 git 扫描间隔（毫秒）。 */
+    private val gitScanIntervalMs: Long = DEFAULT_GIT_SCAN_INTERVAL_MS
 ) : ProgressReporter() {
+
+    private companion object {
+        /** 默认扫描间隔：兼顾“有变化马上看到”与移动端性能。 */
+        const val DEFAULT_GIT_SCAN_INTERVAL_MS = 2_000L
+    }
 
     /** 优先从本地化上下文取资源；JVM 单测等无上下文场景回落到中文默认文案。 */
     private fun progressText(resId: Int, fallback: String): String =
@@ -33,7 +45,13 @@ internal class LocalAgentProgressReporter(
         ServiceContainer.localizedContext?.getString(resId, arg)
             ?: String.format(Locale.getDefault(), fallback, arg)
 
-    private val steps = mutableListOf<ThinkingStep>()
+    /**
+     * 卡片步骤列表。
+     *
+     * 使用写时复制列表：实时 git 监控在后台线程刷新卡片，而流水线线程同时在追加步骤，
+     * 普通 ArrayList 的并发读写可能让快照读到尚未写入的元素。
+     */
+    private val steps = java.util.concurrent.CopyOnWriteArrayList<ThinkingStep>()
     /**
      * 当前这一轮思考的正文累加器。
      *
@@ -49,6 +67,124 @@ internal class LocalAgentProgressReporter(
      * 被中断（onToolStart 后无 onToolDone）的残留条目在 onDone 统一清理。
      */
     private val toolStartNanosByName = mutableMapOf<String, MutableList<Long>>()
+
+    // ---------- 实时 git 仓库监控 ----------
+    /**
+     * 仓库当前相对 HEAD 的更改摘要。
+     *
+     * 与步骤列表分开存放：监控线程只改这个字段，卡片快照时再合并成 git_diff 步骤，
+     * 从而不必让监控线程去碰流水线线程正在写的步骤列表。
+     */
+    @Volatile
+    private var gitDiffSummary: GitDiffSummary? = null
+    private val gitDiffLock = Any()
+    private var gitWatcher: com.nekobot.app.data.local.WorkspaceGitWatcher? = null
+    /** 收尾/停止后不再接受监控结果，避免旧扫描覆盖最终卡片。 */
+    @Volatile
+    private var gitWatchClosed = false
+    /** 最近一次卡片头部文本与完成态：监控触发的刷新沿用它们，不覆盖流水线文案。 */
+    private var lastHeader: String = ""
+    private var lastComplete: Boolean = false
+
+    /** 启动实时监控（幂等）：按间隔扫描仓库，发现变化就刷新卡片。 */
+    private fun ensureGitWatcher() {
+        val provider = gitScanProvider ?: return
+        if (gitWatchClosed || gitWatcher != null) return
+        val watcher = com.nekobot.app.data.local.WorkspaceGitWatcher(
+            intervalMs = gitScanIntervalMs,
+            scan = provider,
+            // 轮询更新不落库：卡片最终状态由 onDone 的收尾扫描随进度卡一起持久化，
+            // 避免每两秒写一次大 JSON。
+            onSummary = { summary -> updateGitDiff(summary, checkpoint = false) }
+        )
+        gitWatcher = watcher
+        watcher.start()
+    }
+
+    /** 工具结束后请求立即补扫一次，不必等下一个轮询周期。 */
+    private fun requestGitScan() {
+        if (gitWatchClosed) return
+        gitWatcher?.requestScan() ?: ensureGitWatcher()
+    }
+
+    private fun stopGitWatcher() {
+        gitWatchClosed = true
+        gitWatcher?.stop()
+        gitWatcher = null
+    }
+
+    /**
+     * 本轮运行结束（正常/被停止/异常）：停止实时监控。
+     * 幂等；[onDone] 已经收尾时这里不再做任何事。
+     */
+    fun stopMonitoring() {
+        if (gitWatchClosed) return
+        refreshGitSummaryNow()
+        stopGitWatcher()
+    }
+
+    /**
+     * 收尾同步扫描：保证最终卡片包含这一轮结束时刻的仓库状态。
+     *
+     * 扫描不可信（[GitScanResult.Unavailable]）时保留上一次结果——收尾读盘失败同样不该把
+     * 已经展示的变更区域抹掉。
+     */
+    private fun refreshGitSummaryNow() {
+        val provider = gitScanProvider ?: return
+        val result = runCatching { provider() }.getOrNull() ?: return
+        when (result) {
+            is com.nekobot.app.data.local.WorkspaceGitDiff.GitScanResult.Changed ->
+                synchronized(gitDiffLock) { gitDiffSummary = result.summary }
+            is com.nekobot.app.data.local.WorkspaceGitDiff.GitScanResult.Clean ->
+                synchronized(gitDiffLock) { gitDiffSummary = null }
+            is com.nekobot.app.data.local.WorkspaceGitDiff.GitScanResult.Unavailable -> Unit
+        }
+    }
+
+    /**
+     * 写入实时 git 摘要并刷新卡片。
+     *
+     * summary 为 null（无仓库 / 无更改，例如 AI 提交了这些文件）时移除卡片上的变更区域。
+     *
+     * @param checkpoint 是否落库；轮询刷新传 false，只在收尾时随进度卡持久化
+     */
+    fun updateGitDiff(summary: GitDiffSummary?, checkpoint: Boolean = true) {
+        if (gitWatchClosed) return
+        val normalized = summary?.takeIf { it.hasChanges }
+        val changed = synchronized(gitDiffLock) {
+            if (normalized == gitDiffSummary) {
+                false
+            } else {
+                gitDiffSummary = normalized
+                true
+            }
+        }
+        if (!changed) return
+        emit(
+            content = lastHeader.ifBlank {
+                progressText(R.string.agent_progress_processing, "AI 正在处理...")
+            },
+            isComplete = lastComplete,
+            checkpoint = checkpoint,
+            syncReasoning = false
+        )
+    }
+
+    /** 由当前 git 摘要生成的卡片步骤（无更改时为 null）。 */
+    private fun gitDiffStep(): ThinkingStep? {
+        val summary = gitDiffSummary?.takeIf { it.hasChanges } ?: return null
+        return ThinkingStep(
+            type = "git_diff",
+            name = progressText(R.string.agent_git_step_name, "文件变更（git）"),
+            status = "done",
+            detail = progressText(
+                R.string.agent_git_files_changed,
+                "共 %1\$d 个文件变更",
+                summary.files.size
+            ),
+            gitDiff = summary
+        )
+    }
 
     private fun syncThinkingStep() {
         if (reasoningContent.isEmpty()) return
@@ -124,13 +260,17 @@ internal class LocalAgentProgressReporter(
     private fun emit(
         content: String,
         isComplete: Boolean = false,
-        checkpoint: Boolean = true
+        checkpoint: Boolean = true,
+        /** 监控线程刷新时不做思考正文同步，避免与流水线线程写思考缓冲相互影响。 */
+        syncReasoning: Boolean = true
     ) {
-        syncThinkingStep()
+        if (syncReasoning) syncThinkingStep()
+        lastHeader = content
+        lastComplete = isComplete
         val card = ThinkingCard(
             id = cardId,
             content = content,
-            steps = steps.toList(),
+            steps = stepsWithGitDiff(),
             isComplete = isComplete,
             isAgent = true,
             timestamp = LocalRepository.nowIsoStatic(),
@@ -144,7 +284,20 @@ internal class LocalAgentProgressReporter(
         }
     }
 
+    /** 步骤快照 + 实时 git 变更步骤（插在末尾的「处理完成」步骤之前）。 */
+    private fun stepsWithGitDiff(): List<ThinkingStep> {
+        val snapshot = steps.toMutableList()
+        val gitStep = gitDiffStep() ?: return snapshot
+        val doneIndex = snapshot.indexOfLast {
+            it.type.equals("done", ignoreCase = true)
+        }
+        if (doneIndex >= 0) snapshot.add(doneIndex, gitStep) else snapshot.add(gitStep)
+        return snapshot
+    }
+
     override fun onPreparingStart(ctx: PipelineContext) {
+        // Agent 一轮运行开始：启动 git 仓库实时监控（无仓库时监控器自动空转）
+        ensureGitWatcher()
         if (steps.none { it.type == "preparing" }) {
             steps.add(
                 ThinkingStep(
@@ -284,6 +437,8 @@ internal class LocalAgentProgressReporter(
             )
         }
         emit(progressText(R.string.agent_progress_tool_done, "工具完成: %1\$s", toolName))
+        // 工具可能改动了仓库：立即补扫一次，让变更区域第一时间刷新
+        requestGitScan()
     }
 
     override fun onToolIteration(ctx: PipelineContext, iteration: Int) {
@@ -375,6 +530,9 @@ internal class LocalAgentProgressReporter(
         toolStartNanosByName.clear()
         AgentOverlayBus.onRunFinished(sessionId)
         AgentIntermediateReplyBus.finishRun(sessionId)
+        // 停止实时监控并做一次同步收尾扫描：最终卡片包含本轮结束时刻的仓库状态
+        stopGitWatcher()
+        refreshGitSummaryNow()
         for (index in steps.indices) {
             val step = steps[index]
             if (step.status == "running" || step.status == "active") {
@@ -387,29 +545,8 @@ internal class LocalAgentProgressReporter(
     }
 
     /**
-     * 将最新的 git 变更摘要附加到进度卡片（类型 git_diff，status=done）。
-     * 覆盖或追加一个 git_diff 步骤，使进度卡与列表 UI 都能通过 _reported_ git 摘要展示变更。
-     * 若 summary 为 null（无 git 追踪/无变更），则不改变已有步骤。
+     * 兼容入口：立即挂载一份 git 变更摘要（不经过实时监控）。
+     * 语义与 [updateGitDiff] 一致；summary 为 null 时移除卡片上的变更区域。
      */
-    fun attachGitDiff(summary: GitDiffSummary?, contentOverride: String? = null) {
-        if (summary == null) return
-        val index = steps.indexOfLast { it.type == "git_diff" }
-        val step = ThinkingStep(
-            type = "git_diff",
-            name = progressText(
-                R.string.agent_git_step_name,
-                "文件变更（git）"
-            ),
-            status = "done",
-            detail = contentOverride
-                ?: progressText(R.string.agent_git_files_changed, "共 %1\$d 个文件变更", summary.files.size),
-            gitDiff = summary
-        )
-        if (index >= 0) {
-            steps[index] = step
-        } else {
-            steps.add(step)
-        }
-        emit(contentOverride ?: progressText(R.string.agent_git_files_changed, "共 %1\$d 个文件变更", summary.files.size))
-    }
+    fun attachGitDiff(summary: GitDiffSummary?) = updateGitDiff(summary, checkpoint = true)
 }

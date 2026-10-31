@@ -1891,6 +1891,15 @@ internal class LocalAgentToolExecutor(
     fun currentChangedPaths(): Set<String> = changedPaths.toSet()
 
     /**
+     * 已记录变更路径对应的真实文件绝对路径。
+     *
+     * 实时 git 监控用它来定位工作区之外的仓库（共享工作区 / 共享存储里的项目），
+     * 仅作为仓库发现线索——卡片展示的仍是仓库相对 HEAD 的全部更改。
+     */
+    fun changedAbsolutePaths(): List<String> =
+        changedPaths.mapNotNull { path -> runCatching { resolveChangedFile(path)?.path }.getOrNull() }
+
+    /**
      * 计算已变更文件（会话工作区 / 共享工作区 / 绝对路径）的 git 变更摘要。
      * - 仅本地 Agent 模式、且变更文件位于 git 追踪目录时才返回非空。
      * - 无变更路径、无可追踪 git 仓库或 HEAD 缺失时返回 null（UI 不渲染）。

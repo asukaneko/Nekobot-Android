@@ -67,6 +67,7 @@
     <string name="log_fgs_start_failed">포그라운드 서비스 시작 실패: %1$s</string>
     <string name="log_fgs_stop_generation_failed">생성 중지 요청 실패: %1$s</string>
     <string name="log_git_diff_failed">git diff 요약 생성 실패: %1$s</string>
+    <string name="log_git_watch_scan_failed">git 저장소 모니터링 스캔 실패: %1$s</string>
     <string name="log_hook_action_error">Hook %1$s action 실행 오류: %2$s</string>
     <string name="log_hook_condition_error">Hook %1$s 조건 평가 오류: %2$s</string>
     <string name="log_hook_context_appended">[Hook:%1$s] 컨텍스트 메시지 추가: %2$s</string>

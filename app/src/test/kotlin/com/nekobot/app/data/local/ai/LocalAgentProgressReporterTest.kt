@@ -395,5 +395,59 @@ class LocalAgentProgressReporterTest {
         assertEquals(null, toolStep.durationMs)
     }
 
+    @Test
+    fun gitDiffDisappearsWhenRepositoryHasNoChanges() {
+        // 实时监控语义：仓库回到干净状态（例如 AI 提交了改动）时，变更区域要跟着消失
+        val updates = mutableListOf<ThinkingCard>()
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            cardId = "card-1"
+        )
+        val summary = GitDiffSummary(
+            repoName = "repo",
+            files = listOf(GitDiffFile(path = "a.kt", status = GitDiffFile.STATUS_MODIFIED))
+        )
+
+        reporter.updateGitDiff(summary)
+        assertTrue(updates.last().steps.any { it.type == "git_diff" })
+
+        // 重复推同一份摘要不产生多余刷新
+        val updateCount = updates.size
+        reporter.updateGitDiff(summary)
+        assertEquals(updateCount, updates.size)
+
+        reporter.updateGitDiff(null)
+        assertTrue("无更改后不应再有 git_diff 步骤", updates.last().steps.none { it.type == "git_diff" })
+    }
+
+    @Test
+    fun liveGitSummaryIsMergedIntoEveryEmit() {
+        // 监控结果独立于步骤列表存放：后续任意一次上报都应带上最新变更区域
+        val updates = mutableListOf<ThinkingCard>()
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "test")
+        )
+        reporter.updateGitDiff(
+            GitDiffSummary(
+                repoName = "repo",
+                files = listOf(GitDiffFile(path = "a.kt", status = GitDiffFile.STATUS_ADDED))
+            )
+        )
+
+        reporter.onToolStart(context, toolName = "exec_command", arguments = emptyMap(), thinking = "")
+        reporter.onDone(context)
+
+        val finalSteps = updates.last().steps
+        assertEquals("git 变更应排在「处理完成」步骤之前", "done", finalSteps.last().type)
+        val gitStep = finalSteps.single { it.type == "git_diff" }
+        assertEquals("repo", gitStep.gitDiff?.repoName)
+    }
+
     private var decoded: List<ThinkingCard>? = null
 }

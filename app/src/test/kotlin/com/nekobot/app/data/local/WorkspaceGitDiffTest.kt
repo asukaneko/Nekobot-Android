@@ -237,6 +237,169 @@ class WorkspaceGitDiffTest {
         assertEquals("keep.txt", summary!!.files.single().path)
     }
 
+    @Test
+    fun repositoryScanFindsEveryChangeWithoutPathHints() {
+        // 实时监控语义：不需要任何"AI 改了哪些文件"的输入，直接扫描仓库相对 HEAD 的全部更改
+        val ws = newTempDir()
+        val gitDir = File(ws, ".git")
+        initRepo(
+            gitDir,
+            mapOf(
+                "a.py" to "line1\nline2\n".toByteArray(Charsets.UTF_8),
+                "gone.py" to "bye\n".toByteArray(Charsets.UTF_8)
+            )
+        )
+
+        File(ws, "a.py").writeText("line1 changed\nline2\n", Charsets.UTF_8)
+        File(ws, "added.py").writeText("brand new\n", Charsets.UTF_8)
+        assertTrue(File(ws, "gone.py").delete())
+
+        val summary = WorkspaceGitDiff.summarizeRepository(ws)
+        assertNotNull("应扫描出仓库相对 HEAD 的全部更改", summary)
+        val files = summary!!.files.associateBy { it.path }
+        assertEquals(setOf("a.py", "added.py", "gone.py"), files.keys)
+        assertEquals(GitDiffFile.STATUS_MODIFIED, files.getValue("a.py").status)
+        assertEquals(GitDiffFile.STATUS_ADDED, files.getValue("added.py").status)
+        assertEquals(GitDiffFile.STATUS_DELETED, files.getValue("gone.py").status)
+        assertTrue(
+            "不应把 git 内部文件当成工作区更改",
+            files.keys.none { it.startsWith(".git/") || it == ".git" }
+        )
+
+        // 无任何更改时返回 null（调用方据此隐藏变更区域）
+        File(ws, "a.py").writeText("line1\nline2\n", Charsets.UTF_8)
+        File(ws, "added.py").delete()
+        File(ws, "gone.py").writeText("bye\n", Charsets.UTF_8)
+        assertNull("与 HEAD 一致时应返回 null", WorkspaceGitDiff.summarizeRepository(ws))
+    }
+
+    @Test
+    fun repositoryScanSkipsBuildDirectories() {
+        val ws = newTempDir()
+        val gitDir = File(ws, ".git")
+        initRepo(gitDir, mapOf("src/a.py" to "x\n".toByteArray(Charsets.UTF_8)))
+
+        // 构建产物目录里的新文件不进入变更列表
+        val buildDir = File(ws, "build/outputs")
+        buildDir.mkdirs()
+        File(buildDir, "app.apk").writeText("bin", Charsets.UTF_8)
+
+        assertNull("只有构建产物变化时不应产生摘要", WorkspaceGitDiff.summarizeRepository(ws))
+    }
+
+    @Test
+    fun summarizeRepositoriesFindsNestedRepositoryInsideWorkspace() {
+        // 用户把项目放进工作区：工作区本身不是仓库，但子目录里是
+        val ws = newTempDir()
+        val project = File(ws, "project")
+        initRepo(File(project, ".git"), mapOf("main.py" to "print(1)\n".toByteArray(Charsets.UTF_8)))
+        File(project, "main.py").writeText("print(2)\n", Charsets.UTF_8)
+
+        val summary = WorkspaceGitDiff.summarizeRepositories(listOf(ws))
+        assertNotNull("应自动发现工作区内的嵌套仓库", summary)
+        assertEquals("project", summary!!.repoName)
+        assertEquals("main.py", summary.files.single().path)
+    }
+
+    @Test
+    fun summarizeRepositoriesUsesHintPathToLocateExternalRepository() {
+        // 工作区（App 私有目录）不是仓库：靠写入记录定位共享存储里的项目仓库
+        val ws = newTempDir()
+        val project = newTempDir()
+        initRepo(File(project, ".git"), mapOf("book.md" to "v1\n".toByteArray(Charsets.UTF_8)))
+        val edited = File(project, "book.md")
+        edited.writeText("v2\n", Charsets.UTF_8)
+
+        assertNull("无提示路径时工作区没有仓库", WorkspaceGitDiff.summarizeRepositories(listOf(ws)))
+
+        val summary = WorkspaceGitDiff.summarizeRepositories(
+            listOf(ws),
+            listOf(edited.canonicalPath)
+        )
+        assertNotNull("提示路径所在仓库应被监控", summary)
+        assertEquals("book.md", summary!!.files.single().path)
+    }
+
+    @Test
+    fun scanRepositoryDistinguishesCleanFromChanged() {
+        val ws = newTempDir()
+        initRepo(File(ws, ".git"), mapOf("a.py" to "x\n".toByteArray(Charsets.UTF_8)))
+
+        // 与 HEAD 完全一致：明确是「干净」，而不是「没扫出来」
+        assertEquals(WorkspaceGitDiff.GitScanResult.Clean, WorkspaceGitDiff.scanRepository(ws))
+
+        File(ws, "a.py").writeText("y\n", Charsets.UTF_8)
+        val changed = WorkspaceGitDiff.scanRepository(ws)
+        assertTrue("有改动时应返回 Changed", changed is WorkspaceGitDiff.GitScanResult.Changed)
+        assertEquals("a.py", (changed as WorkspaceGitDiff.GitScanResult.Changed).summary.files.single().path)
+    }
+
+    @Test
+    fun watchRepositoriesAppliesCustomRepositoryName() {
+        // 仓库根就是工作区时，卡片上不显示 app 私有目录名（如 files），由调用方给出「工作区」
+        val ws = newTempDir()
+        initRepo(File(ws, ".git"), mapOf("a.py" to "x\n".toByteArray(Charsets.UTF_8)))
+        File(ws, "a.py").writeText("y\n", Charsets.UTF_8)
+
+        val result = WorkspaceGitDiff.watchRepositories(
+            roots = listOf(ws),
+            hintPaths = emptyList(),
+            nameForRepo = { "工作区" }
+        )
+        val changed = result as? WorkspaceGitDiff.GitScanResult.Changed
+            ?: throw AssertionError("应扫描出更改: $result")
+        assertEquals("工作区", changed.summary.repoName)
+    }
+
+    /** 在既有仓库上追加一次提交（等价于 git add -A && git commit），返回新 commit sha。 */
+    private fun commitWorktree(gitDir: File, files: Map<String, ByteArray>, parent: String): String {
+        val treeContent = ByteArrayOutputStream()
+        for (name in files.keys.sorted()) {
+            val blobSha = writeLooseObject(gitDir, "blob", files.getValue(name))
+            treeContent.write(treeEntry("100644", name, blobSha))
+        }
+        val treeSha = writeLooseObject(gitDir, "tree", treeContent.toByteArray())
+        val commitBody = (
+            "tree $treeSha\nparent $parent\nauthor Test <t@t> 1700000100 +0800\n" +
+                "committer Test <t@t> 1700000100 +0800\n\nsecond\n"
+            ).toByteArray(Charsets.UTF_8)
+        val commitSha = writeLooseObject(gitDir, "commit", commitBody)
+        File(gitDir, "refs/heads/main").writeText(commitSha + "\n", Charsets.UTF_8)
+        return commitSha
+    }
+
+    @Test
+    fun baselineFromRunStartKeepsCommittedChangesVisible() {
+        // AI 中途把自己改的文件提交掉时，卡片不应该突然变空
+        val ws = newTempDir()
+        val gitDir = File(ws, ".git")
+        val init = initRepo(gitDir, mapOf("a.py" to "x\n".toByteArray(Charsets.UTF_8)))
+        val startSha = WorkspaceGitDiff.headShaOf(ws)
+        assertEquals("应读到初始提交", init.second, startSha)
+
+        File(ws, "b.py").writeText("new\n", Charsets.UTF_8)
+        commitWorktree(
+            gitDir,
+            mapOf(
+                "a.py" to "x\n".toByteArray(Charsets.UTF_8),
+                "b.py" to "new\n".toByteArray(Charsets.UTF_8)
+            ),
+            requireNotNull(startSha)
+        )
+
+        // 与当前 HEAD 比较：仓库是干净的
+        assertEquals(
+            WorkspaceGitDiff.GitScanResult.Clean,
+            WorkspaceGitDiff.scanRepository(ws)
+        )
+        // 与本轮开始时的 HEAD 比较：b.py 仍是新增，卡片保持显示
+        val result = WorkspaceGitDiff.scanRepository(ws, WorkspaceGitDiff.GitBaseline.At(startSha))
+        val changed = result as? WorkspaceGitDiff.GitScanResult.Changed
+            ?: throw AssertionError("固定基线后应仍能看到本轮改动: $result")
+        assertEquals("b.py", changed.summary.files.single().path)
+        assertEquals(GitDiffFile.STATUS_ADDED, changed.summary.files.single().status)
+    }
+
     // ---------- 纯逻辑单测 ----------
 
     @Test

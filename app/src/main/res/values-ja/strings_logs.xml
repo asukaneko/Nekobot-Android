@@ -67,6 +67,7 @@
     <string name="log_fgs_start_failed">フォアグラウンドサービスの起動に失敗: %1$s</string>
     <string name="log_fgs_stop_generation_failed">生成停止リクエストに失敗: %1$s</string>
     <string name="log_git_diff_failed">git diff サマリー生成に失敗: %1$s</string>
+    <string name="log_git_watch_scan_failed">git リポジトリの監視スキャンに失敗: %1$s</string>
     <string name="log_hook_action_error">Hook %1$s のaction実行エラー: %2$s</string>
     <string name="log_hook_condition_error">Hook %1$s の条件評価エラー: %2$s</string>
     <string name="log_hook_context_appended">[Hook:%1$s] コンテキストメッセージを追加: %2$s</string>

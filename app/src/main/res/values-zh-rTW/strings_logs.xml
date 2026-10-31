@@ -67,6 +67,7 @@
     <string name="log_fgs_start_failed">前台服務啟動失敗: %1$s</string>
     <string name="log_fgs_stop_generation_failed">停止產生請求失敗: %1$s</string>
     <string name="log_git_diff_failed">git diff 摘要產生失敗: %1$s</string>
+    <string name="log_git_watch_scan_failed">git 倉庫監控掃描失敗: %1$s</string>
     <string name="log_hook_action_error">Hook %1$s action 執行異常: %2$s</string>
     <string name="log_hook_condition_error">Hook %1$s 條件評估異常: %2$s</string>
     <string name="log_hook_context_appended">[Hook:%1$s] 附加上下文訊息: %2$s</string>

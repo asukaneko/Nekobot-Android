@@ -337,4 +337,5 @@
     <string name="agent_git_truncated">差分が長すぎるため省略</string>
     <string name="agent_git_view_all">全 %1$d ファイルを表示</string>
     <string name="agent_git_detail_title">すべての変更</string>
+    <string name="agent_git_workspace_repo">ワークスペース</string>
 </resources>

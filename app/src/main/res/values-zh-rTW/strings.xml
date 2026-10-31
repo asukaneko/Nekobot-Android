@@ -362,4 +362,5 @@
     <string name="agent_git_truncated">差異內容過長，已截斷</string>
     <string name="agent_git_view_all">查看全部 %1$d 個檔案</string>
     <string name="agent_git_detail_title">全部更改</string>
+    <string name="agent_git_workspace_repo">工作區</string>
 </resources>

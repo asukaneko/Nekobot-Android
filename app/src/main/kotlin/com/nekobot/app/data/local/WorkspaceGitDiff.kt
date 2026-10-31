@@ -42,6 +42,40 @@ object WorkspaceGitDiff {
     internal const val FIND_GIT_ROOT_DEPTH = 40
     internal const val BINARY_SCAN_BYTES = 8192
 
+    // ---------- 实时仓库监控上限（扫描整个工作区，必须比按路径 diff 更保守） ----------
+    /** 单次扫描允许的文件数：超过上限说明仓库过大，本次放弃（返回 null）而不是拖慢界面。 */
+    internal const val MAX_SCAN_FILES = 20_000
+    /** 单次扫描允许的目录数（同时防止符号链接造成的遍历环）。 */
+    internal const val MAX_SCAN_DIRS = 4_000
+    /** 工作区遍历的目录深度上限。 */
+    internal const val MAX_SCAN_DEPTH = 32
+    /** 实时监控单次摘要的 diff 字符预算：卡片每两秒可能刷新一次，不能无限膨胀。 */
+    internal const val WATCH_SUMMARY_DIFF_CHARS = 160_000
+    /** 一次最多同时监控的仓库数（工作区内可能有多个项目）。 */
+    internal const val MAX_MONITORED_REPOS = 3
+    /** 在工作区内自动发现嵌套仓库时的目录预算。 */
+    internal const val DISCOVERY_MAX_DIRS = 300
+    /** 在工作区内自动发现嵌套仓库时的深度上限。 */
+    internal const val DISCOVERY_MAX_DEPTH = 3
+
+    /** 文件哈希缓存条目上限（实时监控按 大小+mtime 命中，避免每轮重算 SHA-1）。 */
+    internal const val MAX_CACHED_BLOB_SHA = 20_000
+
+    /**
+     * 单次扫描允许新读入的字节数。
+     *
+     * 大仓库首次扫描不可能在一轮里算完所有文件的哈希：超出预算的文件本轮按“未变化”处理
+     * （宁可漏报，也不会误报删除），下一轮从缓存之外继续推进，几轮后整仓库都被覆盖。
+     */
+    internal const val MAX_SCAN_HASH_BYTES = 128L * 1024 * 1024
+
+    /** 扫描时直接跳过的目录名（构建产物 / 依赖 / 缓存），避免它们灌满变更列表。 */
+    internal val SKIPPED_SCAN_DIRS = setOf(
+        ".git", ".gradle", ".idea", ".cxx", ".cache", ".dart_tool",
+        "node_modules", "build", "target", "dist", "out", "cache",
+        "__pycache__", ".venv", "venv", "Pods", "DerivedData"
+    )
+
     internal const val OBJ_COMMIT = 1
     internal const val OBJ_TREE = 2
     internal const val OBJ_BLOB = 3
@@ -123,43 +157,343 @@ object WorkspaceGitDiff {
         }
 
         // 3. 逐文件 diff（HEAD → 工作区）
+        val entries = LinkedHashMap<String, File>()
+        for (file in mainEntry.value.distinct()) {
+            entries[repoRelative(gitRoot, file)] = file
+        }
+        return buildSummary(gitRoot, repo, headTree, entries)
+    }
+
+    /**
+     * 实时监控的扫描结果。
+     *
+     * 必须区分"干净"和"没扫出来"：前者要清空卡片上的变更区域，
+     * 后者（无权限、目录正在被删除、仓库过大）必须保留上一次结果——
+     * 否则一次读盘失败就会让"文件变更"卡片凭空消失。
+     */
+    sealed class GitScanResult {
+        /** 扫描成功且有更改 */
+        data class Changed(val summary: GitDiffSummary) : GitScanResult()
+
+        /** 扫描成功，仓库当前与 HEAD 一致（或根本没有仓库） */
+        object Clean : GitScanResult()
+
+        /** 扫描失败/不可信：调用方应保留上一次结果，不要清空 */
+        object Unavailable : GitScanResult()
+    }
+
+    /** 差异基线：工作区与哪一次提交比较。 */
+    sealed class GitBaseline {
+        /** 与当前 HEAD 比较，等价于 `git status` */
+        object Head : GitBaseline()
+
+        /**
+         * 与指定提交比较（sha 为 null 表示当时仓库还没有提交，以空树为基线）。
+         *
+         * Agent 一轮运行用这种方式把基线固定为"本轮开始时的仓库状态"：
+         * AI 中途把改动 `git commit` 掉时，工作区虽然干净了，但相对基线仍有差异，
+         * 卡片不会突然变空。
+         */
+        data class At(val sha: String?) : GitBaseline()
+    }
+
+    /**
+     * 实时监控入口：返回与 [roots] 相关的 git 仓库当前**相对基线（默认 HEAD）的全部更改**。
+     *
+     * 与 [summarize] 的区别：不再依赖调用方传入"哪些文件被改过"，而是直接扫描仓库工作区，
+     * 因此其它进程 / 用户手动 / 沙盒命令导致的改动同样会被发现。
+     *
+     * 仓库发现顺序：根目录所在仓库 → 根目录内部的嵌套仓库（受限深度）→ 提示路径所在仓库。
+     * 多个仓库都有改动时取变更文件最多的一个（进度卡只展示一张摘要）。
+     *
+     * @param roots 工作区根目录（会话工作区 / 共享工作区），不存在时忽略
+     * @param hintPaths 额外提示路径（绝对路径），仅用于定位仓库，不限制展示范围
+     * @param nameForRepo 卡片上展示的仓库名；默认取目录名，仓库根就是工作区时可由调用方改成"工作区"
+     * @param baselineForRepo 每个仓库的差异基线；默认与当前 HEAD 比较
+     */
+    fun watchRepositories(
+        roots: Collection<File>,
+        hintPaths: Collection<String> = emptyList(),
+        nameForRepo: (File) -> String = { it.name },
+        baselineForRepo: (File) -> GitBaseline = { GitBaseline.Head }
+    ): GitScanResult {
+        return try {
+            val repositories = discoverRepositories(roots, hintPaths)
+            if (repositories.isEmpty()) return GitScanResult.Clean
+            var best: GitDiffSummary? = null
+            var unavailable = false
+            for (gitRoot in repositories.take(MAX_MONITORED_REPOS)) {
+                when (val result = scanRepository(gitRoot, baselineForRepo(gitRoot))) {
+                    is GitScanResult.Changed -> {
+                        val named = result.summary.copy(repoName = nameForRepo(gitRoot))
+                        if (best == null || named.files.size > best.files.size) best = named
+                    }
+                    is GitScanResult.Unavailable -> unavailable = true
+                    is GitScanResult.Clean -> Unit
+                }
+            }
+            when {
+                best != null -> GitScanResult.Changed(best!!)
+                // 没有任何更改且有仓库没扫成功：保守保留上一次结果，别把卡片清空
+                unavailable -> GitScanResult.Unavailable
+                else -> GitScanResult.Clean
+            }
+        } catch (t: Throwable) {
+            com.nekobot.app.data.local.LocalLogger.w("WorkspaceGit", R.string.log_git_diff_failed, t.message)
+            GitScanResult.Unavailable
+        }
+    }
+
+    /** [watchRepositories] 的简易视图：仅取有更改的摘要（单元测试与旧调用方使用）。 */
+    fun summarizeRepositories(
+        roots: Collection<File>,
+        hintPaths: Collection<String> = emptyList()
+    ): GitDiffSummary? = (watchRepositories(roots, hintPaths) as? GitScanResult.Changed)?.summary
+
+    /** 扫描单个仓库的简易视图：仅取有更改的摘要。 */
+    fun summarizeRepository(gitRoot: File): GitDiffSummary? =
+        (scanRepository(gitRoot) as? GitScanResult.Changed)?.summary
+
+    /** 读取仓库当前 HEAD 提交 sha（无提交/非仓库返回 null）；用于固定监控基线。 */
+    fun headShaOf(gitRoot: File): String? =
+        runCatching { repositoryFor(canonicalDirectory(gitRoot)).headSha() }.getOrNull()
+
+    /** 扫描单个仓库：[gitRoot] 工作区相对 [baseline] 的全部更改（新增 / 修改 / 删除）。 */
+    fun scanRepository(gitRoot: File, baseline: GitBaseline = GitBaseline.Head): GitScanResult {
+        return try {
+            scanRepositoryInternal(gitRoot, baseline)
+        } catch (t: Throwable) {
+            com.nekobot.app.data.local.LocalLogger.w("WorkspaceGit", R.string.log_git_diff_failed, t.message)
+            GitScanResult.Unavailable
+        }
+    }
+
+    private fun canonicalDirectory(dir: File): File =
+        runCatching { dir.canonicalFile }.getOrElse { dir.absoluteFile }
+
+    private fun scanRepositoryInternal(gitRoot: File, baseline: GitBaseline): GitScanResult {
+        val root = canonicalDirectory(gitRoot)
+        if (!root.isDirectory) return GitScanResult.Clean
+        val repo = repositoryFor(root)
+        if (!repo.isAvailable()) return GitScanResult.Clean
+        val baselineSha = when (baseline) {
+            is GitBaseline.Head -> repo.headSha()
+            is GitBaseline.At -> baseline.sha
+        }
+        val headTree = if (baselineSha != null) {
+            // 基线提交的 tree 读不出来（超限 / 对象损坏 / 被 gc）：状态不可信，保留上一次展示
+            repo.treeFiles(baselineSha) ?: return GitScanResult.Unavailable
+        } else {
+            // 尚无提交（git init 后未 commit）：以空树为基线，所有文件都算新增
+            emptyMap()
+        }
+        // 工作区遍历：尽量拿到能拿到的文件；只有根目录都读不到才算不可信
+        val worktree = scanWorktree(root) ?: return GitScanResult.Unavailable
+        if (worktree.files.isEmpty() && headTree.isEmpty()) return GitScanResult.Clean
+
+        val entries = LinkedHashMap<String, File>(worktree.files.size)
+        var hashedBytes = 0L
+        for ((rel, file) in worktree.files) {
+            val headBlob = headTree[rel]
+            if (headBlob == null) {
+                entries[rel] = file
+                continue
+            }
+            // 内容哈希与 HEAD 一致（大小 + mtime 命中缓存时只需一次 stat）
+            val cached = repo.cachedBlobSha(file)
+            val sha = if (cached != null) {
+                cached
+            } else {
+                val size = file.length()
+                if (hashedBytes + size > MAX_SCAN_HASH_BYTES) continue
+                hashedBytes += size
+                repo.blobShaOf(file) ?: continue
+            }
+            if (sha != headBlob) entries[rel] = file
+        }
+        // HEAD 里有、工作区没扫到：可能被删了，也可能落在跳过的目录或没读到的目录里。
+        // 未遍历到的目录下状态未知，直接跳过，避免把"没读到"误报成"已删除"。
+        if (!worktree.truncated) {
+            for (rel in headTree.keys) {
+                if (worktree.files.containsKey(rel)) continue
+                if (worktree.isIncomplete(rel)) continue
+                entries[rel] = File(root, rel)
+            }
+        }
+        if (entries.isEmpty()) return GitScanResult.Clean
+        val summary = buildSummary(root, repo, headTree, entries, WATCH_SUMMARY_DIFF_CHARS)
+            ?: return GitScanResult.Clean
+        return GitScanResult.Changed(summary)
+    }
+
+    /**
+     * 把「仓库相对路径 → 工作区文件」逐项转成差异条目。
+     * 文件不存在按删除处理；与 HEAD 内容一致时 [diffFile] 返回 null 自动跳过。
+     */
+    private fun buildSummary(
+        gitRoot: File,
+        repo: GitRepository,
+        headTree: Map<String, String>,
+        entries: Map<String, File>,
+        maxDiffChars: Int = MAX_SUMMARY_DIFF_CHARS
+    ): GitDiffSummary? {
         val diffs = mutableListOf<GitDiffFile>()
         var diffChars = 0
         var truncatedByBudget = false
-        val paths = mainEntry.value.distinct().sortedBy { repoRelative(gitRoot, it) }
-        for (file in paths) {
+        for (repoRel in entries.keys.sorted()) {
             if (diffs.size >= MAX_FILES_PER_SUMMARY) break
-            val repoRel = repoRelative(gitRoot, file)
-            val fileDiff = diffFile(repo, headTree, repoRel, file)
-            if (fileDiff == null) continue
+            val fileDiff = diffFile(repo, headTree, repoRel, entries.getValue(repoRel)) ?: continue
             if (truncatedByBudget) {
                 // 全局字符预算已超：仅保留状态与计数，不再携带 hunks
-                val slim = fileDiff.copy(hunks = emptyList(), truncated = true)
-                diffs.add(slim)
+                diffs.add(fileDiff.copy(hunks = emptyList(), truncated = true))
                 continue
             }
             val fileChars = fileDiff.hunks.sumOf { hunk ->
                 hunk.lines.sumOf { 1 + it.text.length } + hunk.header.length
             }
             diffChars += fileChars
-            if (diffChars > MAX_SUMMARY_DIFF_CHARS) {
+            if (diffChars > maxDiffChars) {
                 truncatedByBudget = true
-                val slim = fileDiff.copy(hunks = emptyList(), truncated = true)
-                diffs.add(slim)
+                diffs.add(fileDiff.copy(hunks = emptyList(), truncated = true))
             } else {
                 diffs.add(fileDiff)
             }
         }
         if (diffs.isEmpty()) return null
-
-        val filesTruncated = truncatedByBudget ||
-            mainEntry.value.distinct().size > MAX_FILES_PER_SUMMARY
         return GitDiffSummary(
             repoName = gitRoot.name,
             branch = repo.branch(),
             files = diffs,
-            filesTruncated = filesTruncated
+            filesTruncated = truncatedByBudget || entries.size > MAX_FILES_PER_SUMMARY
         )
+    }
+
+    /**
+     * 一次工作区遍历的结果。
+     *
+     * @param files 仓库相对路径 → 工作区文件
+     * @param incompleteDirs 没能遍历到的目录前缀（无权限 / 遍历中被删除 / 超出深度）
+     * @param truncated 因数量上限提前结束：删除检测不再可靠
+     */
+    private class WorktreeScan(
+        val files: Map<String, File>,
+        val incompleteDirs: List<String>,
+        val truncated: Boolean
+    ) {
+        /** 该路径是否落在没能遍历到的目录下（状态未知，不能判定为删除）。 */
+        fun isIncomplete(repoRel: String): Boolean =
+            incompleteDirs.any { dir -> repoRel == dir || repoRel.startsWith("$dir/") }
+    }
+
+    /**
+     * 遍历工作区文件（跳过 [SKIPPED_SCAN_DIRS] 与深度上限）。
+     *
+     * 尽力而为：读不到的目录只记录下来并跳过，不让一个无权限的子目录把整次扫描废掉——
+     * 沙盒命令可能在工作区里造出 app 读不到的文件/目录，整次放弃会让卡片永久消失。
+     * 只有仓库根目录本身读不到时才返回 null（此时无法判断任何状态）。
+     *
+     * @return 遍历结果；根目录不可读时返回 null
+     */
+    private fun scanWorktree(gitRoot: File): WorktreeScan? {
+        val files = LinkedHashMap<String, File>()
+        val incompleteDirs = mutableListOf<String>()
+        val stack = ArrayDeque<Pair<File, String>>()
+        stack.addLast(gitRoot to "")
+        var dirs = 0
+        var truncated = false
+        walk@ while (stack.isNotEmpty()) {
+            val (dir, prefix) = stack.removeLast()
+            if (++dirs > MAX_SCAN_DIRS) {
+                truncated = true
+                break
+            }
+            val children = runCatching { dir.listFiles() }.getOrNull()
+            if (children == null) {
+                // 根目录读不到 → 整次扫描不可信；子目录读不到 → 记为状态未知
+                if (prefix.isEmpty()) return null
+                incompleteDirs += prefix
+                continue
+            }
+            for (child in children) {
+                val name = child.name
+                if (name == ".git") continue
+                val rel = if (prefix.isEmpty()) name else "$prefix/$name"
+                if (child.isDirectory) {
+                    if (name in SKIPPED_SCAN_DIRS) continue
+                    if (rel.count { it == '/' } >= MAX_SCAN_DEPTH) {
+                        // 过深的目录不再遍历：其下状态未知
+                        incompleteDirs += rel
+                        continue
+                    }
+                    stack.addLast(child to rel)
+                    continue
+                }
+                if (!child.isFile) continue
+                if (child.length() > MAX_BLOB_BYTES) continue
+                files[rel] = child
+                if (files.size > MAX_SCAN_FILES) {
+                    truncated = true
+                    break@walk
+                }
+            }
+        }
+        return WorktreeScan(files, incompleteDirs, truncated)
+    }
+
+    /** 定位需要监控的仓库：根目录所在仓库 → 根目录内的嵌套仓库 → 提示路径所在仓库。 */
+    private fun discoverRepositories(
+        roots: Collection<File>,
+        hintPaths: Collection<String>
+    ): List<File> {
+        val repositories = LinkedHashSet<File>()
+        val visitedRoots = HashSet<File>()
+        fun add(gitRoot: File?) {
+            val target = gitRoot ?: return
+            repositories += runCatching { target.canonicalFile }.getOrElse { target.absoluteFile }
+        }
+        for (rawRoot in roots) {
+            val root = runCatching { rawRoot.canonicalFile }.getOrElse { rawRoot.absoluteFile }
+            if (!root.isDirectory) continue
+            // 会话工作区与共享工作区常常是同一个目录：重复扫描没有意义
+            if (!visitedRoots.add(root)) continue
+            val direct = findGitRoot(root, FIND_GIT_ROOT_DEPTH)
+            if (direct != null) {
+                // 根目录本身就在仓库内：监控这个仓库，不再向下找嵌套仓库
+                add(direct)
+                continue
+            }
+            for (nested in discoverNestedRepositories(root)) add(nested)
+        }
+        for (hint in hintPaths) {
+            if (hint.isBlank()) continue
+            val file = runCatching { File(hint).canonicalFile }.getOrNull() ?: continue
+            add(findGitRoot(file.parentFile ?: file, FIND_GIT_ROOT_DEPTH))
+        }
+        return repositories.toList()
+    }
+
+    /** 在工作区内查找嵌套的仓库根（受限深度 / 目录数，命中仓库后不再深入其内部）。 */
+    private fun discoverNestedRepositories(root: File): List<File> {
+        val found = mutableListOf<File>()
+        val queue = ArrayDeque<Pair<File, Int>>()
+        queue.addLast(root to 0)
+        var visited = 0
+        while (queue.isNotEmpty() && found.size < MAX_MONITORED_REPOS) {
+            val (dir, depth) = queue.removeFirst()
+            if (++visited > DISCOVERY_MAX_DIRS) break
+            val children = runCatching { dir.listFiles() }.getOrNull() ?: continue
+            for (child in children) {
+                if (!child.isDirectory) continue
+                if (child.name == ".git" || child.name in SKIPPED_SCAN_DIRS) continue
+                if (File(child, ".git").exists()) {
+                    found += child
+                    if (found.size >= MAX_MONITORED_REPOS) break
+                    continue
+                }
+                if (depth + 1 <= DISCOVERY_MAX_DEPTH) queue.addLast(child to depth + 1)
+            }
+        }
+        return found
     }
 
     /** 将仓库内绝对路径转为相对仓库根的 "/" 分隔路径。 */
@@ -631,6 +965,45 @@ internal class GitRepository(private val gitRoot: File) {
         return cachedBranch
     }
 
+    /**
+     * 只查缓存（大小 + 修改时间一致才算命中），不读盘；未命中返回 null。
+     * 供实时扫描先判断"是否需要花预算读这个文件"。
+     */
+    fun cachedBlobSha(file: File): String? {
+        val size = file.length()
+        val modified = file.lastModified()
+        synchronized(blobShaCache) {
+            val cached = blobShaCache[file.absolutePath] ?: return null
+            return if (cached.size == size && cached.modified == modified) cached.sha else null
+        }
+    }
+
+    /**
+     * 计算工作区文件的 blob SHA-1（与 HEAD 条目比对用）。
+     *
+     * 实时监控每两秒扫一次工作区，全量读文件算哈希太重，因此按「大小 + 修改时间」缓存：
+     * 内容没变的文件每次只花一次 stat，只有真正改过的文件才重新读盘。
+     */
+    fun blobShaOf(file: File): String? {
+        cachedBlobSha(file)?.let { return it }
+        val size = file.length()
+        if (size > WorkspaceGitDiff.MAX_BLOB_BYTES) return null
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return null
+        val sha = WorkspaceGitDiff.gitBlobSha(bytes)
+        synchronized(blobShaCache) {
+            blobShaCache[file.absolutePath] = CachedBlobSha(size, file.lastModified(), sha)
+        }
+        return sha
+    }
+
+    private class CachedBlobSha(val size: Long, val modified: Long, val sha: String)
+
+    /** 文件哈希缓存（LRU）：条目上限防止超大仓库长期占用内存。 */
+    private val blobShaCache = object : LinkedHashMap<String, CachedBlobSha>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedBlobSha>?): Boolean =
+            size > WorkspaceGitDiff.MAX_CACHED_BLOB_SHA
+    }
+
     private fun resolveRef(dir: File, ref: String): String? {
         val refFile = File(dir, ref)
         if (refFile.isFile) {
@@ -663,21 +1036,28 @@ internal class GitRepository(private val gitRoot: File) {
     /**
      * 展开某次提交的完整 path→blob-sha 映射。
      * 仅包含普通 blob（跳过 gitlink 子模块）；超限时返回 null（调用方做安全降级）。
+     *
+     * 读取失败的提交**不缓存**：仓库可能正在被写入（刚 `git commit`、对象尚未落盘）或刚被 gc，
+     * 永久缓存失败结果会让实时监控一直读到 null，卡片从此不再更新。
      */
     fun treeFiles(commitSha: String): Map<String, String>? {
         treeCache[commitSha]?.let { return if (it === negativeTree) null else it }
-        val commit = readObject(commitSha) ?: return null.also { treeCache[commitSha] = negativeTree }
-        if (commit.type != "commit") return null.also { treeCache[commitSha] = negativeTree }
+        val commit = readObject(commitSha) ?: return null
+        if (commit.type != "commit") return null
         // commit 正文为 ASCII 文本；其 header 已在读出时剥离，这里直接找 "tree <sha>" 行
         val treeLine = String(commit.content, Charsets.US_ASCII).split("\n")
         val treeSha = treeLine.firstOrNull { it.startsWith("tree ") }?.removePrefix("tree ")?.trim()
-        if (treeSha.isNullOrBlank()) return null.also { treeCache[commitSha] = negativeTree }
+        if (treeSha.isNullOrBlank()) return null
 
         val out = LinkedHashMap<String, String>()
         var entries = 0
         var trees = 0
         val complete = walkTree(treeSha, "", out, 0) { entries++; trees++; entries > WorkspaceGitDiff.MAX_TREE_ENTRIES || trees > WorkspaceGitDiff.MAX_TREES }
-        if (!complete) return null.also { treeCache[commitSha] = negativeTree }
+        if (!complete) {
+            // 结构性超限（仓库太大）：确定性的失败，缓存下来避免每轮重复展开
+            treeCache[commitSha] = negativeTree
+            return null
+        }
         treeCache[commitSha] = out
         return out
     }

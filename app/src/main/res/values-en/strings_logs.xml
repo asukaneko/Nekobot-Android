@@ -67,6 +67,7 @@
     <string name="log_fgs_start_failed">Foreground service failed to start: %1$s</string>
     <string name="log_fgs_stop_generation_failed">Failed to request stop generation: %1$s</string>
     <string name="log_git_diff_failed">Failed to generate git diff summary: %1$s</string>
+    <string name="log_git_watch_scan_failed">Failed to scan git repository: %1$s</string>
     <string name="log_hook_action_error">Hook %1$s action execution error: %2$s</string>
     <string name="log_hook_condition_error">Hook %1$s condition evaluation error: %2$s</string>
     <string name="log_hook_context_appended">[Hook:%1$s] context message appended: %2$s</string>

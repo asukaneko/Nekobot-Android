@@ -337,4 +337,5 @@
     <string name="agent_git_truncated">diff가 너무 길어 생략</string>
     <string name="agent_git_view_all">전체 %1$d개 파일 보기</string>
     <string name="agent_git_detail_title">전체 변경</string>
+    <string name="agent_git_workspace_repo">작업 공간</string>
 </resources>

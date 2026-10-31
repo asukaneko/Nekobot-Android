@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalImageResult
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
+import com.nekobot.app.data.local.WorkspaceGitDiff
 import com.nekobot.app.data.local.agentContextWindow
 import com.nekobot.app.data.local.listAgentRowsWithBoundary
 import com.nekobot.app.data.local.isAgentContextSummary
@@ -188,6 +189,8 @@ internal class LocalPipelineCallbacks(
     private val agentRunDao = db.agentRunDao()
     private val agentToolMessageDao = db.agentToolMessageDao()
     private val pendingGeneratedImages = mutableListOf<Pair<String, List<LocalImageResult>>>()
+    /** 各 git 仓库本轮开始时的 HEAD（"" 表示尚无提交）；进度卡变更区域固定以此为基线。 */
+    private val gitBaselines = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var companionScopeId: String? = null
     private var companionRevision: Long? = null
     private var companionQuestion: String? = null
@@ -239,7 +242,7 @@ internal class LocalPipelineCallbacks(
     // 子代理复用本会话的故障转移模型队列与本地工具执行器。
     // 嵌套深度按任务树（SubagentTaskStore.parentTaskId/depth）计算，不再用实例计数器：
     // 后台子代理在独立协程中运行，实例计数器对后台链不可见，深度上限会被绕过。
-    private val localToolExecutor by lazy {
+    private val localToolExecutorDelegate = lazy {
         LocalAgentToolExecutor(
             sessionId = session.id,
             workspaceRoot = workspaceRoot,
@@ -338,6 +341,8 @@ internal class LocalPipelineCallbacks(
             }
         )
     }
+
+    private val localToolExecutor by localToolExecutorDelegate
 
     /** 本地数据库 CRUD 工具执行器（角色卡/世界书/Hook/工作流/Skill/AI 模型等）。 */
     private val localDbToolExecutor by lazy {
@@ -1417,6 +1422,8 @@ internal class LocalPipelineCallbacks(
     // ---- 输出 / 回复 ----
 
     override fun sendResponse(ctx: PipelineContext, message: Map<String, Any>) {
+        // 本轮已产出最终回复：停止 git 仓库实时监控（幂等；正常收尾时 onDone 已停过）
+        activeAgentProgressReporter?.stopMonitoring()
         // 非流式（如 agent 工具循环结束）：构造完整消息推送 AiResponse，
         // 触发 UI 移除流式占位 + 追加新消息，避免"AI 回复不显示，需重进会话"问题。
         // 用量与耗时必须一并带上：这条消息会直接进 UI 列表，缺字段时气泡下方的
@@ -1505,7 +1512,10 @@ internal class LocalPipelineCallbacks(
             parentMessageId = parentMessageId,
             onUpdate = { card -> emitEvent(RealtimeEvent.ThinkingCardUpdate(card)) },
             onCheckpoint = { card -> onThinkingCardUpdate?.invoke(card) },
-            sessionId = session.id
+            sessionId = session.id,
+            // 进度卡片上的文件变更来自 git 仓库实时监控（扫描整个工作区），
+            // 不再依赖“AI 调用了哪些写文件工具”的记录。
+            gitScanProvider = { scanWorkspaceGitSummary() }
         ).also { activeAgentProgressReporter = it }
     }
 
@@ -1785,6 +1795,8 @@ internal class LocalPipelineCallbacks(
 
     override fun onResponseComplete(ctx: PipelineContext, result: PipelineResult) {
         com.nekobot.app.data.local.LocalLogger.d(TAG, R.string.log_pcb_response_complete, result.finalContent.length, result.error)
+        // 兜底：任何收尾路径都不留下仍在轮询的 git 监控线程
+        activeAgentProgressReporter?.stopMonitoring()
         // message.after_receive：所有模式（含陪伴模式）都会在最终回复产生后触发
         triggerMessageAfterReceiveHook(ctx, result)
         if (session.companionMode) return
@@ -1994,7 +2006,6 @@ internal class LocalPipelineCallbacks(
             return dbToolExecutor?.invoke(toolName, args) ?: localDbToolExecutor.execute(toolName, args)
         }
         val result = localToolExecutor.execute(toolName, args)
-        maybeAttachGitDiff(toolName, result)
         return result
     }
 
@@ -2138,44 +2149,64 @@ internal class LocalPipelineCallbacks(
         }
     }
 
-    /** 文件变更类工具集：工具成功后据此刷新 git 变更摘要卡片。 */
-    private val fileMutationTools = setOf(
-        "workspace_create_file",
-        "workspace_edit_file",
-        "file_write",
-        "file_edit",
-        "workspace_delete_file",
-        "workspace_extract_epub",
-        // exec 可经由 shell 直接写工作区（echo > file、cp、git 等），
-        // 执行前后快照对比纳入追踪。
-        "exec_command"
-    )
+    /**
+     * 进度卡「文件变更」区域的扫描入口（由 [LocalAgentProgressReporter] 的实时监控线程调用）。
+     *
+     * 与旧实现的关键区别：这里不再关心 AI 改了哪个文件，而是直接扫描工作区相关的 git 仓库，
+     * 返回仓库**当前相对 HEAD 的全部更改**。因此：
+     * - 用户手动修改 / 沙盒命令改动 / 别的会话写入，同样会出现在卡片上；
+     * - AI 用 `git add` / `git commit` 把这些改动收掉后，卡片会自动变空。
+     *
+     * 仓库来源：会话工作区、共享工作区（含其内部的嵌套仓库）；
+     * 已记录的工作区写入路径只用来定位工作区之外的仓库（例如共享存储里的项目），
+     * 不参与“展示哪些文件”的判断。
+     */
+    private fun scanWorkspaceGitSummary(): WorkspaceGitDiff.GitScanResult {
+        val roots = buildList {
+            workspaceRoot?.let { add(it) }
+            sharedWorkspaceRoot?.let { add(it) }
+        }
+        if (roots.isEmpty()) return WorkspaceGitDiff.GitScanResult.Clean
+        // 只有本轮真的跑过本地工具（工作区写入记录存在）时才需要提示路径，
+        // 否则不为了“可能在别处改过文件”去提前构造工具执行器。
+        val hints = if (localToolExecutorDelegate.isInitialized()) {
+            runCatching { localToolExecutor.changedAbsolutePaths() }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        // 仓库根就是工作区本身时，目录名（如 files）对用户没有意义，统一显示为「工作区」
+        val workspacePaths = roots.mapNotNull { root ->
+            runCatching { root.canonicalPath }.getOrNull()
+        }.toSet()
+        return WorkspaceGitDiff.watchRepositories(
+            roots = roots,
+            hintPaths = hints,
+            nameForRepo = { gitRoot ->
+                val path = runCatching { gitRoot.canonicalPath }.getOrNull()
+                if (path != null && path in workspacePaths) workspaceGitRepoName() else gitRoot.name
+            },
+            baselineForRepo = { gitRoot -> gitBaselineFor(gitRoot) }
+        )
+    }
 
     /**
-     * 本地 Agent 模式下，文件变更类工具成功后把最新的 git 变更摘要附加到当前进度卡片。
-     * 非 Agent 会话、非文件工具或摘要为空时直接跳过，绝不抛异常。
+     * 每个仓库在本轮开始时的 HEAD 提交：固定变化卡片的比较基线。
+     *
+     * 有了固定基线，AI 中途把改动 `git commit` 掉时工作区虽然干净了，
+     * 但相对基线仍有差异，卡片不会突然变空。
      */
-    private fun maybeAttachGitDiff(toolName: String, result: Map<String, Any>) {
-        if (!session.sessionMode.equals("agent", ignoreCase = true)) return
-        if (toolName !in fileMutationTools) return
-        if (result["success"] != true) return
-        val reporter = activeAgentProgressReporter ?: run {
-            com.nekobot.app.data.local.LocalLogger.w(TAG, R.string.log_pcb_git_diff_no_reporter)
-            return
+    private fun gitBaselineFor(gitRoot: java.io.File): WorkspaceGitDiff.GitBaseline {
+        val key = runCatching { gitRoot.canonicalPath }.getOrNull() ?: gitRoot.absolutePath
+        // "" 表示本轮开始时该仓库还没有提交（空树基线）
+        val sha = gitBaselines.getOrPut(key) {
+            runCatching { WorkspaceGitDiff.headShaOf(gitRoot) }.getOrNull().orEmpty()
         }
-        val changed = localToolExecutor.currentChangedPaths()
-        if (changed.isEmpty()) {
-            com.nekobot.app.data.local.LocalLogger.w(TAG, R.string.log_pcb_git_diff_no_changes)
-            return
-        }
-        runCatching {
-            val summary = localToolExecutor.currentGitDiffSummary()
-            com.nekobot.app.data.local.LocalLogger.i(TAG, R.string.log_pcb_git_diff_attached, toolName, changed, summary?.files?.size ?: "null")
-            reporter.attachGitDiff(summary)
-        }.onFailure { e ->
-            com.nekobot.app.data.local.LocalLogger.w(TAG, R.string.log_pcb_git_diff_attach_failed, e.message)
-        }
+        return WorkspaceGitDiff.GitBaseline.At(sha.ifBlank { null })
     }
+
+    /** 工作区本身就是仓库时卡片上显示的仓库名（多语言）。 */
+    private fun workspaceGitRepoName(): String =
+        ServiceContainer.localizedContext?.getString(R.string.agent_git_workspace_repo) ?: "工作区"
 
     /**
      * 浏览器截图可在同一次工具调用内交给 vision 模型。
