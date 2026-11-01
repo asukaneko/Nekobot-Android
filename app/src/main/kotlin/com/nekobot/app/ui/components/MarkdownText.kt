@@ -94,9 +94,7 @@ fun MarkdownText(
     // 预处理保留为兼容入口；区块和行内语义直接解析原文，不再注入可泄漏的占位字符。
     val preprocessed = remember(text, chatMode, processParens) { preprocessMarkdown(text, chatMode, processParens) }
     val showInner = LocalShowInnerMonologue.current
-    val blocks = remember(preprocessed, chatMode, showInner, isStreaming) {
-        visibleMarkdownBlocks(preprocessed, chatMode, showInner, isStreaming)
-    }
+    val blocks = rememberMarkdownBlocks(preprocessed, chatMode, showInner, isStreaming)
 
     // 先按最长可见文本/折叠标题定宽，再让独白条、引用等填满这一宽度。
     // 图片、代码和表格保留原来的专用测量，避免对含子组合的内容请求固有尺寸。
@@ -113,6 +111,24 @@ fun MarkdownText(
             )
         }
     }
+}
+
+/** 较长的流式正文在后台解析；新快照到达时取消旧解析结果的提交。 */
+@Composable
+private fun rememberMarkdownBlocks(
+    text: String, chatMode: Boolean, showInner: Boolean, isStreaming: Boolean
+): List<MdBlock> {
+    if (!isStreaming || text.length < 2_048) {
+        return remember(text, chatMode, showInner, isStreaming) {
+            visibleMarkdownBlocks(text, chatMode, showInner, isStreaming)
+        }
+    }
+    val blocks by produceState<List<MdBlock>>(emptyList(), text, chatMode, showInner) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            visibleMarkdownBlocks(text, chatMode, showInner, isStreaming = true)
+        }
+    }
+    return blocks
 }
 
 internal fun chatMarkdownWrapsWidth(blocks: List<MdBlock>): Boolean = blocks.none {
@@ -155,7 +171,14 @@ internal fun CompanionBubbleMarkdownText(
     modifier: Modifier = Modifier
 ) {
     val showInner = LocalShowInnerMonologue.current
-    val parsed = remember(parts, showInner, isStreaming) {
+    val parsed = if (isStreaming && parts.sumOf { it.text.length } >= 2_048) {
+        val result by produceState<List<Pair<Int, List<MdBlock>>>>(emptyList(), parts, showInner) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                parts.map { it.sourceIndex to companionBubbleMarkdownBlocks(it.text, showInner, true) }
+            }
+        }
+        result
+    } else remember(parts, showInner, isStreaming) {
         parts.map { it.sourceIndex to companionBubbleMarkdownBlocks(it.text, showInner, isStreaming) }
     }
     val allBlocks = parsed.flatMap { it.second }

@@ -363,7 +363,9 @@ fun ChatScreen(
     val agentCompressionBoundaryIds = messages.mapNotNull { it.agentContextSummaryBoundaryId() }.toSet()
     // 摘要本身仅供请求上下文使用，聊天列表仍展示完整原始历史。
     // 同一消息 id 可能在页面状态合并时短暂出现两份，渲染前统一去重（保证 Compose key 稳定唯一）。
-    val visibleMessages = deduplicateMessagesById(messages).filterNot { it.isAgentContextSummary() }
+    val visibleMessages = remember(ChatSnapshotKey(messages)) {
+        deduplicateMessagesById(messages).filterNot { it.isAgentContextSummary() }
+    }
     // 新 Agent 会话欢迎页：普通 Agent 会话（非角色继承、非陪伴聊天）还没有任何消息时展示。
     val agentWelcomeState by viewModel.agentWelcomeState.collectAsStateWithLifecycle()
     val initialDataReady by viewModel.initialDataReady.collectAsStateWithLifecycle()
@@ -386,27 +388,35 @@ fun ChatScreen(
     val totalMessageCount = maxOf(visibleMessages.size, session?.messageCount ?: 0)
     // 排队“立即发送”的乐观气泡渲染在宿主（前一条用户消息）item 内、进度卡片之前，
     // 而不是作为独立 item 追加在卡片之后：让插队消息位于旧消息下方、进度卡片上方。
-    val renderMessages = ArrayList<Message>(visibleMessages.size)
-    val urgentBubblesAfter = LinkedHashMap<Int, MutableList<Message>>()
-    for (m in visibleMessages) {
-        if (isUrgentBubbleId(m.id) && renderMessages.isNotEmpty()) {
-            urgentBubblesAfter.getOrPut(renderMessages.lastIndex) { mutableListOf() }.add(m)
-        } else {
-            renderMessages.add(m)
+    val (renderMessages, urgentBubblesAfter) = remember(ChatSnapshotKey(visibleMessages)) {
+        val rendered = ArrayList<Message>(visibleMessages.size)
+        val urgent = LinkedHashMap<Int, MutableList<Message>>()
+        for (m in visibleMessages) {
+            if (isUrgentBubbleId(m.id) && rendered.isNotEmpty()) {
+                urgent.getOrPut(rendered.lastIndex) { mutableListOf() }.add(m)
+            } else {
+                rendered.add(m)
+            }
         }
+        rendered to urgent
     }
-    val motionKeys = messageMotionKeys(renderMessages)
+    val motionKeys = remember(ChatSnapshotKey(renderMessages)) { messageMotionKeys(renderMessages) }
     // 统一内联提示的锚点：下标 → 提示列表；锚点失效（消息被删/归档或没有锚点）的提示
     // 回退到列表末尾渲染，避免提示整个消失。
-    val inlineNoticesByAnchorIndex = LinkedHashMap<Int, MutableList<ChatInlineNotice>>()
-    val fallbackInlineNotices = ArrayList<ChatInlineNotice>()
-    inlineNotices.forEach { notice ->
-        val anchorIndex = resolveInlineNoticeAnchorIndex(notice, renderMessages)
-        if (anchorIndex != null) {
-            inlineNoticesByAnchorIndex.getOrPut(anchorIndex) { mutableListOf() }.add(notice)
-        } else {
-            fallbackInlineNotices.add(notice)
+    val (inlineNoticesByAnchorIndex, fallbackInlineNotices) = remember(
+        ChatSnapshotKey(inlineNotices), ChatSnapshotKey(renderMessages)
+    ) {
+        val anchored = LinkedHashMap<Int, MutableList<ChatInlineNotice>>()
+        val fallback = ArrayList<ChatInlineNotice>()
+        inlineNotices.forEach { notice ->
+            val anchorIndex = resolveInlineNoticeAnchorIndex(notice, renderMessages)
+            if (anchorIndex != null) {
+                anchored.getOrPut(anchorIndex) { mutableListOf() }.add(notice)
+            } else {
+                fallback.add(notice)
+            }
         }
+        anchored to fallback
     }
     // 进度卡片挂在父用户消息上、本轮“思考中”占位气泡是紧随其后的独立 item，
     // 两者同时出现时观感上像两个并列的加载态。紧随占位气泡之前的消息若挂着**未完成**的
@@ -428,7 +438,7 @@ fun ChatScreen(
     )
     // 不把完整 Message 列表作为 remember key：Agent 历史可能携带较大的嵌套进度数据，
     // Compose 对 key 做 equals 时会递归比较整棵工具结果。
-    val latestBrowserProgressCardId = messages.asReversed().firstNotNullOfOrNull { message ->
+    val latestBrowserProgressCardId = remember(ChatSnapshotKey(messages)) { messages.asReversed().firstNotNullOfOrNull { message ->
         message.thinkingCards
             ?.asReversed()
             ?.firstOrNull { card ->
@@ -438,7 +448,7 @@ fun ChatScreen(
                 }
             }
             ?.id
-    }
+    } }
     val messageImagesByMessage = remember(messageImages) {
         messageImages.groupBy(LocalMessageImageEntity::messageId)
     }
@@ -6310,199 +6320,6 @@ private fun PlotChoicesHeader(
             IconButton(onClick = onRegenerate, enabled = refreshEnabled, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.chat_regenerate_group), modifier = Modifier.size(20.dp))
             }
-        }
-    }
-}
-
-internal fun shouldShowChatInput(
-    layoutMode: ChatInputLayoutMode,
-    inputExpanded: Boolean,
-    hasPlotSurface: Boolean,
-    hasDraft: Boolean
-): Boolean = layoutMode == ChatInputLayoutMode.SEPARATE ||
-    !hasPlotSurface || inputExpanded || hasDraft
-
-/**
- * 流式阶段只向 Compose 暴露一个有界窗口；完整正文仍保留在累加器并最终写入消息。
- * 这样长回复不会让单个 Text/Markdown 布局随 token 无限增长。
- */
-internal fun buildStreamingDisplayPreview(
-    content: CharSequence,
-    maxChars: Int = 16_000,
-    omittedPrefix: String = "…\n"
-): String {
-    if (content.length <= maxChars) return content.toString()
-    return omittedPrefix +
-        content.subSequence(content.length - maxChars, content.length).toString()
-}
-
-/** 流式预览已限制长度，保持 Markdown 渲染；仅普通超长 AI 消息降级为分页纯文本。 */
-internal fun shouldUseSafePlainText(
-    isUser: Boolean,
-    contentLength: Int,
-    isStreaming: Boolean
-): Boolean = !isStreaming && !isUser && contentLength > 24_000
-
-/**
- * 结束流式消息时整理 UI 列表。
- *
- * 本地模式在 StreamEnd 前已写入 Room，不创建临时正式消息；服务器模式保留一条兜底消息，
- * 等服务端持久化结果刷新后再用真实 ID 替换。
- */
-internal fun finalizeStreamEndMessages(
-    current: List<Message>,
-    streamingId: String,
-    finalContent: String,
-    finalReasoning: String = "",
-    materializeFallback: Boolean,
-    fallbackId: String = ChatViewModel.STREAM_FALLBACK_PREFIX + java.util.UUID.randomUUID(),
-    fallbackTimestamp: String = System.currentTimeMillis().toString()
-): List<Message> {
-    val withoutPlaceholder = current.filter { it.id != streamingId }
-    if (!materializeFallback || (finalContent.isBlank() && finalReasoning.isBlank())) return withoutPlaceholder
-    if (withoutPlaceholder.any {
-            !it.isUser && it.content == finalContent && it.reasoningContent == finalReasoning.takeIf(String::isNotBlank)
-        }) return withoutPlaceholder
-    return withoutPlaceholder + Message(
-        id = fallbackId,
-        role = "assistant",
-        content = finalContent,
-        reasoningContent = finalReasoning.takeIf(String::isNotBlank),
-        timestamp = fallbackTimestamp
-    )
-}
-
-/**
- * 合并 Socket `new_message`：
- * - WebUI 发出的用户消息直接追加到安卓当前会话；
- * - 安卓自身发送的消息用服务端正式 id 替换乐观消息；
- * - AI 消息移除流式占位并按 id 去重。
- */
-internal fun mergeRealtimeNewMessage(
-    current: List<Message>,
-    incoming: Message,
-    isSending: Boolean,
-    streamingId: String = ChatViewModel.STREAMING_ID,
-    fallbackPrefix: String = ChatViewModel.STREAM_FALLBACK_PREFIX
-): List<Message> {
-    val normalizedCurrent = deduplicateMessagesById(current)
-    val incomingId = incoming.id
-    if (!incomingId.isNullOrBlank()) {
-        val existingIndex = normalizedCurrent.indexOfFirst { it.id == incomingId }
-        if (existingIndex >= 0) {
-            val existing = normalizedCurrent[existingIndex]
-            return normalizedCurrent.toMutableList().apply {
-                this[existingIndex] = incoming.copy(
-                    thinkingCards = incoming.thinkingCards ?: existing.thinkingCards,
-                    audioUrl = incoming.audioUrl ?: existing.audioUrl
-                )
-            }
-        }
-    }
-
-    if (incoming.isUser) {
-        val optimisticIndex = if (isSending) {
-            normalizedCurrent.indexOfLast {
-                it.isUser &&
-                    (it.id.isNullOrBlank() || isUrgentBubbleId(it.id)) &&
-                    it.content == incoming.content
-            }
-        } else {
-            -1
-        }
-        if (optimisticIndex >= 0) {
-            val optimistic = normalizedCurrent[optimisticIndex]
-            return normalizedCurrent.toMutableList().apply {
-                this[optimisticIndex] = incoming.copy(
-                    thinkingCards = incoming.thinkingCards ?: optimistic.thinkingCards
-                )
-            }
-        }
-        return normalizedCurrent + incoming
-    }
-
-    return normalizedCurrent.filter {
-        it.id != streamingId &&
-            !(it.id?.startsWith(fallbackPrefix) == true && it.content == incoming.content)
-    } + incoming
-}
-
-/**
- * Room 主键本身唯一，但页面运行时状态与刚落库数据合并时可能短暂包含同一消息两份。
- * 所有进入 LazyColumn 的列表都在边界处按非空 ID 去重；无 ID 的乐观消息必须保留。
- */
-internal fun deduplicateMessagesById(messages: List<Message>): List<Message> {
-    val seenIds = HashSet<String>()
-    var changed = false
-    val result = ArrayList<Message>(messages.size)
-    messages.forEach { message ->
-        val id = message.id?.takeIf(String::isNotBlank)
-        if (id != null && !seenIds.add(id)) {
-            changed = true
-        } else {
-            result.add(message)
-        }
-    }
-    return if (changed) result else messages
-}
-
-/**
- * 把时间戳/时间字符串精简到「分钟」级，尽量短以节省气泡下方空间。
- * 支持毫秒时间戳、ISO 8601（含时区 Z/+HH:MM）、已格式化字符串三种输入。
- * 自动按手机时区显示：例 2026-07-10T06:30:45.123Z（UTC）在 UTC+8 设备上 → "14:30"
- */
-internal fun compactTime(raw: String?): String? {
-    if (raw.isNullOrBlank()) return null
-    val s = raw.trim()
-    return try {
-        when {
-            // 纯数字时间戳（秒/毫秒）
-            s.matches(Regex("^\\d{10,13}$")) -> {
-                val ms = if (s.length == 10) s.toLong() * 1000 else s.toLong()
-                java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                    .format(java.util.Date(ms))
-            }
-            // ISO 8601 带时区标识（Z 或 +HH:MM[:SS]）：按手机时区转换
-            s.contains('T') && (s.endsWith('Z') || s.contains(Regex("[+\\-]\\d{2}:?\\d{2}"))) -> {
-                val instant = parseIsoInstant(s) ?: return null
-                java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                    .format(java.util.Date(instant.toEpochMilli()))
-            }
-            // ISO 或带 T 的时间（无时区标识）：直接提取 HH:mm（视为本地时区）
-            s.contains('T') -> {
-                val timePart = s.substringAfter('T').take(5)
-                if (timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else null
-            }
-            // 含空格分隔日期时间：取时间部分前 5 位（视为本地时区）
-            s.contains(' ') -> {
-                val timePart = s.substringAfter(' ').take(5)
-                if (timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else null
-            }
-            // 仅时间 HH:mm:ss 或 HH:mm
-            s.matches(Regex("\\d{2}:\\d{2}(:\\d{2})?")) -> s.take(5)
-            else -> null
-        }
-    } catch (e: Exception) {
-        null
-    }
-}
-
-/** 解析 ISO 8601 字符串为 java.time.Instant，支持 Z 后缀与 ±HH:MM[:SS] 偏移。 */
-private fun parseIsoInstant(s: String): java.time.Instant? {
-    return try {
-        // Instant.parse 仅支持 Z 后缀；偏移格式用 OffsetDateTime 解析
-        if (s.endsWith('Z')) {
-            java.time.Instant.parse(s)
-        } else {
-            // 尝试解析带偏移的 ISO 字符串
-            java.time.OffsetDateTime.parse(s).toInstant()
-        }
-    } catch (_: Exception) {
-        // 兜底：尝试 LocalDateTime + 系统默认时区（虽然此分支理论上不应触达）
-        try {
-            java.time.LocalDateTime.parse(s).atZone(java.time.ZoneId.systemDefault()).toInstant()
-        } catch (_: Exception) {
-            null
         }
     }
 }
