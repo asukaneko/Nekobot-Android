@@ -18,7 +18,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // 内置 Linux 沙盒当前使用 arm64 PRoot。
-            abiFilters += "arm64-v8a"
+            abiFilters += providers.gradleProperty("nekobot.testAbi").getOrElse("arm64-v8a")
         }
         vectorDrawables { useSupportLibrary = true }
     }
