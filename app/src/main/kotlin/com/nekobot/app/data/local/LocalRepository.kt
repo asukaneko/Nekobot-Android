@@ -1516,13 +1516,14 @@ class LocalRepository(
 
     // ==================== 会话 ====================
     suspend fun listSessions(): List<Session> = withContext(Dispatchers.IO) {
-        sessionDao.listAll().map { it.toSession() }
+        sessionDao.listAll().filterNot { TemporarySession.isStale(it.id) }.map { it.toSession() }
     }
 
     fun observeSessions(): Flow<List<LocalSessionEntity>> = sessionDao.observeAll()
+        .map { sessions -> sessions.filterNot { TemporarySession.isStale(it.id) } }
 
     suspend fun getSession(id: String): Session? = withContext(Dispatchers.IO) {
-        sessionDao.getById(id)?.toSession()
+        if (TemporarySession.isStale(id)) null else sessionDao.getById(id)?.toSession()
     }
 
     /**
@@ -2576,14 +2577,30 @@ class LocalRepository(
      * 上一次运行遗留的数据不能变成历史记录。
      */
     suspend fun purgeTemporarySessions() = withContext(Dispatchers.IO) {
-        sessionDao.listAll()
-            .filter { TemporarySession.isTemporary(it) }
-            .forEach { session ->
-                runCatching { deleteSession(session.id) }
-                    .onFailure {
-                        LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, "${session.id}: ${it.message}")
-                    }
+        sessionDao.listTemporaryIds()
+            .filter(TemporarySession::isStale)
+            .forEach { id ->
+                try {
+                    deleteSession(id)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, error.message)
+                }
             }
+    }
+
+    /** 与仓库一起取消，切换档案后不会继续读取旧数据库。 */
+    fun scheduleTemporarySessionCleanup() {
+        subagentScope.launch {
+            try {
+                purgeTemporarySessions()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, error.message)
+            }
+        }
     }
 
     /**
@@ -2593,8 +2610,9 @@ class LocalRepository(
     suspend fun syncAutomationSchedules() = withContext(Dispatchers.IO) {
         db.taskDao().listAll().forEach { scheduleTask(it, preserveExisting = true) }
         db.workflowDao().listAll().forEach { scheduleWorkflow(it, preserveExisting = true) }
-        sessionDao.listAll().forEach { scheduleProactiveSession(it, replaceExisting = false) }
-        sessionDao.listAll().forEach { scheduleLifeSimSession(it, replaceExisting = false) }
+        val sessions = sessionDao.listAll().filterNot { TemporarySession.isStale(it.id) }
+        sessions.forEach { scheduleProactiveSession(it, replaceExisting = false) }
+        sessions.forEach { scheduleLifeSimSession(it, replaceExisting = false) }
     }
 
     /**

@@ -13,11 +13,17 @@ import java.util.UUID
  * 通过固定 ID 前缀识别，因此不需要新增数据库列或迁移版本。
  */
 object TemporarySession {
+    private val currentProcessIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     /** 临时会话 ID 前缀。 */
     const val ID_PREFIX = "temp_"
 
     /** 生成临时会话 ID。 */
-    fun newId(): String = ID_PREFIX + UUID.randomUUID().toString().replace("-", "")
+    fun newId(): String = (ID_PREFIX + UUID.randomUUID().toString().replace("-", "")).also(currentProcessIds::add)
+
+    /** 清理与首屏查询只排除上次进程遗留的数据，不影响刚创建的临时会话。 */
+    fun isStale(id: String?): Boolean = id != null && isTemporary(id) && id !in currentProcessIds
+
+    internal fun activeIds(): List<String> = currentProcessIds.toList()
 
     /** 判断会话 ID 是否属于临时会话。 */
     fun isTemporary(id: String?): Boolean = id?.startsWith(ID_PREFIX) == true
