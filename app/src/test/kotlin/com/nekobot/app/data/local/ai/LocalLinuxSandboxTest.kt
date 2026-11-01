@@ -53,6 +53,8 @@ class LocalLinuxSandboxTest {
         // 未提供共享工作区时不挂载 /shared
         assertFalse(command.windowed(2).contains(listOf("-b", ":/shared")))
         assertFalse(command.joinToString(" ").contains("/shared"))
+        // 未提供应用私有目录时不挂载 /app
+        assertFalse(command.joinToString(" ").contains(":/app"))
     }
 
     @Test
@@ -79,6 +81,29 @@ class LocalLinuxSandboxTest {
                 listOf("-b", "${workspace.absolutePath}:/workspace")
             )
         )
+    }
+
+    @Test
+    fun `proot command mounts the app private directory at app`() {
+        val proot = File("native/libproot.so").absoluteFile
+        val rootfs = File("data/alpine-rootfs").absoluteFile
+        val workspace = File("data/workspace/session-a").absoluteFile
+        val appDir = File("host/data/com.nekobot.app").absoluteFile
+
+        val command = buildLocalProotCommand(
+            proot = proot,
+            rootfs = rootfs,
+            workspace = workspace,
+            appPrivateDir = appDir,
+        )
+
+        assertTrue(
+            command.windowed(2).contains(
+                listOf("-b", "${appDir.absolutePath}:/app")
+            )
+        )
+        // 工作区与 /app 可同时挂载
+        assertTrue(command.windowed(2).contains(listOf("-b", "${workspace.absolutePath}:/workspace")))
     }
 
     @Test

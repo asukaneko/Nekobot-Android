@@ -5,6 +5,7 @@ import android.util.Log
 import com.nekobot.app.data.local.LocalWorkspaceStorage
 import com.nekobot.app.data.local.ai.LocalLinuxRootfsManager
 import com.nekobot.app.data.local.ai.LocalLinuxRuntime
+import com.nekobot.app.data.local.ai.SANDBOX_APP_ROOTFS_DIR
 import com.nekobot.app.data.local.ai.SANDBOX_WORKSPACE_MOUNT
 import com.nekobot.app.data.local.ai.buildLocalProotPrefix
 import com.nekobot.app.data.local.ai.localPosixTimezone
@@ -183,6 +184,8 @@ internal class LocalTerminalSession(
             if (sharedWorkspace != null) {
                 File(runtime.rootfs, "shared").mkdirs()
             }
+            val appPrivateDir = File(appContext.applicationInfo.dataDir)
+            File(runtime.rootfs, SANDBOX_APP_ROOTFS_DIR).mkdirs()
             workspace.mkdirs()
 
             val customEnvironment = SandboxEnvironmentStore.get(appContext).resolved(sessionId)
@@ -191,6 +194,7 @@ internal class LocalTerminalSession(
                 rootfs = runtime.rootfs,
                 workspace = workspace,
                 sharedWorkspace = sharedWorkspace,
+                appPrivateDir = appPrivateDir,
                 guestCwd = initialCwd,
             ) + listOf(SHELL, "-l", "-c",
                 SandboxEnvironment.shellUpdates(emptyMap(), customEnvironment) + "exec /bin/sh -i")
