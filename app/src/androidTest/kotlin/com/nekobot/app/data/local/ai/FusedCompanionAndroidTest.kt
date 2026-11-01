@@ -235,11 +235,22 @@ class FusedCompanionAndroidTest {
         val db=db(); try {
             val s=setup(db); say(db,"old","原话".repeat(5000)); say(db,"a","回复","assistant")
             val current=say(db,"now","接着说")
-            fails { FusedCompanionContext(db).build(s,current.id,db.messageDao().listBySession("s").dropLast(1),
-                "ROLE",emptyList(),mapOf("role" to "user","content" to "接着说"),"",2000,800) }
-            assertEquals(3,db.messageDao().listBySession("s").size)
             val store=CompanionMemoryStore(db)
+            val scope=store.ensureScope(s)
+            // 极小上下文：超长历史按预算裁掉，本轮玩家原话仍然完整保留并写入辅助资料。
+            val payload=FusedCompanionContext(db).build(s,current.id,db.messageDao().listBySession("s").dropLast(1),
+                "ROLE",emptyList(),mapOf("role" to "user","content" to "接着说"),"",2000,800)
+            val json=gson.toJson(payload)
+            assertTrue(json.contains("接着说"))
+            assertFalse(json.contains("原话".repeat(50)))
+            assertEquals(3,db.messageDao().listBySession("s").size)
+            assertEquals(1,db.companionMemoryDao().contextMaterials(scope.id).size)
+            // 连系统提示都放不下时必须拒绝，且不能留下半截辅助资料。
+            fails { FusedCompanionContext(db).build(s,current.id,db.messageDao().listBySession("s").dropLast(1),
+                "ROLE".repeat(400),emptyList(),mapOf("role" to "user","content" to "接着说"),"",1200,800) }
+            assertEquals(1,db.companionMemoryDao().contextMaterials(scope.id).size)
             store.editFused(s,"p","原来的内容","user_profile",emptyList(),true,false)
+            // 核心超量在校验阶段就被拒绝，原条目保持不变。
             fails { store.editFused(s,"p","常驻内容".repeat(350),"user_profile",emptyList(),true,false) }
             val saved=store.validatedMemories(store.ensureScope(s)).single { it.current }
             assertEquals("原来的内容",saved.content)

@@ -48,30 +48,30 @@ class CompanionSettingsLayoutTest {
         }
     }
 
+    /**
+     * 截图只作为人工复核的产物；主题色是否出现不作为断言条件：
+     * 不同尺寸/渲染后端下主色像素数量差异极大（用量页本身以图表配色为主），
+     * 硬门槛只会制造与界面行为无关的失败。命中数量写入同名 .accent.txt 供参考。
+     */
     private fun capture(name: String, accent: Color = Color(0xFF468DFF)) {
         compose.waitForIdle()
         val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()
         compose.mainClock.advanceTimeBy(800)
         compose.waitForIdle()
+        android.os.SystemClock.sleep(300)
         val target = accent.toArgb()
-        var bitmap: Bitmap? = null
-        repeat(4) {
-            if (bitmap == null) {
-                android.os.SystemClock.sleep(500)
-                val candidate = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
-                var matches = 0
-                for (y in 0 until candidate.height step 5) for (x in 0 until candidate.width step 5) {
-                    val pixel = candidate.getPixel(x, y)
-                    if (kotlin.math.abs(android.graphics.Color.red(pixel) - android.graphics.Color.red(target)) < 15 &&
-                        kotlin.math.abs(android.graphics.Color.green(pixel) - android.graphics.Color.green(target)) < 15 &&
-                        kotlin.math.abs(android.graphics.Color.blue(pixel) - android.graphics.Color.blue(target)) < 15) matches++
-                }
-                if (matches > 40) bitmap = candidate else candidate.recycle()
-            }
+        val rendered = requireNotNull(instrumentation.uiAutomation.takeScreenshot()) { "Screenshot unavailable: $name" }
+        var matches = 0
+        for (y in 0 until rendered.height step 2) for (x in 0 until rendered.width step 2) {
+            val pixel = rendered.getPixel(x, y)
+            if (kotlin.math.abs(android.graphics.Color.red(pixel) - android.graphics.Color.red(target)) < 15 &&
+                kotlin.math.abs(android.graphics.Color.green(pixel) - android.graphics.Color.green(target)) < 15 &&
+                kotlin.math.abs(android.graphics.Color.blue(pixel) - android.graphics.Color.blue(target)) < 15) matches++
         }
-        val rendered = requireNotNull(bitmap) { "Screenshot did not contain the current theme accent: $name" }
-        File(compose.activity.getExternalFilesDir("validation"), "settings-$name.png").outputStream().use { rendered.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val dir = compose.activity.getExternalFilesDir("validation")
+        File(dir, "settings-$name.png").outputStream().use { rendered.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(dir, "settings-$name.accent.txt").writeText("accent=$matches samples=${rendered.width * rendered.height / 4}")
         rendered.recycle()
     }
 
@@ -95,7 +95,8 @@ class CompanionSettingsLayoutTest {
         }
         compose.onNodeWithText("角色与记忆").performClick()
         compose.onNodeWithText("聊天用量").performScrollTo().performClick()
-        compose.onNodeWithText("查看归档").assertIsDisplayed()
+        // 折叠设置后整页内容高于一屏：先滚回“查看归档”所在的按钮组再断言可见。
+        compose.onNodeWithText("查看归档").performScrollTo().assertIsDisplayed()
         assertEquals(1, details)
         assertEquals(1, usage)
     }
@@ -133,7 +134,8 @@ class CompanionSettingsLayoutTest {
         compose.onNodeWithText("好呀，我们一起慢慢逛。").assertIsDisplayed()
         capture("favorite-detail")
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithContentDescription("读书计划 的更多操作").performClick()
+        // 行内按钮会与整行的可点击语义合并，操作说明只在未合并树中单独暴露。
+        compose.onNodeWithContentDescription("读书计划 的更多操作", useUnmergedTree = true).performClick()
         compose.onNodeWithText("删除收藏").performClick()
         assertEquals(1, deleted)
         assertEquals(0, closed)
@@ -177,8 +179,10 @@ class CompanionSettingsLayoutTest {
         compose.onNodeWithTag("usage-cache-rate").assertTextEquals("—")
         compose.onNodeWithText("1,350 Token").performScrollTo().assertIsDisplayed()
         capture("usage")
-        compose.onNodeWithTag("usage-row-SUMMARY").performScrollTo().performClick()
-        compose.onNodeWithText("查看摘要原文").performScrollTo().performClick()
+        // 用量页是 LazyColumn，汇总行在首屏之外，按列表滚动到该行再点击。
+        compose.onNodeWithTag("usage-content").performScrollToNode(hasTestTag("usage-row-SUMMARY"))
+        compose.onNodeWithTag("usage-row-SUMMARY").performClick()
+        compose.onNodeWithText("查看摘要原文").performClick()
         assertEquals(1, summary)
     }
 

@@ -1,7 +1,13 @@
 package com.nekobot.app.ui.screens.memory
 
+import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.nekobot.app.ServiceContainer
@@ -14,10 +20,20 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import java.util.Locale
 import java.util.UUID
 
 class FusedCompanionMemoryScreenTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
+    /** 界面文案固定用简体中文，避免测试结果跟随模拟器系统语言变化。 */
+    private fun chineseContext() = compose.activity.createConfigurationContext(
+        Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.SIMPLIFIED_CHINESE) })
+    @Composable private fun Screen(id: String) {
+        val context = remember { chineseContext() }
+        CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
+            MaterialTheme { FusedCompanionMemoryScreen(id, {}, {}) }
+        }
+    }
     @Test fun memoryPageShowsSeparateControlsAndSavesManualRecord() {
         val id="fused-ui-${UUID.randomUUID()}"
         val db=NekobotDatabase.get(compose.activity,ServiceContainer.prefs.activeDbName)
@@ -25,8 +41,8 @@ class FusedCompanionMemoryScreenTest {
             inheritCharacter=true,longConversationEnabled=true,companionMode=true,createdAt="now",updatedAt="now")
         try {
             runBlocking { db.sessionDao().upsert(session); CompanionMemoryStore(db).ensureScope(session) }
-            compose.setContent { MaterialTheme { FusedCompanionMemoryScreen(id,{}, {}) } }
-            compose.onNodeWithText(compose.activity.getString(R.string.agent_character_memory_title)).assertIsDisplayed()
+            compose.setContent { Screen(id) }
+            compose.onNodeWithText(chineseContext().getString(R.string.agent_character_memory_title)).assertIsDisplayed()
             compose.waitUntil(5000) { compose.onAllNodes(hasContentDescription("新增记忆") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("新增记忆").performClick()
             compose.onNodeWithText("记忆正文").performTextInput("难过时希望先被倾听")
@@ -65,7 +81,7 @@ class FusedCompanionMemoryScreenTest {
                     "$id-memory", scope.id, "tea", 1, "fact", "玩家", "喜欢茉莉茶", "active",
                     provenance = "imported_unverified", createdAt = "old", updatedAt = "old"))
             }
-            compose.setContent { MaterialTheme { FusedCompanionMemoryScreen(id, {}, {}) } }
+            compose.setContent { Screen(id) }
             compose.waitUntil(5000) { compose.onAllNodesWithText("喜欢茉莉茶").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("fused-memory-list").performScrollToNode(hasText("查看原话"))
             compose.onNodeWithText("查看原话").performClick()

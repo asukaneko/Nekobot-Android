@@ -52,12 +52,16 @@ class CompanionCreateScreenTest {
     @Test fun freshRoleKeepsSettingsCollapsedAndCreatesWithEditableGreeting() {
         var request: Pair<String, String>? = null
         compose.setContent { TestTheme(darkTheme = false) { content(CompanionCreateState(listOf(character), "c", CompanionEligibility.Available), onCreate = { name, greeting -> request = name to greeting }) } }
-        compose.onNodeWithText(text(R.string.companion_optional_name)).assertDoesNotExist()
+        // 会话名称常驻可见；问候语等进阶设置默认折叠。
+        compose.onNodeWithText(text(R.string.companion_optional_greeting)).assertDoesNotExist()
         compose.onNodeWithText("姜晚星").assertIsDisplayed()
         capture("companion-create-light")
         compose.onNodeWithText(text(R.string.companion_more_settings)).performClick()
-        compose.onNodeWithText(text(R.string.companion_optional_name)).performScrollTo().performClick().performTextInput("晚星的新会话")
-        compose.onNodeWithText(text(R.string.companion_optional_greeting)).performScrollTo().performClick().performTextInput("欢迎回来")
+        // 创建页内容在 LazyColumn 中，performScrollTo 不适用；先滚到目标项再输入。
+        compose.onNodeWithTag("companion_content").performScrollToNode(hasText(text(R.string.companion_optional_name)))
+        compose.onNodeWithText(text(R.string.companion_optional_name)).performClick().performTextInput("晚星的新会话")
+        compose.onNodeWithTag("companion_content").performScrollToNode(hasText(text(R.string.companion_optional_greeting)))
+        compose.onNodeWithText(text(R.string.companion_optional_greeting)).performClick().performTextInput("欢迎回来")
         compose.waitUntil(10000) { androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true }
         capture("companion-create-keyboard")
         compose.onNodeWithTag("companion_primary").assertIsDisplayed().performClick()

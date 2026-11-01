@@ -1,11 +1,13 @@
 package com.nekobot.app.ui.screens.chat
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -16,9 +18,24 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import java.util.Locale
 
 class CompanionFeedbackUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    /** 界面文案固定用简体中文，避免测试结果跟随模拟器系统语言变化。 */
+    private fun chineseContext() = compose.activity.createConfigurationContext(
+        Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.SIMPLIFIED_CHINESE) })
+
+    @Composable private fun Theme(dark: Boolean = false, scale: Float = 1f, content: @Composable () -> Unit) {
+        val context = remember { chineseContext() }
+        CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
+            NekobotTheme(darkTheme = dark) {
+                val density = LocalDensity.current
+                CompositionLocalProvider(LocalDensity provides Density(density.density, scale), content = content)
+            }
+        }
+    }
+
     private fun capture(name: String) {
         compose.waitForIdle(); android.os.SystemClock.sleep(600)
         val bmp = requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
@@ -27,7 +44,7 @@ class CompanionFeedbackUiTest {
     @Test fun quietEntryOnlyOpensOnTapAndRoutesActionsWithoutSending() {
         var wrote = 0; var copied = 0
         val contact = compose.activity.getString(R.string.companion_feedback_email).ifBlank { "feedback@example.invalid" }
-        compose.setContent { NekobotTheme { CompanionFeedbackEntry(email=contact,onWrite={wrote++},onCopy={copied++}) } }
+        compose.setContent { Theme { CompanionFeedbackEntry(email=contact,onWrite={wrote++},onCopy={copied++}) } }
         compose.onNodeWithText(contact).assertDoesNotExist()
         compose.onNodeWithText("测试反馈与建议").performClick()
         compose.onNodeWithText(contact).assertIsDisplayed()
@@ -44,11 +61,8 @@ class CompanionFeedbackUiTest {
         assertNull(draft.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
     }
     @Test fun actualSettingsPageKeepsEntrySmallAndWorksInDarkLargeText() {
-        compose.setContent { NekobotTheme(darkTheme=true) {
-            val d=LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(d.density,1.6f)) {
-                CompanionSettingsScreen("林小满",false,{}, {},{},{},{},{})
-            }
+        compose.setContent { Theme(dark = true, scale = 1.6f) {
+            CompanionSettingsScreen("林小满",false,{}, {},{},{},{},{})
         } }
         // 本地构建有联系入口；通用贡献包没有私人联系方式。
         if (compose.activity.getString(R.string.companion_feedback_email).isBlank()) return

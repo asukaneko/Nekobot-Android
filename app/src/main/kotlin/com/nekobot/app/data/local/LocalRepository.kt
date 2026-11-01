@@ -1022,7 +1022,17 @@ class LocalRepository(
                 if (!savedGraph.isNullOrBlank()) manager.fromJson(savedGraph)
             }
         }
-        // 后台任务通知 → 会话唤醒：仓库实例重建（切库）时新实例覆盖旧钩子。
+    }
+
+    /**
+     * 构造完成后接入“后台任务通知 → 会话唤醒”钩子。
+     *
+     * 不能在构造期间注册：注册后立刻补发积压通知（[SubagentTaskStore.wakePendingNotices]）
+     * 会在本实例字段初始化完成前就触发回调，读到空字段并抛 NPE（切档时旧通知仍会补发）。
+     * 因此由 [ServiceContainer] 在实例可用后再调用一次。
+     */
+    fun attachAgentNoticeWakeUp() {
+        // 仓库实例重建（切库）时新实例覆盖旧钩子。
         AgentNoticeBus.onNoticePublished = { sessionId -> onAgentNoticePublished(sessionId) }
         com.nekobot.app.data.local.ai.SubagentTaskStore.wakePendingNotices()
     }

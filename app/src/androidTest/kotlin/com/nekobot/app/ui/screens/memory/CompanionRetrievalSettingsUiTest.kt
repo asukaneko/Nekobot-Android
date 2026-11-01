@@ -62,7 +62,8 @@ class CompanionRetrievalSettingsUiTest {
         compose.onNode(hasSetTextAction()).performTextReplacement("8")
         compose.onNodeWithText("确定").performClick()
         compose.onNodeWithText("保存设置").performClick()
-        assertEquals(listOf(8,3000,true,"model"), result)
+        // 资料上限默认 4000 Token，单次回查额度不随“最多回查”轮数变化。
+        assertEquals(listOf(8,4000,true,"model"), result)
     }
     @Test fun noModelRequiresSelectionAndAddingDoesNotTurnOnTheSwitch() {
         var adds = 0
@@ -107,12 +108,15 @@ class CompanionRetrievalSettingsUiTest {
                 compose.onNode(hasSetTextAction() and (hasText(label) or hasAnyDescendant(hasText(label))))
                     .performScrollTo().performTextReplacement(value)
             }
+            // 编辑器按“基本 / 连接 / 选项”分步展示，字段只在当前步骤存在。
             fill(R.string.aimodel_editor_field_config_name, name)
+            compose.onNodeWithTag("model-setup-next").performClick()
             fill(R.string.aimodel_editor_field_api_key, "offline-fixture-not-a-secret")
             fill(R.string.aimodel_editor_field_base_url, "https://example.invalid/v1")
             fill(R.string.aimodel_editor_field_model, "fixture-embedding")
             capture("embedding-editor")
-            compose.onNodeWithText(compose.activity.getString(R.string.common_save)).performClick()
+            compose.onNodeWithTag("model-setup-next").performClick()
+            compose.onNodeWithTag("model-setup-next").performClick()
             compose.waitUntil(5000) { added.get() != null }
             val saved = runBlocking { repo.listAiModels().single { it.id == added.get() } }
             assertEquals("embedding",saved.purpose)
