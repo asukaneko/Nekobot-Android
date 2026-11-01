@@ -2863,9 +2863,13 @@ private fun MessageBubble(
     // 是否包含非文本段（图片/视频/音频/链接/HTML/文件卡片），决定气泡最大宽度
     val hasMultimedia = parsedSegments.any { segs -> segs.any { it.type != SegmentType.TEXT } }
     val hasAudioUrl = !message.audioUrl.isNullOrBlank()
+    // 代码块/表格按多媒体那一档宽度排版，否则代码行会被 280dp 正文宽度裁掉大半
+    val hasWideMarkdown = remember(segments, useSafePlainText) {
+        !useSafePlainText && segments.any { markdownUsesWideBlocks(it) }
+    }
     val maxBubbleWidth = if (companionChat) {
         companionBubbleMaxWidthDp(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp, isUser).dp
-    } else if (hasMultimedia || hasAudioUrl || ttsState != null) 360.dp else 280.dp
+    } else if (hasMultimedia || hasAudioUrl || ttsState != null || hasWideMarkdown) 360.dp else 280.dp
     val fillAiContentWidth = shouldFillAvailableMessageBodyWidth(
         fillAiWidth = fillAiWidth,
         isUser = isUser,

@@ -849,14 +849,21 @@ private fun CodeBlockContent(
         SelectionContainer(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (fullscreen) Modifier.weight(1f).verticalScroll(rememberScrollState()) else Modifier)
-                .horizontalScroll(rememberScrollState())
+                .then(
+                    // 气泡内不横向滚动：气泡宽度只放得下一小半代码行，超长行会被直接切掉右半截
+                    // （中文注释、`←` 标注全都看不见，用户只能盲猜还能左右滑）。改为自动换行，
+                    // 内容始终完整可见；要看原始排版可点全屏（全屏不换行，可横纵滚动）。
+                    if (fullscreen) Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        .horizontalScroll(rememberScrollState())
+                    else Modifier
+                )
         ) {
             Text(
                 text = block.code,
                 style = MaterialTheme.typography.bodySmall,
                 color = colors?.onSurface ?: MaterialTheme.colorScheme.onSurface,
                 fontFamily = FontFamily.Monospace,
+                softWrap = !fullscreen,
                 modifier = Modifier.padding(8.dp)
             )
         }
