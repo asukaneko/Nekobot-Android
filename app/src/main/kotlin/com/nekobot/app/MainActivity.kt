@@ -2,10 +2,12 @@ package com.nekobot.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.SystemBarStyle
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -31,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,7 @@ import com.nekobot.app.integration.NekobotShortcutManager
 import com.nekobot.app.ui.components.MemoryMigrationDialog
 import com.nekobot.app.ui.components.LiquidGlassMenuHost
 import com.nekobot.app.ui.navigation.NekobotNavGraph
+import com.nekobot.app.ui.screens.chat.ChatSendShortcutHost
 import com.nekobot.app.ui.theme.NekobotTheme
 import com.nekobot.app.widget.NekobotWidgetProvider
 import kotlinx.coroutines.Dispatchers
@@ -100,27 +104,56 @@ class MainActivity : FragmentActivity() {
             statusBarStyle = SystemBarStyle.auto(Color.Transparent.value.toInt(), Color.Transparent.value.toInt()),
             navigationBarStyle = SystemBarStyle.auto(Color.Transparent.value.toInt(), Color.Transparent.value.toInt())
         )
-        setContent {
-            NekobotTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    if (ServiceContainer.prefs.appLockEnabled && !appUnlocked) {
-                        AppLockedScreen(
-                            error = appLockError,
-                            onUnlock = ::requestAppUnlock
-                        )
-                    } else {
-                        LiquidGlassMenuHost {
-                            NekobotNavGraph()
-                            // 记忆迁移询问与业务页面无关，且可能在任意 Profile 切换时出现，挂在这里最稳妥。
-                            // 必须放在解锁分支内：隐私锁生效时不应在锁屏之上弹出任何业务弹窗。
-                            MemoryMigrationDialog()
+        setContentView(
+            shortcutAwareRoot().apply {
+                addView(
+                    ComposeView(this@MainActivity).apply {
+                        setContent {
+                            NekobotTheme {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.background
+                                ) {
+                                    if (ServiceContainer.prefs.appLockEnabled && !appUnlocked) {
+                                        AppLockedScreen(
+                                            error = appLockError,
+                                            onUnlock = ::requestAppUnlock
+                                        )
+                                    } else {
+                                        LiquidGlassMenuHost {
+                                            NekobotNavGraph()
+                                            // 记忆迁移询问与业务页面无关，且可能在任意 Profile 切换时出现，挂在这里最稳妥。
+                                            // 必须放在解锁分支内：隐私锁生效时不应在锁屏之上弹出任何业务弹窗。
+                                            MemoryMigrationDialog()
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    }
-                }
-            }
+                    },
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+            },
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
+
+    /**
+     * 根 View：在 pre-IME 阶段截获硬件键盘快捷键。
+     *
+     * `ViewPreImeInputStage` 早于输入法处理按键，所以即使输入法先一步消费了 Ctrl+Enter、
+     * 或输入框一时失焦，也能把按键交给聊天输入区（[ChatSendShortcutHost]）。
+     */
+    private fun shortcutAwareRoot(): FrameLayout = object : FrameLayout(this) {
+        override fun dispatchKeyEventPreIme(event: KeyEvent): Boolean {
+            if (ChatSendShortcutHost.handleHardwareEnter(event)) return true
+            return super.dispatchKeyEventPreIme(event)
         }
     }
 

@@ -159,6 +159,8 @@ internal fun CompanionChatInput(
     onAttachments: () -> Unit,
     onSticker: () -> Unit,
     onVoice: () -> Unit,
+    /** 硬件键盘 Ctrl+Enter 是否可发送（实时判断，避免闭包拿到旧草稿）。 */
+    canSend: () -> Boolean,
     onSend: () -> Unit,
     onStop: () -> Unit
 ) {
@@ -176,7 +178,10 @@ internal fun CompanionChatInput(
                 if (value.text.isEmpty()) Text(stringResource(R.string.companion_chat_input),
                     color = palette.secondary, style = MaterialTheme.typography.bodyLarge)
                 BasicTextField(value = value, onValueChange = onValueChange, enabled = enabled,
-                    modifier = Modifier.fillMaxWidth(), maxLines = 5,
+                    modifier = Modifier.fillMaxWidth()
+                        // 硬件键盘 Ctrl+Enter：直接发送草稿
+                        .onCtrlEnterSend(canSend = canSend, onSend = onSend),
+                    maxLines = 5,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.ink),
                     cursorBrush = SolidColor(palette.accent))
             }

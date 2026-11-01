@@ -1787,6 +1787,40 @@ private fun ModernChatComposer(
             ) {
                 if (companionChat) {
                     Column(Modifier.fillMaxWidth()) {
+                        // 陪伴模式草稿能否发送：读实时草稿，避免快捷键拿到上一帧的快照
+                        val companionCanSend: () -> Boolean = {
+                            (delayReplyPending || !sending || isAgentSession) && !fileBusy &&
+                                (inputField.text.isNotBlank() || pendingAttachments.isNotEmpty())
+                        }
+                        val companionSendDraft: () -> Unit = send@{
+                            // 附件上传中：忽略重复触发，避免重复发送
+                            if (!companionCanSend()) return@send
+                            val text = inputField.text
+                            val choiceId = pendingPlotChoiceId
+                            val attachments = pendingAttachments
+                            // 候选附件在点击发送时才上传到工作区；上传失败则保留草稿与附件
+                            val dispatch: (List<Map<String, Any>>) -> Unit = { ready ->
+                                val keepComposerOpen = shouldKeepComposerOpen(text, choiceId == null)
+                                updateInput("")
+                                inputExpanded = keepComposerOpen
+                                pendingPlotChoiceId = null
+                                applyPendingAttachments(emptyList())
+                                closePanel()
+                                onSend(text, null, ready, readReasoningEffort())
+                            }
+                            if (attachments.isEmpty()) {
+                                dispatch(emptyList())
+                            } else {
+                                fileBusy = true
+                                scope.launch {
+                                    val ready = uploadPendingAttachments(attachments)
+                                    fileBusy = false
+                                    if (ready != null) dispatch(ready)
+                                }
+                            }
+                        }
+                        // 硬件键盘 Ctrl+Enter：输入框内拦截 + Activity pre-IME 兜底
+                        RegisterChatSendShortcut(sessionId, companionCanSend, companionSendDraft)
                         if (pendingAttachments.isNotEmpty()) {
                             PendingChatAttachments(sessionId = sessionId, attachments = pendingAttachments,
                                 onRemove = { target ->
@@ -1810,33 +1844,8 @@ private fun ModernChatComposer(
                             onSticker = { handleQuickAction(ChatQuickAction.STICKER) },
                             onVoice = { requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO) },
                             onStop = onStop,
-                            onSend = send@{
-                                // 附件上传中：忽略重复点击，避免重复发送
-                                if (fileBusy) return@send
-                                val text = input
-                                val choiceId = pendingPlotChoiceId
-                                val attachments = pendingAttachments
-                                // 候选附件在点击发送时才上传到工作区；上传失败则保留草稿与附件
-                                val dispatch: (List<Map<String, Any>>) -> Unit = { ready ->
-                                    val keepComposerOpen = shouldKeepComposerOpen(text, choiceId == null)
-                                    updateInput("")
-                                    inputExpanded = keepComposerOpen
-                                    pendingPlotChoiceId = null
-                                    applyPendingAttachments(emptyList())
-                                    closePanel()
-                                    onSend(text, null, ready, readReasoningEffort())
-                                }
-                                if (attachments.isEmpty()) {
-                                    dispatch(emptyList())
-                                } else {
-                                    fileBusy = true
-                                    scope.launch {
-                                        val ready = uploadPendingAttachments(attachments)
-                                        fileBusy = false
-                                        if (ready != null) dispatch(ready)
-                                    }
-                                }
-                            }
+                            canSend = companionCanSend,
+                            onSend = companionSendDraft
                         )
                         AnimatedVisibility(visible = panelExpanded) {
                             CompanionAttachmentPanel(enabled = !fileBusy,
@@ -1972,39 +1981,49 @@ private fun ModernChatComposer(
                                 sessionGenerating -> ModernComposerAction.STOP
                                 else -> ModernComposerAction.VOICE
                             }
+                            // 快捷键/发送按钮能否发送：草稿与附件直接读快照状态，
+                            // 否则按键回调里拿到的是上一帧的输入内容（外接键盘下会漏发或发旧内容）
+                            val canSendDraftNow: () -> Boolean = {
+                                val draft = inputField.text.isNotBlank() || pendingAttachments.isNotEmpty()
+                                draft && !fileBusy && (!sending || isAgentSession || delayReplyPending)
+                            }
+                            // 发送草稿：主操作按钮与 Ctrl+Enter 快捷键共用同一入口
+                            val sendDraft: () -> Unit = send@{
+                                if (!canSendDraftNow()) return@send
+                                val text = inputField.text
+                                val choiceId = pendingPlotChoiceId
+                                val attachments = pendingAttachments
+                                // 候选附件在点击发送时才上传到工作区；上传失败则保留草稿与附件
+                                val dispatch: (List<Map<String, Any>>) -> Unit = { ready ->
+                                    val keepComposerOpen = shouldKeepComposerOpen(
+                                        text,
+                                        choiceId == null
+                                    )
+                                    updateInput("")
+                                    inputExpanded = keepComposerOpen
+                                    pendingPlotChoiceId = null
+                                    applyPendingAttachments(emptyList())
+                                    closePanel()
+                                    if (!keepComposerOpen) keyboard?.hide()
+                                    onSend(text, choiceId, ready, readReasoningEffort())
+                                }
+                                if (attachments.isEmpty()) {
+                                    dispatch(emptyList())
+                                } else {
+                                    fileBusy = true
+                                    scope.launch {
+                                        val ready = uploadPendingAttachments(attachments)
+                                        fileBusy = false
+                                        if (ready != null) dispatch(ready)
+                                    }
+                                }
+                            }
+                            // 硬件键盘 Ctrl+Enter：输入框内拦截 + Activity pre-IME 兜底
+                            RegisterChatSendShortcut(sessionId, canSendDraftNow, sendDraft)
                             val onPrimaryAction: () -> Unit = {
                                 when (action) {
                                     ModernComposerAction.STOP -> onStop()
-                                    // 附件上传中：忽略重复点击，避免重复发送
-                                    ModernComposerAction.SEND -> if (!fileBusy) {
-                                        val text = input
-                                        val choiceId = pendingPlotChoiceId
-                                        val attachments = pendingAttachments
-                                        // 候选附件在点击发送时才上传到工作区；上传失败则保留草稿与附件
-                                        val dispatch: (List<Map<String, Any>>) -> Unit = { ready ->
-                                            val keepComposerOpen = shouldKeepComposerOpen(
-                                                text,
-                                                choiceId == null
-                                            )
-                                            updateInput("")
-                                            inputExpanded = keepComposerOpen
-                                            pendingPlotChoiceId = null
-                                            applyPendingAttachments(emptyList())
-                                            closePanel()
-                                            if (!keepComposerOpen) keyboard?.hide()
-                                            onSend(text, choiceId, ready, readReasoningEffort())
-                                        }
-                                        if (attachments.isEmpty()) {
-                                            dispatch(emptyList())
-                                        } else {
-                                            fileBusy = true
-                                            scope.launch {
-                                                val ready = uploadPendingAttachments(attachments)
-                                                fileBusy = false
-                                                if (ready != null) dispatch(ready)
-                                            }
-                                        }
-                                    }
+                                    ModernComposerAction.SEND -> sendDraft()
                                     ModernComposerAction.VOICE -> requestMicPermission.launch(
                                         android.Manifest.permission.RECORD_AUDIO
                                     )
@@ -2088,6 +2107,11 @@ private fun ModernChatComposer(
                                             ),
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                // 硬件键盘 Ctrl+Enter：直接发送草稿（与发送按钮同一入口）
+                                                .onCtrlEnterSend(
+                                                    canSend = canSendDraftNow,
+                                                    onSend = sendDraft
+                                                )
                                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                                             decorationBox = { innerTextField ->
                                                 Row(
