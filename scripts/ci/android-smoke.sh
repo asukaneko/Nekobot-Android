@@ -20,7 +20,8 @@ keytool -genkeypair -noprompt -keystore .signing/legacy-debug.keystore \
 ./gradlew --no-daemon --console=plain --max-workers=2 \
   '-Dorg.gradle.jvmargs=-Xmx6g -Xss8m -Dfile.encoding=UTF-8' \
   -Pkotlin.incremental=false -Pnekobot.testAbi=x86_64 assembleRelease
-adb uninstall com.nekobot.app
+# 设备测试结束时 Gradle 已卸载过包，这里只保证安装环境干净：不存在的包不算失败。
+adb uninstall com.nekobot.app > /dev/null 2>&1 || true
 adb install app/build/outputs/apk/release/app-release.apk
 adb logcat -c
 for attempt in 1 2 3 4 5; do
@@ -29,10 +30,16 @@ for attempt in 1 2 3 4 5; do
     | tee "app/build/reports/smoke/startup-${attempt}.txt"
   grep -q 'Status: ok' "app/build/reports/smoke/startup-${attempt}.txt"
   sleep 2
-  adb shell pidof com.nekobot.app
+  # 启动成功不代表进程还活着：崩溃时先保存日志再失败。
+  if ! adb shell pidof com.nekobot.app; then
+    adb logcat -d -s AndroidRuntime:E > app/build/reports/smoke/runtime.txt
+    cat app/build/reports/smoke/runtime.txt
+    exit 1
+  fi
 done
 adb logcat -d -s AndroidRuntime:E > app/build/reports/smoke/runtime.txt
-if grep -q 'FATAL EXCEPTION' app/build/reports/smoke/runtime.txt; then
+# 只把本应用的致命异常算作失败：系统组件（权限弹窗等）的崩溃与本次冒烟无关。
+if grep -A4 'FATAL EXCEPTION' app/build/reports/smoke/runtime.txt | grep -q 'com\.nekobot\.app'; then
   cat app/build/reports/smoke/runtime.txt
   exit 1
 fi
