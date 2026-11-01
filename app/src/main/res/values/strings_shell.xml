@@ -6,6 +6,9 @@
     <string name="nav_capabilities">能力</string>
     <string name="nav_profile">我的</string>
 
+    <!-- 平板左侧抽屉：展开 / 收起 -->
+    <string name="nav_drawer_collapse">收起侧栏</string>
+    <string name="nav_drawer_expand">展开侧栏</string>
     <!-- 会话分段筛选 -->
     <string name="shell_seg_all">全部</string>
     <string name="shell_seg_character">角色</string>

@@ -5,6 +5,9 @@
     <string name="nav_capabilities">기능</string>
     <string name="nav_profile">내 정보</string>
 
+    <!-- 平板左侧抽屉：展开 / 收起 -->
+    <string name="nav_drawer_collapse">사이드바 접기</string>
+    <string name="nav_drawer_expand">사이드바 펼치기</string>
     <string name="shell_seg_all">전체</string>
     <string name="shell_seg_character">캐릭터</string>
     <string name="shell_seg_agent">Agent</string>
