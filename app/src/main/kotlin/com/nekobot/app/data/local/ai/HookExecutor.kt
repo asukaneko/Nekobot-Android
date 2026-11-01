@@ -99,6 +99,8 @@ class HookExecutor(
                 triggeredKeys[key] = true
             }
             LocalLogger.d(TAG, R.string.log_hook_loaded_records, keys.size)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             LocalLogger.w(TAG, R.string.log_hook_load_records_failed, e.message)
         }
@@ -109,6 +111,8 @@ class HookExecutor(
         try {
             val json = gson.toJson(triggeredKeys.keys.toSet())
             prefs?.edit()?.putString(PREF_KEY, json)?.apply()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             LocalLogger.w(TAG, R.string.log_hook_persist_records_failed, e.message)
         }
@@ -130,6 +134,8 @@ class HookExecutor(
     ): HookTriggerResult = withContext(Dispatchers.IO) {
         val hooks = try {
             hookDao.listEnabled()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             LocalLogger.w(TAG, R.string.log_hook_load_hooks_failed, e.message)
             return@withContext HookTriggerResult()
@@ -164,6 +170,8 @@ class HookExecutor(
             // 评估条件
             val conditionsMet = try {
                 evaluateConditions(hook.conditions, effCtx, hook.conditionLogic)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 LocalLogger.w(TAG, R.string.log_hook_condition_error, hook.name, e.message)
                 recordHookLog(
@@ -184,6 +192,8 @@ class HookExecutor(
             for (actionJson in hook.actions) {
                 val result = try {
                     executeAction(actionJson, hook, effCtx)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     LocalLogger.e(TAG, R.string.log_hook_action_error, hook.name, e.message, throwable = e)
                     ActionResult(false, actionJson.safeType(), e.message ?: "执行异常")
@@ -272,6 +282,8 @@ class HookExecutor(
         for (actionJson in hook.actions) {
             val result = try {
                 executeAction(actionJson, hook, effCtx)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 LocalLogger.e(TAG, R.string.log_hook_action_error, hook.name, e.message, throwable = e)
                 ActionResult(false, actionJson.safeType(), e.message ?: "执行异常")
@@ -345,6 +357,8 @@ class HookExecutor(
             hookLogDao.insert(log)
             // 每个 hook 保留最近 200 条日志
             hookLogDao.trimByHook(hookId, keep = 200)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             LocalLogger.w(TAG, R.string.log_hook_log_write_failed, e.message)
         }
@@ -591,6 +605,8 @@ class HookExecutor(
         // version：同 path 累积（对齐 AutoMemory.nextVersionForPath）
         val version = try {
             (memoryDao.listByPath(memoryPath).maxOfOrNull { it.version } ?: 0) + 1
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) { 1 }
 
         val entity = LocalCharacterMemoryEntity(
@@ -643,6 +659,8 @@ class HookExecutor(
             }
             LocalLogger.i(TAG, R.string.log_hook_memory_write, hook.name, title, category, memoryPath)
             return ActionResult(true, "memory_write", "已写入记忆: $title")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             return ActionResult(false, "memory_write", "写入记忆失败: ${e.message}")
         }
@@ -728,6 +746,8 @@ class HookExecutor(
             stateDao.upsert(updated)
             LocalLogger.i(TAG, R.string.log_hook_state_updated, hook.name, state.mood, state.energy)
             return ActionResult(true, "state_delta", "状态已更新")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             return ActionResult(false, "state_delta", "状态保存失败: ${e.message}")
         }
@@ -779,6 +799,8 @@ class HookExecutor(
             relationshipDao.upsert(updated)
             LocalLogger.i(TAG, R.string.log_hook_rel_updated, hook.name, rel.affection, rel.trust)
             return ActionResult(true, "relationship_delta", "关系已更新")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             return ActionResult(false, "relationship_delta", "关系保存失败: ${e.message}")
         }
@@ -818,6 +840,8 @@ class HookExecutor(
             )
             worldBookDao.upsert(newBook)
             newBook
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             return ActionResult(false, "world_book_add", "创建世界书失败: ${e.message}")
         }
@@ -837,6 +861,8 @@ class HookExecutor(
             worldBookDao.upsertEntry(entry)
             LocalLogger.i(TAG, R.string.log_hook_worldbook_added, hook.name, name)
             return ActionResult(true, "world_book_add", "已添加: $name")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             return ActionResult(false, "world_book_add", "添加条目失败: ${e.message}")
         }

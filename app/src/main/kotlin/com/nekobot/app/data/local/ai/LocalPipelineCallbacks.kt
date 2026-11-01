@@ -1804,11 +1804,24 @@ internal class LocalPipelineCallbacks(
         triggerAfterTurnHook(ctx)
     }
 
+    /** Hook 属于当前仓库，关闭档案时取消，单个失败不影响其他后台任务。 */
+    private fun launchHook(block: suspend () -> Unit) {
+        backgroundTaskScope.launch {
+            try {
+                block()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                com.nekobot.app.data.local.LocalLogger.w(TAG, R.string.log_hook_load_hooks_failed, error.message)
+            }
+        }
+    }
+
     /** 触发 message.after_receive 事件（助手最终回复产生后）。 */
     private fun triggerMessageAfterReceiveHook(ctx: PipelineContext, result: PipelineResult) {
         val executor = hookExecutor ?: return
         val turn = ctx.characterTurn
-        kotlinx.coroutines.GlobalScope.launch {
+        launchHook {
             executor.triggerEvent(
                 eventType = "message.after_receive",
                 conversationId = session.id,
@@ -1833,7 +1846,7 @@ internal class LocalPipelineCallbacks(
         if (session.companionMode) return
         val executor = hookExecutor ?: return
         val turn = ctx.characterTurn ?: return
-        kotlinx.coroutines.GlobalScope.launch {
+        launchHook {
             executor.triggerEvent(
                 eventType = "character.before_turn.finished",
                 conversationId = session.id,
@@ -1853,7 +1866,7 @@ internal class LocalPipelineCallbacks(
     private fun triggerModelAfterCallHook(ctx: PipelineContext, modelName: String) {
         val executor = hookExecutor ?: return
         val turn = ctx.characterTurn
-        kotlinx.coroutines.GlobalScope.launch {
+        launchHook {
             executor.triggerEvent(
                 eventType = "model.after_call",
                 conversationId = session.id,
@@ -1872,7 +1885,7 @@ internal class LocalPipelineCallbacks(
     private fun triggerAfterTurnHook(ctx: PipelineContext) {
         val executor = hookExecutor ?: return
         val turn = ctx.characterTurn ?: return
-        kotlinx.coroutines.GlobalScope.launch {
+        launchHook {
             executor.triggerEvent(
                 eventType = "character.after_turn.finished",
                 conversationId = session.id,
