@@ -7,6 +7,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDecoration
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.ui.components.parseInline
+import com.nekobot.app.ui.theme.BgSurfaceVariant
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -55,14 +56,13 @@ class CompanionMessageStyleTest {
         assertEquals(1f, style.background.alpha, 0f)
     }
 
-    @Test fun darkAssistantDefaultsToWhite() {
+    @Test fun darkAssistantFollowsThemeSurface() {
         val palette = companionChatPalette(true)
         val style = companionAssistantBubbleStyle(palette)
         assertEquals(Color(0xFF355B45), palette.outgoing)
         assertEquals(Color(0xFFF0F6F2), palette.outgoingInk)
-        assertEquals(Color.White, style.background)
-        assertEquals(Color.Black, style.content)
-        assertEquals(1f, style.background.alpha, 0f)
+        assertEquals(BgSurfaceVariant.copy(alpha = 0.62f), style.background)
+        assertEquals(Color.White, style.content)
     }
 
     @Test fun lightCustomBubbleColorsRemainIndependentAndReadable() = assertCustomColors(false)
@@ -190,12 +190,19 @@ class CompanionMessageStyleTest {
             val palette = companionChatPalette(dark, color)
             val style = companionAssistantBubbleStyle(palette)
             assertEquals(color, palette.outgoing)
-            assertEquals(Color.White, style.background)
-            assertEquals(Color.Black, style.content)
-            assertReadable(style.content, style.background)
-            assertReadable(style.markdown.link, style.background)
-            assertReadable(style.markdown.parentheses, style.background)
-            assertReadable(style.content, Color.Gray.copy(alpha = 0.15f).compositeOver(style.background))
+            // 深色模式 AI 气泡跟随主题表面色，浅色模式保持白底
+            val plainBackground = style.background.compositeOver(palette.background)
+            if (dark) {
+                assertEquals(BgSurfaceVariant.copy(alpha = 0.62f), style.background)
+                assertEquals(Color.White, style.content)
+            } else {
+                assertEquals(Color.White, style.background)
+                assertEquals(Color.Black, style.content)
+            }
+            assertReadable(style.content, plainBackground)
+            assertReadable(style.markdown.link, plainBackground)
+            assertReadable(style.markdown.parentheses, plainBackground)
+            assertReadable(style.content, Color.Gray.copy(alpha = 0.15f).compositeOver(plainBackground))
             assertReadable(style.markdown.onSurface, style.markdown.surface)
             assertReadable(style.markdown.surfaceLink, style.markdown.surface)
             val assistant = companionAssistantBubbleStyle(companionChatPalette(dark, null, color))

@@ -21,7 +21,8 @@ class CompanionBubbleLinkColorTest {
 
     @Test fun darkDefaultLinksRemainReadable() {
         val palette = companionChatPalette(true)
-        assertEquals(0xFF000000.toInt(), companionBubbleLinkColor(palette).toArgb())
+        // 深色模式 AI 气泡改为主题表面色，默认字色/链接色相应提亮
+        assertEquals(0xFFFFFFFF.toInt(), companionBubbleLinkColor(palette).toArgb())
         assertReadableLinks(palette)
     }
 

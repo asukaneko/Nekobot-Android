@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ui.theme.parseHexColor
 import com.nekobot.app.ui.components.bubbleContentColor
+import com.nekobot.app.ui.theme.BgSurfaceLight
+import com.nekobot.app.ui.theme.BgSurfaceVariant
 
 /** Only provided inside a single-session companion chat; shared Agent/role UI keeps its own style. */
 internal val LocalCompanionChatName = staticCompositionLocalOf<String?> { null }
@@ -53,7 +55,7 @@ internal fun companionChatPalette(messageColorOverride: String? = null, assistan
     companionChatPalette(MaterialTheme.colorScheme.background.luminance() < 0.5f,
         parseHexColor(messageColorOverride), parseHexColor(assistantColorOverride))
 
-/** 用户与 AI 气泡分别取色；未设置 AI 覆盖色时使用白色。 */
+/** 未设置 AI 覆盖色时：浅色用白底，深色跟随主题表面色，避免整块白底在深色聊天里过亮。 */
 internal fun companionChatPalette(dark: Boolean, messageColorOverride: Color? = null, assistantColorOverride: Color? = null): CompanionChatPalette {
     val palette = if (dark) {
         CompanionChatPalette(Color(0xFF191D1E), Color(0xFF2A3031), Color(0xFF355B45),
@@ -62,7 +64,8 @@ internal fun companionChatPalette(dark: Boolean, messageColorOverride: Color? = 
         CompanionChatPalette(Color(0xFFF0F4F3), Color(0xFFFEFEFE), Color(0xFFD5EBD2),
             Color(0xFF202927), Color(0xFF75807C), Color(0xFF547E68), Color(0xFF172A20))
     }
-    val incoming = assistantColorOverride ?: Color.White
+    val incoming = assistantColorOverride
+        ?: if (dark) BgSurfaceVariant.copy(alpha = 0.62f) else BgSurfaceLight
     return palette.copy(
         outgoing = messageColorOverride ?: palette.outgoing,
         outgoingInk = messageColorOverride?.let { bubbleContentColor(it) } ?: palette.outgoingInk,
