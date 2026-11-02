@@ -6,6 +6,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +47,9 @@ import androidx.navigation.navArgument
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.repository.Resource
-import com.nekobot.app.ui.adaptive.rememberShouldUseNavRail
+import com.nekobot.app.ui.adaptive.WindowWidthClass
+import com.nekobot.app.ui.adaptive.rememberShouldUseNavDrawer
+import com.nekobot.app.ui.adaptive.rememberWindowWidthClass
 import com.nekobot.app.ui.screens.aiconfig.AiConfigCenterScreen
 import com.nekobot.app.ui.screens.aiconfig.AiBalanceScreen
 import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
@@ -157,6 +162,9 @@ private const val DETAIL_FADE_DELAY_MS = 50
 private const val TAB_CLICK_VEIL_ON_MS = 110
 private const val TAB_CLICK_VEIL_OFF_MS = 260
 
+// 左侧抽屉展开 / 收起时，内容避让宽度的动画时长（与抽屉自身宽度动画一致）。
+private const val NAV_DRAWER_CLEARANCE_MS = 220
+
 // 阻尼缓动曲线（easeOutQuint 风格）：起步迅猛、末端长尾缓慢趋停，
 // 页面像被阻尼滑轨"吸入"到位，而非匀速生硬地切换。
 private val DampedEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
@@ -226,18 +234,33 @@ fun NekobotNavGraph() {
             }
         }
     }
-    // 平板形态（够宽 + 够高）：底部导航栏改为左侧侧边导航栏，
-    // 主界面 4 个 Tab 整体向右避让；手机（含手机横屏）仍用底部导航栏。
-    val useNavRail = rememberShouldUseNavRail()
-    val navRailClearance = rememberNavRailClearance()
+    // 平板形态（够宽 + 够高）：底部导航栏改为左侧抽屉导航，
+    // 主界面 Tab 整体向右避让；手机（含手机横屏）仍用底部导航栏。
+    val useNavDrawer = rememberShouldUseNavDrawer()
+    // 抽屉默认展开（大屏）/ 收起为窄轨（中等宽度，给内容留出宽度）；
+    // 用户的展开状态按窗口宽度类别记忆，旋转屏幕后仍保持。
+    val widthClass = rememberWindowWidthClass()
+    var navDrawerExpanded by rememberSaveable(widthClass) {
+        mutableStateOf(widthClass == WindowWidthClass.Expanded)
+    }
+    // 避让宽度跟随抽屉宽度一起做动画，展开 / 收起时内容不会被"跳"一下。
+    val drawerClearance by animateDpAsState(
+        targetValue = if (useNavDrawer) {
+            navDrawerLayout().widthFor(navDrawerExpanded)
+        } else {
+            0.dp
+        },
+        animationSpec = tween(NAV_DRAWER_CLEARANCE_MS, easing = FastOutSlowInEasing),
+        label = "navDrawerClearance"
+    )
     // 平板双栏：聊天全屏（会话列表收起）时隐藏底部导航栏，把整屏让给聊天。
     // 仅当确实停留在会话页时才生效，避免滑动到其他 Tab 后底栏仍然消失。
-    // 侧栏形态不受此影响：侧栏贴在屏幕左侧、不占用聊天高度，始终可见以便随时切换 Tab。
+    // 抽屉形态不受此影响：抽屉贴在屏幕左侧、不占用聊天高度，始终可见以便随时切换 Tab。
     var twoPaneChatMaximized by remember { mutableStateOf(false) }
     // 会话列表多选：列表页自己的批量操作栏会占用底部导航栏的位置，期间隐藏导航栏。
     var sessionSelectionMode by remember { mutableStateOf(false) }
-    val showNavRail = useNavRail && currentRoute in mainRoutes
-    val showBottomBar = !useNavRail && currentRoute in mainRoutes && !(
+    val showNavDrawer = useNavDrawer && currentRoute in mainRoutes
+    val showBottomBar = !useNavDrawer && currentRoute in mainRoutes && !(
         (twoPaneChatMaximized || sessionSelectionMode) &&
             currentRoute == Routes.SESSIONS &&
             selectedMainRoute == Routes.SESSIONS
@@ -408,7 +431,7 @@ fun NekobotNavGraph() {
                 HorizontalPager(
                     state = mainPagerState,
                     // 侧栏形态下 5 个 Tab 整体向右避让，避免被悬浮侧栏压住。
-                    modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance),
+                    modifier = Modifier.fillMaxSize().mainTabInset(drawerClearance),
                     key = { page -> bottomRoutes[page] },
                     beyondViewportPageCount = 1
                 ) { page ->
@@ -654,7 +677,7 @@ fun NekobotNavGraph() {
                     navArgument("tab") { type = NavType.IntType; defaultValue = 0 }
                 )
             ) { entry ->
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                Box(modifier = Modifier.fillMaxSize().mainTabInset(drawerClearance)) {
                     LibraryScreen(
                         onOpenCharacter = { id ->
                             if (id == "new") navController.navigate(Routes.characterDetail(id))
@@ -668,12 +691,12 @@ fun NekobotNavGraph() {
                 }
             }
             composable(Routes.CAPABILITIES) {
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                Box(modifier = Modifier.fillMaxSize().mainTabInset(drawerClearance)) {
                     CapabilitiesScreen(onNavigate = { route -> navController.navigate(route) })
                 }
             }
             composable(Routes.MORE) {
-                Box(modifier = Modifier.fillMaxSize().mainTabInset(navRailClearance)) {
+                Box(modifier = Modifier.fillMaxSize().mainTabInset(drawerClearance)) {
                     ProfileScreen(
                         onNavigate = { route -> navController.navigate(route) },
                         onLogout = {
@@ -1107,16 +1130,19 @@ fun NekobotNavGraph() {
             )
         }
 
-        // 平板形态：同样的导航项改为左侧侧边导航栏。
-        // 侧栏与底栏互斥（由 useNavRail 决定），两者共用同一套切换逻辑。
-        if (showNavRail) {
-            NekoNavRail(
+        // 平板形态：同样的导航项改为左侧抽屉（贴左边缘、贯穿整屏），
+        // 顶部标题行右侧的按钮可在「展开」与「收起成窄轨」之间切换。
+        // 抽屉与底栏互斥（由 useNavDrawer 决定），两者共用同一套切换逻辑。
+        if (showNavDrawer) {
+            NekoNavDrawer(
                 items = bottomItems(),
                 selectedRoute = if (currentRoute == Routes.SESSIONS) {
                     selectedMainRoute
                 } else {
                     currentRoute
                 },
+                expanded = navDrawerExpanded,
+                onToggleExpanded = { navDrawerExpanded = !navDrawerExpanded },
                 modifier = Modifier.align(Alignment.CenterStart),
                 onItemSelected = onNavItemSelected,
             )
@@ -1126,7 +1152,7 @@ fun NekobotNavGraph() {
     }
 }
 
-/** 主界面 Tab 页在侧栏形态下整体向右避让；详情页不避让，保持全屏。 */
+/** 主界面 Tab 页在抽屉形态下整体向右避让；详情页不避让，保持全屏。 */
 private fun Modifier.mainTabInset(clearance: Dp): Modifier =
     if (clearance > 0.dp) this.padding(start = clearance) else this
 

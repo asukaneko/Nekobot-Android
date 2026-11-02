@@ -309,11 +309,8 @@ object ServiceContainer {
         val db = NekobotDatabase.get(app, prefs.activeDbName)
         migrateLegacyPlotStoryProfile(app, prefs.activeDbName, db)
         localRepository = LocalRepository(db, LocalAiClient(), app)
+        localRepository.attachAgentNoticeWakeUp()
         unified = UnifiedRepository(prefs, repository, localRepository, app)
-        // 临时会话不跨进程保留：启动时清理上次运行遗留的临时记录（同步执行，避免列表短暂闪出残留项）。
-        runCatching {
-            runBlocking(Dispatchers.IO) { localRepository.purgeTemporarySessions() }
-        }
         pluginGrants = PluginGrants(app)
         pluginMetaStore = PluginMetaStore(app)
         pluginManager = PluginManager(app, pluginGrants, pluginMetaStore)
@@ -322,6 +319,7 @@ object ServiceContainer {
         ModelPricingCatalog.loadCached(app)
         // 初始化本地日志记录器
         com.nekobot.app.data.local.LocalLogger.init(app)
+        localRepository.scheduleTemporarySessionCleanup()
         // 初始化成就系统；本地模式按数据库 Profile 隔离解锁记录。
         com.nekobot.app.data.local.AchievementManager.init(app, achievementScopeId())
         // 初始化带语言配置的上下文（ViewModel 通过此上下文获取本地化字符串）
@@ -408,11 +406,9 @@ object ServiceContainer {
             migrateLegacyPlotStoryProfile(ctx, profileName, db)
             bindGlobalAgentMemory(ctx, profileName)
             localRepository = LocalRepository(db, LocalAiClient(), ctx)
+            localRepository.attachAgentNoticeWakeUp()
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
-            // 切换档案后同样清理新档案里遗留的临时记录。
-            runCatching {
-                runBlocking(Dispatchers.IO) { localRepository.purgeTemporarySessions() }
-            }
+            localRepository.scheduleTemporarySessionCleanup()
             com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
             _dataSourceRevision.value += 1L
             clearGeneratingSessions()

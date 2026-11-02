@@ -3,6 +3,8 @@ package com.nekobot.app.ui.screens.memory
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -22,6 +24,10 @@ import java.util.UUID
 
 class AgentCharacterMemoryDirectoryTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    /** 界面文案固定用简体中文，避免测试结果跟随模拟器系统语言变化。 */
+    private fun chineseContext() = compose.activity.createConfigurationContext(
+        android.content.res.Configuration(compose.activity.resources.configuration)
+            .apply { setLocale(java.util.Locale.SIMPLIFIED_CHINESE) })
     private fun screenshot(name: String) {
         val image=compose.onRoot().captureToImage().asAndroidBitmap()
         java.io.File(compose.activity.cacheDir,"agent-memory-$name.png").outputStream().use {
@@ -46,16 +52,20 @@ class AgentCharacterMemoryDirectoryTest {
                 store.editFused(sessions[1],"favorite","角色乙独有的红色围巾","user_profile",emptyList(),true,false)
             }
             var destination = ""
+            val textContext = chineseContext()
             compose.setContent {
                 var page by remember { mutableStateOf("more") }
                 var owner by remember { mutableStateOf("") }
-                MaterialTheme { when (page) {
+                CompositionLocalProvider(
+                    LocalContext provides textContext,
+                    LocalConfiguration provides textContext.resources.configuration
+                ) { MaterialTheme { when (page) {
                     "more" -> CapabilitiesScreen({ destination = it; page = it })
                     Routes.AGENT_CHARACTER_MEMORY -> AgentCharacterMemoryDirectoryScreen({ page="more" }, { owner=it; page="detail" })
                     else -> FusedCompanionMemoryScreen(owner,{ page=Routes.AGENT_CHARACTER_MEMORY },{})
-                } }
+                } } }
             }
-            val title=compose.activity.getString(R.string.agent_character_memory_title)
+            val title=textContext.getString(R.string.agent_character_memory_title)
             compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(title))
             screenshot("more")
             compose.onNodeWithText(title).performClick()

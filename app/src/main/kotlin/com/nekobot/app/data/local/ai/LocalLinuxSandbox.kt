@@ -66,11 +66,33 @@ internal const val SANDBOX_WORKSPACE_MOUNT = "/workspace"
 internal const val SANDBOX_SHARED_MOUNT = "/shared"
 
 /**
+ * 应用私有目录（Android 数据目录，`dataDir`）在沙箱内的挂载点。
+ *
+ * 挂载后 Agent 可以在沙盒里直接读写应用的全部私有文件：
+ * `/app/files`（workspace、plugins、记忆、技能等）、`/app/databases`（Room 数据库）、
+ * `/app/shared_prefs`（配置）等。落在 filesDir 内的 sandbox rootfs 自身也可见
+ * （`/app/files/linux_sandbox`），因此删除/改写它等于破坏正在运行的沙盒。
+ */
+internal const val SANDBOX_APP_MOUNT = "/app"
+
+/**
+ * 需要挂载到沙箱 /app 的宿主目录。
+ *
+ * 陪伴模式（hostProcAccess=false）刻意隔离宿主文件系统，此时返回 null 表示不挂载。
+ */
+internal fun resolveSandboxAppDir(context: Context, hostProcAccess: Boolean): File? =
+    if (hostProcAccess) File(context.applicationInfo.dataDir) else null
+
+/** rootfs 内 /app 绑定目标目录名（PRoot 要求绑定目标已存在）。 */
+internal const val SANDBOX_APP_ROOTFS_DIR = "app"
+
+/**
  * Agent 模式使用的 Alpine Linux 沙盒。
  *
  * rootfs 在应用内全局共享，软件安装和 /root 数据可以跨 Agent 会话保留；
  * 每个会话拥有独立的持久 shell，并把自己的 Android 工作区挂载到 /workspace，
- * 跨会话共享工作区（filesDir/workspace/shared/）挂载到 /shared。
+ * 跨会话共享工作区（filesDir/workspace/shared/）挂载到 /shared，
+ * 应用私有数据目录（dataDir）挂载到 /app（陪伴模式下不挂载，保持宿主隔离）。
  */
 internal object LocalLinuxSandboxCoordinator {
     private const val TAG = "LocalLinuxSandbox"
@@ -150,11 +172,13 @@ internal object LocalLinuxSandboxCoordinator {
         val startedAt = System.currentTimeMillis()
         val runtime = LocalLinuxRootfsManager.getInstance(context).ensureReady()
         val sharedWorkspace = LocalWorkspaceStorage.resolveShared(context.filesDir)
+        val appPrivateDir = resolveSandboxAppDir(context, hostProcAccess)
         val guestWorkspace = workspace.canonicalFile
         guestWorkspace.mkdirs()
         // PRoot 的绑定目标必须已存在，旧 rootfs 可能缺少这些目录。
         File(runtime.rootfs, "workspace").mkdirs()
         if (sharedWorkspace != null) File(runtime.rootfs, "shared").mkdirs()
+        if (appPrivateDir != null) File(runtime.rootfs, SANDBOX_APP_ROOTFS_DIR).mkdirs()
 
         val argv = buildLocalDetachedCommand(
             proot = runtime.proot,
@@ -162,6 +186,7 @@ internal object LocalLinuxSandboxCoordinator {
             workspace = guestWorkspace,
             command = command,
             sharedWorkspace = sharedWorkspace,
+            appPrivateDir = appPrivateDir,
             hostProcAccess = hostProcAccess,
         )
         val process = ProcessBuilder(argv)
@@ -240,6 +265,7 @@ internal object LocalLinuxSandboxCoordinator {
             sessionId = sessionId,
             workspace = workspace.canonicalFile,
             sharedWorkspace = sharedWorkspace,
+            appPrivateDir = resolveSandboxAppDir(context, hostProcAccess),
             runtime = runtime,
             hostProcAccess = hostProcAccess,
         )
@@ -618,6 +644,7 @@ internal class LocalPersistentLinuxShell(
     private val sessionId: String,
     val workspace: File,
     private val sharedWorkspace: File?,
+    private val appPrivateDir: File? = null,
     private val runtime: LocalLinuxRuntime,
     val hostProcAccess: Boolean = true,
 ) {
@@ -645,12 +672,17 @@ internal class LocalPersistentLinuxShell(
         if (sharedWorkspace != null) {
             File(runtime.rootfs, "shared").mkdirs()
         }
+        // 应用私有目录挂载点 /app 同理需要在 rootfs 内补建。
+        if (appPrivateDir != null) {
+            File(runtime.rootfs, SANDBOX_APP_ROOTFS_DIR).mkdirs()
+        }
 
         val command = buildLocalProotCommand(
             proot = runtime.proot,
             rootfs = runtime.rootfs,
             workspace = workspace,
             sharedWorkspace = sharedWorkspace,
+            appPrivateDir = appPrivateDir,
             hostProcAccess = hostProcAccess,
         )
         val builder = ProcessBuilder(command)
@@ -875,6 +907,7 @@ internal fun buildLocalProotPrefix(
     rootfs: File,
     workspace: File,
     sharedWorkspace: File? = null,
+    appPrivateDir: File? = null,
     guestCwd: String = SANDBOX_WORKSPACE_MOUNT,
     hostProcAccess: Boolean = true,
 ): List<String> = buildList {
@@ -895,6 +928,11 @@ internal fun buildLocalProotPrefix(
         add("-b")
         add("${sharedWorkspace.absolutePath}:$SANDBOX_SHARED_MOUNT")
     }
+    // 应用私有目录进出沙盒：AI 可在 /app 内直接读写全部应用私有文件。
+    if (appPrivateDir != null) {
+        add("-b")
+        add("${appPrivateDir.absolutePath}:$SANDBOX_APP_MOUNT")
+    }
     add("-w")
     add(guestCwd)
 }
@@ -905,8 +943,11 @@ internal fun buildLocalProotCommand(
     rootfs: File,
     workspace: File,
     sharedWorkspace: File? = null,
+    appPrivateDir: File? = null,
     hostProcAccess: Boolean = true,
-): List<String> = buildLocalProotPrefix(proot, rootfs, workspace, sharedWorkspace, hostProcAccess = hostProcAccess) + listOf("/bin/sh")
+): List<String> = buildLocalProotPrefix(
+    proot, rootfs, workspace, sharedWorkspace, appPrivateDir, hostProcAccess = hostProcAccess
+) + listOf("/bin/sh")
 
 /**
  * 生成后台命令（一次性进程）的启动参数：PRoot 前缀 + /bin/sh -c "<command>"。
@@ -920,8 +961,11 @@ internal fun buildLocalDetachedCommand(
     workspace: File,
     command: String,
     sharedWorkspace: File? = null,
+    appPrivateDir: File? = null,
     hostProcAccess: Boolean = true,
-): List<String> = buildLocalProotCommand(proot, rootfs, workspace, sharedWorkspace, hostProcAccess) + listOf("-c", command)
+): List<String> = buildLocalProotCommand(
+    proot, rootfs, workspace, sharedWorkspace, appPrivateDir, hostProcAccess
+) + listOf("-c", command)
 
 /** 写入 PRoot 子进程的固定环境（持久 shell、后台命令、交互终端共用同一套）。 */
 internal fun ProcessBuilder.applyLocalSandboxEnvironment(

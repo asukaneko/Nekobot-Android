@@ -5,6 +5,9 @@
     <string name="nav_capabilities">できること</string>
     <string name="nav_profile">マイ</string>
 
+    <!-- 平板左侧抽屉：展开 / 收起 -->
+    <string name="nav_drawer_collapse">サイドバーを閉じる</string>
+    <string name="nav_drawer_expand">サイドバーを開く</string>
     <string name="shell_seg_all">すべて</string>
     <string name="shell_seg_character">キャラ</string>
     <string name="shell_seg_agent">Agent</string>

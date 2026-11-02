@@ -178,13 +178,13 @@ class CompanionSettingsScreenTest {
 
             compose.onNodeWithText("查找记录").performClick()
             compose.onNodeWithText("查找聊天记录").assertIsDisplayed()
-            compose.onNode(hasContentDescription("返回") and hasAnyAncestor(isDialog())).performClick()
+            compose.onNode(hasContentDescription("返回") and hasAnyAncestor(hasTestTag("companion-reading-dialog"))).performClick()
             compose.onNodeWithTag("companion-settings-screen").assertIsDisplayed()
             compose.onNodeWithText("收藏消息").performClick()
-            compose.onNode(hasContentDescription("返回") and hasAnyAncestor(isDialog())).performClick()
+            compose.onNode(hasContentDescription("返回") and hasAnyAncestor(hasTestTag("companion-reading-dialog"))).performClick()
             compose.onNodeWithTag("companion-settings-screen").assertIsDisplayed()
             compose.onNodeWithText("聊天用量").performScrollTo().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("本会话缓存命中").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("本会话累计缓存命中").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("返回").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("companion-settings-screen").fetchSemanticsNodes().isNotEmpty() }
             compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
@@ -195,7 +195,7 @@ class CompanionSettingsScreenTest {
             compose.onNodeWithContentDescription("更多").performClick()
             compose.onNodeWithText("查找记录").performClick()
             compose.onNode(hasSetTextAction()).performTextReplacement("布局验证原话14")
-            compose.onNode(hasText("布局验证原话14") and !hasSetTextAction() and hasAnyAncestor(isDialog())).performClick()
+            compose.onNode(hasText("布局验证原话14") and !hasSetTextAction() and hasAnyAncestor(hasTestTag("companion-reading-dialog"))).performClick()
             compose.onNodeWithTag("companion-settings-screen").assertDoesNotExist()
             compose.onNodeWithText("布局验证原话14").assertIsDisplayed()
             capture("chat-return")

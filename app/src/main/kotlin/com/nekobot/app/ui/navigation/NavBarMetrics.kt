@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.ui.adaptive.WindowWidthClass
-import com.nekobot.app.ui.adaptive.rememberShouldUseNavRail
+import com.nekobot.app.ui.adaptive.rememberShouldUseNavDrawer
 import com.nekobot.app.ui.adaptive.rememberWindowWidthClass
 
 /**
@@ -94,97 +94,98 @@ internal fun bottomBarLayout(): BottomBarLayout = bottomBarLayoutFor(rememberWin
 /**
  * 当前形态下底部导航栏（含上下边距）占据的总高度。
  *
- * 平板形态改用侧边导航栏（见 `NekoNavRail`），底栏不再显示，因此返回 0：
+ * 平板形态改用左侧抽屉导航（见 `NekoNavDrawer`），底栏不再显示，因此返回 0：
  * 嵌入双栏的聊天输入区不必再为底栏抬升。
  */
 @Composable
 fun rememberBottomBarClearance(): Dp =
-    if (rememberShouldUseNavRail()) 0.dp else bottomBarLayout().clearance
+    if (rememberShouldUseNavDrawer()) 0.dp else bottomBarLayout().clearance
 
 /** 紧凑（手机）布局下的避让高度基线：64 + 10 * 2 = 84dp，供非 Composable 场景兜底。 */
 val NekoBottomBarClearance: Dp = CompactBottomBarLayout.clearance
 
 /**
- * 侧边导航栏在两种平板宽度下的几何规格。
+ * 左侧抽屉在两种平板宽度下的几何规格。
  *
- * 侧栏是竖排面板（非长条），宽度明显窄于底栏，因此单列固定几何即可：
- * 每个标签固定高度、图标在上文字在下，整体面板在垂直方向居中。
+ * 抽屉是贴着屏幕左边缘、从上到下的整条面板（展开态）：
+ * 顶部一行标题，下面一列「图标 + 文字」导航项，选中项用强调色浅底圆角块。
+ * 收起态退化为只留图标的窄轨，两种宽度共用同一套语义，只是尺寸不同。
  */
-internal data class NavRailLayout(
-    /** 面板本身的宽度 */
+internal data class NavDrawerLayout(
+    /** 展开态面板宽度 */
+    val drawerWidth: Dp,
+    /** 收起态窄轨宽度 */
     val railWidth: Dp,
-    /** 面板到屏幕左边缘的留白 */
-    val horizontalPadding: Dp,
-    /** 面板到屏幕上下边的留白（面板高度不足整屏时用于居中留空） */
-    val verticalPadding: Dp,
-    /** 单个标签的槽位高度 */
+    /** 顶部标题行高度 */
+    val headerHeight: Dp,
+    /** 单个导航项高度 */
     val itemHeight: Dp,
+    /** 导航项（选中底块）圆角 */
+    val itemCorner: Dp,
+    /** 面板左右内留白 */
+    val drawerPadding: Dp,
+    /** 导航项内部左右留白 */
+    val itemPadding: Dp,
     val iconSize: Dp,
-    /** 图标与文字之间的间距 */
-    val iconTextGap: Dp,
-    /** 选中指示器相对槽位的内缩 */
-    val indicatorInset: Dp,
-    val indicatorCorner: Dp,
-    /** 面板圆角 */
-    val corner: Dp,
-    /** 标签是否使用更大的字号（大屏用） */
+    /** 展开态图标与文字的间距 */
+    val labelGap: Dp,
+    /** 收起态图标与文字的间距 */
+    val railLabelGap: Dp,
+    /** 导航项文字是否使用更大字号（大屏用） */
     val largerLabel: Boolean,
+    /** 相邻导航项的竖直间距 */
+    val itemSpacing: Dp,
 ) {
-    /** 侧栏在屏幕左侧占据的总宽度；主界面内容需按它向右避让。 */
-    val clearance: Dp get() = railWidth + horizontalPadding * 2
+    /** 当前展开状态下面板宽度；主界面内容按它向右避让。 */
+    fun widthFor(expanded: Boolean): Dp = if (expanded) drawerWidth else railWidth
 
-    /** 多个标签竖直排布时面板的自然高度。 */
-    fun panelHeightFor(itemCount: Int): Dp = itemHeight * itemCount
+    /** 全部导航项竖排所需高度（不含标题行）。 */
+    fun itemsHeightFor(itemCount: Int): Dp =
+        itemHeight * itemCount + itemSpacing * (itemCount - 1).coerceAtLeast(0)
 }
 
-/** 中等宽度（600~839dp，折叠屏展开 / 小平板）：贴近 Material 侧栏的窄面板。 */
-private val MediumNavRailLayout = NavRailLayout(
+/** 中等宽度（600~839dp，折叠屏展开 / 小平板）：抽屉略窄，给内容留出更多空间。 */
+private val MediumNavDrawerLayout = NavDrawerLayout(
+    drawerWidth = 236.dp,
     railWidth = 68.dp,
-    horizontalPadding = 8.dp,
-    verticalPadding = 12.dp,
-    itemHeight = 64.dp,
-    iconSize = 24.dp,
-    iconTextGap = 4.dp,
-    indicatorInset = 6.dp,
-    indicatorCorner = 18.dp,
-    corner = 24.dp,
+    headerHeight = 60.dp,
+    itemHeight = 46.dp,
+    itemCorner = 12.dp,
+    drawerPadding = 10.dp,
+    itemPadding = 12.dp,
+    iconSize = 22.dp,
+    labelGap = 12.dp,
+    railLabelGap = 3.dp,
     largerLabel = false,
+    itemSpacing = 2.dp,
 )
 
-/** 大屏（≥840dp，平板横竖屏）：面板与图标同步放大，标签更易读。 */
-private val ExpandedNavRailLayout = NavRailLayout(
+/** 大屏（≥840dp，平板横竖屏）：抽屉、图标与文字同步放大，更易读。 */
+private val ExpandedNavDrawerLayout = NavDrawerLayout(
+    drawerWidth = 264.dp,
     railWidth = 76.dp,
-    horizontalPadding = 10.dp,
-    verticalPadding = 14.dp,
-    itemHeight = 72.dp,
-    iconSize = 28.dp,
-    iconTextGap = 6.dp,
-    indicatorInset = 8.dp,
-    indicatorCorner = 22.dp,
-    corner = 28.dp,
+    headerHeight = 68.dp,
+    itemHeight = 50.dp,
+    itemCorner = 14.dp,
+    drawerPadding = 12.dp,
+    itemPadding = 14.dp,
+    iconSize = 24.dp,
+    labelGap = 14.dp,
+    railLabelGap = 4.dp,
     largerLabel = true,
+    itemSpacing = 2.dp,
 )
 
 /**
- * 纯函数：按窗口宽度断点取侧栏规格（供单元测试与 Composable 共用）。
- * 手机（Compact）不会使用侧栏，这里返回最紧凑规格兜底。
+ * 纯函数：按窗口宽度断点取抽屉规格（供单元测试与 Composable 共用）。
+ * 手机（Compact）不会使用抽屉，这里返回最紧凑规格兜底。
  */
-internal fun navRailLayoutFor(widthClass: WindowWidthClass): NavRailLayout = when (widthClass) {
-    WindowWidthClass.Compact -> MediumNavRailLayout
-    WindowWidthClass.Medium -> MediumNavRailLayout
-    WindowWidthClass.Expanded -> ExpandedNavRailLayout
+internal fun navDrawerLayoutFor(widthClass: WindowWidthClass): NavDrawerLayout = when (widthClass) {
+    WindowWidthClass.Compact -> MediumNavDrawerLayout
+    WindowWidthClass.Medium -> MediumNavDrawerLayout
+    WindowWidthClass.Expanded -> ExpandedNavDrawerLayout
 }
 
-/** 当前窗口宽度对应的侧栏规格。 */
+/** 当前窗口宽度对应的抽屉规格。 */
 @Composable
-internal fun navRailLayout(): NavRailLayout = navRailLayoutFor(rememberWindowWidthClass())
-
-/**
- * 当前形态下主界面左侧需要为侧栏预留的宽度。
- *
- * 手机（或不够高的宽窗口）不使用侧栏，返回 0；侧栏形态下返回 [NavRailLayout.clearance]。
- * 主界面内容按它向右避让，详情页不避让（仍为全屏）。
- */
-@Composable
-fun rememberNavRailClearance(): Dp =
-    if (rememberShouldUseNavRail()) navRailLayout().clearance else 0.dp
+internal fun navDrawerLayout(): NavDrawerLayout = navDrawerLayoutFor(rememberWindowWidthClass())

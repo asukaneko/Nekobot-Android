@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,8 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -283,11 +286,20 @@ internal fun CompanionReadingDialog(
     title: String, onBack: () -> Unit, onDismiss: () -> Unit = onBack,
     subtitle: String? = null, content: @Composable ColumnScope.() -> Unit
 ) {
+    // 弹窗内容在独立窗口中重新解析 LocalContext，会回退到 Activity 的系统语言，
+    // 导致弹窗内的文案（返回、更多操作等）与页面语言不一致；这里显式把外层
+    // 语言环境带进弹窗，弹窗内的所有嵌套组件都随之本地化。
+    val dialogContext = LocalContext.current
+    val dialogConfiguration = LocalConfiguration.current
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize(), color = companionSettingsBackground(), contentColor = MaterialTheme.colorScheme.onSurface) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-                CompanionReadingHeader(title, onBack, subtitle = subtitle)
-                content()
+        CompositionLocalProvider(LocalContext provides dialogContext, LocalConfiguration provides dialogConfiguration) {
+            // Dialog 内容在独立窗口中渲染，语义树无法向上跨窗口找到 Dialog 根节点；
+            // 这里给内容自己打标记，测试才能区分“弹窗里的返回”和“整页设置里的返回”。
+            Surface(Modifier.fillMaxSize().testTag("companion-reading-dialog"), color = companionSettingsBackground(), contentColor = MaterialTheme.colorScheme.onSurface) {
+                Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+                    CompanionReadingHeader(title, onBack, subtitle = subtitle)
+                    content()
+                }
             }
         }
     }
@@ -301,7 +313,8 @@ internal fun CompanionReadingHeader(
     val textResources = LocalResources.current
     Surface(color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, textResources.getString(R.string.common_back), tint = MaterialTheme.colorScheme.primary) }
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack,
+                textResources.getString(R.string.common_back), tint = MaterialTheme.colorScheme.primary) }
             Column(Modifier.weight(1f).padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

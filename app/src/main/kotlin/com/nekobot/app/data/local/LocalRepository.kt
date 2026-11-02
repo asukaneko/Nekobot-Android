@@ -425,6 +425,7 @@ class LocalRepository(
     internal val companionPrompts by lazy {
         CompanionPromptStore(db) { ServiceContainer.prefs.getCharacterThinkingSettings() }
     }
+    private val sessionListStore = SessionListStore(sessionDao)
     private val messageDao = db.messageDao()
     private val historyCopyMutationLock = Mutex()
     private val historyCopyExporter by lazy {
@@ -1060,7 +1061,17 @@ class LocalRepository(
                 if (!savedGraph.isNullOrBlank()) manager.fromJson(savedGraph)
             }
         }
-        // 后台任务通知 → 会话唤醒：仓库实例重建（切库）时新实例覆盖旧钩子。
+    }
+
+    /**
+     * 构造完成后接入“后台任务通知 → 会话唤醒”钩子。
+     *
+     * 不能在构造期间注册：注册后立刻补发积压通知（[SubagentTaskStore.wakePendingNotices]）
+     * 会在本实例字段初始化完成前就触发回调，读到空字段并抛 NPE（切档时旧通知仍会补发）。
+     * 因此由 [ServiceContainer] 在实例可用后再调用一次。
+     */
+    fun attachAgentNoticeWakeUp() {
+        // 仓库实例重建（切库）时新实例覆盖旧钩子。
         AgentNoticeBus.onNoticePublished = { sessionId -> onAgentNoticePublished(sessionId) }
         com.nekobot.app.data.local.ai.SubagentTaskStore.wakePendingNotices()
     }
@@ -1556,13 +1567,14 @@ class LocalRepository(
 
     // ==================== 会话 ====================
     suspend fun listSessions(): List<Session> = withContext(Dispatchers.IO) {
-        sessionDao.listAll().map { it.toSession() }
+        sessionDao.listAll().filterNot { TemporarySession.isStale(it.id) }.map { it.toSession() }
     }
 
     fun observeSessions(): Flow<List<LocalSessionEntity>> = sessionDao.observeAll()
+        .map { sessions -> sessions.filterNot { TemporarySession.isStale(it.id) } }
 
     suspend fun getSession(id: String): Session? = withContext(Dispatchers.IO) {
-        sessionDao.getById(id)?.toSession()
+        if (TemporarySession.isStale(id)) null else sessionDao.getById(id)?.toSession()
     }
 
     /**
@@ -2632,14 +2644,35 @@ class LocalRepository(
      * 上一次运行遗留的数据不能变成历史记录。
      */
     suspend fun purgeTemporarySessions() = withContext(Dispatchers.IO) {
-        sessionDao.listAll()
-            .filter { TemporarySession.isTemporary(it) }
-            .forEach { session ->
-                runCatching { deleteSession(session.id) }
-                    .onFailure {
-                        LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, "${session.id}: ${it.message}")
-                    }
+        sessionDao.listTemporaryIds()
+            .filter(TemporarySession::isStale)
+            .forEach { id ->
+                try {
+                    deleteSession(id)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, error.message)
+                }
             }
+    }
+
+    suspend fun listSessionSummaries(): List<Session> = sessionListStore.summaries()
+
+    suspend fun listSessionPage(query: com.nekobot.app.data.model.SessionListQuery): com.nekobot.app.data.model.SessionListPage =
+        sessionListStore.page(query)
+
+    /** 与仓库一起取消，切换档案后不会继续读取旧数据库。 */
+    fun scheduleTemporarySessionCleanup() {
+        subagentScope.launch {
+            try {
+                purgeTemporarySessions()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                LocalLogger.w(TAG, R.string.log_repo_temp_session_purge_failed, error.message)
+            }
+        }
     }
 
     /**
@@ -2649,8 +2682,9 @@ class LocalRepository(
     suspend fun syncAutomationSchedules() = withContext(Dispatchers.IO) {
         db.taskDao().listAll().forEach { scheduleTask(it, preserveExisting = true) }
         db.workflowDao().listAll().forEach { scheduleWorkflow(it, preserveExisting = true) }
-        sessionDao.listAll().forEach { scheduleProactiveSession(it, replaceExisting = false) }
-        sessionDao.listAll().forEach { scheduleLifeSimSession(it, replaceExisting = false) }
+        val sessions = sessionDao.listAll().filterNot { TemporarySession.isStale(it.id) }
+        sessions.forEach { scheduleProactiveSession(it, replaceExisting = false) }
+        sessions.forEach { scheduleLifeSimSession(it, replaceExisting = false) }
     }
 
     /**
@@ -11701,67 +11735,6 @@ ${AiOutputLanguage.directive()}
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.getDefault()).format(Date())
 
     // ==================== Entity ↔ Model 转换 ====================
-
-    private fun LocalSessionEntity.toSession(): Session = Session(
-        id = id,
-        name = name,
-        listTitleOverride = listTitleOverride,
-        type = "local",
-        systemPrompt = systemPrompt,
-        characterId = characterId,
-        firstMessage = firstMessage,
-        scenario = scenario,
-        senderName = senderName,
-        senderAvatar = senderAvatar,
-        characterName = characterName,
-        characterAvatar = characterAvatar,
-        portrait = portrait,
-        tags = tags?.split(",")?.filter { it.isNotEmpty() },
-        favorite = favorite,
-        pinned = pinned,
-        archived = archived,
-        createdAt = createdAt,
-        updatedAt = updatedAt,
-        lastMessage = lastMessage,
-        messageCount = messageCount,
-        plotMode = plotMode,
-        plotRealTimeSync = plotRealTimeSync,
-        plotChoiceStyle = plotChoiceStyle,
-        plotOutline = plotOutline,
-        userPersona = userPersona,
-        autoStateInterval = autoStateInterval,
-        autoNameInterval = autoNameInterval,
-        disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
-        customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        promptStackDebug = promptStackDebug?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        composedSystemPrompt = composedSystemPrompt,
-        isPublic = isPublic,
-        proactiveChat = proactiveChat?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        ttsConfig = ttsConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        shareConfig = shareConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        archiveSessionId = archiveSessionId,
-        sessionMode = sessionMode,
-        groupId = groupId,
-        characterIds = characterIds?.let {
-            runCatching {
-                val type = object : TypeToken<List<String>>() {}.type
-                gson.fromJson<List<String>>(it, type)
-            }.getOrNull()
-        },
-        groupConfig = groupConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        agentTodos = agentTodos,
-        agentGoal = agentGoal,
-        agentSpec = agentSpec,
-        inheritCharacter = inheritCharacter,
-        inheritCharacterGreeting = inheritCharacterGreeting,
-        longConversationEnabled = longConversationEnabled,
-        companionMode = companionMode,
-        companionSpeakingPrompt = companionSpeakingPrompt,
-        companionThinkingPrompt = companionThinkingPrompt,
-        companionThinkingEnabled = companionThinkingEnabled,
-        delayReplyEnabled = delayReplyEnabled,
-        delayReplyDelaySeconds = delayReplyDelaySeconds
-    )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(
         id = id,

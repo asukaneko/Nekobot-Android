@@ -5,6 +5,9 @@
     <string name="nav_capabilities">Capabilities</string>
     <string name="nav_profile">Me</string>
 
+    <!-- 平板左侧抽屉：展开 / 收起 -->
+    <string name="nav_drawer_collapse">Collapse sidebar</string>
+    <string name="nav_drawer_expand">Expand sidebar</string>
     <string name="shell_seg_all">All</string>
     <string name="shell_seg_character">Characters</string>
     <string name="shell_seg_agent">Agent</string>

@@ -14,6 +14,15 @@ import kotlinx.coroutines.flow.map
 
 @Dao
 interface SessionDao {
+    @androidx.room.RawQuery
+    suspend fun listSummaries(query: androidx.sqlite.db.SupportSQLiteQuery): List<SessionSummaryRow>
+
+    @androidx.room.RawQuery
+    suspend fun countSummaries(query: androidx.sqlite.db.SupportSQLiteQuery): Int
+
+    @Query("SELECT id FROM local_sessions WHERE id GLOB 'temp_*'")
+    suspend fun listTemporaryIds(): List<String>
+
     @Query("SELECT * FROM local_sessions ORDER BY updated_at DESC")
     fun observeAll(): Flow<List<LocalSessionEntity>>
 

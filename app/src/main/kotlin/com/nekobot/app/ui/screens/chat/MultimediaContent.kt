@@ -187,6 +187,123 @@ private fun WebView.applyPreviewSandbox() {
 private val URL_REGEX = Regex("""https?://[^\s<>"'\]]+""")
 
 /**
+ * 不能参与消息分段的 Markdown 结构（围栏代码块、行内代码、表格）字符范围。
+ *
+ * 气泡会把一条消息按 URL / 文件引用 / 表情标记切成多段，每段再独立渲染 Markdown。
+ * 切点若落在代码块内部，两侧的围栏就失去配对：前半段变成「没有闭合的代码块」，
+ * 后半段退化成普通段落，ASCII 目录树、JSON 片段会被拆成裸露的 `"}`、`|   ├──` 残片；
+ * 表格被切开则连表头分隔行都保不住。所以这些标记的识别必须跳过受保护区域，
+ * 结构内容永远原样留在同一个文本段里（表格单元格里的链接仍由行内解析渲染成可点链接）。
+ */
+internal fun markdownProtectedSpans(text: String): List<IntRange> =
+    markdownCodeSpans(text) + markdownTableSpans(text)
+
+/** 围栏代码块 + 行内代码的范围。 */
+private fun markdownCodeSpans(text: String): List<IntRange> {
+    if (!text.contains('`')) return emptyList()
+    val spans = mutableListOf<IntRange>()
+    var i = 0
+    while (i < text.length) {
+        if (isMarkdownLineStart(text, i) && markdownFenceIndex(text, i) >= 0) {
+            val end = endOfFenceAtLineStart(text, i) // 未闭合时一直保护到文末
+            spans.add(i until end)
+            i = end
+            continue
+        }
+        if (text[i] == '`') {
+            // 行内代码只在同一行内闭合才成立，避免落单反引号把后文都吞掉。
+            val lineEnd = text.indexOf('\n', i).let { if (it < 0) text.length else it }
+            val close = text.indexOf('`', i + 1)
+            if (close in (i + 1) until lineEnd) {
+                spans.add(i..close)
+                i = close + 1
+                continue
+            }
+        }
+        i++
+    }
+    return spans
+}
+
+private fun isMarkdownLineStart(text: String, index: Int): Boolean = index == 0 || text[index - 1] == '\n'
+
+/** 行首围栏（允许最多 3 个空格缩进）返回反引号下标，否则 -1。 */
+private fun markdownFenceIndex(text: String, lineStart: Int): Int {
+    var i = lineStart
+    var spaces = 0
+    while (i < text.length && text[i] == ' ' && spaces < 4) {
+        i++
+        spaces++
+    }
+    return if (spaces <= 3 && text.startsWith("```", i)) i else -1
+}
+
+/** 围栏结束下标（不含围栏行尾换行）；没有闭合围栏时返回正文长度。 */
+private fun endOfFenceAtLineStart(text: String, lineStart: Int): Int {
+    val open = markdownFenceIndex(text, lineStart)
+    val firstBreak = text.indexOf('\n', open)
+    if (firstBreak < 0) return text.length
+    var i = firstBreak + 1
+    while (i < text.length) {
+        val close = markdownFenceIndex(text, i)
+        if (close >= 0) {
+            val lineEnd = text.indexOf('\n', close)
+            return if (lineEnd < 0) text.length else lineEnd + 1
+        }
+        val next = text.indexOf('\n', i)
+        if (next < 0) return text.length
+        i = next + 1
+    }
+    return text.length
+}
+
+/** 匹配范围是否落在受保护结构里（有任何重叠即视为结构内容）。 */
+private fun IntRange.insideMarkdownStructure(spans: List<IntRange>): Boolean =
+    spans.any { it.first <= last && first <= it.last }
+
+/** 表格分隔行：只由 `|`、`-`、`:` 和空白组成。 */
+internal val TABLE_SEPARATOR_LINE = Regex("""^[|\s:-]+$""")
+
+/** 表格范围：表头行 + 分隔行 + 之后连续含 `|` 的行（与 parseBlocks 的识别口径一致）。 */
+private fun markdownTableSpans(text: String): List<IntRange> {
+    if (!text.contains('|')) return emptyList()
+    val lineBounds = mutableListOf<Pair<Int, Int>>() // start to end（不含换行）
+    var start = 0
+    while (true) {
+        val newline = text.indexOf('\n', start)
+        val end = if (newline < 0) text.length else newline
+        lineBounds.add(start to end)
+        if (newline < 0) break
+        start = newline + 1
+    }
+
+    val spans = mutableListOf<IntRange>()
+    var index = 0
+    while (index < lineBounds.size) {
+        val (headerStart, headerEnd) = lineBounds[index]
+        val header = text.substring(headerStart, headerEnd)
+        val separator = lineBounds.getOrNull(index + 1)?.let { text.substring(it.first, it.second) }
+        val isTableHead = header.contains('|') && separator != null &&
+            TABLE_SEPARATOR_LINE.matches(separator.trim()) && separator.contains('-')
+        if (!isTableHead) {
+            index++
+            continue
+        }
+        var last = index + 1
+        var row = index + 2
+        while (row < lineBounds.size) {
+            val line = text.substring(lineBounds[row].first, lineBounds[row].second)
+            if (line.isBlank() || !line.contains('|')) break
+            last = row
+            row++
+        }
+        spans.add(headerStart..lineBounds[last].second)
+        index = last + 1
+    }
+    return spans
+}
+
+/**
  * 完整 HTML 文档检测：整段内容本身就是一个 HTML 文档（省略 doctype 也认）。
  *
  * 只认"以 `<html>` 开头"这一种形态——AI 回复里出现 `<div>`、`<p>`、`<a>` 等
@@ -259,8 +376,14 @@ fun parseContentSegments(
 ): List<ContentSegment> {
     if (content.isBlank()) return listOf(ContentSegment(type = SegmentType.TEXT, text = content))
 
+    // 代码块/行内代码/表格里的 URL、[File: …]、表情标记都只是资料，不参与分段，
+    // 否则围栏会被切点劈成两半，代码块和表格渲染残缺。
+    val protectedSpans = markdownProtectedSpans(content)
+
     // 优先检测 [File: filename] 或 [文件: filename] 引用
-    val fileMatches = FILE_REF_REGEX.findAll(content).toList()
+    val fileMatches = FILE_REF_REGEX.findAll(content)
+        .filterNot { it.range.insideMarkdownStructure(protectedSpans) }
+        .toList()
     if (fileMatches.isNotEmpty()) {
         val result = mutableListOf<ContentSegment>()
         var lastIndex = 0
@@ -292,7 +415,7 @@ fun parseContentSegments(
         val stickerMatches = STICKER_MARKER_REGEX.findAll(content).filter { match ->
             val name = match.groupValues[1].trim()
             name.isNotEmpty() && !isReservedStickerName(name) && stickerLookup(name) != null
-        }.toList()
+        }.filterNot { it.range.insideMarkdownStructure(protectedSpans) }.toList()
         if (stickerMatches.isNotEmpty()) {
             val result = mutableListOf<ContentSegment>()
             var lastIndex = 0
@@ -325,8 +448,10 @@ fun parseContentSegments(
 
     val hasHtmlTag = isFullHtmlDocument(content)
 
-    // 收集所有 URL 并分类
-    val urlMatches = URL_REGEX.findAll(content).toList()
+    // 收集所有 URL 并分类（代码块/表格内的 URL 保持原文，不拆段）
+    val urlMatches = URL_REGEX.findAll(content)
+        .filterNot { it.range.insideMarkdownStructure(protectedSpans) }
+        .toList()
     val hasMediaUrl = urlMatches.any { classifyUrl(it.value).let { t -> t == SegmentType.IMAGE || t == SegmentType.VIDEO || t == SegmentType.AUDIO } }
 
     // 只有整段内容本身是完整 HTML 文档且没有图片/视频/音频 URL 时，才整段交给 WebView。

@@ -166,6 +166,13 @@ class UnifiedRepository(
     suspend fun listSessions(): Resource<List<Session>> =
         if (isLocal) Resource.Success(local.listSessions()) else remote.listSessions()
 
+    suspend fun listSessionSummaries(): Resource<List<Session>> =
+        if (isLocal) Resource.Success(local.listSessionSummaries()) else remote.listSessions()
+
+    /** 服务器列表由原接口提供；本地列表在数据库完成筛选和分页。 */
+    suspend fun listLocalSessionPage(query: com.nekobot.app.data.model.SessionListQuery): com.nekobot.app.data.model.SessionListPage? =
+        if (isLocal) local.listSessionPage(query) else null
+
     suspend fun createSession(req: CreateSessionRequest): Resource<Session> =
         if (isLocal) {
             try { Resource.Success(local.createSession(req)) }

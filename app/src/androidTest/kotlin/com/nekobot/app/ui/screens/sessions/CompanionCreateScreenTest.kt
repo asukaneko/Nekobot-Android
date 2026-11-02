@@ -45,6 +45,14 @@ class CompanionCreateScreenTest {
         val file = File(compose.activity.getExternalFilesDir("validation"), "$name.png")
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+
+    /** 软键盘是系统行为，CI 慢机可能十几秒才弹出；只用于决定是否补拍键盘截图。 */
+    private fun waitForSoftKeyboard(timeoutMs: Long = 30_000): Boolean = runCatching {
+        compose.waitUntil(timeoutMs) {
+            androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+        }
+    }.isSuccess
     @Composable private fun content(state: CompanionCreateState, onPreview: (String) -> Unit = {}, onCreate: (String, String) -> Unit = {_,_->}, onTransfer: (String) -> Unit = {}, onOpen: (String) -> Unit = {}) {
         CompanionCreateContent(state, {}, {}, onPreview, onCreate, onTransfer, onOpen, {}, {}, {}, {}, {}, {})
     }
@@ -52,14 +60,18 @@ class CompanionCreateScreenTest {
     @Test fun freshRoleKeepsSettingsCollapsedAndCreatesWithEditableGreeting() {
         var request: Pair<String, String>? = null
         compose.setContent { TestTheme(darkTheme = false) { content(CompanionCreateState(listOf(character), "c", CompanionEligibility.Available), onCreate = { name, greeting -> request = name to greeting }) } }
-        compose.onNodeWithText(text(R.string.companion_optional_name)).assertDoesNotExist()
+        // 会话名称常驻可见；问候语等进阶设置默认折叠。
+        compose.onNodeWithText(text(R.string.companion_optional_greeting)).assertDoesNotExist()
         compose.onNodeWithText("姜晚星").assertIsDisplayed()
         capture("companion-create-light")
         compose.onNodeWithText(text(R.string.companion_more_settings)).performClick()
-        compose.onNodeWithText(text(R.string.companion_optional_name)).performScrollTo().performClick().performTextInput("晚星的新会话")
-        compose.onNodeWithText(text(R.string.companion_optional_greeting)).performScrollTo().performClick().performTextInput("欢迎回来")
-        compose.waitUntil(10000) { androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true }
-        capture("companion-create-keyboard")
+        // 创建页内容在 LazyColumn 中，performScrollTo 不适用；先滚到目标项再输入。
+        compose.onNodeWithTag("companion_content").performScrollToNode(hasText(text(R.string.companion_optional_name)))
+        compose.onNodeWithText(text(R.string.companion_optional_name)).performClick().performTextInput("晚星的新会话")
+        compose.onNodeWithTag("companion_content").performScrollToNode(hasText(text(R.string.companion_optional_greeting)))
+        compose.onNodeWithText(text(R.string.companion_optional_greeting)).performClick().performTextInput("欢迎回来")
+        // CI 模拟器负载高时软键盘可能十几秒才弹出；等不到只跳过键盘截图，布局断言照常执行。
+        if (waitForSoftKeyboard()) capture("companion-create-keyboard")
         compose.onNodeWithTag("companion_primary").assertIsDisplayed().performClick()
         assertEquals("晚星的新会话" to "欢迎回来", request)
     }

@@ -9,6 +9,13 @@ import org.junit.Test
 class TemporarySessionTest {
 
     @Test
+    fun startupCleanupDistinguishesNewTemporarySessionsFromPreviousProcess() {
+        assertTrue(TemporarySession.isStale("temp_demo_previous_process"))
+        assertFalse(TemporarySession.isStale(TemporarySession.newId()))
+        assertFalse(TemporarySession.isStale("demo-session"))
+    }
+
+    @Test
     fun identifiesTemporarySessionIdsByPrefix() {
         val id = TemporarySession.newId()
         assertTrue(id.startsWith(TemporarySession.ID_PREFIX))

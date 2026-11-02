@@ -441,7 +441,7 @@ object BuiltinTools {
             id = "exec_command",
             category = "linux",
             name = "在 Linux 沙盒执行命令",
-            description = "在共享的 Alpine Linux 沙盒中执行命令。当前会话工作区挂载为 /workspace；cwd、环境变量、已安装软件和后台进程会在同一会话后续调用中保留。不同会话使用不同 /workspace，但共享 rootfs。高风险命令仍需用户确认。构建、下载、批处理等长命令请设置 background=true：它们跑在各自独立的进程里并行执行（同时最多 3 个），不占用会话 shell、也不会互相排队；随后用 shell_job 查询输出，避免占住工具循环。",
+            description = "在共享的 Alpine Linux 沙盒中执行命令。当前会话工作区挂载为 /workspace，应用私有目录挂载为 /app（可直接读写应用私有文件，对应 Android 数据目录）；cwd、环境变量、已安装软件和后台进程会在同一会话后续调用中保留。不同会话使用不同 /workspace，但共享 rootfs。高风险命令仍需用户确认。构建、下载、批处理等长命令请设置 background=true：它们跑在各自独立的进程里并行执行（同时最多 3 个），不占用会话 shell、也不会互相排队；随后用 shell_job 查询输出，避免占住工具循环。",
             parametersJson = params(
                 mapOf(
                     "command" to mapOf("type" to "string", "description" to "要交给 Alpine /bin/sh 执行的命令"),

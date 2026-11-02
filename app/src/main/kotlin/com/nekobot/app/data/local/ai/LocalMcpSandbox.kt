@@ -41,10 +41,12 @@ internal object LocalMcpSandbox {
         val appContext = context.applicationContext
         val runtime = LocalLinuxRootfsManager.getInstance(appContext).ensureReady()
         val sharedWorkspace = LocalWorkspaceStorage.resolveShared(appContext.filesDir)
+        val appPrivateDir = File(appContext.applicationInfo.dataDir)
         val workspace = File(appContext.filesDir, MCP_WORKSPACE_DIR).apply { mkdirs() }
         // PRoot 的绑定目标必须已存在，旧 rootfs 可能缺少这些目录。
         File(runtime.rootfs, "workspace").mkdirs()
         if (sharedWorkspace != null) File(runtime.rootfs, "shared").mkdirs()
+        File(runtime.rootfs, SANDBOX_APP_ROOTFS_DIR).mkdirs()
 
         val argv = buildLocalMcpSandboxCommand(
             proot = runtime.proot,
@@ -53,6 +55,7 @@ internal object LocalMcpSandbox {
             command = command,
             args = args,
             sharedWorkspace = sharedWorkspace,
+            appPrivateDir = appPrivateDir,
         )
         val builder = ProcessBuilder(argv).directory(appContext.filesDir)
         builder.environment().apply {
@@ -102,9 +105,11 @@ internal fun buildLocalMcpSandboxCommand(
     command: String,
     args: List<String>,
     sharedWorkspace: File? = null,
+    appPrivateDir: File? = null,
 ): List<String> = buildLocalProotPrefix(
     proot = proot,
     rootfs = rootfs,
     workspace = workspace,
     sharedWorkspace = sharedWorkspace,
+    appPrivateDir = appPrivateDir,
 ) + listOf("/bin/sh", "-c", LocalMcpSandbox.buildShellCommand(command, args))

@@ -94,9 +94,7 @@ fun MarkdownText(
     // 预处理保留为兼容入口；区块和行内语义直接解析原文，不再注入可泄漏的占位字符。
     val preprocessed = remember(text, chatMode, processParens) { preprocessMarkdown(text, chatMode, processParens) }
     val showInner = LocalShowInnerMonologue.current
-    val blocks = remember(preprocessed, chatMode, showInner, isStreaming) {
-        visibleMarkdownBlocks(preprocessed, chatMode, showInner, isStreaming)
-    }
+    val blocks = rememberMarkdownBlocks(preprocessed, chatMode, showInner, isStreaming)
 
     // 先按最长可见文本/折叠标题定宽，再让独白条、引用等填满这一宽度。
     // 图片、代码和表格保留原来的专用测量，避免对含子组合的内容请求固有尺寸。
@@ -113,6 +111,24 @@ fun MarkdownText(
             )
         }
     }
+}
+
+/** 较长的流式正文在后台解析；新快照到达时取消旧解析结果的提交。 */
+@Composable
+private fun rememberMarkdownBlocks(
+    text: String, chatMode: Boolean, showInner: Boolean, isStreaming: Boolean
+): List<MdBlock> {
+    if (!isStreaming || text.length < 2_048) {
+        return remember(text, chatMode, showInner, isStreaming) {
+            visibleMarkdownBlocks(text, chatMode, showInner, isStreaming)
+        }
+    }
+    val blocks by produceState<List<MdBlock>>(emptyList(), text, chatMode, showInner) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            visibleMarkdownBlocks(text, chatMode, showInner, isStreaming = true)
+        }
+    }
+    return blocks
 }
 
 internal fun chatMarkdownWrapsWidth(blocks: List<MdBlock>): Boolean = blocks.none {
@@ -141,6 +157,87 @@ internal data class CompanionMarkdownPart(val sourceIndex: Int, val text: String
 internal fun companionBubbleMarkdownBlocks(text: String, showInnerMonologue: Boolean, isStreaming: Boolean): List<MdBlock> =
     if (companionMonologueBlocks(text, isStreaming)?.isEmpty() == true) emptyList()
     else visibleMarkdownBlocks(text, true, showInnerMonologue, isStreaming)
+
+/** 仅供单会话角色的文字气泡调用；各源段分别解析，避免拼接改变 Markdown 结构。 */
+@Composable
+internal fun CompanionBubbleMarkdownText(
+    parts: List<CompanionMarkdownPart>,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    isStreaming: Boolean,
+    selectionMode: Boolean,
+    onToggleSelection: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val showInner = LocalShowInnerMonologue.current
+    val parsed = if (isStreaming && parts.sumOf { it.text.length } >= 2_048) {
+        val result by produceState<List<Pair<Int, List<MdBlock>>>>(emptyList(), parts, showInner) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                parts.map { it.sourceIndex to companionBubbleMarkdownBlocks(it.text, showInner, true) }
+            }
+        }
+        result
+    } else remember(parts, showInner, isStreaming) {
+        parts.map { it.sourceIndex to companionBubbleMarkdownBlocks(it.text, showInner, isStreaming) }
+    }
+    val allBlocks = parsed.flatMap { it.second }
+    Column(modifier.then(if (chatMarkdownWrapsWidth(allBlocks)) Modifier.width(IntrinsicSize.Max) else Modifier)) {
+        parsed.forEach { (sourceIndex, blocks) ->
+            key(sourceIndex) {
+                blocks.forEachIndexed { index, block ->
+                    if (block is MdBlock.InnerMonologue) {
+                        CompanionMonologueFooter(block, color, style, selectionMode, onToggleSelection, onLongClick)
+                    } else {
+                        RenderBlock(block, color, style, styleParentheses = true,
+                            modifier = blockSpacing(block, isFirst = index == 0, isLast = index == blocks.lastIndex))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CompanionMonologueFooter(
+    block: MdBlock.InnerMonologue,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    selectionMode: Boolean,
+    onToggleSelection: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val ink = color.copy(alpha = 0.76f)
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(color.copy(alpha = 0.14f)))
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                .combinedClickable(
+                    onClick = { if (selectionMode) onToggleSelection() else expanded = !expanded },
+                    onLongClick = onLongClick
+                ),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(stringResource(R.string.markdown_inner_monologue), color = ink,
+                style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(4.dp))
+            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = stringResource(if (expanded) R.string.markdown_collapse else R.string.markdown_expand),
+                tint = ink, modifier = Modifier.size(16.dp))
+        }
+        AnimatedVisibility(expanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            MarkdownInlineText(
+                text = parseRenderedInline(block.content, ink, style, styleParentheses = true),
+                style = style.copy(lineHeight = markdownBodyLineHeight(style)),
+                color = ink,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+    }
+}
 
 /**
  * 聊天设置「显示内心独白」：false 时聊天气泡完全跳过 `（内心：...）` 段，不留灰色块。
@@ -775,14 +872,21 @@ private fun CodeBlockContent(
         SelectionContainer(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (fullscreen) Modifier.weight(1f).verticalScroll(rememberScrollState()) else Modifier)
-                .horizontalScroll(rememberScrollState())
+                .then(
+                    // 气泡内不横向滚动：气泡宽度只放得下一小半代码行，超长行会被直接切掉右半截
+                    // （中文注释、`←` 标注全都看不见，用户只能盲猜还能左右滑）。改为自动换行，
+                    // 内容始终完整可见；要看原始排版可点全屏（全屏不换行，可横纵滚动）。
+                    if (fullscreen) Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        .horizontalScroll(rememberScrollState())
+                    else Modifier
+                )
         ) {
             Text(
                 text = block.code,
                 style = MaterialTheme.typography.bodySmall,
                 color = colors?.onSurface ?: MaterialTheme.colorScheme.onSurface,
                 fontFamily = FontFamily.Monospace,
+                softWrap = !fullscreen,
                 modifier = Modifier.padding(8.dp)
             )
         }
