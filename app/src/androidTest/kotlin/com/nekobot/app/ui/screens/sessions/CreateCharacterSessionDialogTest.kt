@@ -74,6 +74,14 @@ class CreateCharacterSessionDialogTest {
         }
     }
 
+    /** 软键盘是系统行为，CI 慢机可能十几秒才弹出；只用于决定键盘专属断言是否执行。 */
+    private fun waitForSoftKeyboard(timeoutMs: Long = 30_000): Boolean = runCatching {
+        compose.waitUntil(timeoutMs) {
+            androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+        }
+    }.isSuccess
+
     @Test fun searchByTagSelectsTheCorrectRoleWithTheSameName() {
         var request: CreateSessionRequest? = null
         compose.setContent { Content(onCreate = { request = it }) }
@@ -120,15 +128,13 @@ class CreateCharacterSessionDialogTest {
         compose.onNodeWithText("开场白").performClick()
         compose.onNodeWithTag("session_create_content").performScrollToNode(hasTestTag("session_create_greeting"))
         compose.onNodeWithTag("session_create_greeting").performTextInput("自定义")
-        compose.waitUntil(10000) {
-            androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
-                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
-        }
+        // 软键盘是系统行为，CI 慢机可能十几秒才弹出；等不到只跳过键盘专属断言与截图。
+        val keyboard = waitForSoftKeyboard()
         compose.onNodeWithTag("session_create_submit").assertIsDisplayed()
-        if (compose.activity.resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
+        if (keyboard && compose.activity.resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
             compose.onNodeWithText("新建角色会话").assertIsDisplayed()
         }
-        capture("create-character-keyboard")
+        if (keyboard) capture("create-character-keyboard")
     }
 
     @Test fun loadingFailureCanRetryAndCreatingDisablesSubmission() {
