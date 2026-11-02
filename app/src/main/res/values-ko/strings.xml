@@ -358,17 +358,7 @@
     <string name="companion_examples_disabled_notice">대화 기록이 충분해졌어요. %1$s은(는) 최근 대화를 직접 참고해요. 말투가 굳어지지 않도록 대화 예시는 중지됐어요.</string>
     <string name="companion_examples_notice_dismiss">다시 표시하지 않음</string>
     <!-- Session page V2 -->
-    <string name="sessions_page_character">캐릭터</string>
-    <string name="sessions_page_agent">Agent</string>
-    <string name="sessions_page_companion">전용</string>
-    <string name="sessions_page_search_action">%1$s 대화 검색 및 필터</string>
-    <string name="sessions_page_create_action">%1$s 대화 만들기</string>
-    <string name="sessions_page_menu">대화 추가 작업</string>
     <string name="sessions_create_group">새 그룹 대화</string>
-    <string name="sessions_page_clear_filters">필터 초기화</string>
-    <string name="sessions_page_local_only">전용 대화는 로컬 모드에서 사용할 수 있습니다</string>
-    <string name="sessions_page_empty_hint">오른쪽 위 +를 눌러 %1$s 대화를 만드세요</string>
-    <string name="sessions_page_search_title">검색 및 필터 · %1$s</string>
     <string name="ai_stream_incomplete">모델 응답이 완료되기 전에 종료되었습니다. 다시 시도하세요.</string>
     <string name="webdav_test_existing">연결되었습니다. 원격 백업이 이미 있습니다.</string>
     <string name="webdav_test_ready">연결되었습니다. nekobot/ 폴더가 준비되었으며 백업하면 설정 파일이 생성됩니다.</string>

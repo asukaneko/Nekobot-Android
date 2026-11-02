@@ -370,17 +370,7 @@
     <string name="companion_examples_disabled_notice">You have enough chat history now. %1$s will refer to your recent chats. Dialogue examples have stopped so her voice can keep evolving.</string>
     <string name="companion_examples_notice_dismiss">Don’t show again</string>
     <!-- Session page V2 -->
-    <string name="sessions_page_character">Characters</string>
-    <string name="sessions_page_agent">Agent</string>
-    <string name="sessions_page_companion">Companions</string>
-    <string name="sessions_page_search_action">Search and filters: %1$s</string>
-    <string name="sessions_page_create_action">New chat: %1$s</string>
-    <string name="sessions_page_menu">More chat actions</string>
     <string name="sessions_create_group">New group chat</string>
-    <string name="sessions_page_clear_filters">Reset filters</string>
-    <string name="sessions_page_local_only">Companion chats are available only in local mode</string>
-    <string name="sessions_page_empty_hint">Tap + at the top right to start a chat in %1$s</string>
-    <string name="sessions_page_search_title">Search and filter · %1$s</string>
     <string name="ai_stream_incomplete">The model response ended before completion. Please retry.</string>
     <string name="webdav_test_existing">Connected. A remote backup already exists.</string>
     <string name="webdav_test_ready">Connected. The nekobot/ folder is ready; a backup will create the configuration file.</string>

@@ -112,20 +112,19 @@ internal fun CompanionReasoningSection(messageId: String?, reasoning: String?, e
     var expanded by remember(messageId) { mutableStateOf(false) }
     val palette = companionChatPalette()
     val dark = palette.background.luminance() < 0.5f
-    val container = if (dark) Color(0xFF342F27) else Color(0xFFF6F1E8)
-    val content = if (dark) palette.secondary else Color(0xFF6B6150)
+    val container = if (dark) Color(0xFF292D31) else Color(0xFFE7E9ED)
+    val content = if (dark) palette.secondary else Color(0xFF62666F)
     Surface(Modifier.fillMaxWidth().padding(bottom = 6.dp).testTag("companion_reasoning"),
-        shape = RoundedCornerShape(12.dp), color = container,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (dark) Color(0xFF514838) else Color(0xFFEBE3D3))) {
+        shape = RoundedCornerShape(8.dp), color = container) {
         Column {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
                 .clickable(role = Role.Button) { expanded = !expanded }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("💭", color = content)
+                Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = content)
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.companion_inner_thought), Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = content)
+                    style = MaterialTheme.typography.labelLarge, color = content)
                 Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     stringResource(if (expanded) R.string.common_collapse else R.string.common_expand),
                     Modifier.size(20.dp), tint = content)
@@ -135,7 +134,7 @@ internal fun CompanionReasoningSection(messageId: String?, reasoning: String?, e
                     Text(reasoning, Modifier.fillMaxWidth().heightIn(max = 240.dp)
                         .verticalScroll(rememberScrollState())
                         .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                        style = MaterialTheme.typography.bodySmall, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = content)
+                        style = MaterialTheme.typography.bodySmall, color = content)
                 }
             }
         }

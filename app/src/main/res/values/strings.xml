@@ -395,17 +395,7 @@
     <string name="companion_examples_disabled_notice">你们的聊天记录已经够多了，%1$s会直接参考最近的聊天。对话示例已停用，免得语气被定死。</string>
     <string name="companion_examples_notice_dismiss">不再提示</string>
     <!-- Session page V2 -->
-    <string name="sessions_page_character">角色</string>
-    <string name="sessions_page_agent">Agent</string>
-    <string name="sessions_page_companion">专属</string>
-    <string name="sessions_page_search_action">搜索与筛选%1$s会话</string>
-    <string name="sessions_page_create_action">新建%1$s会话</string>
-    <string name="sessions_page_menu">会话更多操作</string>
     <string name="sessions_create_group">新建群聊</string>
-    <string name="sessions_page_clear_filters">重置筛选</string>
-    <string name="sessions_page_local_only">专属会话仅支持本地模式</string>
-    <string name="sessions_page_empty_hint">点右上角＋，新建%1$s会话</string>
-    <string name="sessions_page_search_title">搜索与筛选 · %1$s</string>
     <string name="ai_stream_incomplete">模型响应未完整结束，请重试。</string>
     <string name="webdav_test_existing">连接成功，远程备份文件已存在</string>
     <string name="webdav_test_ready">连接成功，nekobot/ 文件夹已就绪，备份后会创建配置文件</string>

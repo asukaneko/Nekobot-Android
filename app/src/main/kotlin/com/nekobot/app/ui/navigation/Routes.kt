@@ -29,10 +29,6 @@ object Routes {
     const val TOKENS = "tokens"
     const val MORE = "more"
     const val GLOBAL_SEARCH = "global_search"
-    const val MORE_MEMORY = "more_memory"
-    const val MORE_APPEARANCE = "more_appearance"
-    const val MORE_AI = "more_ai"
-    const val MORE_MAINTENANCE = "more_maintenance"
 
     // 详情页
     const val CHAT = "chat/{sessionId}"

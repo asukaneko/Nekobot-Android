@@ -124,3 +124,55 @@ git diff pr31-upstream jxx/contrib/single-session-followups
 # 彻底丢弃
 # 直接删除本目录即可
 ```
+
+---
+
+## 8. 接手回合：只留功能，界面回归项目现状
+
+本轮把 PR 当作要接手的分支处理，原则是**功能保留、界面一律沿用项目当前（4 标签 + 平面）实现**。PR 里那批针对重构前界面的改动不再恢复。
+
+### 8.1 删除的重构前界面
+
+| 文件 | 说明 |
+|---|---|
+| `ui/screens/sessions/SessionPages.kt` | 会话页三分页（角色 / Agent / 专属）的枚举与筛选状态 |
+| `ui/screens/sessions/SessionPageTabs.kt` | 三分页切换组件，随上一项一起废弃 |
+| `ui/screens/settings/SettingsConnectionContent.kt` | 旧「设置首页 · 运行与连接」分组 |
+| `ui/screens/settings/SettingsHomeContent.kt` | 旧设置首页分组长列表 |
+| `app/src/test/.../SessionPagesTest.kt`、`app/src/androidTest/.../SessionPageTabsTest.kt` | 仅覆盖上述已删组件 |
+
+同时移除的还有：`Routes.MORE_MEMORY / MORE_APPEARANCE / MORE_AI / MORE_MAINTENANCE` 常量、`sessions_page_*` 10 个文案（5 语言）、三个废弃资源文件（`settings_home_strings.xml`、`strings_more_categories.xml`、`strings_more_home.xml`，各 5 语言）。删除前逐个确认过无引用。
+
+### 8.2 保留并确认已接线的功能
+
+| 功能 | 入口 |
+|---|---|
+| 角色与提示词（说话方式 / 思考字段） | 会话内设置 → `CompanionPromptSettingsScreen`（`sessionId` / `characterId` 已传参） |
+| 记忆 v2 | 能力页 → 角色记忆；聊天面板 → `LocalOpenCompanionMemory` |
+| 便携导入 / 差异比较 / 回滚 | 我的 → 数据 → `DataPortabilityScreen` → `SafePortableImportPanel` |
+| 问题诊断 | 诊断中心 → `ProblemDiagnosticScreen` |
+| 单会话头像裁剪 | 会话详情 → `CompanionAvatarEditor` |
+| 对话示例 | 角色详情 + 会话内设置 → `CompanionExamplesEditor` |
+| 回查/整理设置（记忆 v2 文案） | 记忆页 → `CompanionRecallSettingsScreen` |
+
+### 8.3 界面处理边界
+
+只调整 PR 新增界面的观感，不要动项目已有界面：
+
+- `CompanionExamplesUi.kt`（PR 新增）：紫色卡片 + 深色悬浮气泡 → 改为主题色、`GlassCard`、1dp 细线、`BorderlessOutlinedTextField`。
+- 单会话思考展示块（项目已有）：保持中性灰底 + 图标，不用 PR 版本里的米色底与 emoji。
+- 其余 `Companion*` 界面（`CompanionChatUi`、`CompanionSettingsUi`、`CompanionMemoryComponents`、`CompanionRecallSettingsScreen`、`CompanionMessageStyle`）沿用项目现有实现，只吸收 PR 的功能性改动（提示词入口、记忆 v2 字段与文案、来源标记等）。
+
+### 8.4 验证
+
+| 项 | 结果 |
+|---|---|
+| `:app:compileDebugKotlin` | 通过 |
+| `:app:testDebugUnitTest` | 2982 项，0 失败 / 0 错误 / 0 跳过 |
+| `:app:lintDebug` | 见下文构建记录 |
+| `:app:assembleRelease` | 见下文构建记录 |
+
+### 8.5 遗留
+
+- `ui/screens/chat/ImportedHistoryViews.kt`（导入收藏图片/说明回看）在 PR 原分支中也只有自身测试引用，未接入任何页面；需要产品层面决定入口位置后再接。
+- 合并树的 androidTest 仍未整体编译验证（项目 CI 只跑 `assembleDebug`，不编译 androidTest）。
