@@ -22,13 +22,17 @@ keytool -genkeypair -noprompt -keystore .signing/legacy-debug.keystore \
   -Pkotlin.incremental=false -Pnekobot.testAbi=x86_64 assembleRelease
 # 设备测试结束时 Gradle 已卸载过包，这里只保证安装环境干净：不存在的包不算失败。
 adb uninstall com.nekobot.app > /dev/null 2>&1 || true
-adb install app/build/outputs/apk/release/app-release.apk
+# -g：安装时直接授予运行时权限。否则首启会弹系统权限页并顶在最前面，
+# 后续 am start 被投递给权限页，应用进程根本起不来。
+adb install -g app/build/outputs/apk/release/app-release.apk
 adb logcat -c
 for attempt in 1 2 3 4 5; do
   adb shell am force-stop com.nekobot.app
   adb shell am start -W -n com.nekobot.app/.MainActivity \
     | tee "app/build/reports/smoke/startup-${attempt}.txt"
   grep -q 'Status: ok' "app/build/reports/smoke/startup-${attempt}.txt"
+  # 必须真的启动到本应用自己的 Activity：落到权限页等其它进程不算启动成功。
+  grep -q 'Activity: com\.nekobot\.app/' "app/build/reports/smoke/startup-${attempt}.txt"
   sleep 2
   # 启动成功不代表进程还活着：崩溃时先保存日志再失败。
   if ! adb shell pidof com.nekobot.app; then
