@@ -51,6 +51,8 @@ class LocalOAuthManager(
             LocalOAuthProviders.XAI -> startXaiLogin()
             LocalOAuthProviders.ANTHROPIC -> startAnthropicLogin()
             LocalOAuthProviders.KIMI -> startKimiLogin()
+            LocalOAuthProviders.WORKBUDDY_CN,
+            LocalOAuthProviders.WORKBUDDY_INTL -> startWorkBuddyLogin(provider)
             LocalOAuthProviders.QWEN ->
                 error("Qwen OAuth 需要导入 Qwen CLI 的 oauth_creds.json")
             LocalOAuthProviders.OPENCODE_ZEN,
@@ -71,6 +73,8 @@ class LocalOAuthManager(
                     LocalOAuthProviders.MINIMAX -> pollMiniMax(session)
                     LocalOAuthProviders.XAI -> pollXai(session)
                     LocalOAuthProviders.KIMI -> pollKimi(session)
+                    LocalOAuthProviders.WORKBUDDY_CN,
+                    LocalOAuthProviders.WORKBUDDY_INTL -> pollWorkBuddy(session)
                     else -> OAuthPollResult.Failed("该提供商不使用设备码轮询")
                 }
             }.getOrElse { OAuthPollResult.Failed(it.message ?: "OAuth 登录失败") }
@@ -261,6 +265,11 @@ class LocalOAuthManager(
                         "x-app" to "cli"
                     ),
                     removeHeaders = setOf("x-api-key")
+                )
+                LocalOAuthProviders.WORKBUDDY_CN,
+                LocalOAuthProviders.WORKBUDDY_INTL -> OAuthRuntimeCredential(
+                    accessToken = state.accessToken,
+                    extraHeaders = workBuddyRuntimeHeaders(account.provider, state)
                 )
                 else -> OAuthRuntimeCredential(accessToken = state.accessToken)
             }
@@ -561,6 +570,270 @@ class LocalOAuthManager(
         }
     }
 
+    /**
+     * WorkBuddy / CodeBuddy 浏览器授权登录：
+     * 1. `POST {root}/v2/plugin/auth/state?platform=CLI` 取 state 与授权页地址；
+     * 2. 用户在浏览器完成授权（国内版为扫码）；
+     * 3. 应用轮询 `GET {root}/v2/plugin/auth/token?state=`，业务码 11217 表示仍在等待。
+     */
+    private fun startWorkBuddyLogin(provider: String): OAuthLoginSession {
+        val spec = requireNotNull(LocalOAuthProviders.get(provider))
+        val root = spec.authBase
+        val request = Request.Builder()
+            .url("$root/v2/plugin/auth/state?platform=CLI")
+            .post(EMPTY_JSON_BODY)
+            .apply { workBuddyBrowserHeaders(root).forEach { (name, value) -> header(name, value) } }
+            .build()
+        val data = executeJson(request).dataObject()
+        val state = data.string("state")
+        require(state.isNotBlank()) { "WorkBuddy 授权响应缺少 state" }
+        val authUrl = data.string("authUrl")
+            .ifBlank { data.string("auth_url") }
+            .ifBlank { data.string("url") }
+        return OAuthLoginSession(
+            provider = provider,
+            verificationUrl = authUrl.ifBlank { "$root/login?state=$state" },
+            expiresAt = System.currentTimeMillis() + WORKBUDDY_LOGIN_TTL_MS,
+            pollIntervalSeconds = WORKBUDDY_POLL_INTERVAL_SECONDS,
+            secret = mapOf("state" to state, "root" to root)
+        )
+    }
+
+    private suspend fun pollWorkBuddy(session: OAuthLoginSession): OAuthPollResult {
+        val root = session.secret["root"].orEmpty()
+        val state = session.secret.getValue("state")
+        val request = Request.Builder()
+            .url("$root/v2/plugin/auth/token?state=$state")
+            .apply { workBuddyBrowserHeaders(root).forEach { (name, value) -> header(name, value) } }
+            .get()
+            .build()
+        val (httpCode, body) = executeJsonOrNull(request)
+        // 未完成授权时上游返回非 2xx 或业务码 11217，都视为继续等待。
+        if (body == null || httpCode !in 200..299) return OAuthPollResult.Pending
+        val businessCode = body.intOrNull("code")
+        if (businessCode == WORKBUDDY_LOGIN_PENDING_CODE) return OAuthPollResult.Pending
+        if (businessCode != null && businessCode != 0 && businessCode != 200) {
+            return OAuthPollResult.Failed(
+                body.string("msg").ifBlank { body.string("message") }
+                    .ifBlank { "WorkBuddy 登录失败 (code=$businessCode)" }
+            )
+        }
+        val data = body.dataObject()
+        val accessToken = data.string("accessToken").ifBlank { data.string("access_token") }
+        if (accessToken.isBlank()) return OAuthPollResult.Pending
+        val domain = data.string("domain")
+        val expiresIn = data.longOrNull("expiresIn") ?: data.longOrNull("expires_in")
+        val account = fetchWorkBuddyAccount(root, state, accessToken, domain)
+        return connectedResult(
+            provider = session.provider,
+            state = OAuthTokenState(
+                accessToken = accessToken,
+                refreshToken = data.string("refreshToken").ifBlank { data.string("refresh_token") },
+                expiresAt = expiresIn?.takeIf { it > 0 }
+                    ?.let { System.currentTimeMillis() + it * 1000L },
+                tokenEndpoint = "$root/v2/plugin/auth/token/refresh",
+                portalBaseUrl = root,
+                uid = account?.uid,
+                enterpriseId = account?.enterpriseId,
+                domain = domain.ifBlank { null }
+            ),
+            label = account?.label
+        )
+    }
+
+    /** 授权完成后读取账号资料，仅用于账号标签与请求身份头。 */
+    private fun fetchWorkBuddyAccount(
+        root: String,
+        state: String,
+        accessToken: String,
+        domain: String
+    ): WorkBuddyAccountInfo? = runCatching {
+        val request = Request.Builder()
+            .url("$root/v2/plugin/login/account?state=$state")
+            .header("Authorization", "Bearer $accessToken")
+            .header("User-Agent", WORKBUDDY_USER_AGENT)
+            .apply { if (domain.isNotBlank()) header("X-Domain", domain) }
+            .get()
+            .build()
+        val data = executeJson(request).dataObject()
+        val email = data.string("email")
+        val nickname = data.string("nickname")
+        val uid = data.string("uid")
+        WorkBuddyAccountInfo(
+            label = email.ifBlank { nickname }.ifBlank { uid }.ifBlank { null },
+            uid = uid.ifBlank { null },
+            enterpriseId = data.string("enterpriseId").ifBlank { null }
+        )
+    }.onFailure {
+        LocalLogger.w(TAG, "WorkBuddy 账号信息获取失败：${it.message}")
+    }.getOrNull()
+
+    /**
+     * WorkBuddy / CodeBuddy 刷新令牌：上游会轮换 refresh token，
+     * 刷新必须携带 X-Refresh-Token 与来源标识。
+     */
+    private fun refreshWorkBuddy(state: OAuthTokenState): OAuthTokenState {
+        val root = state.portalBaseUrl.trimEnd('/')
+        require(root.startsWith("https://")) { "OAuth token endpoint 不安全" }
+        require(state.refreshToken.isNotBlank()) { "WorkBuddy 登录已过期，请重新登录" }
+        val builder = Request.Builder()
+            .url("$root/v2/plugin/auth/token/refresh")
+            .post(EMPTY_JSON_BODY)
+            .header("Authorization", "Bearer ${state.accessToken}")
+            .header("X-Refresh-Token", state.refreshToken)
+            .header("X-Auth-Refresh-Source", "workbuddy")
+            .header("User-Agent", WORKBUDDY_USER_AGENT)
+        state.enterpriseId.orEmpty().takeIf(String::isNotBlank)
+            ?.let { builder.header("X-Enterprise-Id", it) }
+        val response = executeJson(builder.build())
+        val code = response.intOrNull("code")
+        require(code == null || code == 0 || code == 200) {
+            "WorkBuddy 刷新失败: " + response.string("msg").ifBlank { "code=$code" }
+        }
+        val data = response.dataObject()
+        val accessToken = data.string("accessToken").ifBlank { data.string("access_token") }
+        require(accessToken.isNotBlank()) { "WorkBuddy 刷新响应缺少 accessToken" }
+        val expiresIn = data.longOrNull("expiresIn") ?: data.longOrNull("expires_in")
+        val domain = data.string("domain").ifBlank { state.domain.orEmpty() }
+        return state.copy(
+            accessToken = accessToken,
+            refreshToken = data.string("refreshToken")
+                .ifBlank { data.string("refresh_token") }
+                .ifBlank { state.refreshToken },
+            expiresAt = expiresIn?.takeIf { it > 0 }
+                ?.let { System.currentTimeMillis() + it * 1000L },
+            domain = domain.ifBlank { null }
+        )
+    }
+
+    private fun workBuddyBrowserHeaders(root: String): Map<String, String> = mapOf(
+        "Content-Type" to "application/json",
+        "Accept" to "application/json, text/plain, */*",
+        "X-Requested-With" to "XMLHttpRequest",
+        "Origin" to root,
+        "Referer" to "$root/",
+        "User-Agent" to WORKBUDDY_USER_AGENT
+    )
+
+    /**
+     * WorkBuddy / CodeBuddy 聊天端点的客户端身份头。
+     * 国内版走 CLI 身份，国际版走 WorkBuddy 桌面端身份；缺失的账号/企业/部门
+     * 字段按上游约定用 X-No-* 显式声明。
+     */
+    private fun workBuddyRuntimeHeaders(
+        provider: String,
+        state: OAuthTokenState
+    ): Map<String, String> = buildMap {
+        put("Authorization", "Bearer ${state.accessToken}")
+        put("X-Product", "SaaS")
+        if (provider == LocalOAuthProviders.WORKBUDDY_INTL) {
+            put("User-Agent", WORKBUDDY_INTL_UA)
+            put("X-IDE-Type", "WorkBuddy")
+            put("X-IDE-Name", "WorkBuddy")
+            put("X-IDE-Version", WORKBUDDY_INTL_VERSION)
+            put("X-Agent-Purpose", "conversation")
+            put("X-Agent-Intent", "craft")
+            put("X-Requested-With", "XMLHttpRequest")
+        } else {
+            put("User-Agent", WORKBUDDY_CN_UA)
+            put("X-IDE-Type", "CLI")
+            put("X-IDE-Name", "CLI")
+            put("X-IDE-Version", WORKBUDDY_CN_VERSION)
+        }
+        val uid = state.uid.orEmpty().trim()
+        if (uid.isEmpty()) put("X-No-User-Id", "1") else put("X-User-Id", uid)
+        val enterpriseId = state.enterpriseId.orEmpty().trim()
+        if (enterpriseId.isEmpty()) {
+            put("X-No-Enterprise-Id", "1")
+        } else {
+            put("X-Enterprise-Id", enterpriseId)
+            put("X-Tenant-Id", enterpriseId)
+        }
+        val domain = state.domain.orEmpty().trim()
+        if (domain.isEmpty()) put("X-No-Department-Info", "1") else put("X-Domain", domain)
+        state.refreshToken.takeIf(String::isNotBlank)?.let { put("X-Refresh-Token", it) }
+    }
+
+    /** WorkBuddy / CodeBuddy 在线模型目录：`GET {root}/v3/config?repos=`。 */
+    private fun fetchWorkBuddyModels(provider: String, state: OAuthTokenState): List<String> {
+        val spec = requireNotNull(LocalOAuthProviders.get(provider))
+        val intl = provider == LocalOAuthProviders.WORKBUDDY_INTL
+        val builder = Request.Builder()
+            .url("${spec.authBase}/v3/config?repos=")
+            .header("Authorization", "Bearer ${state.accessToken}")
+            .header("Accept", "application/json, text/plain, */*")
+            .header("X-Product", "SaaS")
+            .header("X-Agent-Intent", "craft")
+        if (intl) {
+            builder.header("User-Agent", WORKBUDDY_INTL_UA)
+                .header("X-IDE-Type", "WorkBuddy")
+                .header("X-IDE-Name", "WorkBuddy")
+                .header("X-IDE-Version", WORKBUDDY_INTL_VERSION)
+        } else {
+            // 国内版目录接口会校验 UA，非 CodeBuddyIDE 直接返回 12403
+            builder.header("User-Agent", WORKBUDDY_CN_IDE_UA)
+                .header("X-IDE-Type", "VSCode")
+                .header("X-IDE-Name", "VSCode")
+                .header("X-IDE-Version", WORKBUDDY_CN_IDE_VERSION)
+                .header("X-Product-Version", WORKBUDDY_CN_IDE_VERSION)
+        }
+        state.uid.orEmpty().takeIf(String::isNotBlank)
+            ?.let { builder.header("X-User-Id", it) }
+        state.enterpriseId.orEmpty().takeIf(String::isNotBlank)
+            ?.let {
+                builder.header("X-Enterprise-Id", it)
+                builder.header("X-Tenant-Id", it)
+            }
+        state.domain.orEmpty().takeIf(String::isNotBlank)
+            ?.let { builder.header("X-Domain", it) }
+        return extractWorkBuddyModelIds(executeJson(builder.get().build()))
+    }
+
+    /**
+     * 目录结构随上游版本变化，这里按"模型数组"的常见键名递归提取 id，
+     * 只做宽松收集；拉不到时回退到内置兜底列表。
+     */
+    private fun extractWorkBuddyModelIds(root: JsonObject): List<String> {
+        val ids = LinkedHashSet<String>()
+        fun visit(element: com.google.gson.JsonElement, key: String) {
+            when {
+                element.isJsonObject -> element.asJsonObject.entrySet().forEach { (name, value) ->
+                    visit(value, name)
+                }
+                element.isJsonArray -> element.asJsonArray.forEach { item ->
+                    if (key.lowercase() in WORKBUDDY_MODEL_LIST_KEYS) {
+                        workBuddyModelId(item)?.let(ids::add)
+                    } else {
+                        visit(item, key)
+                    }
+                }
+                else -> Unit
+            }
+        }
+        visit(root, "")
+        return ids.filter { WORKBUDDY_MODEL_ID_PATTERN.matches(it) }
+    }
+
+    private fun workBuddyModelId(element: com.google.gson.JsonElement): String? {
+        if (element.isJsonPrimitive) {
+            return element.asString.trim().takeIf(String::isNotBlank)
+        }
+        val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return null
+        return obj.string("id")
+            .ifBlank { obj.string("model") }
+            .ifBlank { obj.string("modelId") }
+            .ifBlank { obj.string("modelName") }
+            .ifBlank { obj.string("slug") }
+            .ifBlank { null }
+            ?.trim()
+    }
+
+    private data class WorkBuddyAccountInfo(
+        val label: String?,
+        val uid: String?,
+        val enterpriseId: String?
+    )
+
     private fun startAnthropicLogin(): OAuthLoginSession {
         val verifier = randomUrlSafe(32)
         val challenge = sha256UrlSafe(verifier)
@@ -588,7 +861,8 @@ class LocalOAuthManager(
 
     private suspend fun connectedResult(
         provider: String,
-        state: OAuthTokenState
+        state: OAuthTokenState,
+        label: String? = null
     ): OAuthPollResult.Connected {
         require(state.accessToken.isNotBlank()) { "OAuth 响应缺少 access_token" }
         val spec = requireNotNull(LocalOAuthProviders.get(provider))
@@ -601,7 +875,9 @@ class LocalOAuthManager(
         val account = LocalOAuthAccountEntity(
             id = UUID.randomUUID().toString(),
             provider = provider,
-            label = email?.let { "${spec.title} · $it" } ?: spec.title,
+            label = label?.takeIf(String::isNotBlank)
+                ?: email?.let { "${spec.title} · $it" }
+                ?: spec.title,
             encryptedCredentials = secrets.encrypt(gson.toJson(state)),
             metadataJson = gson.toJson(metadata),
             status = "connected",
@@ -706,6 +982,8 @@ class LocalOAuthManager(
                 )
             }
             LocalOAuthProviders.KIMI -> refreshKimi(state)
+            LocalOAuthProviders.WORKBUDDY_CN,
+            LocalOAuthProviders.WORKBUDDY_INTL -> refreshWorkBuddy(state)
             else -> error("该 OAuth 提供商不支持刷新")
         }
     }
@@ -794,6 +1072,12 @@ class LocalOAuthManager(
         state: OAuthTokenState
     ): List<String> {
         val spec = requireNotNull(LocalOAuthProviders.get(provider))
+        if (provider == LocalOAuthProviders.WORKBUDDY_CN ||
+            provider == LocalOAuthProviders.WORKBUDDY_INTL
+        ) {
+            return runCatching { fetchWorkBuddyModels(provider, state) }
+                .getOrDefault(emptyList())
+        }
         if (provider == LocalOAuthProviders.QWEN ||
             provider == LocalOAuthProviders.MINIMAX ||
             provider == LocalOAuthProviders.ANTHROPIC
@@ -868,6 +1152,22 @@ class LocalOAuthManager(
             return JsonParser.parseString(raw.ifBlank { "{}" }).asJsonObject
         }
     }
+
+    /**
+     * 不因 HTTP 状态或业务码抛错地读取一次响应，供"登录中"这类正常往返使用。
+     * 返回 HTTP 状态码与解析后的 JSON（无法解析时为 null）。
+     */
+    private fun executeJsonOrNull(request: Request): Pair<Int, JsonObject?> =
+        client.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            response.code to runCatching {
+                JsonParser.parseString(raw.ifBlank { "{}" }).asJsonObject
+            }.getOrNull()
+        }
+
+    /** `{code,msg,data}` 包体里取 data；没有 data 时原样返回。 */
+    private fun JsonObject.dataObject(): JsonObject =
+        get("data")?.takeIf { it.isJsonObject }?.asJsonObject ?: this
 
     private fun postJsonWithFallback(
         endpoints: List<String>,
@@ -1025,6 +1325,26 @@ class LocalOAuthManager(
         const val KIMI_TOKEN_URL = "$KIMI_OAUTH_HOST/api/oauth/token"
         /** 设备信息头版本号，仅用于标识客户端。 */
         const val KIMI_CLIENT_VERSION = "1.6.0"
+
+        /** WorkBuddy / CodeBuddy 客户端身份：国内版 CLI、国际版桌面端。 */
+        const val WORKBUDDY_CN_VERSION = "2.96.0"
+        const val WORKBUDDY_CN_UA = "CLI/$WORKBUDDY_CN_VERSION CodeBuddy/$WORKBUDDY_CN_VERSION"
+        const val WORKBUDDY_CN_IDE_VERSION = "4.10.33259736"
+        const val WORKBUDDY_CN_IDE_UA = "CodeBuddyIDE/$WORKBUDDY_CN_IDE_VERSION"
+        const val WORKBUDDY_INTL_VERSION = "5.5.6"
+        const val WORKBUDDY_INTL_UA = "WorkBuddy/$WORKBUDDY_INTL_VERSION"
+        /** 授权流程（platform=CLI）使用的客户端标识。 */
+        const val WORKBUDDY_USER_AGENT = WORKBUDDY_CN_UA
+        /** 未完成授权时 upstream 的业务码。 */
+        const val WORKBUDDY_LOGIN_PENDING_CODE = 11217
+        const val WORKBUDDY_LOGIN_TTL_MS = 10 * 60 * 1000L
+        const val WORKBUDDY_POLL_INTERVAL_SECONDS = 2
+        /** 目录 JSON 里可能承载模型数组的键名（大小写不敏感）。 */
+        val WORKBUDDY_MODEL_LIST_KEYS =
+            setOf("models", "modellist", "modelconfigs", "modelinfos", "chatmodels")
+        val WORKBUDDY_MODEL_ID_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:+-]{1,63}$")
+
+        val EMPTY_JSON_BODY = "{}".toRequestBody(JSON_MEDIA_TYPE)
 
         val defaultClient: OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)

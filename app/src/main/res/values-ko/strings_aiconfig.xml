@@ -223,6 +223,7 @@
     <string name="aimodel_editor_provider_qwen">통의천문</string>
     <string name="aimodel_editor_provider_kimi">Kimi (Moonshot)</string>
     <string name="aimodel_editor_provider_stepfun">StepFun (스텝펀)</string>
+    <string name="aimodel_editor_provider_workbuddy">WorkBuddy (Tencent CodeBuddy)</string>
     <string name="aimodel_editor_provider_xiaomi">샤오미 MiMo</string>
     <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
     <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
@@ -376,6 +377,7 @@
     <string name="oauth_anthropic_code_hint">브라우저에서 인증 후 표시된 코드를 아래에 붙여 넣으세요</string>
     <string name="oauth_authorization_code">인증 코드</string>
     <string name="oauth_device_code_hint">열린 브라우저 페이지에 기기 코드를 입력하세요. 앱이 자동으로 로그인 결과를 기다려요</string>
+    <string name="oauth_browser_poll_hint">열린 브라우저 페이지에서 인증을 완료하세요. 앱이 자동으로 로그인 결과를 기다려요</string>
     <string name="oauth_waiting">인증 대기 중…</string>
     <string name="oauth_reopen_browser">브라우저 다시 열기</string>
     <string name="oauth_submit">제출</string>

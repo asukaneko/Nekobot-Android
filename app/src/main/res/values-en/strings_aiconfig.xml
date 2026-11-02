@@ -225,6 +225,7 @@
     <string name="aimodel_editor_provider_xiaomi">Xiaomi MiMo</string>
     <string name="aimodel_editor_provider_doubao">Doubao Seed</string>
     <string name="aimodel_editor_provider_stepfun">StepFun</string>
+    <string name="aimodel_editor_provider_workbuddy">WorkBuddy (Tencent CodeBuddy)</string>
     <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
     <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
     <string name="aimodel_editor_provider_custom">Custom</string>
@@ -384,6 +385,7 @@
     <string name="oauth_anthropic_code_hint">After authorizing in the browser, paste the displayed code below.</string>
     <string name="oauth_authorization_code">Authorization code</string>
     <string name="oauth_device_code_hint">Enter the device code in the browser page that opened. The app will wait for the login result automatically.</string>
+    <string name="oauth_browser_poll_hint">Finish signing in on the browser page that opened. The app will wait for the result automatically.</string>
     <string name="oauth_waiting">Waiting for authorization…</string>
     <string name="oauth_reopen_browser">Reopen browser</string>
     <string name="oauth_submit">Submit</string>

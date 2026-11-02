@@ -296,6 +296,7 @@ private fun rememberProviderLabels(): LinkedHashMap<String, String> = linkedMapO
     "xiaomi" to stringResource(R.string.aimodel_editor_provider_xiaomi),
     "doubao" to stringResource(R.string.aimodel_editor_provider_doubao),
     "stepfun" to stringResource(R.string.aimodel_editor_provider_stepfun),
+    "workbuddy" to stringResource(R.string.aimodel_editor_provider_workbuddy),
     "azure" to stringResource(R.string.aimodel_editor_provider_azure),
     "siliconflow" to stringResource(R.string.aimodel_editor_provider_siliconflow),
     "elevenlabs" to stringResource(R.string.aimodel_editor_provider_elevenlabs),

@@ -8,6 +8,8 @@ import java.util.UUID
 
 enum class OAuthLoginMode {
     DEVICE_CODE,
+    /** 浏览器完成授权后由应用轮询取 token（无设备码，无需输入任何内容）。 */
+    BROWSER_POLL,
     PKCE_CODE,
     QWEN_CREDENTIAL_IMPORT,
     API_KEY
@@ -22,8 +24,13 @@ data class OAuthProviderSpec(
     val baseUrl: String,
     val models: List<String>,
     val defaultContextLength: Int,
-    val defaultMaxTokens: Int
-)
+    val defaultMaxTokens: Int,
+    /** 鉴权接口所在的站点根地址；为空时与 [baseUrl] 相同。 */
+    val authBaseUrl: String = ""
+) {
+    /** 鉴权站点根地址（无尾部斜杠）。 */
+    val authBase: String get() = authBaseUrl.ifBlank { baseUrl }.trimEnd('/')
+}
 
 data class LocalOAuthModelTarget(
     val protocol: String,
@@ -66,7 +73,13 @@ data class OAuthTokenState(
     val tokenEndpoint: String = "",
     val clientId: String = "",
     val portalBaseUrl: String = "",
-    val resourceUrl: String = ""
+    val resourceUrl: String = "",
+    /** WorkBuddy / CodeBuddy 账号维度：请求头 X-User-Id。 */
+    val uid: String? = null,
+    /** WorkBuddy / CodeBuddy 企业维度：请求头 X-Enterprise-Id。 */
+    val enterpriseId: String? = null,
+    /** WorkBuddy / CodeBuddy 域信息：请求头 X-Domain。 */
+    val domain: String? = null
 )
 
 object LocalOAuthProviders {
@@ -78,6 +91,25 @@ object LocalOAuthProviders {
     const val OPENCODE_GO = "opencode-go"
     const val ANTHROPIC = "anthropic-oauth"
     const val KIMI = "kimi-oauth"
+    const val WORKBUDDY_CN = "workbuddy-oauth"
+    const val WORKBUDDY_INTL = "workbuddy-intl-oauth"
+
+    /**
+     * WorkBuddy / 腾讯 CodeBuddy 内置模型兜底目录。
+     * 实际可用列表以 `/v3/config` 在线目录为准，这里只用于离线或拉取失败时展示。
+     */
+    private val WORKBUDDY_MODELS = listOf(
+        "glm-5.2",
+        "glm-5.1",
+        "glm-5v-turbo",
+        "kimi-k2.7",
+        "minimax-m3-pay",
+        "hy3",
+        "hy3-preview",
+        "hy3-preview-agent",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash"
+    )
 
     val all: List<OAuthProviderSpec> = listOf(
         OAuthProviderSpec(
@@ -245,6 +277,30 @@ object LocalOAuthProviders {
             // 1M 上下文需要更高会员等级，统一按 256K 预算避免超限请求
             defaultContextLength = 262_144,
             defaultMaxTokens = 32_768
+        ),
+        OAuthProviderSpec(
+            id = WORKBUDDY_CN,
+            title = "WorkBuddy（国内版）",
+            subtitle = "腾讯 CodeBuddy 账号，浏览器扫码授权，无需 API Key",
+            loginMode = OAuthLoginMode.BROWSER_POLL,
+            protocol = "openai_chat",
+            baseUrl = "https://copilot.tencent.com/v2",
+            models = WORKBUDDY_MODELS,
+            defaultContextLength = 300_000,
+            defaultMaxTokens = 32_768,
+            authBaseUrl = "https://copilot.tencent.com"
+        ),
+        OAuthProviderSpec(
+            id = WORKBUDDY_INTL,
+            title = "WorkBuddy（国际版）",
+            subtitle = "WorkBuddy / CodeBuddy 国际账号，浏览器授权，额度与国内版独立",
+            loginMode = OAuthLoginMode.BROWSER_POLL,
+            protocol = "openai_chat",
+            baseUrl = "https://www.workbuddy.ai/v2",
+            models = WORKBUDDY_MODELS,
+            defaultContextLength = 300_000,
+            defaultMaxTokens = 32_768,
+            authBaseUrl = "https://www.workbuddy.ai"
         )
     )
 

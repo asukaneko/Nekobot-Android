@@ -227,6 +227,7 @@
     <string name="aimodel_editor_provider_xiaomi">小米 MiMo</string>
     <string name="aimodel_editor_provider_doubao">豆包 Seed</string>
     <string name="aimodel_editor_provider_stepfun">階躍星辰 StepFun</string>
+    <string name="aimodel_editor_provider_workbuddy">WorkBuddy（騰訊 CodeBuddy）</string>
     <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
     <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
     <string name="aimodel_editor_provider_custom">自訂</string>
@@ -397,6 +398,7 @@
     <string name="oauth_anthropic_code_hint">瀏覽器授權後，將頁面顯示的授權碼貼上到下方。</string>
     <string name="oauth_authorization_code">授權碼</string>
     <string name="oauth_device_code_hint">請在已開啟的瀏覽器頁面輸入設備碼，應用會自動等待登入結果。</string>
+    <string name="oauth_browser_poll_hint">請在已開啟的瀏覽器頁面完成授權，應用會自動等待登入結果。</string>
     <string name="oauth_waiting">等待授權…</string>
     <string name="oauth_reopen_browser">重新開啟瀏覽器</string>
     <string name="oauth_submit">提交</string>

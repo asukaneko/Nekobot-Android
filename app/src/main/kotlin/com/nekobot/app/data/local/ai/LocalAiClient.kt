@@ -395,7 +395,10 @@ class LocalAiClient(
     ): LocalAiResult {
         val (runtimeModel, credential) = resolveRuntimeModel(model)
         val protocol = LocalProtocols.get(runtimeModel.protocol)
-        if (protocol.requiresStreaming || streamCallbacks != null) {
+        if (protocol.requiresStreaming ||
+            streamCallbacks != null ||
+            requiresStreamingUpstream(runtimeModel)
+        ) {
             return chatOnceViaStream(
                 model = runtimeModel,
                 credential = credential,
@@ -467,6 +470,16 @@ class LocalAiClient(
             } else LocalLogger.e(TAG, R.string.log_laic_chat_once_failed, e.message)
             throw e
         }
+    }
+
+    /**
+     * WorkBuddy / 腾讯 CodeBuddy 网关拒绝非流式请求（业务码 11101），
+     * 这类模型一律改走流式，再由 [chatOnceViaStream] 在本地聚合成一次结果。
+     */
+    private fun requiresStreamingUpstream(model: LocalAiModelEntity): Boolean {
+        if (model.provider.orEmpty().lowercase().startsWith("workbuddy")) return true
+        val baseUrl = model.baseUrl.lowercase()
+        return baseUrl.contains("copilot.tencent.com") || baseUrl.contains("workbuddy.ai")
     }
 
     private suspend fun chatOnceViaStream(

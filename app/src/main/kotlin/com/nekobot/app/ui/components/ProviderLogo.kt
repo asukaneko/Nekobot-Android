@@ -57,6 +57,8 @@ private val PROVIDER_LOGO_MAP = mapOf(
     "tongyi" to "qwen.svg",
     "xiaomi" to "xiaomi.svg",
     "mimo" to "xiaomi.svg",
+    "workbuddy" to "workbuddy.png",
+    "codebuddy" to "workbuddy.png",
     "custom" to "custom.svg"
 )
 
@@ -81,7 +83,11 @@ private val BASE_URL_HINTS = listOf(
     "aliyuncs" to "qwen.svg",
     "siliconflow" to "openai.svg",
     "xiaomi" to "xiaomi.svg",
-    "mimo" to "xiaomi.svg"
+    "mimo" to "xiaomi.svg",
+    "copilot.tencent.com" to "workbuddy.png",
+    "workbuddy.ai" to "workbuddy.png",
+    "codebuddy.ai" to "workbuddy.png",
+    "codebuddy.cn" to "workbuddy.png"
 )
 
 /** 模型名包含的关键字 → Logo 文件名（最后兜底） */
