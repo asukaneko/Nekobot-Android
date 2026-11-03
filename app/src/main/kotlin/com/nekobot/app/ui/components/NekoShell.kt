@@ -866,11 +866,13 @@ fun NekoToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Bo
 @Composable
 fun NekoSheet(
     onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
+        modifier = modifier,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onSurface,
