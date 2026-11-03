@@ -190,7 +190,6 @@ class CompanionMessageStyleTest {
             val palette = companionChatPalette(dark, color)
             val style = companionAssistantBubbleStyle(palette)
             assertEquals(color, palette.outgoing)
-            // 深色模式 AI 气泡跟随主题表面色，浅色模式保持白底
             val plainBackground = style.background.compositeOver(palette.background)
             if (dark) {
                 assertEquals(BgSurfaceVariant.copy(alpha = 0.62f), style.background)

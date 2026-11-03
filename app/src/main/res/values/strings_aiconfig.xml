@@ -227,6 +227,7 @@
     <string name="aimodel_editor_provider_xiaomi">小米 MiMo</string>
     <string name="aimodel_editor_provider_doubao">豆包 Seed</string>
     <string name="aimodel_editor_provider_stepfun">阶跃星辰 StepFun</string>
+    <string name="aimodel_editor_provider_workbuddy">WorkBuddy（腾讯 CodeBuddy）</string>
     <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
     <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
     <string name="aimodel_editor_provider_custom">自定义</string>
@@ -397,6 +398,7 @@
     <string name="oauth_anthropic_code_hint">浏览器授权后，将页面显示的授权码粘贴到下方。</string>
     <string name="oauth_authorization_code">授权码</string>
     <string name="oauth_device_code_hint">请在已打开的浏览器页面输入设备码，应用会自动等待登录结果。</string>
+    <string name="oauth_browser_poll_hint">请在已打开的浏览器页面完成授权，应用会自动等待登录结果。</string>
     <string name="oauth_waiting">等待授权…</string>
     <string name="oauth_reopen_browser">重新打开浏览器</string>
     <string name="oauth_submit">提交</string>

@@ -34,7 +34,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +70,7 @@ import com.nekobot.app.data.local.oauth.OAuthProviderSpec
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.ProviderLogo
 import com.nekobot.app.ui.components.SectionHeader
 import kotlinx.coroutines.Job
@@ -113,7 +113,9 @@ class OAuthAccountsViewModel : BaseViewModel() {
             try {
                 val session = manager.startLogin(provider.id)
                 _loginSession.value = session
-                if (provider.loginMode == OAuthLoginMode.DEVICE_CODE) {
+                if (provider.loginMode == OAuthLoginMode.DEVICE_CODE ||
+                    provider.loginMode == OAuthLoginMode.BROWSER_POLL
+                ) {
                     startPolling(session)
                 }
             } catch (error: Exception) {
@@ -588,6 +590,8 @@ private fun LoginDialog(
 ) {
     var code by remember(session.id) { mutableStateOf("") }
     val isAnthropic = session.provider == LocalOAuthProviders.ANTHROPIC
+    val isBrowserPoll = LocalOAuthProviders.get(session.provider)?.loginMode ==
+        OAuthLoginMode.BROWSER_POLL
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Filled.Link, contentDescription = null) },
@@ -604,8 +608,14 @@ private fun LoginDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
-                    Text(stringResource(R.string.oauth_device_code_hint))
-                    if (session.userCode.isNotBlank()) {
+                    Text(
+                        if (isBrowserPoll) {
+                            stringResource(R.string.oauth_browser_poll_hint)
+                        } else {
+                            stringResource(R.string.oauth_device_code_hint)
+                        }
+                    )
+                    if (!isBrowserPoll && session.userCode.isNotBlank()) {
                         Text(
                             session.userCode,
                             style = MaterialTheme.typography.headlineSmall,
@@ -647,54 +657,47 @@ private fun ModelPickerDialog(
     var selected by remember(state.account.id, state.models, state.selected) {
         mutableStateOf(state.selected)
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.oauth_select_models)) },
-        text = {
-            Column {
-                Text(
-                    state.account.label,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                    items(state.models, key = { it }) { model ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selected = if (model in selected) selected - model else selected + model
-                                }
-                                .padding(vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = model in selected,
-                                onCheckedChange = {
-                                    selected = if (it) selected + model else selected - model
-                                }
-                            )
-                            Text(
-                                model,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(start = 6.dp)
-                            )
+    // 与其它页面共用同一套实心面板弹窗，不再使用玻璃材质
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.oauth_select_models),
+        message = state.account.label,
+        confirmText = stringResource(R.string.oauth_save_count, selected.size),
+        onConfirm = { onSave(selected) },
+        cancelText = stringResource(R.string.oauth_later),
+        onCancel = onDismiss
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 360.dp)
+        ) {
+            items(state.models, key = { it }) { model ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selected = if (model in selected) selected - model else selected + model
                         }
-                    }
+                        .padding(vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = model in selected,
+                        onCheckedChange = {
+                            selected = if (it) selected + model else selected - model
+                        }
+                    )
+                    Text(
+                        model,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
                 }
-                TextButton(onClick = onRefresh) { Text(stringResource(R.string.oauth_refresh_models)) }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(selected) }) {
-                Text(stringResource(R.string.oauth_save_count, selected.size))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.oauth_later)) }
         }
-    )
+        TextButton(onClick = onRefresh) { Text(stringResource(R.string.oauth_refresh_models)) }
+    }
 }
 
 private fun openBrowser(context: Context, url: String) {

@@ -223,6 +223,7 @@
     <string name="aimodel_editor_provider_qwen">通義千問</string>
     <string name="aimodel_editor_provider_kimi">Kimi (Moonshot)</string>
     <string name="aimodel_editor_provider_stepfun">StepFun（階躍星辰）</string>
+    <string name="aimodel_editor_provider_workbuddy">WorkBuddy（Tencent CodeBuddy）</string>
     <string name="aimodel_editor_provider_xiaomi">Xiaomi MiMo</string>
     <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
     <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
@@ -376,6 +377,7 @@
     <string name="oauth_anthropic_code_hint">ブラウザで認可後、表示されたコードを下に貼り付けてください</string>
     <string name="oauth_authorization_code">認可コード</string>
     <string name="oauth_device_code_hint">開いたブラウザページにデバイスコードを入力してください。アプリが自動的にログイン結果を待ちます</string>
+    <string name="oauth_browser_poll_hint">開いたブラウザページで認可を完了してください。アプリが自動的にログイン結果を待ちます</string>
     <string name="oauth_waiting">認可を待っています…</string>
     <string name="oauth_reopen_browser">ブラウザを再度開く</string>
     <string name="oauth_submit">送信</string>

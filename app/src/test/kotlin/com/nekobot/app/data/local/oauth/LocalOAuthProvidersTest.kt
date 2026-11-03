@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local.oauth
 
+import com.nekobot.app.data.local.ai.OpenAIChatProtocol
 import com.nekobot.app.data.local.db.LocalOAuthAccountEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -17,7 +18,9 @@ class LocalOAuthProvidersTest {
                 LocalOAuthProviders.OPENCODE_ZEN,
                 LocalOAuthProviders.OPENCODE_GO,
                 LocalOAuthProviders.ANTHROPIC,
-                LocalOAuthProviders.KIMI
+                LocalOAuthProviders.KIMI,
+                LocalOAuthProviders.WORKBUDDY_CN,
+                LocalOAuthProviders.WORKBUDDY_INTL
             ),
             LocalOAuthProviders.all.map { it.id }.toSet()
         )
@@ -32,6 +35,38 @@ class LocalOAuthProvidersTest {
         assertEquals(
             OAuthLoginMode.DEVICE_CODE,
             requireNotNull(LocalOAuthProviders.get(LocalOAuthProviders.KIMI)).loginMode
+        )
+    }
+
+    @Test
+    fun `workbuddy providers use the codebuddy plugin gateway`() {
+        val cn = requireNotNull(LocalOAuthProviders.get(LocalOAuthProviders.WORKBUDDY_CN))
+        assertEquals(OAuthLoginMode.BROWSER_POLL, cn.loginMode)
+        assertEquals("openai_chat", cn.protocol)
+        assertEquals("https://copilot.tencent.com/v2", cn.baseUrl)
+        assertEquals("https://copilot.tencent.com", cn.authBase)
+
+        val intl = requireNotNull(LocalOAuthProviders.get(LocalOAuthProviders.WORKBUDDY_INTL))
+        assertEquals(OAuthLoginMode.BROWSER_POLL, intl.loginMode)
+        assertEquals("https://www.workbuddy.ai", intl.authBase)
+
+        val target = LocalOAuthProviders.resolveModelTarget(
+            LocalOAuthProviders.WORKBUDDY_CN,
+            "glm-5.2"
+        )
+        assertEquals("openai_chat", target.protocol)
+        assertEquals("https://copilot.tencent.com/v2", target.baseUrl)
+        assertTrue(target.maxContextLength > 0)
+        assertTrue(target.maxTokens > 0)
+        assertEquals(
+            "https://copilot.tencent.com/v2/chat/completions",
+            OpenAIChatProtocol.resolveUrl(
+                target.baseUrl,
+                "glm-5.2",
+                appendBaseUrlPath = true,
+                stream = true,
+                apiKey = "oauth:account-1"
+            )
         )
     }
 

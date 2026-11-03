@@ -55,7 +55,7 @@ internal fun companionChatPalette(messageColorOverride: String? = null, assistan
     companionChatPalette(MaterialTheme.colorScheme.background.luminance() < 0.5f,
         parseHexColor(messageColorOverride), parseHexColor(assistantColorOverride))
 
-/** 未设置 AI 覆盖色时：浅色用白底，深色跟随主题表面色，避免整块白底在深色聊天里过亮。 */
+/** 用户与 AI 气泡分别取色；未设置 AI 覆盖色时浅色用白底、深色跟随主题表面色。 */
 internal fun companionChatPalette(dark: Boolean, messageColorOverride: Color? = null, assistantColorOverride: Color? = null): CompanionChatPalette {
     val palette = if (dark) {
         CompanionChatPalette(Color(0xFF191D1E), Color(0xFF2A3031), Color(0xFF355B45),
