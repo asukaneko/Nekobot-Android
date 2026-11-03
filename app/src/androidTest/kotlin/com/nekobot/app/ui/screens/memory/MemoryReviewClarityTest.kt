@@ -80,7 +80,7 @@ class MemoryReviewClarityTest {
             compose.onNode(dialogList).performScrollToNode(hasText("已关联原话 · 部分内容待核实"))
             compose.onNodeWithText("已关联原话 · 部分内容待核实").assertIsDisplayed()
             capture("$suffix-sources")
-            val locate = localized.getString(R.string.single_role_go_to_this_message)
+            val locate = localized.getString(R.string.memory_v2_source_locate)
             compose.onNode(dialogList).performScrollToNode(hasText(locate))
             compose.onNodeWithText(locate).performClick()
             assertEquals("$id-source", located)

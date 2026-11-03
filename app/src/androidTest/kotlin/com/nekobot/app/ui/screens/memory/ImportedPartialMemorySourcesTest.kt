@@ -59,7 +59,7 @@ class ImportedPartialMemorySourcesTest {
         reveal(message)
         capture("$suffix-warning")
         reveal(quote)
-        val locate = context.getString(R.string.single_role_go_to_this_message)
+        val locate = context.getString(R.string.memory_v2_source_locate)
         reveal(locate)
         capture("$suffix-quote")
         compose.onNodeWithText(locate).performClick()

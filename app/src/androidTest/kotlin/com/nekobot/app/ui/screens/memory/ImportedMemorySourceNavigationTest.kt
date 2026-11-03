@@ -247,7 +247,7 @@ class ImportedMemorySourceNavigationTest {
         compose.onNodeWithText(text(R.string.single_role_you_entered_this_memory_manually_it_has_no_linked_chat_sources))
             .assertDoesNotExist()
         captureSynthetic("$name-source-quote", dialog = true)
-        val locate = hasText(text(R.string.single_role_go_to_this_message)) and hasClickAction()
+        val locate = hasText(text(R.string.memory_v2_source_locate)) and hasClickAction()
         compose.onNode(dialogList).performScrollToNode(locate)
         val locateButton = compose.onNode(locate).performScrollTo().assertIsDisplayed()
         assertReachableTouchTarget(locateButton, compose.onNode(isDialog()))
