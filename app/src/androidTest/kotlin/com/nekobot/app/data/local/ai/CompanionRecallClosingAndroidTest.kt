@@ -139,7 +139,8 @@ class CompanionRecallClosingAndroidTest {
                 val prepared=events.first { it["kind"].asString=="pipeline_prepared" }["data"].asJsonObject
                 assertTrue(prepared["character_thinking_enabled"].asBoolean)
                 assertTrue(prepared["show_reasoning"].asBoolean)
-                assertTrue(prepared["prompt_stack"].toString().contains("<think>"))
+                // 思考提示词现在是可配置的自然语言注入（key=output.thinking_style），不再用 <think> 标签。
+                assertTrue(prepared["prompt_stack"].toString().contains("output.thinking_style"))
                 val parsed=events.last { it["kind"].asString=="parsed_reply" }["data"].asJsonObject
                 assertEquals("",parsed["thinking_content"].asString)
                 assertTrue(parsed["content"].asString.startsWith("（"))
