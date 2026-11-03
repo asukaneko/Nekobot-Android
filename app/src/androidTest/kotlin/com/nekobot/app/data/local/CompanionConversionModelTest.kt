@@ -38,7 +38,9 @@ class CompanionConversionModelTest {
                 while(offset<size) { val n=input.read(body,offset,size-offset); check(n>0); offset+=n }
                 payload = body.toString(Charsets.UTF_8); requests.incrementAndGet()
                 // 即使正文看起来是合法 JSON，也必须尊重服务商的终止原因。
-                val response = Gson().toJson(mapOf("choices" to listOf(mapOf("message" to mapOf("content" to "{\"changes\":[]}"), "finish_reason" to finishReason)), "usage" to mapOf("prompt_tokens" to 10, "completion_tokens" to 5))).toByteArray()
+                // 记忆 v2 协议要求最后一行是 {"done":true}，否则按「未完成」处理。
+                val content = if (finishReason == "stop") "{\"done\":true}\n" else "{\"changes\":[]}"
+                val response = Gson().toJson(mapOf("choices" to listOf(mapOf("message" to mapOf("content" to content), "finish_reason" to finishReason)), "usage" to mapOf("prompt_tokens" to 10, "completion_tokens" to 5))).toByteArray()
                 socket.getOutputStream().apply { write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${response.size}\r\nConnection: close\r\n\r\n".toByteArray()); write(response); flush() }
             } }
         }
