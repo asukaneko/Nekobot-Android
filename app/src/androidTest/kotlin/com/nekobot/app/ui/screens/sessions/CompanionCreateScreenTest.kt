@@ -67,9 +67,14 @@ class CompanionCreateScreenTest {
         compose.onNodeWithText(text(R.string.companion_more_settings)).performClick()
         // 创建页内容在 LazyColumn 中，performScrollTo 不适用；先滚到目标项再输入。
         compose.onNodeWithTag("companion_content").performScrollToNode(hasText(text(R.string.companion_optional_name)))
-        compose.onNodeWithText(text(R.string.companion_optional_name)).performClick().performTextInput("晚星的新会话")
+        // 直接使用字段的编辑语义，避免键盘打开时重建输入连接导致首个 commitText 丢失。
+        val nameField = compose.onNode(hasSetTextAction() and hasText(text(R.string.companion_optional_name)))
+        nameField.performTextReplacement("晚星的新会话")
+        nameField.assertTextContains("晚星的新会话")
         compose.onNodeWithTag("companion_content").performScrollToNode(hasText(text(R.string.companion_optional_greeting)))
-        compose.onNodeWithText(text(R.string.companion_optional_greeting)).performClick().performTextInput("欢迎回来")
+        val greetingField = compose.onNode(hasSetTextAction() and hasText(text(R.string.companion_optional_greeting)))
+        greetingField.performClick().performTextReplacement("欢迎回来")
+        greetingField.assertTextContains("欢迎回来")
         // CI 模拟器负载高时软键盘可能十几秒才弹出；等不到只跳过键盘截图，布局断言照常执行。
         if (waitForSoftKeyboard()) capture("companion-create-keyboard")
         compose.onNodeWithTag("companion_primary").assertIsDisplayed().performClick()

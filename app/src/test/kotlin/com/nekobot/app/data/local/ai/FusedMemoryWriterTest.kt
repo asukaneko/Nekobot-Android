@@ -226,6 +226,51 @@ class FusedMemoryWriterTest {
             assertFalse(CompanionReferences.current(db.memories.values.toList()).any { it.id == original.id })
         }
     }
+    @Test fun manualSameTextKindUpdatePreservesDateAndCoreChoice() = runBlocking {
+        val original = memory(manual = true).copy(eventDate = "2026-10-01", coreExcluded = true)
+        val db = Store(listOf(original))
+        val line = update(content = original.content, extra = ",\"kind\":\"core\"")
+        val result = db.write(line)
+        assertTrue(result.success)
+        assertFalse(result.uncertain)
+        assertEquals(original.id, result.memoryId)
+        assertEquals(original.copy(kind = "core"), db.memories.getValue(original.id))
+        assertEquals(1, db.memories.values.count { it.current })
+        assertTrue(db.write(line).skipped)
+        assertEquals(1, db.memories.size)
+    }
+
+    @Test fun lockedSameTextKindUpdateKeepsOriginalAndCreatesUncertainty() = runBlocking {
+        for (manual in listOf(false, true)) {
+            val original = memory(manual = manual, locked = true).copy(
+                eventDate = "2026-10-01", coreExcluded = true)
+            val db = Store(listOf(original))
+            val originalSource = CompanionSourceEntity(original.id, assistant.id,
+                CompanionMemoryPolicy.fingerprint(assistant), "", "2026-10-23", assistant.role, assistant.content)
+            db.sources[original.id to assistant.id] = originalSource
+            val line = update(content = original.content, extra = ",\"kind\":\"core\"")
+
+            val result = db.write(line)
+
+            assertTrue(result.success)
+            assertTrue(result.uncertain)
+            assertNotEquals(original.id, result.memoryId)
+            assertEquals(original, db.memories.getValue(original.id))
+            assertEquals(listOf(originalSource), db.sources.values.filter { it.memoryId == original.id })
+            val pending = db.memories.getValue(requireNotNull(result.memoryId))
+            assertTrue(pending.pendingConfirm)
+            assertEquals(original.id, pending.uncertainTargetId)
+            assertNotEquals(original.factKey, pending.factKey)
+            assertEquals(1, db.memories.values.count { it.factKey == original.factKey && it.current })
+
+            val retry = db.write(line)
+            assertTrue(retry.skipped)
+            assertEquals(result.memoryId, retry.memoryId)
+            assertEquals(2, db.memories.size)
+            assertEquals(original, db.memories.getValue(original.id))
+        }
+    }
+
     @Test fun protectedChangesCreateUncertaintyAndNeverModifyOriginal() = runBlocking {
         for (original in listOf(memory(locked = true), memory(manual = true))) {
             val db = Store(listOf(original)); val result = db.write(update())

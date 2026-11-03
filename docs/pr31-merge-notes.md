@@ -256,27 +256,27 @@ PR 已合入 main（合并提交 `866abb2c`）。合并后按失败用例逐条�
 顺带记录一条与本 PR 无关的观察：该探测测试删除前在本地是失败的，
 说明 `WorkspaceGitDiff.summarize` 对本仓库当前形态（混合 loose + packfile）取不到摘要。
 
-### 10.2 仍在失败（5 项）
+### 10.2 按 PR 行为完成的五项修复
 
-**导入时原话被改写的失效联动**
-- `PortableSafeImportAndroidTest#replacingOnlyTheMessageWithoutNewProofStillInvalidatesTheOldMemory`
-  只导入 `local_messages` 时，引用这条原话的旧记忆仍保持 valid/current。用例期望
-  「换掉原话但没有新证据 → 旧记忆不再可用」。需要确认导入路径是否应复用
-  `CompanionSourceMutation` 的作废逻辑（含 `source_edited` 原因与修订号自增）。
+**导入证据失效**
+- 导入修改消息后，在同一事务内重新核对引用它的来源指纹；失配的非手工、非锁定记忆置为
+  `valid=0/current=0`，清理向量与上下文缓存并递增 scope 修订号。
+- 消息触发器会自动保存修改前的正文快照。快照用于历史查看，不代表接受修改后的证据；
+  因此快照存在不能跳过本次指纹校验。一起导入相符的新来源时，记忆仍可保持有效。
+- `PortableSafeImportAndroidTest` 的 10 项定向测试全部通过。
 
-**手工记忆被更新后出现两条 current**
-- `FusedCompanionAndroidTest#backgroundCoreChoiceKeepsManualExclusionAndExistingDate`
-  模型对一条手工记忆发 `update` 时，写入器把它当受保护目标，另建一条待确认记录，
-  同一键下于是有两条 current。用例期望就地更新、保留 `eventDate` 与 `coreExcluded`。
+**手工记忆的同正文更新**
+- 非锁定手工记忆的正文不变时，模型只调整 `kind`，就地保留日期与用户的核心排除选择，
+  不额外创建待确认记忆。改正文仍须确认，锁定记忆仍受保护。
+- 补充同正文更新与锁定保护单测，检查原记录、来源、单一 current 与重试幂等。
 
-**召回收尾（提示词与 mock 流）**
-- `CompanionRecallClosingAndroidTest#fullDiagnosticExportsActualRequestsAndMissingThoughtWithoutTruncatingPrompts`
-  断言的 `prompt_stack` 里应有 `<think>`；当前主源码只在 `CharacterThinkingParser` 里出现该标签，
-  提示词注入已改为可配置的思考提示，用例断言需要跟着新机制改。
-- `CompanionRecallClosingAndroidTest#chineseBodyThoughtAndTwoMonologuesStaySeparateDespiteEnglishNativeReasoning`
-  mock 服务提前关流（`unexpected end of stream`），需要补齐预设响应。
-- `CompanionRecallClosingAndroidTest#pseudoThoughtUsesTheSameChannelsForJsonAndToolFreeStreaming`
-  英文思考 fixture 与中文期望不一致，期望值仍是旧的合成正文。
+**思考通道与召回收尾**
+- 单会话角色展示正文标签解析出的思考；服务商原生 reasoning 单独保留供协议续接，
+  不抢占展示通道。普通角色的处理方式保持不变。
+- 定向验证 JSON、流式 SSE、工具回查、持久化与实际聊天展示；
+  `CompanionRecallClosingAndroidTest` 的 11 项全部通过。
+- mock 服务线程中的断言失败会在关闭时回传。原先的“提前关流”实际是应答脚本里
+  使用过期提示词文案进行断言，修正为当前有效提示词后通过。
 
 另：`CompanionCreateScreenTest#freshRoleKeepsSettingsCollapsedAndCreatesWithEditableGreeting`
 在本地偶尔失败（会话名输入框没拿到输入），CI 上是通过的，属负载相关的抖动；
@@ -284,7 +284,15 @@ PR 已合入 main（合并提交 `866abb2c`）。合并后按失败用例逐条�
 在 CI 上偶尔报 `Cannot run onActivity since Activity has been destroyed already`，同样是抖动，
 下一轮相同代码即为绿灯。
 
-### 10.3 复现命令
+### 10.3 最终本地回归
 
-同 9.3。
+- 单元测试：3006 项，失败 0、错误 0。
+- 全量设备回归：Gradle 报告完成 363 条，失败 0；其中 8 项外部模型或资料依赖用例按配置跳过。
+- 补充仅导入用量字段的回归：不重新作废已保留的历史快照记忆。
+- 创建页测试通过编辑语义设置文本，并在提交前确认输入内容，覆盖会话名与问候语传递。
+- 版本保持 `0.8.8` / `71`。
+
+### 10.4 复现命令
+
+同 9.3；去掉 instrumentation 的 class 参数可运行全量设备测试。
 

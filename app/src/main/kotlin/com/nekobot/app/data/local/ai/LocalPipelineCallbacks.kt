@@ -1239,7 +1239,7 @@ internal class LocalPipelineCallbacks(
                             relay.onReasoningChunk(chunk)
                         }
                     }
-                ), bodyOnly = session.companionMode, allowNativeDisplay = session.companionMode)
+                ), bodyOnly = session.companionMode)
             }
             val replyGuard = if (session.companionMode) CompanionReplyGuard(thinkingStream?.callbacks,
                 hold = recallRequest?.mustAnswer == true) else null
@@ -1317,8 +1317,7 @@ internal class LocalPipelineCallbacks(
             thinkingStream?.finish()
             streamRelay?.flush()
             val result = if (resolvedResult === rawResult && thinkingStream != null) thinkingStream.resolve(resolvedResult)
-                else characterThinkingResult(resolvedResult, characterThinking, bodyOnly = session.companionMode,
-                    allowNativeDisplay = session.companionMode)
+                else characterThinkingResult(resolvedResult, characterThinking, bodyOnly = session.companionMode)
             diagnosticTrace.record("parsed_reply", mapOf("raw" to resolvedResult,
                 "content" to result.content, "thinking_content" to result.thinkingContent,
                 "character_thinking_enabled" to characterThinking, "body_only" to session.companionMode),
@@ -1405,7 +1404,7 @@ internal class LocalPipelineCallbacks(
                         streamRelay.onReasoningChunk(it)
                     }
                 }
-            ), bodyOnly = session.companionMode, allowNativeDisplay = session.companionMode)
+            ), bodyOnly = session.companionMode)
             val replyGuard = if (session.companionMode) CompanionReplyGuard(thinkingStream.callbacks) else null
             val streamCallbacks = replyGuard?.callbacks ?: thinkingStream.callbacks
 

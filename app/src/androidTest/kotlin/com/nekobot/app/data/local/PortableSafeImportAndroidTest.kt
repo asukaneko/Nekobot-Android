@@ -334,7 +334,9 @@ class PortableSafeImportAndroidTest {
         val saved = db().companionMemoryDao().versions(fixture.localMemory.scopeId, fixture.localMemory.factKey).single()
         assertEquals(fixture.localMemory.content, saved.content)
         assertFalse(saved.valid); assertFalse(saved.current)
-        assertEquals(listOf(fixture.localSource), db().companionMemoryDao().sources(saved.id))
+        // 作废不抹掉旧证据；消息触发器保存的快照仍可供历史查看。
+        assertEquals(listOf(fixture.localSource.copy(messageSnapshot = fixture.localMessage.content)),
+            db().companionMemoryDao().sources(saved.id))
         val reopenedStore = com.nekobot.app.data.local.ai.CompanionMemoryStore(db())
         assertTrue(reopenedStore.validatedMemories(reopenedStore.ensureScope(fixture.session)).isEmpty())
         prepared(fixture.archive).use { archive ->
@@ -342,6 +344,42 @@ class PortableSafeImportAndroidTest {
         }
         assertFalse(db().companionMemoryDao().versions(saved.scopeId, saved.factKey).single().valid)
     }
+    @Test fun tokenOnlyImportPreservesAcceptedMemoryWithHistoricalSnapshot() = runBlocking {
+        val fixture = changedMessageEvidenceFixture()
+        // 用户已保留旧记忆和原话快照；当前正文不同，但本次导入只改用量，不再改证据。
+        db().openHelper.writableDatabase.execSQL(
+            "UPDATE local_messages SET content=?, input_tokens=? WHERE id=?",
+            arrayOf(fixture.incomingMessage.content, 7, fixture.localMessage.id))
+        val before = db().companionMemoryDao().versions(fixture.localMemory.scopeId, fixture.localMemory.factKey).single()
+        val beforeSources = db().companionMemoryDao().sources(before.id)
+        assertTrue(before.valid)
+        assertTrue(before.current)
+        assertEquals(listOf(fixture.localSource.copy(messageSnapshot = fixture.localMessage.content)), beforeSources)
+        val liveMessage = db().messageDao().listBySession(fixture.session.id).single()
+        assertNotEquals(beforeSources.single().fingerprint,
+            com.nekobot.app.data.local.ai.CompanionMemoryPolicy.fingerprint(liveMessage))
+
+        val manager = PortableDataArchiveManager(context)
+        val selected = mapOf(PortableDataCategory.CONVERSATIONS to setOf("table:local_messages"))
+        prepared(fixture.archive).use { archive ->
+            val initial = manager.previewImport(archive, selected, detailLimit = Int.MAX_VALUE)
+            val difference = initial.rows.differences.single()
+            assertEquals("local_messages", difference.table)
+            assertEquals(setOf("input_tokens"), difference.fields.mapTo(linkedSetOf()) { it.column })
+            val choices = PortableImportChoices(fields = mapOf(difference.key to setOf("input_tokens")))
+            val plan = manager.previewImport(archive, selected, choices)
+            assertTrue(plan.issues.toString(), plan.issues.isEmpty())
+            assertEquals(1, manager.commitImport(archive, plan).updatedRows)
+        }
+
+        assertEquals(fixture.incomingMessage, db().messageDao().listBySession(fixture.session.id).single())
+        assertEquals(before, db().companionMemoryDao().versions(before.scopeId, before.factKey).single())
+        assertEquals(beforeSources, db().companionMemoryDao().sources(before.id))
+        prepared(fixture.archive).use { archive ->
+            assertEquals(0, manager.commitImport(archive, manager.previewImport(archive, selected)).importedRows)
+        }
+    }
+
     @Test fun selectingOneSettingPreservesExactLocalFontAndBackgroundUris() = runBlocking {
         val prefs = ServiceContainer.prefs
         val oldFont = prefs.customFontPath; val oldBackground = prefs.customChatBackgroundPath

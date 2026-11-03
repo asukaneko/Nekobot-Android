@@ -82,17 +82,21 @@ internal class FusedMemoryWriter(
             val now = Instant.now().toString()
             val old = valid.target
             val protected = old != null && (old.locked || old.manual)
+            // 手工记忆正文不变时只调整 kind，就地保留日期与用户的核心排除选择；
+            // 要改正文仍走“待确认”，锁定的记忆一概不自动改。
+            val marksOnly = old != null && old.manual && !old.locked && op.op == "update" &&
+                (op.content.isBlank() || FusedMemoryValidation.normalized(op.content) == FusedMemoryValidation.normalized(old.content))
             val confirming = old?.pendingConfirm == true && !protected
-            val pending = protected || (old == null && ("待确认" in op.tags || valid.doubt != null))
-            val target = if (protected) null else old
+            val pending = (protected && !marksOnly) || (old == null && ("待确认" in op.tags || valid.doubt != null))
+            val target = if (protected && !marksOnly) null else old
             val date = FusedMemoryDate.resolve(op, valid.sources)
             if (date.missingTimeEvidence) log("debug", "time_text_not_in_evidence")
             if (date.overridden) log("debug", "date_override program=${date.day} model=${op.modelDate}")
             val content = op.content.ifBlank {
-                if (protected) protectedQuestion(old!!.content, language) else old?.content.orEmpty()
+                if (protected && !marksOnly) protectedQuestion(old!!.content, language) else old?.content.orEmpty()
             }
             val status = when (op.op) { "cancel" -> "cancelled"; "complete" -> "completed"; else -> "active" }
-            val same = !protected && !confirming && op.op == "update" && old != null &&
+            val same = (!protected || marksOnly) && !confirming && op.op == "update" && old != null &&
                 FusedMemoryValidation.normalized(content) == FusedMemoryValidation.normalized(old.content)
             val memory: CompanionMemoryEntity?
             if (same) {
@@ -143,7 +147,7 @@ internal class FusedMemoryWriter(
             }
             dao.insertAppliedOp(CompanionAppliedOpEntity(scope.id, key, memory?.id, now))
             dao.bumpRevision(scope.id, now)
-            if (protected) log("info", "reason=protected_to_uncertain target=${old!!.id} op=${op.op}")
+            if (protected && !marksOnly) log("info", "reason=protected_to_uncertain target=${old!!.id} op=${op.op}")
             log("debug", "stored op=${op.op} target=${targetId.orEmpty()} category=${valid.category} dateSource=${date.source}")
             FusedMemoryWriteResult(memory?.id, uncertain = pending)
         }

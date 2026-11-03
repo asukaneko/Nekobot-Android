@@ -10,7 +10,9 @@ import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.ai.CompanionMemoryPolicy
 import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
+import com.nekobot.app.data.local.db.NekobotDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -374,6 +376,7 @@ suspend fun PortableDataArchiveManager.commitImport(prepared: PreparedPortableIm
             val newScopes = linkedSetOf<String>()
             val changedScopes = linkedSetOf<String>()
             val changedBodies = mutableListOf<Pair<String, String>>()
+            val changedMessages = linkedSetOf<String>()
             onProgress("正在写入资料，可取消并撤销")
             db.withTransaction {
                 val planner = PortableImportPlanner(AndroidPortableImportSql(db.openHelper.writableDatabase), db.dbName)
@@ -383,6 +386,9 @@ suspend fun PortableDataArchiveManager.commitImport(prepared: PreparedPortableIm
                 changed = planner.apply(portableRows(prepared, preview.selected), preview.choices, checkpoint, latestRows.newKeys, latestRows.sourceMemoryStates) { table, row, isNew, fields ->
                     if (table == "local_experience_archives") restoredArchives += row["id"].asString
                     if (isNew && table == "companion_scopes") newScopes += row["id"].asString
+                    if (!isNew && table == "local_messages" && fields.any {
+                            it in setOf("content", "role", "created_at", "timestamp", "deleted", "session_id")
+                        }) changedMessages += row["id"].asString
                     if (table == "companion_memories") {
                         changedScopes += row["scopeId"].asString
                         if (!isNew && "content" in fields) changedBodies += row["scopeId"].asString to row["id"].asString
@@ -394,6 +400,8 @@ suspend fun PortableDataArchiveManager.commitImport(prepared: PreparedPortableIm
                     }
                 }
                 if (newScopes.isNotEmpty()) rebaseRestoredCompanionRows(db, emptySet(), newScopes)
+                // 原话被改写的旧记忆先作废，再统一递增修订号并清掉辅助缓存。
+                invalidateEditedMemorySources(db, changedMessages) { changedScopes += it }
                 (changedScopes - newScopes).forEach { scope ->
                     db.openHelper.writableDatabase.execSQL("UPDATE companion_scopes SET revision=revision+1 WHERE id=?", arrayOf(scope))
                     db.openHelper.writableDatabase.execSQL("DELETE FROM companion_context_materials WHERE scopeId=?", arrayOf(scope))
@@ -494,6 +502,52 @@ private fun PortableDataArchiveManager.portableRows(prepared: PreparedPortableIm
 }
 
 internal fun invalidatePortableExperiences(db: SupportSQLiteDatabase, archiveId: String) = db.execSQL(portableExperienceInvalidationSql, arrayOf(archiveId))
+
+/**
+ * 归档里的原话被改写后，引用它的旧记忆不再有证据。
+ *
+ * 来源指纹与导入后的原话不符时作废（valid=0、current=0，历史仍保留可查）。
+ * 消息触发器保存的旧正文快照仅用于查看历史，不等于用户接受了新的证据。
+ * 手工锁定或手工录入的记忆属于用户自己的内容，不在这里自动作废。
+ */
+private fun invalidateEditedMemorySources(db: NekobotDatabase, messageIds: Collection<String>,
+    onScopeChanged: (String) -> Unit) {
+    if (messageIds.isEmpty()) return
+    val sql = db.openHelper.writableDatabase
+    val stale = linkedSetOf<Pair<String, String>>()
+    messageIds.distinct().chunked(200).forEach { chunk ->
+        val placeholders = chunk.joinToString(",") { "?" }
+        sql.query("""
+            SELECT s.messageId, s.fingerprint, m.role, m.created_at, m.timestamp, m.content, m.deleted,
+                   mem.scopeId, mem.manual, mem.locked, s.memoryId
+              FROM companion_sources s
+              JOIN local_messages m ON m.id = s.messageId
+              JOIN companion_memories mem ON mem.id = s.memoryId
+             WHERE s.messageId IN ($placeholders)
+        """.trimIndent(), chunk.toTypedArray()).use { cursor ->
+            while (cursor.moveToNext()) {
+                if (cursor.getInt(8) != 0 || cursor.getInt(9) != 0) continue
+                val messageId = cursor.getString(0)
+                val current = CompanionMemoryPolicy.fingerprint(messageId, cursor.getString(2),
+                    cursor.getString(3), if (cursor.isNull(4)) null else cursor.getString(4),
+                    cursor.getString(5).orEmpty(), cursor.getInt(6) != 0)
+                if (current != cursor.getString(1)) stale += cursor.getString(7) to cursor.getString(10)
+            }
+        }
+    }
+    if (stale.isEmpty()) return
+    val now = java.time.Instant.now().toString()
+    stale.forEach { (scope, memoryId) ->
+        sql.execSQL("UPDATE companion_memories SET valid=0, current=0, updatedAt=? WHERE id=? AND (valid=1 OR current=1)",
+            arrayOf(now, memoryId))
+        sql.execSQL("DELETE FROM companion_vectors WHERE scopeId=? AND itemId=? AND itemType IN ('memory','fact')",
+            arrayOf(scope, memoryId))
+    }
+    stale.map { it.first }.distinct().forEach { scope ->
+        sql.execSQL("DELETE FROM companion_context_materials WHERE scopeId=?", arrayOf(scope))
+        onScopeChanged(scope)
+    }
+}
 
 private fun portableCredentialFingerprint(db: SupportSQLiteDatabase): String {
     val digest = MessageDigest.getInstance("SHA-256")

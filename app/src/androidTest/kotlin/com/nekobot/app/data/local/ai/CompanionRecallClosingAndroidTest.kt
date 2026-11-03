@@ -352,7 +352,7 @@ class CompanionRecallClosingAndroidTest {
                     record("reply-presentation-request-$i",payload)
                     val system = payload["messages"].asJsonArray.first().asJsonObject["content"].asString
                     // 思考提示词不再放顶部 system，改为请求末尾注入。
-                    assertFalse(system.contains("【思考方式】"))
+                    assertFalse(system.contains("只在内部判断"))
                     assertFalse(system.contains("<think>"))
                     assertFalse(system.contains("先在开头用一对中文圆括号"))
                     val all = payload["messages"].asJsonArray.joinToString("\n") {
@@ -365,8 +365,8 @@ class CompanionRecallClosingAndroidTest {
                         ?.firstOrNull { it.key == "output.inner_monologue" })
                     assertFalse(all.contains("内心独白格式"))
                     assertFalse(all.contains("放在<||>之前"))
-                    // 思考提示词出现在请求末尾（最后一条用户消息 + 最后一条 system）。
-                    assertTrue(all.contains("【思考方式】"))
+                    // 思考提示词出现在请求末尾（最后一条用户消息 + 最后一条 system），不在顶部角色提示里。
+                    assertTrue(all.contains("只在内部判断"))
                     assertFalse(all.contains("（内心：…）"))
                     if(i==0) tool("agent_history_search",mapOf("query" to "红茶"))
                     else answer("<think>$thought</think>$body") + ("reasoning_content" to native)
@@ -506,6 +506,8 @@ class CompanionRecallClosingAndroidTest {
         val requests = CopyOnWriteArrayList<JsonObject>()
         var forceJson = false
         @Volatile var respond: (Int, JsonObject) -> Map<String, Any> = { _, _ -> answer("合成响应") }
+        /** 应答脚本里的断言跑在服务线程上，不记下来只会表现为“流被提前关闭”。 */
+        @Volatile private var responderFailure: Throwable? = null
         private val executor = Executors.newSingleThreadExecutor()
         private val keys = KeyStore.getInstance("PKCS12").apply {
             InstrumentationRegistry.getInstrumentation().context.assets.open("companion-loopback.p12").use { load(it,"fixturepass".toCharArray()) }
@@ -527,7 +529,7 @@ class CompanionRecallClosingAndroidTest {
                     while(offset<length) { val n=input.read(body,offset,length-offset); check(n>0); offset+=n }
                     val payload=JsonParser.parseString(String(body,Charsets.UTF_8)).asJsonObject
                     val index=requests.size; requests += payload
-                    val message=respond(index,payload)
+                    val message=try { respond(index,payload) } catch(e: Throwable) { responderFailure=e; throw e }
                     val streaming=!forceJson && payload["stream"]?.asBoolean == true
                     val calls=message["tool_calls"] as? List<*>
                     val wire=if(streaming) buildString {
@@ -548,6 +550,6 @@ class CompanionRecallClosingAndroidTest {
                 }
             } catch(e: Exception) { if(!server.isClosed) throw e }
         }
-        override fun close() { server.close(); executor.shutdownNow() }
+        override fun close() { server.close(); executor.shutdownNow(); responderFailure?.let { throw it } }
     }
 }
