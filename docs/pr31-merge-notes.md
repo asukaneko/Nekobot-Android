@@ -176,3 +176,60 @@ git diff pr31-upstream jxx/contrib/single-session-followups
 
 - `ui/screens/chat/ImportedHistoryViews.kt`（导入收藏图片/说明回看）在 PR 原分支中也只有自身测试引用，未接入任何页面；需要产品层面决定入口位置后再接。
 - 合并树的 androidTest 仍未整体编译验证（项目 CI 只跑 `assembleDebug`，不编译 androidTest）。
+
+---
+
+## 9. CI 设备测试修复进度（接手中）
+
+分支 `pr31-merged` 上按用例逐类修，每轮都在本地 AVD（API 35 / 320x640 / en-US）实跑确认后再推送。
+
+### 9.1 已修
+
+| 提交 | 内容 | 结果 |
+|---|---|---|
+| `fe44da66` | `WorkspaceGitDiff` 文件哈希缓存改纳秒精度 | verify 的 1 项单测 |
+| `ec6c58d0` | 转换用例改 v2 JSONL 契约（S 编号证据 + `done`），假服务端补 done 行 | 7 项 |
+| `17b49fb7` | 单会话记忆用例去 v1 `changes`，改按 `no`/文本判断 target/reference | 6 → 4 |
+| `bb51bbf9` | 归档回环只核对身份字段；导入来源允许带原话快照 | 1 |
+| `7256fd12` | 出处弹窗定位按钮资源改为 `memory_v2_source_locate` | 3 |
+| `86000047` | 出处弹窗按消息正文核对节点（v2 不展示 memory.quote） | 1 |
+
+总数 28 → 14。
+
+### 9.2 剩余 14 项与结论
+
+**真实 UI 缺陷（3 项，需改布局）**
+
+- `ImportedMemorySourceNavigationTest#importedVerifiedCoreMemory…`：320dp + 1.6 倍字号下，列表行的「查看原话」入口报 `complete touch target must fit inside the visible viewport`。已验证**不是**弹窗内边距问题（给 `LazyColumn` 加 48dp 底部留白无效，已回滚）。
+- `ImportedMemorySourceNavigationTest#smallViewport…`、`MemoryReviewClarityTest#largeTextInDarkTheme…`：大字号下等待的节点不出现。
+
+下一步：先打印被测节点 `fetchSemanticsNode().boundsInRoot` 与根视图对比，确认是被裁还是没进组合；再决定是让入口独立成行/提高整行点击区，还是拆掉固定高度。
+
+**来源证据语义（3 项，待产品确认）**
+
+- 同一归档重复导入 `different` 变 1（来源快照参与比较，破坏幂等）
+- 换原话但没给新证据时记忆仍 `valid/current`
+- 没写来源的「已验证导入」记忆仍出现在 `validatedMemories`
+
+倾向按「来源与证据必须一致」改产品并补单测。
+
+**单会话记忆（4 项）**
+
+- 指纹不匹配的高分记忆仍进回查区（疑似回归）
+- 一次 `update` 后出现两条 `current` 记忆（疑似缺陷）
+- 小预算构建上下文触发总结，无模型可用即失败（行为变化）
+- target/reference 回执断言（测试写法）
+
+**召回/设置页（4 项）**
+
+- `CompanionRecallClosingAndroidTest` 3 项：mock 服务提前关流、英文思考 fixture 与中文期望不一致
+- `CompanionSettingsScreenTest`：整页设置返回位置断言
+
+### 9.3 复现命令
+
+```powershell
+.\gradlew.bat --no-daemon --console=plain '-Pkotlin.incremental=false' :app:connectedDebugAndroidTest `
+  "-Pandroid.testInstrumentationRunnerArguments.class=<完整类名>"
+```
+
+需要先启动 AVD（`emulator -avd test -no-window -no-audio -no-snapshot -gpu swiftshader_indirect`）。
