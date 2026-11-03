@@ -279,7 +279,10 @@ PR 已合入 main（合并提交 `866abb2c`）。合并后按失败用例逐条�
   英文思考 fixture 与中文期望不一致，期望值仍是旧的合成正文。
 
 另：`CompanionCreateScreenTest#freshRoleKeepsSettingsCollapsedAndCreatesWithEditableGreeting`
-在本地偶尔失败（会话名输入框没拿到输入），CI 上是通过的，属负载相关的抖动。
+在本地偶尔失败（会话名输入框没拿到输入），CI 上是通过的，属负载相关的抖动；
+`CompanionPromptSettingsUiTest#realSettingsEntrySavesToCurrentRoleAndReusesOriginalPersonaEditor`
+在 CI 上偶尔报 `Cannot run onActivity since Activity has been destroyed already`，同样是抖动，
+下一轮相同代码即为绿灯。
 
 ### 10.3 复现命令
 
