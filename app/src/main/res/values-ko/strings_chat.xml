@@ -46,6 +46,12 @@
     <string name="temporary_session_end_title">임시 세션 종료</string>
     <string name="temporary_session_end_confirm">종료하면 이 대화가 삭제되고 기록이 남지 않아요.</string>
     <string name="temporary_session_local_only">임시 세션은 로컬 모드에서만 지원돼요</string>
+    <string name="temporary_start_title">임시 대화 시작하기</string>
+    <string name="temporary_start_subtitle">기록은 저장되지 않고 종료 시 삭제돼요</string>
+    <string name="temporary_start_point_memory">장기 기억을 읽거나 쓰지 않아요</string>
+    <string name="temporary_start_point_history">메시지와 사용량이 남지 않아요</string>
+    <string name="temporary_start_point_clear">언제든 종료하면 바로 삭제돼요</string>
+    <string name="temporary_start_hint">아래에 입력하면 시작돼요</string>
     <string name="sessions_name_optional">대화 이름(선택)</string>
     <string name="sessions_agent_no_inherit">에이전트 모드는 캐릭터 카드 설정을 상속하지 않아요. 순수 도구 대화에 적합해요</string>
     <string name="sessions_strategy">발화 전략</string>

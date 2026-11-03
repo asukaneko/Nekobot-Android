@@ -46,6 +46,12 @@
     <string name="temporary_session_end_title">結束臨時會話</string>
     <string name="temporary_session_end_confirm">結束後將清除本次對話內容，且不保留任何記錄。</string>
     <string name="temporary_session_local_only">臨時會話僅支援本機模式</string>
+    <string name="temporary_start_title">開始一段臨時對話</string>
+    <string name="temporary_start_subtitle">不儲存記錄，結束後自動清除</string>
+    <string name="temporary_start_point_memory">不讀取、不寫入長期記憶</string>
+    <string name="temporary_start_point_history">訊息與用量不留記錄</string>
+    <string name="temporary_start_point_clear">隨時結束，立即清除</string>
+    <string name="temporary_start_hint">在下方輸入即可開始</string>
     <string name="sessions_name_optional">會話名稱（可選）</string>
     <string name="sessions_agent_no_inherit">Agent 模式不繼承角色卡配置，適合純工具對話</string>
     <string name="sessions_strategy">發言策略</string>

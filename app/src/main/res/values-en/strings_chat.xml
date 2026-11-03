@@ -46,6 +46,12 @@
     <string name="temporary_session_end_title">End temporary chat</string>
     <string name="temporary_session_end_confirm">This chat will be cleared and no record will be kept.</string>
     <string name="temporary_session_local_only">Temporary chat is available in local mode only</string>
+    <string name="temporary_start_title">Start a temporary chat</string>
+    <string name="temporary_start_subtitle">Nothing is saved — cleared when you end it</string>
+    <string name="temporary_start_point_memory">No long-term memory read or written</string>
+    <string name="temporary_start_point_history">Messages and usage leave no record</string>
+    <string name="temporary_start_point_clear">End anytime to clear it all</string>
+    <string name="temporary_start_hint">Type below to begin</string>
     <string name="sessions_name_optional">Chat name (optional)</string>
     <string name="sessions_agent_no_inherit">Agent mode does not inherit character card config, suitable for pure tool conversations</string>
     <string name="sessions_strategy">Speaking strategy</string>

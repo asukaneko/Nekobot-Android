@@ -409,8 +409,14 @@ fun ChatScreen(
         session?.sessionMode.equals("agent", ignoreCase = true) &&
         !inheritsCharacter &&
         !companionChat &&
-        // 临时会话不展示 Agent 推荐开始页，直接进入空白输入状态。
+        // 临时会话有独立开始页（不生成起步推荐），不走 Agent 欢迎页。
         !temporarySession
+    // 临时会话开始页：空会话时展示行为约定，让用户直接在输入框开口。
+    val showTemporaryStart = sessionStateReady &&
+        initialDataReady &&
+        visibleMessages.isEmpty() &&
+        (session?.messageCount ?: 0) == 0 &&
+        temporarySession
     LaunchedEffect(showAgentWelcome) {
         if (showAgentWelcome) viewModel.ensureAgentWelcomeSuggestions()
     }
@@ -1360,6 +1366,8 @@ fun ChatScreen(
                         },
                         onRefresh = { viewModel.refreshAgentWelcomeSuggestions() }
                     )
+                } else if (showTemporaryStart) {
+                    TemporarySessionStartPage()
                 } else {
                     // 空会话引导：角色会话显示立绘，其他模式显示默认图标
                     Column(

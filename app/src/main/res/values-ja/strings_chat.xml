@@ -46,6 +46,12 @@
     <string name="temporary_session_end_title">一時セッションを終了</string>
     <string name="temporary_session_end_confirm">終了するとこの会話は消去され、記録は残りません。</string>
     <string name="temporary_session_local_only">一時セッションはローカルモードのみ対応</string>
+    <string name="temporary_start_title">一時セッションを始める</string>
+    <string name="temporary_start_subtitle">記録は保存されず、終了時に消去されます</string>
+    <string name="temporary_start_point_memory">長期記憶の読み書きなし</string>
+    <string name="temporary_start_point_history">メッセージと使用量は残りません</string>
+    <string name="temporary_start_point_clear">いつでも終了して消去できます</string>
+    <string name="temporary_start_hint">下の入力欄から始められます</string>
     <string name="sessions_name_optional">チャット名 (任意)</string>
     <string name="sessions_agent_no_inherit">エージェントモードはキャラクターカード設定を引き継ぎません、純粋なツール会話向けです</string>
     <string name="sessions_strategy">発言戦略</string>
