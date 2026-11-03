@@ -638,10 +638,8 @@ internal class CompanionMemoryStore(private val db: NekobotDatabase,
         candidates: List<CompanionMemoryEntity>? = null): List<CompanionMemoryEntity> {
         if (!active(scope)) return emptyList()
         val memories = (candidates ?: dao.memories(scope.id)).filter { CompanionImportPolicy.usable(it) }
-        if (db.sessionDao().getById(scope.sessionId)?.usesFusedCompanionMemory() == true) {
-            return memories.filter { it.valid && it.current && !it.voided }
-        }
-        if (memories.isEmpty()) return emptyList()
+        val fused = db.sessionDao().getById(scope.sessionId)?.usesFusedCompanionMemory() == true
+        if (fused && memories.isEmpty()) return emptyList()
         val present = HashSet<String>()
         val invalid = HashSet<String>()
         val fingerprints = HashMap<String, String>()
@@ -661,7 +659,17 @@ internal class CompanionMemoryStore(private val db: NekobotDatabase,
         // Source edits invalidate scope.revision through the database triggers. A concurrent
         // edit must not expose a mixture of the pre-edit facts and post-edit source scan.
         if (!active(scope)) return emptyList()
-        return memories.filter { it.manual || (it.provenance == CompanionImportPolicy.IMPORTED_UNVERIFIED && it.id !in present) || (it.id in present && it.id !in invalid) }
+        // 签名一致的来源是唯一凭据：声明“导入即已验证”的记忆必须仍有来源，
+        // 带来源的记忆只要有一条对不上就不再可用。旧记忆模式额外要求非手工记忆必须有来源。
+        val evidenceHolds: (CompanionMemoryEntity) -> Boolean = if (fused) {
+            { memory -> memory.manual || (memory.id !in invalid &&
+                (memory.id in present || memory.provenance != CompanionImportPolicy.IMPORTED_VERIFIED)) }
+        } else {
+            { memory -> memory.manual || (memory.provenance == CompanionImportPolicy.IMPORTED_UNVERIFIED && memory.id !in present) ||
+                (memory.id in present && memory.id !in invalid) }
+        }
+        if (fused) return memories.filter { it.valid && it.current && !it.voided && evidenceHolds(it) }
+        return memories.filter(evidenceHolds)
     }
 
     suspend fun lock(session: LocalSessionEntity, key: String, locked: Boolean) = db.withTransaction {

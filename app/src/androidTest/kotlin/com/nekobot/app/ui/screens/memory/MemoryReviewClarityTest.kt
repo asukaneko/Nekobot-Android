@@ -62,6 +62,14 @@ class MemoryReviewClarityTest {
                     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) { FusedCompanionMemoryScreen(id, {}, { located = it }) }
                 }
             }
+            // 大字号下卡片初始在视口外不会被组合：先等列表就绪，再按 key 滚到这张卡片。
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasContentDescription(localized.getString(R.string.memory_add_title)) and isEnabled())
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.waitUntil(10_000) {
+                runCatching { compose.onNodeWithTag("fused-memory-list").performScrollToKey("$id-memory") }.isSuccess
+            }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("部分内容待核实").fetchSemanticsNodes().isNotEmpty() }
             val list = compose.onNodeWithTag("fused-memory-list")
             list.performScrollToNode(hasText("部分内容待核实"))
@@ -73,15 +81,16 @@ class MemoryReviewClarityTest {
             val sourceButton = hasText("查看原话") and hasAnyAncestor(hasTestTag("companion-memory-$id-memory"))
             list.performScrollToNode(sourceButton)
             compose.waitUntil(5000) { compose.onAllNodes(sourceButton and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNode(sourceButton).assertIsDisplayed()
+            compose.onNode(sourceButton).performScrollTo().assertIsDisplayed()
             capture("$suffix-card")
             compose.onNode(sourceButton).performClick()
+            // 大字号下弹窗列表会被合并进父节点，只在未合并树里能定位到可滚动的列表。
             val dialogList = hasScrollToIndexAction() and hasAnyAncestor(isDialog())
-            compose.onNode(dialogList).performScrollToNode(hasText("已关联原话 · 部分内容待核实"))
+            compose.onNode(dialogList, useUnmergedTree = true).performScrollToNode(hasText("已关联原话 · 部分内容待核实"))
             compose.onNodeWithText("已关联原话 · 部分内容待核实").assertIsDisplayed()
             capture("$suffix-sources")
             val locate = localized.getString(R.string.memory_v2_source_locate)
-            compose.onNode(dialogList).performScrollToNode(hasText(locate))
+            compose.onNode(dialogList, useUnmergedTree = true).performScrollToNode(hasText(locate))
             compose.onNodeWithText(locate).performClick()
             assertEquals("$id-source", located)
             list.performScrollToIndex(0)

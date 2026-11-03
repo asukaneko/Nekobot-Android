@@ -167,20 +167,21 @@ class CompanionSettingsScreenTest {
             compose.onNodeWithText("查看归档").assertDoesNotExist()
             compose.onNode(isToggleable() and hasText("显示思考")).assertIsOff()
             capture("full-page")
-            compose.onNodeWithText("显示思考").performClick()
+            // 整页设置可滚动：先滚到目标行再点击，否则点击会落在可视区外。
+            compose.onNodeWithText("显示思考").performScrollTo().assertIsDisplayed().performClick()
             assertTrue(ServiceContainer.localRepository.companionShowReasoning(ids.first))
 
-            compose.onNodeWithText("角色与记忆").performClick()
+            compose.onNodeWithText("角色与记忆").performScrollTo().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("单会话角色记忆").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("返回").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("companion-settings-screen").fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(isToggleable() and hasText("显示思考")).assertIsOn()
 
-            compose.onNodeWithText("查找记录").performClick()
+            compose.onNodeWithText("查找记录").performScrollTo().performClick()
             compose.onNodeWithText("查找聊天记录").assertIsDisplayed()
             compose.onNode(hasContentDescription("返回") and hasAnyAncestor(hasTestTag("companion-reading-dialog"))).performClick()
             compose.onNodeWithTag("companion-settings-screen").assertIsDisplayed()
-            compose.onNodeWithText("收藏消息").performClick()
+            compose.onNodeWithText("收藏消息").performScrollTo().performClick()
             compose.onNode(hasContentDescription("返回") and hasAnyAncestor(hasTestTag("companion-reading-dialog"))).performClick()
             compose.onNodeWithTag("companion-settings-screen").assertIsDisplayed()
             compose.onNodeWithText("聊天用量").performScrollTo().performClick()

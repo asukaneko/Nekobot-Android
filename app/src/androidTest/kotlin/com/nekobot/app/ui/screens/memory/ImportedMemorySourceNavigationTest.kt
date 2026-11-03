@@ -227,7 +227,9 @@ class ImportedMemorySourceNavigationTest {
         compose.onNodeWithTag("fused-memory-list").performScrollToNode(coreEntry)
         compose.onNode(coreEntry).performClick()
         val viewSource = hasText(text(R.string.single_role_view_original_messages)) and hasClickAction()
-        compose.onNodeWithTag("fused-memory-list").performScrollToNode(viewSource)
+        // 先滚到这张卡片（它是列表最后一项，滚动会停在底部内边距处），再对齐按钮：
+        // 否则按钮会贴在视口下沿，Material 的 48dp 触摸区会被视口边缘裁掉。
+        compose.onNodeWithTag("fused-memory-list").performScrollToKey(fixture.memory.id)
         val sourceButton = compose.onNode(viewSource).performScrollTo().assertIsDisplayed()
         assertReachableTouchTarget(sourceButton, compose.onNodeWithTag(ROOT_TAG))
         compose.onNodeWithText(fixture.memory.content).assertExists()
@@ -281,7 +283,7 @@ class ImportedMemorySourceNavigationTest {
         assertTrue("Touch width ${touch.width}px must be at least ${minimum}px", touch.width + tolerance >= minimum)
         assertTrue("Touch height ${touch.height}px must be at least ${minimum}px", touch.height + tolerance >= minimum)
         val visible = viewport.fetchSemanticsNode().boundsInRoot
-        assertTrue("The complete touch target must fit inside the visible viewport",
+        assertTrue("The complete touch target must fit inside the visible viewport: touch=$touch visible=$visible",
             touch.left >= visible.left - tolerance && touch.right <= visible.right + tolerance &&
                 touch.top >= visible.top - tolerance && touch.bottom <= visible.bottom + tolerance)
     }

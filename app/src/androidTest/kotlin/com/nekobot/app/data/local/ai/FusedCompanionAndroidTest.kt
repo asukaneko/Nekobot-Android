@@ -102,8 +102,9 @@ class FusedCompanionAndroidTest {
         val rows = mutableListOf<LocalMessageEntity>()
         var n=0
         while (FusedCompanionPolicy.tokens(rows) < 12_000) {
-            rows += say(db,"u$n",if(n==0) "我怕辣。"+"旧场景细节".repeat(200) else "近期参考资料".repeat(200))
-            rows += say(db,"a$n","一起聊到这里。","assistant"); n++
+            // 每条正文都不同：用例按正文判断归属，重复文本会被误当成同一行。
+            rows += say(db,"u$n",if(n==0) "我怕辣。"+"旧场景细节".repeat(200) else "近期参考资料$n".repeat(200))
+            rows += say(db,"a$n","一起聊到这里$n。","assistant"); n++
         }
         return rows
     }
@@ -175,7 +176,8 @@ class FusedCompanionAndroidTest {
                 val m=JsonParser.parseString(material).asJsonObject
                 val target=m["target"].asJsonArray.map { it.asJsonObject["text"].asString }.toSet()
                 val reference=m["reference"].asJsonArray.map { it.asJsonObject["text"].asString }.toSet()
-                assertTrue(target.intersect(reference).isEmpty()); targetTexts+=target; referenceTexts+=reference
+                val overlap = target.intersect(reference)
+                assertTrue("target 与 reference 不能重叠：$overlap", overlap.isEmpty()); targetTexts+=target; referenceTexts+=reference
                 if (targetHas(material, rows.first())) response(material, rows.first()) else "{\"done\":true}"
             },24_000)
             val scope=store.ensureScope(s)

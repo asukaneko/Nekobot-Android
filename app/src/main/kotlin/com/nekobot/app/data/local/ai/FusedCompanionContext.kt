@@ -9,7 +9,8 @@ internal class FusedCompanionContext(private val db: NekobotDatabase) {
     suspend fun build(session: LocalSessionEntity, messageId: String, history: List<LocalMessageEntity>,
         system: String, tools: List<Map<String, Any>>, currentMessage: Map<String, Any>, dynamic: String,
         maxContext: Int, outputReserve: Int, now: ZonedDateTime = ZonedDateTime.now(), stateKey: String = "relationship-v2:off",
-        thinkingPrompt: String? = null, summarize: (suspend (Int) -> Boolean)? = null, refs: FusedMemoryReferences = FusedMemoryReferences()): List<Map<String, Any>> {
+        thinkingPrompt: String? = null, summarize: (suspend (Int) -> Boolean)? = null, refs: FusedMemoryReferences = FusedMemoryReferences(),
+        dropUnsummarized: Boolean = false): List<Map<String, Any>> {
         val store = CompanionMemoryStore(db)
         val dao = db.companionMemoryDao()
         val scope = store.ensureScope(session)
@@ -19,14 +20,19 @@ internal class FusedCompanionContext(private val db: NekobotDatabase) {
         val receipts = FusedSummaryProgress.summarizedIds(scope, eligible, dao.receipts(scope.id))
         val plan = FusedCompanionPolicy.windowPlan(eligible, receipts, consolidation.recent, consolidation.trigger, messageId)
         suspend fun rebuild(): List<Map<String, Any>> = build(session, messageId, history, system, tools, currentMessage, dynamic,
-            maxContext, outputReserve, now, stateKey, thinkingPrompt, summarize, refs)
+            maxContext, outputReserve, now, stateKey, thinkingPrompt, summarize, refs, dropUnsummarized)
         suspend fun summarizeAndRebuild(limit: Int): List<Map<String, Any>> {
+            if (summarize == null) {
+                // 没有可用的整理模型时，本轮只发已整理过的部分：旧段留给后台，不能因此让回复失败。
+                return build(session, messageId, history, system, tools, currentMessage, dynamic,
+                    maxContext, outputReserve, now, stateKey, thinkingPrompt, summarize, refs, dropUnsummarized = true)
+            }
             FusedCompanionSummary.advance(receipts,
                 summarize = { summarize?.invoke(limit) ?: false },
                 reload = { FusedSummaryProgress.summarizedIds(scope, eligible, dao.receipts(scope.id)) })
             return rebuild()
         }
-        if (plan.needsSummary) return summarizeAndRebuild(consolidation.recent)
+        if (plan.needsSummary && !dropUnsummarized) return summarizeAndRebuild(consolidation.recent)
         // 到期后连同历史辅助资料一起重建，避免旧缓存继续带入已经过期的记忆。
         val expired = dao.memories(scope.id).filterNot { CompanionImportPolicy.usable(it, now.toInstant()) }.map { it.id }.sorted()
         // State changes invalidate auxiliary caches, including turning the feature off.
@@ -64,7 +70,9 @@ internal class FusedCompanionContext(private val db: NekobotDatabase) {
         fun size(rows: List<LocalMessageEntity>) = estimateLocalMessagesTokens(
             assembleMessages(opening, rows, cached, material(rows), turnReminder, currentMessage, raw, uncertain = uncertainty(rows)).map(CompanionRequestUsage::clean)) -
             estimateLocalTextTokens(system)
-        val selected = plan.window.filterNot { it.id == messageId }
+        // 没有整理模型时把待整理的旧批次整段留给后台，本轮只带整理后的近期内容。
+        val window = if (dropUnsummarized) plan.window.drop(plan.batch.size) else plan.window
+        val selected = window.filterNot { it.id == messageId }
         if (selected.size < history.size || FusedCompanionPolicy.tokens(plan.window) >= consolidation.recent) {
             examples.windowFull(session.id, history.lastOrNull { it.role == "assistant" }?.id ?: messageId)
             opening = system
@@ -72,7 +80,7 @@ internal class FusedCompanionContext(private val db: NekobotDatabase) {
         // The 8000-token recent-text budget is separate from total prompt capacity.
         // More history may leave only after a successful summary; failures never fall back to truncation.
         if (size(selected) > available) {
-            if (selected.isEmpty()) {
+            if (selected.isEmpty() || dropUnsummarized) {
                 throw FusedSummaryFailure(FusedSummaryFailure.Reason.CONTEXT_LIMIT)
             }
             val target = (plan.unsummarizedTokens - (size(selected) - available) - 32)
