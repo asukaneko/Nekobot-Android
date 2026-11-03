@@ -2,6 +2,70 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.8.9 - 2026-11-03
+
+### 新增
+
+- 单会话角色全面升级：接入角色记忆第二版，支持编号证据、逐条入库、待确认与锁定保护、按当轮日期呈现记忆与年度纪念日。
+- 新增单会话角色头像裁剪保存，并统一聊天列表显示。
+- 新增「角色与提示词」统一入口，说话方式与思考提示按角色独立保存，支持取消、恢复默认与失败重试。
+- 新增一次性对话示例：为新建单会话角色提供开场示例，停用提示只显示一次并支持不再提示。
+- 新增 WorkBuddy（腾讯 CodeBuddy）OAuth 登录：支持国内版与国际版账号、浏览器授权轮询、token 刷新与在线模型目录。
+- Linux 沙盒新增 /app 挂载：AI 可在沙盒内直接读写应用私有目录，MCP 与交互终端同步支持。
+- 平板侧边导航栏改为可展开收起的左侧抽屉导航。
+- 聊天输入新增 Ctrl+Enter（Command+Enter）硬件键盘发送快捷键。
+- Agent 工作区 git 仓库监控重构：实时轮询扫描仓库变更并刷新进度卡片，支持自动发现嵌套仓库。
+- 数据便携导入重构为三步流程：支持内容分选、冲突确认、差异保护与原子恢复，迁入会话用户资料转为独立用户画像。
+- 更多页整理为五分类并归位应用设置，数据导入导出分栏呈现。
+
+### 修复
+
+- 修复 Anthropic 协议只发送第一条系统提示、其余段落被静默丢弃的问题。
+- 修复代码块与表格在消息气泡中被截断、被拆段的问题，含代码块/表格的消息使用更宽的气泡。
+- 修复单会话角色气泡在深色模式下整块白底黑字的问题，改为跟随主题表面色。
+- 修复归档缺少原话快照时被误判为差异、重复导入需再次确认的问题。
+- 修复缺整理模型时记忆整理打断回复的问题，本轮改用已整理内容组装。
+- 修复工作区文件哈希缓存毫秒精度漏判导致改动被误判干净的问题。
+- 修复旧库升级后单会话记忆历史与出处丢失的问题。
+- 修复切档时后台通知唤醒在仓库构造期间回调导致的崩溃。
+- 修复对话示例停用提示重复显示的问题。
+- 修复分页统计未覆盖完整对话并解除示例邀请百条限制。
+
+### 优化
+
+- 优化默认思考提示词，回复更自然、内容更多，回复气泡数提升到 2~3 个。
+- 优化会话列表为轻量查询与自动分页，缓存消息展示计算并后台解析流式文本，启动异步清理遗留临时会话。
+- 移除「显示内心独白」开关：独白固定内联显示在正文之后，不再教模型写独白。
+- 补齐导入、来源、更多页与记忆评审等多处英/日/韩/繁中翻译。
+
+### English
+
+- Companion-mode characters get a major upgrade: memory system v2 with numbered evidence, per-item storage, pending confirmation and lock protection, date-aware memory presentation and annual anniversaries.
+- Added avatar cropping for companion characters with unified display in the chat list.
+- Added a unified "Character & Prompts" entry; speech style and thinking prompts are saved per character with cancel, reset-to-default, and retry on failure.
+- Added one-time dialogue examples for new companion characters; the disabled-example notice shows once and can be permanently dismissed.
+- Added WorkBuddy (Tencent CodeBuddy) OAuth login with CN/International accounts, browser-authorization polling, token refresh, and an online model catalog.
+- The Linux sandbox now mounts the app private directory at /app so the AI can read and write it directly; MCP and interactive terminals support it too.
+- The tablet side navigation is replaced by an expandable left drawer.
+- Added Ctrl+Enter (Command+Enter) hardware keyboard send shortcut in chat.
+- Reworked the Agent workspace git watcher: polling scans refresh the progress card in real time and nested repos are discovered automatically.
+- Portable data import is rebuilt as a three-step flow with content selection, conflict confirmation, diff protection, and atomic restore; imported user profiles become standalone user personas.
+- The More page is reorganized into five categories with app settings moved in place, and data import/export is presented in split panes.
+- Fixed Anthropic requests dropping all but the first system prompt segment.
+- Fixed code blocks and tables being clipped or split across segments inside message bubbles; such messages use wider bubbles.
+- Fixed companion AI bubbles rendering as white-on-dark in dark mode; they now follow the theme surface color.
+- Fixed archives without original-message snapshots being flagged as diffs, which forced re-confirmation on repeated imports.
+- Fixed memory consolidation aborting replies when no consolidation model is available; already consolidated content is used instead.
+- Fixed workspace file-hash caches losing changes within the same millisecond.
+- Fixed companion memory history and source attribution being lost on legacy database upgrades.
+- Fixed a crash when a profile-switch background notification callback fired during repository construction.
+- Fixed the disabled-example notice appearing repeatedly.
+- Fixed pagination statistics covering the full conversation and removed the 100-item example invitation limit.
+- Reworked the default thinking prompt for more natural, longer replies of 2~3 bubbles.
+- Sessions now use lightweight queries with automatic paging, message rendering is cached with background streaming parse, and leftover temporary sessions are cleaned asynchronously at startup.
+- Removed the "show inner monologue" toggle: monologue is always shown inline after the message body and the model is no longer taught to write it.
+- Completed English/Japanese/Korean/Traditional Chinese translations for import, sources, the More page, and memory review.
+
 ## v0.8.8 - 2026-10-30
 
 ### 新增

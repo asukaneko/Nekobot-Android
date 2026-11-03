@@ -13,24 +13,24 @@ android {
         applicationId = "com.nekobot.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 71
-        versionName = "0.8.8"
+        versionCode = 72
+        versionName = "0.8.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            // 内置 Linux 沙盒当前使用 arm64 PRoot。
+            // 内置 Linux 沙盒当前使用 arm64 PRoot�?
             abiFilters += providers.gradleProperty("nekobot.testAbi").getOrElse("arm64-v8a")
         }
         vectorDrawables { useSupportLibrary = true }
     }
 
-    // Release 固定使用旧 Windows 构建证书，保证可覆盖安装已发布版本。
-    // 密钥文件仅保存在本地 .signing/ 目录，不纳入 Git。
+    // Release 固定使用�?Windows 构建证书，保证可覆盖安装已发布版本�?
+    // 密钥文件仅保存在本地 .signing/ 目录，不纳入 Git�?
     //
-    // 口令优先从环境变量 / local.properties 读取（CI 场景），缺省回退到历史值以保持
-    // 本地构建与已发布 APK 的签名一致。要更换发布密钥属于产品决策：一旦换密钥，
-    // 老用户无法覆盖安装，必须先确认再改。
+    // 口令优先从环境变�?/ local.properties 读取（CI 场景），缺省回退到历史值以保持
+    // 本地构建与已发布 APK 的签名一致。要更换发布密钥属于产品决策：一旦换密钥�?
+    // 老用户无法覆盖安装，必须先确认再改�?
     val legacyStoreFile = rootProject.file(".signing/legacy-debug.keystore")
-    // 直接按行解析 local.properties，避免在 Kotlin DSL 中引入 java.util.Properties。
+    // 直接按行解析 local.properties，避免在 Kotlin DSL 中引�?java.util.Properties�?
     val localProps: Map<String, String> = rootProject.file("local.properties")
         .takeIf { it.isFile }
         ?.readLines()
@@ -81,12 +81,12 @@ android {
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     androidResources {
-        // tom_roush pdfbox 的 afm 资源在 Windows 上压缩时会导致路径异常，跳过压缩
+        // tom_roush pdfbox �?afm 资源�?Windows 上压缩时会导致路径异常，跳过压缩
         noCompress += listOf("afm", "ttf", "otf", "pfb")
     }
     packaging {
         jniLibs {
-            // PRoot 需要以真实可执行文件存在于 nativeLibraryDir。
+            // PRoot 需要以真实可执行文件存在于 nativeLibraryDir�?
             useLegacyPackaging = true
         }
         resources {
@@ -98,7 +98,7 @@ android {
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
     arg("room.incremental", "true")
-    // 保持现有的 Java 代码生成方式，适配新版 KSP。
+    // 保持现有�?Java 代码生成方式，适配新版 KSP�?
     arg("room.generateKotlin", "false")
 }
 
@@ -129,7 +129,7 @@ dependencies {
     implementation(libs.coil.gif)
     implementation(libs.coil.svg)
     implementation(libs.socket.io.client) {
-        // 排除冲突的 org.json（Android 系统自带）
+        // 排除冲突�?org.json（Android 系统自带�?
         exclude(group = "org.json", module = "json")
     }
     implementation(libs.androidx.room.runtime)
