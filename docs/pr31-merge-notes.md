@@ -233,3 +233,55 @@ git diff pr31-upstream jxx/contrib/single-session-followups
 ```
 
 需要先启动 AVD（`emulator -avd test -no-window -no-audio -no-snapshot -gpu swiftshader_indirect`）。
+
+---
+
+## 10. 合并之后的收尾（在 main 上）
+
+PR 已合入 main（合并提交 `866abb2c`）。合并后按失败用例逐条修，每项都在本地 AVD
+（API 35 / 320x640）实跑确认后再推。合并提交上的 CI 结果是 **13 项失败**。
+
+### 10.1 已修
+
+| 提交 | 内容 | 结果 |
+|---|---|---|
+| `2ca7a328` | `validatedMemories` 在单会话模式下同样核对来源指纹：「导入即已验证」必须仍有来源，任何带来源的记忆只要有一条对不上就不再参与回想 | 2 项 |
+| `2ca7a328` | 没有可用的整理模型时，待整理的旧批次留给后台，本轮只用已整理内容组装，构造请求不再直接抛总结失败 | 1 项 |
+| `2ca7a328` | 设备测试改法：列表先滚到卡片再断言、弹窗列表在未合并树里定位、整页设置先滚到目标行再点击、合成语料每条正文唯一、断言带上实际边界数值 | 4 项 |
+| `8977beb6` | 归档里没有原话快照时不计入差异，同一份归档重复导入保持幂等 | 1 项 |
+
+同时删除 `RealRepoGitDiffSmokeTest`：它写死了本机绝对路径（违反隐私约束），且路径不存在时
+直接跳过，CI 上永远不生效。
+
+顺带记录一条与本 PR 无关的观察：该探测测试删除前在本地是失败的，
+说明 `WorkspaceGitDiff.summarize` 对本仓库当前形态（混合 loose + packfile）取不到摘要。
+
+### 10.2 仍在失败（5 项）
+
+**导入时原话被改写的失效联动**
+- `PortableSafeImportAndroidTest#replacingOnlyTheMessageWithoutNewProofStillInvalidatesTheOldMemory`
+  只导入 `local_messages` 时，引用这条原话的旧记忆仍保持 valid/current。用例期望
+  「换掉原话但没有新证据 → 旧记忆不再可用」。需要确认导入路径是否应复用
+  `CompanionSourceMutation` 的作废逻辑（含 `source_edited` 原因与修订号自增）。
+
+**手工记忆被更新后出现两条 current**
+- `FusedCompanionAndroidTest#backgroundCoreChoiceKeepsManualExclusionAndExistingDate`
+  模型对一条手工记忆发 `update` 时，写入器把它当受保护目标，另建一条待确认记录，
+  同一键下于是有两条 current。用例期望就地更新、保留 `eventDate` 与 `coreExcluded`。
+
+**召回收尾（提示词与 mock 流）**
+- `CompanionRecallClosingAndroidTest#fullDiagnosticExportsActualRequestsAndMissingThoughtWithoutTruncatingPrompts`
+  断言的 `prompt_stack` 里应有 `<think>`；当前主源码只在 `CharacterThinkingParser` 里出现该标签，
+  提示词注入已改为可配置的思考提示，用例断言需要跟着新机制改。
+- `CompanionRecallClosingAndroidTest#chineseBodyThoughtAndTwoMonologuesStaySeparateDespiteEnglishNativeReasoning`
+  mock 服务提前关流（`unexpected end of stream`），需要补齐预设响应。
+- `CompanionRecallClosingAndroidTest#pseudoThoughtUsesTheSameChannelsForJsonAndToolFreeStreaming`
+  英文思考 fixture 与中文期望不一致，期望值仍是旧的合成正文。
+
+另：`CompanionCreateScreenTest#freshRoleKeepsSettingsCollapsedAndCreatesWithEditableGreeting`
+在本地偶尔失败（会话名输入框没拿到输入），CI 上是通过的，属负载相关的抖动。
+
+### 10.3 复现命令
+
+同 9.3。
+
