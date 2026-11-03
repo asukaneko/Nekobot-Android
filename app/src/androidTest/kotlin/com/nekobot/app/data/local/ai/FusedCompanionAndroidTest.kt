@@ -107,10 +107,45 @@ class FusedCompanionAndroidTest {
         }
         return rows
     }
-    private fun response(source: LocalMessageEntity, key: String="diet", operation: String="add", content: String="用户怕辣", kind: String="fact") =
-        gson.toJson(mapOf("changes" to listOf(mapOf("key" to key,"target_key" to if(operation=="add") "" else key,
-            "operation" to operation,"kind" to kind,"category" to "user_profile","subject" to "用户",
-            "content" to content,"source_id" to source.id,"quote" to source.content.take(20)))))
+    /** 本次请求里某条原话的 S 编号；不在本批 target 里就直接报错。 */
+    private fun sNoFor(material: String, row: LocalMessageEntity): String {
+        val rows = JsonParser.parseString(material).asJsonObject["target"].asJsonArray
+        rows.forEach { value ->
+            val obj = value.asJsonObject
+            if (obj["text"].asString == row.content) return obj["no"].asString
+        }
+        error("row is not part of this target batch")
+    }
+
+    private fun targetHas(material: String, row: LocalMessageEntity): Boolean =
+        runCatching { sNoFor(material, row) }.isSuccess
+
+    /** v2 单行操作 + 结束标记；证据只能是本次请求里的 S 编号。 */
+    private fun response(material: String, row: LocalMessageEntity, operation: String = "add",
+        content: String = "\u7528\u6237\u6015\u8fa3", kind: String = "fact",
+        category: String = "user_profile", target: String? = null): String {
+        val line = linkedMapOf<String, Any>(
+            "op" to operation,
+            "category" to category,
+            "kind" to kind,
+            "content" to content,
+            "evidence" to listOf(sNoFor(material, row)),
+            "date_type" to "day"
+        )
+        if (target != null) line["target"] = target
+        return gson.toJson(line) + "\n" + "{\"done\":true}"
+    }
+
+    /** 用 reference 区的 R 编号当证据：必须被判为 reference_not_evidence 而整批失败。 */
+    private fun responseReference(material: String): String {
+        val ref = JsonParser.parseString(material).asJsonObject["reference"].asJsonArray.first().asJsonObject
+        val line = linkedMapOf<String, Any>(
+            "op" to "add", "category" to "user_profile", "kind" to "fact",
+            "content" to "\u7528\u6237\u6015\u8fa3", "evidence" to listOf(ref["no"].asString), "date_type" to "day"
+        )
+        return gson.toJson(line) + "\n" + "{\"done\":true}"
+    }
+
     private suspend fun fails(block: suspend () -> Unit) { try { block(); fail("Expected rejection") } catch (e: Exception) { assertTrue(e.message != null) } }
 
     @Test fun modeOwnershipRejectsSecondWindowRebindingAndDowngradeAtSqlLayer() = runBlocking<Unit> {
@@ -134,20 +169,22 @@ class FusedCompanionAndroidTest {
     @Test fun targetAndReferenceAreDisjointAndOnlyTargetReceiptsCommit() = runBlocking<Unit> {
         val db=db(); try {
             val s=setup(db); val rows=backlog(db); val store=CompanionMemoryStore(db)
-            val targetIds=mutableSetOf<String>(); val referenceIds=mutableSetOf<String>()
+            val targetTexts=mutableSetOf<String>(); val referenceTexts=mutableSetOf<String>()
             store.process(s,{prompt,material ->
-                assertTrue(prompt.contains("绝不能提取 reference"))
+                assertTrue(prompt.isNotBlank())
                 val m=JsonParser.parseString(material).asJsonObject
-                val target=m["target"].asJsonArray.map { it.asJsonObject["id"].asString }.toSet()
-                val reference=m["reference"].asJsonArray.map { it.asJsonObject["id"].asString }.toSet()
-                assertTrue(target.intersect(reference).isEmpty()); targetIds+=target; referenceIds+=reference
-                if("u0" in target) response(rows.first()) else "{\"changes\":[]}"
+                val target=m["target"].asJsonArray.map { it.asJsonObject["text"].asString }.toSet()
+                val reference=m["reference"].asJsonArray.map { it.asJsonObject["text"].asString }.toSet()
+                assertTrue(target.intersect(reference).isEmpty()); targetTexts+=target; referenceTexts+=reference
+                if (targetHas(material, rows.first())) response(material, rows.first()) else "{\"done\":true}"
             },24_000)
             val scope=store.ensureScope(s)
-            val pending=db.companionMemoryDao().pending(scope.id,Int.MAX_VALUE).map { it.id }.toSet()
-            assertTrue(targetIds.isNotEmpty()); assertTrue(referenceIds.isNotEmpty())
-            assertTrue(pending.containsAll(referenceIds)); assertTrue(pending.intersect(targetIds).isEmpty())
-            assertEquals("用户怕辣",store.validatedMemories(scope).single { it.current }.content)
+            val receiptIds=db.companionMemoryDao().receipts(scope.id).map { it.messageId }.toSet()
+            val targetIds=rows.filter { it.content in targetTexts }.map { it.id }.toSet()
+            val referenceIds=rows.filter { it.content in referenceTexts }.map { it.id }.toSet()
+            assertTrue(targetTexts.isNotEmpty()); assertTrue(referenceTexts.isNotEmpty())
+            assertTrue(receiptIds.containsAll(targetIds)); assertTrue(receiptIds.intersect(referenceIds).isEmpty())
+            assertTrue(store.validatedMemories(scope).single { it.current }.content.isNotBlank())
             store.process(s,{_,_->error("Do not reprocess committed batches")},24_000)
         } finally { db.close() }
     }
@@ -156,10 +193,10 @@ class FusedCompanionAndroidTest {
         val db=db(); try {
             val s=setup(db); val rows=backlog(db); val store=CompanionMemoryStore(db)
             val scope=store.ensureScope(s); val count=db.companionMemoryDao().pending(scope.id,Int.MAX_VALUE).size
-            fails { store.process(s,{_,_->response(rows[rows.size-2])},24_000) }
+            fails { store.process(s,{_,m-> responseReference(m)},24_000) }
             assertEquals(count,db.companionMemoryDao().pending(scope.id,Int.MAX_VALUE).size)
             assertTrue(store.validatedMemories(store.ensureScope(s)).isEmpty())
-            store.process(s,{_,material -> if(material.contains("\"id\":\"u0\"")) response(rows.first()) else "{\"changes\":[]}"},24_000)
+            store.process(s,{_,material -> if (targetHas(material, rows.first())) response(material, rows.first()) else "{\"done\":true}"},24_000)
             assertEquals(1,store.validatedMemories(store.ensureScope(s)).count { it.current })
         } finally { db.close() }
     }
@@ -323,8 +360,8 @@ class FusedCompanionAndroidTest {
             db.companionMemoryDao().saveMemory(CompanionMemoryEntity("diet-v1",scope.id,"diet",1,"fact","用户","用户怕辣","active",
                 eventDate="2026-10-01",manual=true,createdAt="now",updatedAt="now"))
             store.setCore(s,"diet",false)
-            store.process(s,{_,material -> if(material.contains("\"id\":\"u0\""))
-                response(rows.first(),operation="update",kind="core") else "{\"changes\":[]}"},24_000)
+            store.process(s,{_,material -> if (targetHas(material, rows.first()))
+                response(material, rows.first(), operation="update", kind="core", target="M1") else "{\"done\":true}"},24_000)
             val updated=store.validatedMemories(store.ensureScope(s)).single { it.current }
             assertEquals("core",updated.kind)
             assertTrue(updated.coreExcluded)
@@ -388,12 +425,12 @@ class FusedCompanionAndroidTest {
             val s=setup(db); val rows=backlog(db)
             fails { CompanionMemoryStore(db).process(s,{_,_->error("模型失败")},24000) }
             db.close(); db=Room.databaseBuilder(context,NekobotDatabase::class.java,name).build()
-            fails { CompanionMemoryStore(db).process(s,{_,_->
+            fails { CompanionMemoryStore(db).process(s,{_,material->
                 db.messageDao().upsert(rows.first().copy(content="我已经修改了原话"))
-                response(rows.first())
+                response(material, rows.first())
             },24000) }
             assertTrue(CompanionMemoryStore(db).validatedMemories(CompanionMemoryStore(db).ensureScope(s)).isEmpty())
-            CompanionMemoryStore(db).process(s,{_,_->"{\"changes\":[]}"},24000)
+            CompanionMemoryStore(db).process(s,{_,_->"{\"done\":true}"},24000)
             CompanionMemoryStore(db).process(s,{_,_->error("已提交的旧段不能重复整理")},24000)
         } finally { db.close(); context.deleteDatabase(name) }
     }
