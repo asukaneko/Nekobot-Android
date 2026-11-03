@@ -292,7 +292,14 @@ PR 已合入 main（合并提交 `866abb2c`）。合并后按失败用例逐条�
 - 创建页测试通过编辑语义设置文本，并在提交前确认输入内容，覆盖会话名与问候语传递。
 - 版本保持 `0.8.8` / `71`。
 
-### 10.4 复现命令
+### 10.4 CI 抖动加固
+
+- `CompanionPromptSettingsUiTest` 的异步保存改为显式等待再滚动断言；用例结束清理改为
+  防御式，避免 CI 慢机回收 Activity 时“Activity 已销毁”的 NPE 掩盖真实断言结果。
+- `CompanionCreateScreenTest#freshRoleKeepsSettingsCollapsedAndCreatesWithEditableGreeting`
+  改用编辑语义设置文本，并在提交前核对输入，覆盖会话名与问候语传递（同 10.3）。
+
+### 10.5 复现命令
 
 同 9.3；去掉 instrumentation 的 class 参数可运行全量设备测试。
 

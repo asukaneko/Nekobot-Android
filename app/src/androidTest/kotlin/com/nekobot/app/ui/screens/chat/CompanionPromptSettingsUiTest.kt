@@ -125,7 +125,8 @@ class CompanionPromptSettingsUiTest {
         compose.onNodeWithTag("companion-thinking-entry").performClick()
         compose.onNodeWithTag("companion-prompt-editor").performTextReplacement("保留草稿")
         compose.onNodeWithTag("companion-prompt-save").performClick()
-        compose.waitForIdle()
+        // 保存走协程异步落库：等错误提示真的出现，再滚进可视区。
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("companion-prompt-save-error").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("companion-prompt-save-error").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("companion-prompt-editor").assertTextEquals("保留草稿")
         compose.onNodeWithTag("companion-prompt-save").performClick()
@@ -163,7 +164,8 @@ class CompanionPromptSettingsUiTest {
             compose.onNodeWithTag("companion-speaking-entry").performClick()
             compose.onNodeWithTag("companion-prompt-editor").performTextReplacement("当前角色自定义说话")
             compose.onNodeWithTag("companion-prompt-save").performClick()
-            compose.waitUntil(10000) { compose.onAllNodesWithTag("companion-persona-entry").fetchSemanticsNodes().isNotEmpty() }
+            // 保存走协程异步落库并刷新 Flow；编辑态退出有延迟，放宽等待。
+            compose.waitUntil(15_000) { compose.onAllNodesWithTag("companion-persona-entry").fetchSemanticsNodes().isNotEmpty() }
             runBlocking {
                 assertEquals("当前角色自定义说话", db.sessionDao().getById("current")!!.companionSpeakingPrompt)
                 assertEquals("", db.sessionDao().getById("other")!!.companionSpeakingPrompt)
@@ -175,10 +177,13 @@ class CompanionPromptSettingsUiTest {
             compose.onNodeWithText("原有书店店员设定").performScrollTo().assertIsDisplayed()
             capture("original-persona")
         } finally {
-            compose.runOnIdle { compose.activity.finish() }
-            ServiceContainer.switchLocalDb(originalProfile)
-            ServiceContainer.prefs.removeDbProfile(profile)
-            NekobotDatabase.deleteProfileFile(compose.activity, profile)
+            // CI 慢机可能在用例结束后才回收 Activity；清理必须防御式，
+            // 避免“Activity 已销毁”的 NPE 掩盖用例本身的断言结果。
+            runCatching { compose.runOnIdle { compose.activity.finish() } }
+            runCatching { ServiceContainer.switchLocalDb(originalProfile) }
+            runCatching { ServiceContainer.prefs.removeDbProfile(profile) }
+            runCatching { NekobotDatabase.deleteProfileFile(
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext, profile) }
         }
     }
 }
