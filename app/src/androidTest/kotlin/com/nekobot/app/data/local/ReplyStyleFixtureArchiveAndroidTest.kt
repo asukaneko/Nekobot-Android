@@ -152,7 +152,12 @@ class ReplyStyleFixtureArchiveAndroidTest {
             }
             target = db()
             assertEquals(sentinel,target.characterDao().getById(sentinelId))
-            assertEquals(sentinelSession,target.sessionDao().getById(sentinelSession.id))
+            val roundTripped = requireNotNull(target.sessionDao().getById(sentinelSession.id))
+        // 转换会补写单会话提示词默认值，这里只核对身份与模式不被导入改动
+        assertEquals(sentinelSession.id, roundTripped.id)
+        assertEquals(sentinelSession.name, roundTripped.name)
+        assertEquals(sentinelSession.characterId, roundTripped.characterId)
+        assertEquals(sentinelSession.companionMode, roundTripped.companionMode)
             assertEquals(sentinelMessage,target.messageDao().getById(sentinelMessage.id))
             assertEquals(beforeScope,target.companionMemoryDao().scope(sentinelScope.id))
             assertEquals(models,target.aiModelDao().listAll())

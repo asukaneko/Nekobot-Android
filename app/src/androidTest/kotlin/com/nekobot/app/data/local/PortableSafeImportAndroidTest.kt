@@ -293,7 +293,17 @@ class PortableSafeImportAndroidTest {
         assertEquals(fixture.incomingMessage, db().messageDao().listBySession(fixture.session.id).single())
         val saved = db().companionMemoryDao().versions(fixture.incomingMemory.scopeId, fixture.incomingMemory.factKey).single()
         assertTrue(saved.valid); assertTrue(saved.current); assertEquals(fixture.incomingMemory, saved)
-        assertEquals(listOf(fixture.incomingSource), db().companionMemoryDao().sources(saved.id))
+        val actualSources = db().companionMemoryDao().sources(saved.id)
+            assertEquals(1, actualSources.size)
+            with(actualSources.single()) {
+                assertEquals(fixture.incomingSource.memoryId, memoryId)
+                assertEquals(fixture.incomingSource.messageId, messageId)
+                assertEquals(fixture.incomingSource.fingerprint, fingerprint)
+                assertEquals(fixture.incomingSource.quote, quote)
+                assertEquals(fixture.incomingSource.role, role)
+                // 导入来源现在会带原话快照，允许非空
+                assertNotNull(messageSnapshot)
+            }
         val reopenedStore = com.nekobot.app.data.local.ai.CompanionMemoryStore(db())
         assertEquals(listOf(saved), reopenedStore.validatedMemories(reopenedStore.ensureScope(fixture.session)))
         prepared(fixture.archive).use { archive ->
