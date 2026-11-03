@@ -185,6 +185,7 @@ object Routes {
 
     /** 运行诊断中心 */
     const val DIAGNOSTIC_CENTER = "diagnostic_center"
+    const val PROBLEM_DIAGNOSTIC = "problem_diagnostic"
 }
 
 data class BottomItem(

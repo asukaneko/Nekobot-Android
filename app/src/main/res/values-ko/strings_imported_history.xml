@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="imported_history_favorites_title">가져온 즐겨찾기 기록</string>
+    <string name="imported_history_favorites_summary">%1$d개 · 원래 채팅 미연결, 읽기 전용</string>
+    <string name="imported_history_favorites_read_only">기존 즐겨찾기의 내용과 시간을 보존합니다. 원래 채팅은 연결되지 않았습니다.</string>
+    <string name="imported_history_favorites_unreadable">가져온 즐겨찾기 기록을 읽을 수 없습니다.</string>
+    <string name="imported_history_original_persona_unknown">원래 캐릭터 미기록</string>
+    <string name="imported_history_favorite_time">저장 시간: %1$s</string>
+    <string name="imported_history_message_time">메시지 시간: %1$s</string>
+    <string name="imported_history_message_content">메시지 내용</string>
+    <string name="imported_history_forwarded_content">전달된 내용</string>
+    <string name="imported_history_read_full">전체 내용 읽기</string>
+    <string name="imported_history_back_to_snapshots">기록으로 돌아가기</string>
+    <string name="imported_history_image_description">원래 프롬프트와 설명</string>
+    <string name="imported_history_partial_sources_title">원문 연결됨 · 일부 내용 확인 필요</string>
+    <string name="imported_history_partial_sources_message">아래 원문은 기억의 일부 내용을 뒷받침합니다. 나머지 세부 내용은 아직 확인이 필요합니다.</string>
+</resources>

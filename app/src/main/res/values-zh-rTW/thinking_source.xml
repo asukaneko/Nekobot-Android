@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_thinking_source_title">思考欄位</string>
+    <string name="settings_thinking_source_summary">指定從哪個位置讀取思考</string>
+    <string name="thinking_source_intro">不同模型放置思考的位置不一樣：有的在單獨欄位裡，有的把思考寫進回覆正文。這裡填它使用的欄位名；兩個標記都填了才會從正文裡剪出思考，留空表示不剪。欄位全留空時使用預設候選。</string>
+    <string name="thinking_source_fields_label">思考欄位（英文逗號分隔）</string>
+    <string name="thinking_source_fields_hint">依序嘗試，例如 reasoning_content, thinking_content, reasoning, thinking</string>
+    <string name="thinking_source_marker_start_label">開頭標記</string>
+    <string name="thinking_source_marker_end_label">結尾標記</string>
+    <string name="thinking_source_marker_hint">兩個都填才啟用；只在正文開頭附近比對，找不到就整條當一般正文。</string>
+    <string name="thinking_source_save">儲存</string>
+    <string name="thinking_source_reset">還原預設</string>
+    <string name="thinking_source_saved">已儲存，下一次請求生效</string>
+    <string name="thinking_source_reset_done">已還原預設</string>
+</resources>

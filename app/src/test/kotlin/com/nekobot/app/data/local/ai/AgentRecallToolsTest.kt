@@ -60,7 +60,7 @@ class AgentRecallToolsTest {
     }
 
     @Test
-    fun `single session defaults to current facts but explicit history remains available`() = runBlocking {
+    fun `single session rejects retired facts even with legacy history arguments`() = runBlocking {
         val reader = FakeReader().apply {
             candidates = listOf(
                 AgentRecallCandidate("new", "companion_memory", "偏好", "目前喜欢红茶", emptyList()),
@@ -70,7 +70,8 @@ class AgentRecallToolsTest {
         val current = handler.execute("agent_recall_search", mapOf("query" to "喜欢"))
         assertEquals(1, (current["results"] as List<*>).size)
         val history = handler.execute("agent_recall_search", mapOf("query" to "喜欢", "include_history" to true))
-        assertEquals(2, (history["results"] as List<*>).size)
+        assertEquals(1, (history["results"] as List<*>).size)
+        assertFalse(Gson().toJson(buildAgentRecallToolDefinitions(currentOnly = true)).contains("include_history"))
         val legacy = AgentRecallToolHandler("s1", reader).execute("agent_recall_search", mapOf("query" to "喜欢"))
         assertEquals(2, (legacy["results"] as List<*>).size)
     }

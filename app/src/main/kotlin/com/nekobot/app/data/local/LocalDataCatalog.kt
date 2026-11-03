@@ -177,7 +177,14 @@ internal object LocalDataCatalog {
     }
 
     // Request context is derived from this device's history/configuration and must be rebuilt after restore.
-    private val INTERNAL_DATABASE_TABLES = setOf("android_metadata", "room_master_table", "companion_context_materials", "companion_transfer_jobs")
+    private val INTERNAL_DATABASE_TABLES = setOf(
+        "android_metadata",
+        "room_master_table",
+        "companion_context_materials",
+        "companion_transfer_jobs",
+        // 便携导入的操作去重回执：属于本机导入进度，不参与跨设备表覆盖校验。
+        "portable_import_commits"
+    )
 
     /**
      * 运行期按需创建、内容可由源表重建的派生索引（LocalMessageSearchIndex）。

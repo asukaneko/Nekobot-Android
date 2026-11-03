@@ -1,0 +1,107 @@
+{"text": "오늘", "spoken": "2026-10-23", "expected": "2026-10-23", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "내일", "spoken": "2026-10-23", "expected": "2026-10-24", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "모레", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "글피", "spoken": "2026-10-23", "expected": "2026-10-26", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "어제", "spoken": "2026-10-23", "expected": "2026-10-22", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "그저께", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "그끄저께", "spoken": "2026-10-23", "expected": "2026-10-20", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2일 전", "spoken": "2026-10-23", "expected": "2026-10-21", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "3일 후", "spoken": "2026-10-23", "expected": "2026-10-26", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2주 후", "spoken": "2026-10-23", "expected": "2026-11-06", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2주 전", "spoken": "2026-10-23", "expected": "2026-10-09", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "다음 주 수요일", "spoken": "2026-10-23", "expected": "2026-10-28", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "다다음 주 월요일", "spoken": "2026-10-23", "expected": "2026-11-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "이번 주 일요일", "spoken": "2026-10-23", "expected": "2026-10-25", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "지난 주 금요일", "spoken": "2026-10-23", "expected": "2026-10-16", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "다음 달 5일", "spoken": "2026-10-23", "expected": "2026-11-05", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "10월 2일", "spoken": "2026-10-23", "expected": "2026-10-02", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "2025년 12월 31일", "spoken": "2026-10-23", "expected": "2025-12-31", "source": "需求补充题（非缺失的61题原件）"}
+{"text": "월말", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "며칠 후", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "다음 주", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "오늘과 내일", "spoken": "2026-10-23", "expected": null, "source": "需求补充题（非缺失的61题原件）"}
+{"text": "10월 2일", "spoken": "2016-11-07", "expected": "2016-10-02", "upstreamExpected": "2016-10-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#1"}
+{"text": "2016년 1월 12일", "spoken": "2016-11-07", "expected": "2016-01-12", "upstreamExpected": "2016-01-12", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#2"}
+{"text": "2016년 2월 22일", "spoken": "2016-11-07", "expected": "2016-02-22", "upstreamExpected": "2016-02-22", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#4"}
+{"text": "2016년 4월 21일", "spoken": "2016-11-07", "expected": "2016-04-21", "upstreamExpected": "2016-04-21", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#5"}
+{"text": "4월 22일", "spoken": "2016-11-07", "expected": "2016-04-22", "upstreamExpected": "2016-04-22", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#6"}
+{"text": "2015년 8월 12일", "spoken": "2016-11-07", "expected": "2015-08-12", "upstreamExpected": "2015-08-12", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#7"}
+{"text": "1월 1일", "spoken": "2016-11-07", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#8"}
+{"text": "5월 21일", "spoken": "2016-11-07", "expected": "2016-05-21", "upstreamExpected": "2016-05-21", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#10"}
+{"text": "8월 2일", "spoken": "2016-11-07", "expected": "2016-08-02", "upstreamExpected": "2016-08-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#11"}
+{"text": "6월 22일", "spoken": "2016-11-07", "expected": "2016-06-22", "upstreamExpected": "2016-06-22", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#12"}
+{"text": "오늘", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#14"}
+{"text": "내일", "spoken": "2016-11-07", "expected": "2016-11-08", "upstreamExpected": "2016-11-08", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#15"}
+{"text": "어제", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#16"}
+{"text": "그저께", "spoken": "2016-11-07", "expected": "2016-11-05", "upstreamExpected": "2016-11-05", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#17"}
+{"text": "내일 모레", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#18"}
+{"text": "내일 모레", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#19"}
+{"text": "이번 주 금요일", "spoken": "2016-11-07", "expected": "2016-11-11", "upstreamExpected": "2016-11-11", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#24"}
+{"text": "다음 주 일요일", "spoken": "2016-11-07", "expected": "2016-11-20", "upstreamExpected": "2016-11-20", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#25"}
+{"text": "지난 주 일요일", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#26"}
+{"text": "2016년 6월 15일", "spoken": "2016-11-07", "expected": "2016-06-15", "upstreamExpected": "2016-06-15", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#29"}
+{"text": "다음 주 금요일", "spoken": "2016-11-07", "expected": "2016-11-18", "upstreamExpected": "2016-11-18", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#32"}
+{"text": "지금으로부터 2주 후", "spoken": "2016-11-07", "expected": "2016-11-21", "upstreamExpected": "2016-11-21", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#34"}
+{"text": "다음 달 20일", "spoken": "2016-11-07", "expected": "2016-12-20", "upstreamExpected": "2016-12-20", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#48"}
+{"text": "2018년 1월 12일", "spoken": "2016-11-07", "expected": "2018-01-12", "upstreamExpected": "2018-01-12", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#50"}
+{"text": "2015년 9월 18일", "spoken": "2016-11-07", "expected": "2015-09-18", "upstreamExpected": "2015-09-18", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#51"}
+{"text": "2016년 11월 16일", "spoken": "2016-11-14", "expected": "2016-11-16", "upstreamExpected": "2016-11-16", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#54"}
+{"text": "다음 달 20일", "spoken": "2017-12-07", "expected": "2018-01-20", "upstreamExpected": "2018-01-20", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#58"}
+{"text": "1931년 12월 5일", "spoken": "2017-12-18", "expected": "1931-12-05", "upstreamExpected": "1391-12-05", "adjustment": "上游期望年份与原文不符，按原文完整年份校正，原期望保留", "source": "Recognizers-Text/Korean/DateParser.json#59"}
+{"text": "1978년 9월 21일", "spoken": "2016-11-07", "expected": "1978-09-21", "upstreamExpected": "1978-09-21", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#62"}
+{"text": "1901년 9월 10일", "spoken": "2016-11-07", "expected": "1901-09-10", "upstreamExpected": "1901-09-10", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#63"}
+{"text": "2000년 9월 10일", "spoken": "2016-11-07", "expected": "2000-09-10", "upstreamExpected": "2000-09-10", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#64"}
+{"text": "다음 주 화요일", "spoken": "2018-03-20", "expected": "2018-03-27", "upstreamExpected": "2018-03-27", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#68"}
+{"text": "다음 주 일요일", "spoken": "2018-03-20", "expected": "2018-04-01", "upstreamExpected": "2018-04-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#69"}
+{"text": "글피", "spoken": "2018-04-20", "expected": "2018-04-23", "upstreamExpected": "2018-04-23", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#70"}
+{"text": "2015년 5월 13일", "spoken": "2017-03-22", "expected": "2015-05-13", "upstreamExpected": "2015-05-13", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#72"}
+{"text": "2015년 5월 13일", "spoken": "2017-03-22", "expected": "2015-05-13", "upstreamExpected": "2015-05-13", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#73"}
+{"text": "2017년 3월 7일", "spoken": "2016-11-07", "expected": "2017-03-07", "upstreamExpected": "2017-03-07", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#74"}
+{"text": "2027년 3월 7일", "spoken": "2016-11-07", "expected": "2027-03-07", "upstreamExpected": "2027-03-07", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#75"}
+{"text": "2089년 5월 5일", "spoken": "2016-11-07", "expected": "2089-05-05", "upstreamExpected": "1989-05-05", "adjustment": "上游期望年份与原文不符，按原文完整年份校正，原期望保留", "source": "Recognizers-Text/Korean/DateParser.json#76"}
+{"text": "모레", "spoken": "2018-05-31", "expected": "2018-06-02", "upstreamExpected": "2018-06-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#77"}
+{"text": "그끄저께", "spoken": "2018-05-31", "expected": "2018-05-28", "upstreamExpected": "2018-05-28", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#79"}
+{"text": "3주 후", "spoken": "2018-07-05", "expected": "2018-07-26", "upstreamExpected": "2018-07-26", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#80"}
+{"text": "10월 2일", "spoken": "2016-11-07", "expected": "2016-10-02", "upstreamExpected": "2016-10-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#84"}
+{"text": "1월 1일", "spoken": "2016-11-07", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#95"}
+{"text": "1월 1일", "spoken": "2016-11-07", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#98"}
+{"text": "8월 2일", "spoken": "2016-11-07", "expected": "2016-08-02", "upstreamExpected": "2016-08-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#101"}
+{"text": "6월 22일", "spoken": "2016-11-07", "expected": "2016-06-22", "upstreamExpected": "2016-06-22", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#102"}
+{"text": "오늘", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#105"}
+{"text": "내일", "spoken": "2016-11-07", "expected": "2016-11-08", "upstreamExpected": "2016-11-08", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#106"}
+{"text": "어제", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#107"}
+{"text": "그제", "spoken": "2016-11-07", "expected": "2016-11-05", "upstreamExpected": "2016-11-05", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#108"}
+{"text": "모레", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#109"}
+{"text": "모레", "spoken": "2016-11-07", "expected": "2016-11-09", "upstreamExpected": "2016-11-09", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#110"}
+{"text": "다음주 일요일", "spoken": "2016-11-07", "expected": "2016-11-20", "upstreamExpected": "2016-11-20", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#114"}
+{"text": "이번주 금요일", "spoken": "2016-11-07", "expected": "2016-11-11", "upstreamExpected": "2016-11-11", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#116"}
+{"text": "다음주 일요일", "spoken": "2016-11-07", "expected": "2016-11-20", "upstreamExpected": "2016-11-20", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#117"}
+{"text": "2016년 6월 15일", "spoken": "2016-11-07", "expected": "2016-06-15", "upstreamExpected": "2016-06-15", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#122"}
+{"text": "다음주 금요일", "spoken": "2016-11-07", "expected": "2016-11-18", "upstreamExpected": "2016-11-18", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#125"}
+{"text": "2주 후", "spoken": "2016-11-07", "expected": "2016-11-21", "upstreamExpected": "2016-11-21", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#129"}
+{"text": "다음 달 20일", "spoken": "2016-11-07", "expected": "2016-12-20", "upstreamExpected": "2016-12-20", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#153"}
+{"text": "2016년 11월 16일", "spoken": "2016-11-14", "expected": "2016-11-16", "upstreamExpected": "2016-11-16", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#158"}
+{"text": "다음 달 20일", "spoken": "2017-12-07", "expected": "2018-01-20", "upstreamExpected": "2018-01-20", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#165"}
+{"text": "1391년 12월 5일", "spoken": "2017-12-18", "expected": "1391-12-05", "upstreamExpected": "1391-12-05", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#166"}
+{"text": "다음 주 화요일", "spoken": "2018-03-20", "expected": "2018-03-27", "upstreamExpected": "2018-03-27", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#175"}
+{"text": "다음 주 일요일", "spoken": "2018-03-20", "expected": "2018-04-01", "upstreamExpected": "2018-04-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateParser.json#176"}
+{"text": "2019년 1월 4일", "spoken": "2016-11-07", "expected": "2019-01-04", "upstreamExpected": "2019-01-04", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#0"}
+{"text": "2019년 1월 3일", "spoken": "2016-11-07", "expected": "2019-01-03", "upstreamExpected": "2019-01-03", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#1"}
+{"text": "2019년 1월 2일", "spoken": "2016-11-07", "expected": "2019-01-02", "upstreamExpected": "2019-01-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#2"}
+{"text": "2019년 1월 1일", "spoken": "2016-11-07", "expected": "2019-01-01", "upstreamExpected": "2019-01-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#3"}
+{"text": "10월 2일", "spoken": "2016-11-07", "expected": "2016-10-02", "upstreamExpected": "2016-10-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#5"}
+{"text": "4월 22일", "spoken": "2016-11-07", "expected": "2016-04-22", "upstreamExpected": "2016-04-22", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#6"}
+{"text": "5월 29일", "spoken": "2016-11-07", "expected": "2016-05-29", "upstreamExpected": "2016-05-29", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#7"}
+{"text": "8월 2일", "spoken": "2016-11-07", "expected": "2016-08-02", "upstreamExpected": "2016-08-02", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#8"}
+{"text": "오늘", "spoken": "2016-11-07", "expected": "2016-11-07", "upstreamExpected": "2016-11-07", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#9"}
+{"text": "내일", "spoken": "2016-11-07", "expected": "2016-11-08", "upstreamExpected": "2016-11-08", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#10"}
+{"text": "어제", "spoken": "2016-11-07", "expected": "2016-11-06", "upstreamExpected": "2016-11-06", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#11"}
+{"text": "오늘", "spoken": "2018-03-14", "expected": "2018-03-14", "upstreamExpected": "2018-03-14", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#95"}
+{"text": "7월 1일", "spoken": "2018-04-07", "expected": "2018-07-01", "upstreamExpected": "2018-07-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#102"}
+{"text": "그끄저께", "spoken": "2018-05-31", "expected": "2018-05-28", "upstreamExpected": "2018-05-28", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#128"}
+{"text": "1994년 12월 31일", "spoken": "2018-05-01", "expected": "1994-12-31", "upstreamExpected": "1994-12-31", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#129"}
+{"text": "2016년 1월 1일", "spoken": "2018-08-31", "expected": "2016-01-01", "upstreamExpected": "2016-01-01", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#216"}
+{"text": "2016년 8월 5일", "spoken": "2018-10-24", "expected": "2016-08-05", "upstreamExpected": "2016-08-05", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#251"}
+{"text": "다음 주 수요일", "spoken": "2018-11-28", "expected": "2018-12-05", "upstreamExpected": "2018-12-05", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#266"}
+{"text": "지난 주 월요일", "spoken": "2018-11-28", "expected": "2018-11-19", "upstreamExpected": "2018-11-19", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#267"}
+{"text": "이번 주 월요일", "spoken": "2018-11-28", "expected": "2018-11-26", "upstreamExpected": "2018-11-26", "adjustment": null, "source": "Recognizers-Text/Korean/DateTimeModel.json#268"}

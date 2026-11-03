@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_difference_notice">Compare each item, then keep or replace it. Saving choices does not write data.</string>
+    <string name="import_difference_save">Save choices</string>
+    <string name="import_difference_keep">Keep the content in the app (default)</string>
+    <string name="import_difference_replace">Use the content in the archive and replace this item</string>
+    <string name="import_difference_file">Attachment file</string>
+    <string name="import_difference_current">Content in the app</string>
+    <string name="import_difference_incoming">Content in the archive</string>
+    <string name="import_difference_type">File type (by extension): %1$s</string>
+    <string name="import_difference_unknown_type">No extension</string>
+    <string name="import_difference_unknown_size">Size unknown</string>
+    <string name="import_difference_checksum">Content checksum: %1$s</string>
+    <string name="import_difference_character">Character: %1$s</string>
+    <string name="import_difference_session">Conversation: %1$s</string>
+    <string name="import_difference_shared">Shared workspace</string>
+    <string name="import_difference_show_path">Show full path</string>
+    <string name="import_difference_hide_path">Hide full path</string>
+    <string name="portability_ui_confirm_hint">Review what will be added or replaced and resolve differences as needed.</string>
+    <string name="portability_group_content">Content and memories</string>
+    <string name="portability_group_tools">Models and tools</string>
+    <string name="portability_group_files">Files and app data</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="companion_avatar_change">アバターを変更</string>
+    <string name="companion_avatar_title">キャラクターのアバターを切り抜く</string>
+    <string name="companion_avatar_hint">ドラッグで位置、スライダーで倍率を調整します。保存するとチャットと会話一覧に反映されます。</string>
+    <string name="companion_avatar_save">アバターを保存</string>
+    <string name="companion_avatar_zoom">ズーム</string>
+    <string name="companion_avatar_choose">別の画像を選ぶ</string>
+    <string name="companion_avatar_failed">画像を読み込みまたは保存できません。画像を選び直してください。</string>
+</resources>

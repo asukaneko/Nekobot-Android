@@ -17,7 +17,7 @@ class CompanionRequestUsageTest {
     @Test fun toolBoundaryPreservesRecallButRejectsCommandAndTaskTools() {
         fun tool(name: String) = mapOf<String, Any>("type" to "function", "function" to mapOf("name" to name))
         val result = FusedCompanionTools.definitions(listOf(tool("agent_history_read"), tool("exec_command"), tool("task_create"), tool("search_web")))
-        assertEquals(setOf("agent_history_read", "search_web"), result.map(::toolNameOf).toSet())
+        assertEquals(setOf("agent_history_read"), result.map(::toolNameOf).toSet())
     }
     @Test fun onlySuppliedOutboundMessagesAreCounted() {
         val messages = listOf(mapOf<String, Any>("role" to "user", "content" to "今天好吗"))

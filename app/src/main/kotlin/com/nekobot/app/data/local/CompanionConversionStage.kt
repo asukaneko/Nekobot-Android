@@ -7,7 +7,8 @@ import com.nekobot.app.data.local.db.*
 import java.io.File
 
 internal data class CompanionConversionRequest(val modelId: String, val modelName: String, val inputTokens: Int,
-    val generate: suspend (String, String) -> String)
+    val generate: suspend (String, String) -> String,
+    val generateStream: (suspend (String, String, LocalAiStreamCallbacks) -> String)? = null)
 internal data class CompanionConversionRecord(val rules: String, val models: List<String>, val memories: Int = 0)
 
 /** 临时库只含这次转换的资料，不注册为用户资料库，也不存接口配置。 */
@@ -30,8 +31,8 @@ internal class CompanionConversionStage(context: Context, directory: File, profi
 
     suspend fun run(job: CompanionTransferJobEntity, request: CompanionConversionRequest, progress: (CompanionTransferProgress) -> Unit) {
         val session = requireNotNull(db.sessionDao().getById(job.targetSessionId))
-        CompanionHistoryConversion(db).run(session, request.inputTokens, request.generate) { done, total ->
-            progress(CompanionTransferProgress("正在整理记忆", done, total))
+        CompanionHistoryConversion(db).run(session, request.inputTokens, request.generate, request.generateStream) { done, total ->
+            progress(CompanionTransferProgress("正在总结记忆", done, total))
         }
     }
 
@@ -41,7 +42,7 @@ internal class CompanionConversionStage(context: Context, directory: File, profi
         return store.validatedMemories(store.ensureScope(session)).count { it.current }
     }
 
-    /** 正式副本的原话已有相同新 ID；在调用者的最终事务内写入整理结果。 */
+    /** 正式副本的原话已有相同新 ID；在调用者的最终事务内写入总结记忆结果。 */
     suspend fun importInto(destination: NekobotDatabase, job: CompanionTransferJobEntity) {
         val target = requireNotNull(destination.sessionDao().getById(job.targetSessionId))
         val targetDao = destination.companionMemoryDao()
@@ -49,11 +50,16 @@ internal class CompanionConversionStage(context: Context, directory: File, profi
         val stagedScope = requireNotNull(db.companionMemoryDao().scope(scope.id))
         val out = destination.openHelper.writableDatabase
         out.execSQL("DELETE FROM companion_sources WHERE memoryId IN (SELECT id FROM companion_memories WHERE scopeId=?)", arrayOf(scope.id))
-        val tables = listOf("companion_memories", "companion_receipts", "companion_forgotten_sources", "companion_clarifications", "companion_pending")
+        val tables = listOf("companion_memories", "companion_receipts", "companion_applied_ops", "companion_forgotten_sources", "companion_clarifications", "companion_pending", "companion_locked_reviews")
         for (table in tables) out.execSQL("DELETE FROM $table WHERE scopeId=?", arrayOf(scope.id))
         for (table in tables.filterNot { it == "companion_pending" }) {
-            val filter = if (table == "companion_memories") " AND provenance!='${CompanionConversionRules.referenceProvenance}'" else ""
-            db.openHelper.readableDatabase.query("SELECT * FROM $table WHERE scopeId=?$filter", arrayOf(scope.id)).use { cursor ->
+            val filter = when (table) {
+                "companion_memories" -> " AND provenance!='${CompanionConversionRules.referenceProvenance}'"
+                "companion_applied_ops" -> " AND (memoryId IS NULL OR memoryId IN (SELECT id FROM companion_memories WHERE scopeId=? AND provenance!='${CompanionConversionRules.referenceProvenance}'))"
+                else -> ""
+            }
+            db.openHelper.readableDatabase.query("SELECT * FROM $table WHERE scopeId=?$filter",
+                if (table == "companion_applied_ops") arrayOf(scope.id, scope.id) else arrayOf(scope.id)).use { cursor ->
                 while (cursor.moveToNext()) out.insertTransfer(table, cursor.transferJson())
             }
         }

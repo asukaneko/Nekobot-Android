@@ -78,7 +78,8 @@ sealed interface ChatInlineNotice {
  */
 data class ContextCompressionUiState(
     override val anchorContent: String = "",
-    override val running: Boolean = true
+    override val running: Boolean = true,
+    val memorySummarizing: Boolean = false
 ) : ChatInlineNotice {
     override val anchorMatchesUserMessages: Boolean get() = true
 }
@@ -298,9 +299,9 @@ class ChatSessionState(
      * [anchorContent] 是触发压缩的消息正文（自动压缩为刚发送的用户消息，
      * 手动压缩为触发时刻的最后一条消息）。
      */
-    fun applyContextCompressionNotice(inProgress: Boolean, anchorContent: String = "") {
+    fun applyContextCompressionNotice(inProgress: Boolean, anchorContent: String = "", memorySummarizing: Boolean = false) {
         setInlineNotice(
-            if (inProgress) ContextCompressionUiState(anchorContent = noticeAnchor(anchorContent))
+            if (inProgress) ContextCompressionUiState(anchorContent = noticeAnchor(anchorContent), memorySummarizing = memorySummarizing)
             else null
         )
     }

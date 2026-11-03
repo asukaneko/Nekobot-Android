@@ -91,6 +91,9 @@ data class LocalSessionEntity(
     @ColumnInfo(name = "long_conversation_enabled", defaultValue = "0") val longConversationEnabled: Boolean = false,
     /** 单窗口融合记忆模式；旧长久陪伴记录不自动升级。创建后不可直接切换。 */
     @ColumnInfo(name = "companion_mode", defaultValue = "0") val companionMode: Boolean = false,
+    @ColumnInfo(name = "companion_speaking_prompt") val companionSpeakingPrompt: String? = null,
+    @ColumnInfo(name = "companion_thinking_prompt") val companionThinkingPrompt: String? = null,
+    @ColumnInfo(name = "companion_thinking_enabled") val companionThinkingEnabled: Boolean? = null,
     /** 压缩后近期原话的截止消息 ID；供上下文构建跳过已完成回合的工具轨迹。 */
     @ColumnInfo(name = "long_conversation_tail_until_id") val longConversationTailUntilId: String? = null,
     /** 发送后等待一段时间再触发回复；仅本地普通角色和继承角色能力的 Agent 会话使用。 */

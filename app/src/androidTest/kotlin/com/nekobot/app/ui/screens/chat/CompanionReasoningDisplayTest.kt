@@ -48,13 +48,13 @@ class CompanionReasoningDisplayTest {
         compose.runOnIdle { enabled.value = true }
         compose.onNodeWithTag("companion_reasoning").assertIsDisplayed()
         compose.onNodeWithText(reasoning).assertDoesNotExist()
-        compose.onNodeWithText(compose.activity.getString(R.string.companion_chat_reasoning)).performClick()
+        compose.onNodeWithText(compose.activity.getString(R.string.companion_inner_thought)).performClick()
         compose.onNodeWithText(reasoning).assertIsDisplayed()
         compose.runOnIdle { enabled.value = false }
         compose.onNodeWithTag("companion_reasoning").assertDoesNotExist()
         compose.runOnIdle { enabled.value = true }
         compose.onNodeWithText(reasoning).assertDoesNotExist()
-        compose.onNodeWithText(compose.activity.getString(R.string.companion_chat_reasoning)).performClick()
+        compose.onNodeWithText(compose.activity.getString(R.string.companion_inner_thought)).performClick()
         compose.onNodeWithText(reasoning).assertIsDisplayed()
     }
 

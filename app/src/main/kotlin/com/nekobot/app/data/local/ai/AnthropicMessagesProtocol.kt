@@ -54,8 +54,13 @@ object AnthropicMessagesProtocol : LocalProtocol {
         stream: Boolean,
         extra: Map<String, Any?>
     ): Map<String, Any> {
-        // 分离 system 消息
-        val systemMessage = messages.firstOrNull { it["role"] == "system" }?.get("content") as? String
+        // 分离 system 消息：Anthropic 的 system 字段独立，且只能放在请求最前面。
+        // 多段系统提示（顶部规则、按深度插入的世界书补充、回查收尾说明）按原顺序逐段保留，
+        // 不能只取第一条——只取第一条会让后面的段落被静默丢弃，等于没发给模型。
+        // 代价是这些段落的位置会统一前移到开头：内容不丢，顺序不乱，但插不到对话中间。
+        val systemTexts = messages
+            .filter { it["role"] == "system" }
+            .mapNotNull { message -> (message["content"] as? String)?.takeIf { it.isNotBlank() } }
         val mappedMessages = messages
             .filter { it["role"] != "system" }
             .map { msg ->
@@ -149,7 +154,7 @@ object AnthropicMessagesProtocol : LocalProtocol {
             "messages" to anthropicMessages,
             "max_tokens" to ((extra["max_tokens"] as? Number)?.toInt() ?: 4096)
         )
-        systemMessage?.let { payload["system"] = systemBlocksOf(it) }
+        if (systemTexts.isNotEmpty()) payload["system"] = systemBlocksOf(systemTexts)
         if (stream) payload["stream"] = true
         val reasoningEffort = extra["reasoning_effort"] as? String
         val thinkingEnabled = reasoningEffort != null && reasoningEffort != "none"
@@ -198,19 +203,19 @@ object AnthropicMessagesProtocol : LocalProtocol {
     }
 
     /**
-     * system 提示词转为块数组并打上缓存断点。
+     * 多段 system 提示词按顺序转为块数组，只在最后一块打缓存断点。
      *
      * Anthropic 的 prompt caching 以"前缀命中"计费：Agent 模式下 system 提示词与工具定义
-     * 每轮都完全相同，标记断点后重复调用的输入成本大幅下降。短提示词（低于最小缓存长度）
-     * 不使用断点，避免无意义的分块。
+     * 每轮都完全相同，标记断点后重复调用的输入成本大幅下降。断点打在最后一块，
+     * 缓存前缀就覆盖全部 system 段落。总长度低于最小缓存长度时不使用断点，避免无意义分块。
+     *
+     * 断点数量受 Anthropic 上限约束（最多 4 个）：system 1 个、tools 1 个，留有余量。
      */
-    private fun systemBlocksOf(systemMessage: String): List<Map<String, Any>> {
-        val block = mapOf("type" to "text", "text" to systemMessage)
-        return if (systemMessage.length >= MIN_CACHEABLE_SYSTEM_CHARS) {
-            listOf(block + mapOf("cache_control" to EPHEMERAL_CACHE_CONTROL))
-        } else {
-            listOf(block)
-        }
+    private fun systemBlocksOf(systemTexts: List<String>): List<Map<String, Any>> {
+        val blocks = systemTexts.map { text -> mapOf("type" to "text", "text" to text) }
+        val totalChars = systemTexts.sumOf { it.length }
+        if (totalChars < MIN_CACHEABLE_SYSTEM_CHARS) return blocks
+        return blocks.dropLast(1) + (blocks.last() + mapOf("cache_control" to EPHEMERAL_CACHE_CONTROL))
     }
 
     /**

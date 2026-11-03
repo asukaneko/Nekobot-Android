@@ -19,6 +19,11 @@ class CharacterPromptChineseTest {
         assertEquals(PromptStack.Priority.BUBBLE_SPLIT + 1, inner.priority)
         assertFalse(bubble.content.contains("When you want"))
         assertFalse(inner.content.contains("Inner monologue format"))
+        // 2026-10-22：独白规则只在普通角色保留，单会话窗口不再注入。
+        assertTrue("output.inner_monologue" in characterOutputPromptKeys)
+        val companion = PromptStack()
+        buildCharacterInjections(companion, CharacterProfile(), companionMode = true)
+        assertNull(companion.get("output.inner_monologue"))
     }
 
     @Test
@@ -52,6 +57,8 @@ class CharacterPromptChineseTest {
             "回复长度目标：短", "动作细节目标：少", "主动性目标：适中", "不要每轮硬加", "仍要完成任务", "不要说明自己正在扮演角色")) {
             assertTrue(text, plan.contains(text))
         }
+        // 普通角色保持作者原版：反应计划仍可以提（内心：…）格式；单会话那边不看这段（计划不注入）。
+        assertTrue(plan.contains("（内心：...）"))
         assertEquals(PromptStack.Priority.REACTION_PLAN, stack.get("character.reaction_plan")?.priority)
     }
 }

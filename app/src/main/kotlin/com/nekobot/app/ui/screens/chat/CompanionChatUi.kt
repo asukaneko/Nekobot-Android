@@ -36,6 +36,7 @@ import com.nekobot.app.ui.theme.BgSurfaceVariant
 
 /** Only provided inside a single-session companion chat; shared Agent/role UI keeps its own style. */
 internal val LocalCompanionChatName = staticCompositionLocalOf<String?> { null }
+internal val LocalCompanionAvatarFallback = staticCompositionLocalOf<String?> { null }
 internal val LocalCompanionShowReasoning = staticCompositionLocalOf { false }
 /** 打开本会话「角色记忆」页；非单会话角色为 null。 */
 internal val LocalOpenCompanionMemory = staticCompositionLocalOf<(() -> Unit)?> { null }
@@ -125,7 +126,7 @@ internal fun CompanionReasoningSection(messageId: String?, reasoning: String?, e
                 verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = content)
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.companion_chat_reasoning), Modifier.weight(1f),
+                Text(stringResource(R.string.companion_inner_thought), Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge, color = content)
                 Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     stringResource(if (expanded) R.string.common_collapse else R.string.common_expand),

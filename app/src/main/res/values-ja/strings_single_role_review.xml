@@ -2,8 +2,8 @@
 <resources>
     <string name="single_role_character_perspective_thinking_beta">キャラクター視点の思考 Beta（テスト版）</string>
     <string name="single_role_think_in_chinese_in_the_character_s_first_person_voice">中国語で、キャラクター自身の「私」の口調で考えます。</string>
-    <string name="single_role_custom_thinking_prompt_beta">思考プロンプトのカスタマイズ Beta（テスト版）</string>
-    <string name="single_role_leave_blank_to_use_the_default">空欄の場合は初期設定を使います。</string>
+    <string name="single_role_custom_thinking_prompt_beta">思考プロンプト</string>
+    <string name="single_role_leave_blank_to_use_the_default">この文言は毎回のリクエストの最後に送られ、キャラクターが一人称・簡体中国語で考えるよう指示します。空欄の場合は初期設定を使います。</string>
     <string name="single_role_thinking_prompt">思考プロンプト</string>
     <string name="single_role_manage_providers_and_models_here_characters_can_select_and_reorde">ここでプロバイダーとモデルを管理します。キャラクターの「チャットモデル」で選択と並べ替えができます。個別設定がない場合は既定のキューを使います。</string>
     <string name="single_role_primary_model_in_default_queue">既定キューのメインモデル</string>
@@ -85,7 +85,7 @@
     <string name="single_role_only_affects_this_conversation">この会話にのみ適用</string>
     <string name="single_role_chat_usage">チャット使用量</string>
     <string name="single_role_view_content_included_in_the_last_request">前回のリクエストに含めた内容を確認</string>
-    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">思考の表示とキャラクター視点の思考を両方有効にすると、メッセージ内の内面の思考 Beta を展開できます。本文の内面独白は別のスイッチで設定します。</string>
+    <string name="single_role_enable_both_thinking_display_and_character_perspective_thinking_t">思考の表示とキャラクター視点の思考を両方有効にすると、メッセージ内の内面の思考 Beta を展開できます。</string>
     <string name="single_role_context_breakdown_chart_locally_estimated_at_1_s_tokens">コンテキストの内訳グラフ、ローカル推定 %1$s Token</string>
     <string name="single_role_select_1_s">%1$sを選択</string>
     <string name="single_role_no_requests_recorded">リクエスト記録はありません</string>
@@ -225,7 +225,7 @@
     <string name="single_role_earlier_content">以前の内容</string>
     <string name="single_role_this_content_was_deleted">この内容は削除されました</string>
     <string name="single_role_saved_manually">手動で保存</string>
-    <string name="single_role_organized_automatically">自動で整理</string>
+    <string name="single_role_organized_automatically">自動で要約</string>
     <string name="single_role_save_time_not_recorded">保存時刻の記録なし</string>
     <string name="single_role_original_messages_for_this_memory">この記憶の原文</string>
     <string name="single_role_no_original_messages_to_locate">移動できる原文はありません。</string>
@@ -241,7 +241,7 @@
     <string name="single_role_keep_memory">記憶を残す</string>
     <string name="single_role_deleting">削除中…</string>
     <string name="single_role_not_deleted_yet">まだ削除できていません</string>
-    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">この記憶と変更履歴を削除します。整理の進捗は変わりません。今後の明確な発言から新しい記憶が作られる場合があります。</string>
+    <string name="single_role_this_memory_and_its_revisions_will_be_removed_organization_progre">この記憶は無効になり、変更履歴から復元できます。要約の進捗は変わりません。今後の発言から新しい記憶が作られることがあります。</string>
     <string name="single_role_memory_settings">記憶の設定</string>
     <string name="single_role_retrieval_settings_all_single_session_characters">検索設定 · 全単一セッションキャラクター共通</string>
     <string name="single_role_keyword_search">キーワード検索</string>
@@ -303,7 +303,7 @@
     <string name="single_role_these_memories_are_included_in_every_chat_use_the_top_right_menu">毎回のチャットに含める記憶です。各記憶の右上からコア記憶から外せますが、本文は残ります。古い会話の整理時にモデルが選択・更新し、手動の選択が優先されます。</string>
     <string name="single_role_review_and_adjust_important_names_relationships_and_habits_at_any">大切な呼び方、関係、交流の習慣をいつでも確認・調整できます。</string>
     <string name="single_role_about_1_s_tokens_does_not_use_recall_quota">約%1$d Token · 能動検索枠を消費しません</string>
-    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">コア記憶が目標量を超えていますが、全文を含めます。追加する前に本文を短くするか、一部をコア記憶から外してください。</string>
+    <string name="single_role_core_memories_exceed_the_target_size_and_will_still_be_included_i">約1000 Tokenは目安です。そのまま保持したり追加したりできます。整理する内容は自分で選べます。送信時はモデルのコンテキスト上限が適用されます。</string>
     <string name="single_role_memories_temporarily_unavailable">記憶を一時的に読み込めません</string>
     <string name="single_role_this_action_did_not_complete">操作が完了しませんでした</string>
     <string name="single_role_no_core_memories_yet_return_to_all_memories_and_choose_set_as_cor">コア記憶はまだありません。全記憶に戻り、項目の右上から「コア記憶に設定」を選ぶか、今後の整理時にモデルが選ぶのを待てます。</string>

@@ -971,12 +971,24 @@ internal class GitRepository(private val gitRoot: File) {
      */
     fun cachedBlobSha(file: File): String? {
         val size = file.length()
-        val modified = file.lastModified()
+        val modified = lastModifiedNanos(file)
         synchronized(blobShaCache) {
             val cached = blobShaCache[file.absolutePath] ?: return null
             return if (cached.size == size && cached.modified == modified) cached.sha else null
         }
     }
+
+    /**
+     * 修改时间取纳秒精度。
+     *
+     * `File.lastModified()` 只有毫秒精度：同一毫秒内「扫一次 → 改成同样大小的内容 → 再扫一次」会命中旧缓存，
+     * 把改动当成没变（CI 上偶发过这个失败）。文件系统支持纳秒时用纳秒，否则退回毫秒。
+     */
+    private fun lastModifiedNanos(file: File): Long =
+        runCatching {
+            java.nio.file.Files.getLastModifiedTime(file.toPath())
+                .to(java.util.concurrent.TimeUnit.NANOSECONDS)
+        }.getOrDefault(file.lastModified() * 1_000_000L)
 
     /**
      * 计算工作区文件的 blob SHA-1（与 HEAD 条目比对用）。
@@ -991,7 +1003,7 @@ internal class GitRepository(private val gitRoot: File) {
         val bytes = runCatching { file.readBytes() }.getOrNull() ?: return null
         val sha = WorkspaceGitDiff.gitBlobSha(bytes)
         synchronized(blobShaCache) {
-            blobShaCache[file.absolutePath] = CachedBlobSha(size, file.lastModified(), sha)
+            blobShaCache[file.absolutePath] = CachedBlobSha(size, lastModifiedNanos(file), sha)
         }
         return sha
     }

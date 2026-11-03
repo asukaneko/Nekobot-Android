@@ -233,7 +233,7 @@ class CharacterRuntime(
             promptStack.disableKeys(disabledKeys)
         }
 
-        val promptText = if (fusedCompanion) buildBasePrompt(profile, "", "") else promptStack.render(
+        val promptText = if (fusedCompanion) buildBasePrompt(profile.copy(exampleDialogues = ""), "", "") else promptStack.render(
             basePrompt = buildBasePrompt(profile, beforeCharText, afterCharText)
         )
         if (fusedCompanion) {

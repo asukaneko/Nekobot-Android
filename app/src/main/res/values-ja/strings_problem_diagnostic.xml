@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="problem_diag_title">問題診断パッケージ</string>
+    <string name="problem_diag_export">問題診断をエクスポート</string>
+    <string name="problem_diag_preview">診断内容を確認</string>
+    <string name="problem_diag_range">問題の範囲</string>
+    <string name="problem_diag_reply">この返信</string>
+    <string name="problem_diag_import">直近のインポート</string>
+    <string name="problem_diag_runtime">最近の実行記録</string>
+    <string name="problem_diag_choose_reply">問題のある返信を選択</string>
+    <string name="problem_diag_selected_reply">この返信を選択済み</string>
+    <string name="problem_diag_collect">自動でまとめる情報</string>
+    <string name="problem_diag_app">アプリのバージョンと実行情報</string>
+    <string name="problem_diag_model">モデルの呼び出しとエラー</string>
+    <string name="problem_diag_recall">記憶検索の上限とツール実行</string>
+    <string name="problem_diag_sources">記憶の出典・切り詰め・絞り込み</string>
+    <string name="problem_diag_optional">任意で添付する内容</string>
+    <string name="problem_diag_include_text">調査に必要な本文を添付</string>
+    <string name="problem_diag_text_note">返信では質問・回答・照合できた資料を添付できます。本文は初期状態では含めず、毎回選択します。</string>
+    <string name="problem_diag_description">補足説明（任意）</string>
+    <string name="problem_diag_missing_note">古い記録は不完全な場合があります。不足する証拠を明記し、過去の経過を作りません。</string>
+    <string name="problem_diag_basic">基本診断（本文なし）</string>
+    <string name="problem_diag_with_text">調査用の本文を添付</string>
+    <string name="problem_diag_checks">検索上限、空の検索結果、資料の切り詰め、モデルやツールのエラーを確認できます。</string>
+    <string name="problem_diag_evidence_only">照合可能な証拠をまとめます。原因を自動で断定しません。</string>
+    <string name="problem_diag_files">保存する内容（タップで確認）</string>
+    <string name="problem_diag_text_present">調査用の本文を含みます。共有前に確認してください。</string>
+    <string name="problem_diag_text_absent">会話本文：添付なし</string>
+    <string name="problem_diag_privacy">認証情報と会話データベース全体は含めません。保存後に送信するか決めてください。本文を添付した場合は先に確認してください。</string>
+    <string name="problem_diag_missing">記録上の制限 %1$d 件を説明ファイルに記載しています。</string>
+    <string name="problem_diag_save">診断パッケージを保存（ZIP）</string>
+    <string name="problem_diag_adjust">設定を見直す</string>
+    <string name="problem_diag_saved">診断パッケージを保存しました。送信するか選んでください。</string>
+    <string name="problem_diag_failed">完了できませんでした。返信やデータベースが変わっていないか確認して再試行してください。保存失敗時のファイルは不完全な場合があります。</string>
+    <string name="problem_diag_no_replies">最近の返信がありません。会話内の返信を長押しして開くこともできます。</string>
+</resources>

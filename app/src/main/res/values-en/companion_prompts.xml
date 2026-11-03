@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="companion_prompts_title">Character &amp; prompts</string>
+    <string name="companion_prompts_summary">Persona, speaking style, thinking prompt</string>
+    <string name="companion_prompts_scope">Applies to this character only; other characters are unaffected.</string>
+    <string name="companion_prompt_persona">Persona</string>
+    <string name="companion_prompt_persona_hint">Edits the existing character profile; no preset persona is provided</string>
+    <string name="companion_prompt_speaking">Speaking style</string>
+    <string name="companion_prompt_speaking_hint">Placed in the fixed rules at the beginning</string>
+    <string name="companion_prompt_thinking">Thinking prompt</string>
+    <string name="companion_prompt_thinking_hint">When enabled, sent at the end of the request along with the current time</string>
+    <string name="companion_prompt_default">Software default</string>
+    <string name="companion_prompt_custom">Customized</string>
+    <string name="companion_prompt_edit_hint">You are editing the full text of this section; a custom value replaces the default. Leave empty to use the software default. Supports {{char}} (character name) and {{user}} (your name).</string>
+    <string name="companion_prompt_restore_hint">Restoring the default only changes the draft; it takes effect after you save.</string>
+    <string name="companion_prompt_inactive_hint">The thinking prompt is currently disabled. You can still edit and save it; this will not turn on the switch or change the effort.</string>
+    <string name="companion_prompt_thinking_switch">Enable thinking prompt</string>
+    <string name="companion_prompt_thinking_switch_hint">This character only; to edit the text, open Character &amp; prompts</string>
+    <string name="companion_prompt_discard_title">Discard unsaved changes?</string>
+    <string name="companion_prompt_discard">Discard</string>
+    <string name="companion_prompt_keep_editing">Keep editing</string>
+    <string name="companion_prompt_load_error">Could not read the character settings. Please try again.</string>
+    <string name="companion_prompt_save_error">Save failed. Your draft was kept. Please try again.</string>
+</resources>

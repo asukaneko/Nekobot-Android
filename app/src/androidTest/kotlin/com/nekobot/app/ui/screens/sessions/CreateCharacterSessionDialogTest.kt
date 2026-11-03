@@ -46,6 +46,7 @@ class CreateCharacterSessionDialogTest {
         onLoad: () -> Unit = {}
     ) {
         val context = LocalContext.current
+        // 用 LocalConfiguration 读取配置，避免直接读 LocalContext 的 resources 后错过重组。
         val currentConfiguration = LocalConfiguration.current
         val localized = remember(currentConfiguration) {
             context.createConfigurationContext(Configuration(currentConfiguration).apply { setLocale(Locale.SIMPLIFIED_CHINESE) })

@@ -185,6 +185,10 @@ typealias StreamModelCall = (messages: List<Map<String, Any>>, stopped: Boolean)
  * 对应原仓库 PipelineCallbacks。
  */
 open class PipelineCallbacks {
+    open suspend fun prepareCharacterPromptSettings(ctx: PipelineContext) = Unit
+
+    open fun getCompanionSpeakingPrompt(ctx: PipelineContext): String? = null
+
     /** 由频道读取偏好；角色思考风格与显示开关无关。 */
     open fun getCharacterThinkingSettings(ctx: PipelineContext) = CharacterThinkingSettings()
 

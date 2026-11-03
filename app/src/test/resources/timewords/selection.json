@@ -1,0 +1,84 @@
+{
+  "revision": "da7edcff59f669b2a460ab9d400e36298f0d658e",
+  "basicOriginalAvailable": false,
+  "supplementalCount": 112,
+  "languages": {
+    "zh": {
+      "total": 328,
+      "selected": 45,
+      "skipped": 283,
+      "reasons": {
+        "不在声明语法范围": 246,
+        "非单一结果": 37
+      },
+      "files": {
+        "DateParser": {
+          "sha256": "f8b69a089a374a87680553a7bf912342e5b337ecc04b1b27e4afead03a031f17",
+          "rows": 64
+        },
+        "DateTimeModel": {
+          "sha256": "613d7140b5e677dc943e797aa7287e63fef75ff9b78b38a4a754373c05c9ec3b",
+          "rows": 264
+        }
+      }
+    },
+    "en": {
+      "total": 1122,
+      "selected": 64,
+      "skipped": 1058,
+      "reasons": {
+        "不在声明语法范围": 885,
+        "非单一结果": 173
+      },
+      "files": {
+        "DateParser": {
+          "sha256": "fe9c4828e187eea81e868d03faf1896afabb792f435364f4e27c4a12e827f688",
+          "rows": 137
+        },
+        "DateTimeModel": {
+          "sha256": "7a9ff209927f3c5d9b26e28935706b46ff8433bde4b49e2135dee186752938a4",
+          "rows": 985
+        }
+      }
+    },
+    "ja": {
+      "total": 777,
+      "selected": 98,
+      "skipped": 679,
+      "reasons": {
+        "不在声明语法范围": 577,
+        "非单一结果": 102
+      },
+      "files": {
+        "DateParser": {
+          "sha256": "7f479e100c85caab4da106877b76f4d01b48b82d2f6c281fbb9456a9df2f6d0d",
+          "rows": 193
+        },
+        "DateTimeModel": {
+          "sha256": "854b342fe2029bc6a6f7e4f9207a0fc8a5e47963a79cbfc4e0fd2b066ab96f3e",
+          "rows": 584
+        }
+      }
+    },
+    "ko": {
+      "total": 505,
+      "selected": 85,
+      "skipped": 420,
+      "reasons": {
+        "不在声明语法范围": 355,
+        "非单一结果": 63,
+        "非单日类型": 2
+      },
+      "files": {
+        "DateParser": {
+          "sha256": "0498a0c130a6c4a4d8a8e2b5a14150817de080969a4a2bdf5939337063f20519",
+          "rows": 189
+        },
+        "DateTimeModel": {
+          "sha256": "bd2f950b989f7b73666f0b4fe8054b53877229659749948d77e297d714609b8f",
+          "rows": 316
+        }
+      }
+    }
+  }
+}
