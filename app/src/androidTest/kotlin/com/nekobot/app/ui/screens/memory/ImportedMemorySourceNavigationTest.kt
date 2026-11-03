@@ -242,8 +242,8 @@ class ImportedMemorySourceNavigationTest {
 
         val dialogList = hasScrollAction() and hasAnyAncestor(isDialog())
         compose.waitUntil(10_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(dialogList).performScrollToNode(hasText(fixture.quote))
-        compose.onNodeWithText(fixture.quote).assertTextEquals(fixture.quote).assertIsDisplayed()
+        compose.onNode(dialogList).performScrollToNode(hasText(fixture.message.content))
+        compose.onNodeWithText(fixture.message.content).assertTextEquals(fixture.message.content).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.single_role_you_entered_this_memory_manually_it_has_no_linked_chat_sources))
             .assertDoesNotExist()
         captureSynthetic("$name-source-quote", dialog = true)
