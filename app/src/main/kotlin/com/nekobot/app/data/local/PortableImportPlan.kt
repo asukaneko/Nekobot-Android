@@ -384,7 +384,10 @@ internal class PortableImportPlanner(private val sql: PortableImportSql, private
         "SELECT * FROM ${q(table)} WHERE ${where(key)} LIMIT 1", key.entrySet().map { bind(it.value) }).firstOrNull()
     private fun differences(table: String, values: JsonObject, existing: JsonObject): List<String> =
         values.keySet().filter { name -> columns(table).none { it.name == name && it.pk > 0 } &&
-            name !in protectedColumns(table) && values[name] != existing[name] }
+            name !in protectedColumns(table) &&
+            // 原话快照是本地补齐的派生列：归档里没有它时不算改动，否则重复导入永远“有差异”。
+            !(name == "messageSnapshot" && values[name]?.isJsonNull != false) &&
+            values[name] != existing[name] }
 
     private fun uniqueColumns(table: String): List<List<String>> = uniqueCache.getOrPut(table) { sql.query("PRAGMA index_list(${q(table)})")
         .filter { it["unique"].asInt != 0 && it["origin"]?.asString != "pk" }

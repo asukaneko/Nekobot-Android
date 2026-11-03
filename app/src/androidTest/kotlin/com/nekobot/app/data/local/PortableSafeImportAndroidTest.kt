@@ -307,9 +307,9 @@ class PortableSafeImportAndroidTest {
         val reopenedStore = com.nekobot.app.data.local.ai.CompanionMemoryStore(db())
         assertEquals(listOf(saved), reopenedStore.validatedMemories(reopenedStore.ensureScope(fixture.session)))
         prepared(fixture.archive).use { archive ->
-            val plan = manager.previewImport(archive, selected)
+            val plan = manager.previewImport(archive, selected, detailLimit = Int.MAX_VALUE)
             assertTrue(plan.issues.toString(), plan.issues.isEmpty())
-            assertEquals(0, plan.rows.counts.different)
+            assertEquals(plan.rows.differences.toString(), 0, plan.rows.counts.different)
             assertEquals(0, manager.commitImport(archive, plan).importedRows)
         }
         assertEquals(listOf(saved), reopenedStore.validatedMemories(reopenedStore.ensureScope(fixture.session)))
