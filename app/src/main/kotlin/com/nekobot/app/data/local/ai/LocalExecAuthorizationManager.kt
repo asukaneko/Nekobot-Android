@@ -383,10 +383,17 @@ internal fun toolAuthorizationFingerprint(toolName: String, argument: String): S
 /**
  * 本地 Agent 命令授权状态。
  *
- * `/yolo` 按会话持久化，可跳过命令类请求的授权（解释器、安装类命令也在内，它们只是
- * 不能「始终允许」）；读取界面树、截图这类操作不可 YOLO 跳过。
- * “始终允许”按**授权指纹**记忆，并可按会话持久化（重启后仍有效），
- * 见 [extractLocalAuthorizationFingerprints]。
+ * 三档语义，新增调用方时必须显式选择：
+ * - **`/yolo`**：用户按会话显式开启，表示"这一场别问我"，可跳过所有未被标记
+ *   `yoloExempt` 的请求（解释器/安装类命令同样放行，它们只是不能「始终允许」）。
+ *   Android 系列工具（含读取界面树、截图）刻意不标 `yoloExempt`——无障碍自动化
+ *   每步都要看屏幕，若每步弹窗，YOLO 就失去意义。
+ * - **`yoloExempt`**：连 YOLO 也不能跳过，例如某些面向第三方内容、可能被提示词
+ *   注入诱导的读取操作。调用方显式传入才生效。
+ * - **「始终允许」**：按**授权指纹**记忆并可按会话持久化（重启后仍有效），
+ *   `memorizable = false` 的请求永远不会被记住（一次授权 ≠ 无限期放行）。
+ *
+ * 三者互相独立：YOLO 不是"永久授权"，`memorizable = false` 也不等于"不可 YOLO"。
  */
 class LocalExecAuthorizationManager(
     private val authorizationTimeoutMs: Long = 10 * 60 * 1000L,
@@ -453,8 +460,11 @@ class LocalExecAuthorizationManager(
         /**
          * true 表示连 YOLO 也不能跳过。
          *
-         * 默认与 [memorizable] 一致（不可记忆的请求也不可 YOLO），保持既有语义；
-         * Android 系列工具显式传 false，让 YOLO 可以放行读取界面树/截图这类操作。
+         * 默认与 [memorizable] 一致（不可记忆的请求默认也不可 YOLO），这是安全侧的默认值；
+         * 调用方可以显式放宽或收紧：
+         * - Android 系列工具显式传 `false`：无障碍自动化每一步都要读界面/截图，
+         *   若每步弹窗，用户开启 YOLO 就失去意义（见 [LocalExecAuthorizationManager] 类注释）；
+         * - 真正"一次授权就能把整屏内容送出去"的入口（若将来新增）应显式传 `true`。
          */
         yoloExempt: Boolean = !memorizable,
         onRequest: (ExecConfirmationRequest) -> Unit
