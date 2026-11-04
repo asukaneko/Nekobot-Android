@@ -59,6 +59,138 @@ private val localDbHighRiskToolIds: Set<String> = setOf(
     "db_delete_skill", "db_delete_ai_model"
 )
 
+// ============================================================================
+// 分页与输出预算
+// ============================================================================
+
+/** 列表类 db 工具的默认每页条数。 */
+internal const val DB_TOOL_DEFAULT_PAGE_SIZE = 20
+
+/** 列表类 db 工具的每页上限：再多就应该让用户缩小范围，而不是把整库塞进上下文。 */
+internal const val DB_TOOL_MAX_PAGE_SIZE = 200
+
+/** 输出预算收紧时单字段保留的最小字符数。 */
+private const val OUTPUT_CLIP_MIN_CHARS = 500
+
+private val dbToolJson = Gson()
+
+/** 读取分页 limit：缺省 20，越界收敛到 1..200。 */
+internal fun dbPageLimit(args: Map<String, Any>): Int =
+    ((args["limit"] as? Number)?.toInt() ?: (args["limit"] as? String)?.toIntOrNull() ?: DB_TOOL_DEFAULT_PAGE_SIZE)
+        .coerceIn(1, DB_TOOL_MAX_PAGE_SIZE)
+
+/** 读取分页 offset：缺省 0，负数按 0 处理。 */
+internal fun dbPageOffset(args: Map<String, Any>): Int =
+    ((args["offset"] as? Number)?.toInt() ?: (args["offset"] as? String)?.toIntOrNull() ?: 0)
+        .coerceAtLeast(0)
+
+/** 一页列表数据 + 分页元信息。 */
+internal data class DbToolPage<T>(
+    val items: List<T>,
+    val total: Int,
+    val offset: Int,
+    val limit: Int,
+    val truncatedByBudget: Boolean
+) {
+    val hasMore: Boolean get() = offset + items.size < total
+    val nextOffset: Int? get() = if (hasMore) offset + items.size else null
+}
+
+/**
+ * 按 `limit` / `offset` 切一页，并在超出 [budgetChars] 时对半收缩。
+ *
+ * 收缩只影响"这一页给模型看多少条"，不动分页语义：`total` 与 `next_offset`
+ * 仍按原始条数计算，模型可以继续翻页取回被收缩掉的部分。
+ */
+internal fun <T> dbToolPage(
+    args: Map<String, Any>,
+    all: List<T>,
+    budgetChars: Int = AgentToolLimits.toolOutputChars(),
+    sizeOf: (List<T>) -> Int = { dbToolJson.toJson(it).length }
+): DbToolPage<T> {
+    val limit = dbPageLimit(args)
+    val offset = dbPageOffset(args).coerceAtMost(all.size)
+    val end = (offset + limit).coerceAtMost(all.size)
+    var page = all.subList(offset, end)
+    var truncated = false
+    while (page.size > 1 && budgetChars > 0 && sizeOf(page) > budgetChars) {
+        page = page.subList(0, page.size / 2)
+        truncated = true
+    }
+    return DbToolPage(items = page.toList(), total = all.size, offset = offset, limit = limit, truncatedByBudget = truncated)
+}
+
+/**
+ * 列表类工具的统一返回体：`success` + 指定 key + 分页元信息。
+ *
+ * 形状保持向后兼容——原来的 `count` / `<key>` 字段仍在，只是 `count` 变成"本页条数"，
+ * 总量改用 `total`，避免模型把"本页 20 条"误当成"库里只有 20 条"。
+ */
+internal fun dbPagedResult(
+    key: String,
+    page: DbToolPage<Map<String, Any>>,
+    extra: Map<String, Any> = emptyMap()
+): Map<String, Any> = buildMap {
+    put("success", true)
+    put("count", page.items.size)
+    put(key, page.items)
+    put("total", page.total)
+    put("offset", page.offset)
+    put("limit", page.limit)
+    put("has_more", page.hasMore)
+    page.nextOffset?.let { put("next_offset", it) }
+    if (page.truncatedByBudget) {
+        put("truncated_by_budget", true)
+        put("page_hint", "本页按输出上限收缩，可用 offset 继续读取后续条目")
+    }
+    putAll(extra)
+}
+
+/** 递归截断过长字符串，保留结构（map/list 原样递归）。 */
+internal fun clipLongText(value: Any?, perFieldChars: Int): Any? = when (value) {
+    is String -> if (value.length <= perFieldChars) {
+        value
+    } else {
+        value.take(perFieldChars) + "\n…（已截断，共 ${value.length} 字符）"
+    }
+    is Map<*, *> -> value.entries.associate { (k, v) -> k.toString() to clipLongText(v, perFieldChars) }
+    is List<*> -> value.map { clipLongText(it, perFieldChars) }
+    else -> value
+}
+
+/**
+ * 所有 db 工具结果的最后一道上限。
+ *
+ * 单个对象类工具（`db_get_character`、`db_get_world_book` 等）没法分页，
+ * 但同样可能一次返回几十万字符（系统提示词、世界书条目正文）。这里统一按
+ * [AgentToolLimits.toolOutputChars] 兜底：先逐级收紧单字段长度，实在放不下就
+ * 直接拒绝并提示模型缩小范围，避免一条工具结果撑爆上下文。
+ */
+internal fun boundDbToolResult(
+    payload: Map<String, Any>,
+    budgetChars: Int = AgentToolLimits.toolOutputChars()
+): Map<String, Any> {
+    if (budgetChars <= 0) return payload
+    if (dbToolJson.toJson(payload).length <= budgetChars) return payload
+    var perField = 8_000
+    while (perField >= OUTPUT_CLIP_MIN_CHARS) {
+        val clipped = payload.entries.associate { (key, value) ->
+            val isMeta = key == "success" || key == "count" || key == "total" || key == "error"
+            key to if (isMeta) value else (clipLongText(value, perField) ?: value)
+        }
+        if (dbToolJson.toJson(clipped).length <= budgetChars) {
+            return clipped + ("output_clipped" to true)
+        }
+        perField /= 2
+    }
+    return mapOf(
+        "success" to false,
+        "output_clipped" to true,
+        "error" to "结果超出单条输出上限（约 $budgetChars 字符），已拒绝返回。请缩小查询范围（指定 id、limit/offset 或更精确的过滤条件）后重试。",
+        "error_code" to "OUTPUT_TOO_LARGE"
+    )
+}
+
 /** 将本地数据库工具集转换为 OpenAI function-calling 定义。 */
 internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
     fun params(properties: Map<String, Map<String, Any>>, required: List<String> = emptyList()): Map<String, Any> =
@@ -105,9 +237,22 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         "additionalProperties" to mapOf("type" to "string")
     )
 
+    /**
+     * 列表类工具的公共分页参数。
+     *
+     * 列表工具默认只返回一页（[DB_TOOL_DEFAULT_PAGE_SIZE] 条），返回体里的
+     * `total` / `has_more` / `next_offset` 让模型自己决定要不要继续翻页，
+     * 避免"列个角色卡就把整库塞进上下文"。
+     */
+    fun pageParams(extra: Map<String, Map<String, Any>> = emptyMap()): Map<String, Map<String, Any>> =
+        extra + mapOf(
+            "limit" to int("每页条数，默认 $DB_TOOL_DEFAULT_PAGE_SIZE，上限 $DB_TOOL_MAX_PAGE_SIZE"),
+            "offset" to int("跳过条数，默认 0；翻页用上一页返回的 next_offset")
+        )
+
     return listOf(
         // ===== 角色卡 =====
-        definition("db_list_characters", "列出所有本地角色卡（仅返回摘要字段）。", params(emptyMap())),
+        definition("db_list_characters", "列出本地角色卡摘要（分页；返回 total/has_more/next_offset）。", params(pageParams())),
         definition("db_get_character", "查看指定角色卡完整字段。", params(mapOf("character_id" to str("角色卡 ID")), listOf("character_id"))),
         definition(
             "db_create_character",
@@ -210,8 +355,12 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition("db_delete_character", "删除指定角色卡（高风险，需用户确认）。", params(mapOf("character_id" to str("角色卡 ID")), listOf("character_id"))),
 
         // ===== 世界书 =====
-        definition("db_list_world_books", "列出所有本地世界书。", params(emptyMap())),
-        definition("db_get_world_book", "查看指定世界书及其所有条目。", params(mapOf("book_id" to str("世界书 ID")), listOf("book_id"))),
+        definition("db_list_world_books", "列出本地世界书（分页；返回 total/has_more/next_offset）。", params(pageParams())),
+        definition(
+            "db_get_world_book",
+            "查看指定世界书的元信息与条目（条目分页，用 limit/offset 翻页；条目正文很长时请分页读取）。",
+            params(pageParams(mapOf("book_id" to str("世界书 ID"))), listOf("book_id"))
+        ),
         definition(
             "db_create_world_book",
             "创建一本新的本地世界书。",
@@ -276,8 +425,8 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         // ===== 角色记忆 / 状态历程 =====
         definition(
             "db_list_memories",
-            "列出本地角色记忆。character_id 可空（空则返回全部）。",
-            params(mapOf("character_id" to str("角色卡 ID（可空）")))
+            "列出本地角色记忆。character_id 可空（空则返回全部）；分页返回。",
+            params(pageParams(mapOf("character_id" to str("角色卡 ID（可空）"))))
         ),
         definition(
             "db_save_memory",
@@ -296,11 +445,11 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
             )
         ),
         definition("db_delete_memory", "删除指定角色记忆（高风险，需用户确认）。", params(mapOf("memory_id" to str("记忆 ID")), listOf("memory_id"))),
-        definition("db_list_state_history", "查看当前会话的状态历程（情绪/关系八维随时间的演变）。", params(emptyMap())),
+        definition("db_list_state_history", "查看当前会话的状态历程（分页；返回 total/has_more/next_offset）。", params(pageParams())),
         definition("db_get_latest_state", "查看当前会话最新角色运行时状态快照。", params(emptyMap())),
 
         // ===== Hook =====
-        definition("db_list_hooks", "列出所有本地 Hook。", params(emptyMap())),
+        definition("db_list_hooks", "列出本地 Hook（分页）。", params(pageParams())),
         definition(
             "db_create_hook",
             "创建一个新的本地 Hook。name/event 必填。",
@@ -362,7 +511,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition("db_toggle_hook", "切换 Hook 启用状态。", params(mapOf("hook_id" to str("Hook ID")), listOf("hook_id"))),
 
         // ===== 工作流 =====
-        definition("db_list_workflows", "列出所有本地工作流。", params(emptyMap())),
+        definition("db_list_workflows", "列出本地工作流（分页）。", params(pageParams())),
         definition(
             "db_create_workflow",
             "创建一个新的本地工作流。",
@@ -395,7 +544,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition("db_delete_workflow", "删除指定工作流（高风险，需用户确认）。", params(mapOf("workflow_id" to str("工作流 ID")), listOf("workflow_id"))),
 
         // ===== 任务 =====
-        definition("db_list_tasks", "列出所有本地任务。", params(emptyMap())),
+        definition("db_list_tasks", "列出本地任务（分页）。", params(pageParams())),
         definition(
             "db_create_task",
             "创建一个新的本地任务。",
@@ -432,7 +581,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition("db_delete_task", "删除指定任务（高风险，需用户确认）。", params(mapOf("task_id" to str("任务 ID")), listOf("task_id"))),
 
         // ===== Skill =====
-        definition("db_list_skills", "列出所有本地 Skill 元数据。", params(emptyMap())),
+        definition("db_list_skills", "列出本地 Skill 元数据（分页）。", params(pageParams())),
         definition(
             "db_create_skill",
             "创建一个新的本地 Skill，并把 SKILL.md / reference.md / 附加文件直接写入技能目录，无需再通过 UI 上传。" +
@@ -476,7 +625,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition("db_toggle_skill", "切换 Skill 启用状态。", params(mapOf("skill_id" to str("Skill ID")), listOf("skill_id"))),
 
         // ===== AI 模型 =====
-        definition("db_list_ai_models", "列出所有本地 AI 模型配置。", params(emptyMap())),
+        definition("db_list_ai_models", "列出本地 AI 模型配置（分页）。", params(pageParams())),
         definition("db_get_ai_model", "查看指定 AI 模型详情（密钥只返回是否已设置，地址会脱敏）。", params(mapOf("model_id" to str("模型 ID")), listOf("model_id"))),
         definition(
             "db_create_ai_model",
@@ -602,64 +751,68 @@ internal class LocalDbToolExecutor(
         }
         return withContext(Dispatchers.IO) {
             try {
-                when (toolName) {
-                    // 角色卡
-                    "db_list_characters" -> listCharacters()
-                    "db_get_character" -> getCharacter(args)
-                    "db_create_character" -> createCharacter(args)
-                    "db_update_character" -> updateCharacter(args)
-                    "db_delete_character" -> deleteCharacter(args)
-                    // 世界书
-                    "db_list_world_books" -> listWorldBooks()
-                    "db_get_world_book" -> getWorldBook(args)
-                    "db_create_world_book" -> createWorldBook(args)
-                    "db_update_world_book" -> updateWorldBook(args)
-                    "db_delete_world_book" -> deleteWorldBook(args)
-                    "db_upsert_world_book_entry" -> upsertWorldBookEntry(args)
-                    "db_delete_world_book_entry" -> deleteWorldBookEntry(args)
-                    // Token 用量
-                    "db_token_stats" -> tokenStats()
-                    "db_token_rankings" -> tokenRankings()
-                    "db_session_token_usage" -> sessionTokenUsage(args)
-                    // 记忆 / 状态
-                    "db_list_memories" -> listMemories(args)
-                    "db_save_memory" -> saveMemory(args)
-                    "db_delete_memory" -> deleteMemory(args)
-                    "db_list_state_history" -> listStateHistory()
-                    "db_get_latest_state" -> getLatestState()
-                    // Hook
-                    "db_list_hooks" -> listHooks()
-                    "db_create_hook" -> createHook(args)
-                    "db_update_hook" -> updateHook(args)
-                    "db_delete_hook" -> deleteHook(args)
-                    "db_toggle_hook" -> toggleHook(args)
-                    // 工作流
-                    "db_list_workflows" -> listWorkflows()
-                    "db_create_workflow" -> createWorkflow(args)
-                    "db_update_workflow" -> updateWorkflow(args)
-                    "db_delete_workflow" -> deleteWorkflow(args)
-                    // 任务
-                    "db_list_tasks" -> listTasks()
-                    "db_create_task" -> createTask(args)
-                    "db_update_task" -> updateTask(args)
-                    "db_delete_task" -> deleteTask(args)
-                    // Skill
-                    "db_list_skills" -> listSkills()
-                    "db_create_skill" -> createSkill(args)
-                    "db_update_skill" -> updateSkill(args)
-                    "db_delete_skill" -> deleteSkill(args)
-                    "db_toggle_skill" -> toggleSkill(args)
-                    // AI 模型
-                    "db_list_ai_models" -> listAiModels()
-                    "db_get_ai_model" -> getAiModel(args)
-                    "db_create_ai_model" -> createAiModel(args)
-                    "db_update_ai_model" -> updateAiModel(args)
-                    "db_delete_ai_model" -> deleteAiModel(args)
-                    "db_set_active_model" -> setActiveModel(args)
-                    "db_get_ai_config" -> getAiConfig()
-                    "db_update_ai_config" -> updateAiConfig(args)
-                    else -> failure("未实现的数据库工具: $toolName")
-                }
+                // 统一兜底：任何 db 工具的结果都不允许超过单条输出上限，
+                // 否则一条世界书/记忆列表就能把整轮上下文挤爆。
+                boundDbToolResult(
+                    when (toolName) {
+                        // 角色卡
+                        "db_list_characters" -> listCharacters(args)
+                        "db_get_character" -> getCharacter(args)
+                        "db_create_character" -> createCharacter(args)
+                        "db_update_character" -> updateCharacter(args)
+                        "db_delete_character" -> deleteCharacter(args)
+                        // 世界书
+                        "db_list_world_books" -> listWorldBooks(args)
+                        "db_get_world_book" -> getWorldBook(args)
+                        "db_create_world_book" -> createWorldBook(args)
+                        "db_update_world_book" -> updateWorldBook(args)
+                        "db_delete_world_book" -> deleteWorldBook(args)
+                        "db_upsert_world_book_entry" -> upsertWorldBookEntry(args)
+                        "db_delete_world_book_entry" -> deleteWorldBookEntry(args)
+                        // Token 用量
+                        "db_token_stats" -> tokenStats()
+                        "db_token_rankings" -> tokenRankings()
+                        "db_session_token_usage" -> sessionTokenUsage(args)
+                        // 记忆 / 状态
+                        "db_list_memories" -> listMemories(args)
+                        "db_save_memory" -> saveMemory(args)
+                        "db_delete_memory" -> deleteMemory(args)
+                        "db_list_state_history" -> listStateHistory(args)
+                        "db_get_latest_state" -> getLatestState()
+                        // Hook
+                        "db_list_hooks" -> listHooks(args)
+                        "db_create_hook" -> createHook(args)
+                        "db_update_hook" -> updateHook(args)
+                        "db_delete_hook" -> deleteHook(args)
+                        "db_toggle_hook" -> toggleHook(args)
+                        // 工作流
+                        "db_list_workflows" -> listWorkflows(args)
+                        "db_create_workflow" -> createWorkflow(args)
+                        "db_update_workflow" -> updateWorkflow(args)
+                        "db_delete_workflow" -> deleteWorkflow(args)
+                        // 任务
+                        "db_list_tasks" -> listTasks(args)
+                        "db_create_task" -> createTask(args)
+                        "db_update_task" -> updateTask(args)
+                        "db_delete_task" -> deleteTask(args)
+                        // Skill
+                        "db_list_skills" -> listSkills(args)
+                        "db_create_skill" -> createSkill(args)
+                        "db_update_skill" -> updateSkill(args)
+                        "db_delete_skill" -> deleteSkill(args)
+                        "db_toggle_skill" -> toggleSkill(args)
+                        // AI 模型
+                        "db_list_ai_models" -> listAiModels(args)
+                        "db_get_ai_model" -> getAiModel(args)
+                        "db_create_ai_model" -> createAiModel(args)
+                        "db_update_ai_model" -> updateAiModel(args)
+                        "db_delete_ai_model" -> deleteAiModel(args)
+                        "db_set_active_model" -> setActiveModel(args)
+                        "db_get_ai_config" -> getAiConfig()
+                        "db_update_ai_config" -> updateAiConfig(args)
+                        else -> failure("未实现的数据库工具: $toolName")
+                    }
+                )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -687,12 +840,9 @@ internal class LocalDbToolExecutor(
 
     // ==================== 角色卡 ====================
 
-    private suspend fun listCharacters(): Map<String, Any> {
-        val list = db.characterDao().listAll()
-        return success(
-            "count" to list.size,
-            "characters" to list.map { it.toSummary() }
-        )
+    private suspend fun listCharacters(args: Map<String, Any>): Map<String, Any> {
+        val summaries = db.characterDao().listAll().map { it.toSummary() }
+        return dbPagedResult("characters", dbToolPage(args, summaries))
     }
 
     private suspend fun getCharacter(args: Map<String, Any>): Map<String, Any> {
@@ -873,40 +1023,41 @@ internal class LocalDbToolExecutor(
 
     // ==================== 世界书 ====================
 
-    private suspend fun listWorldBooks(): Map<String, Any> {
-        val list = db.worldBookDao().listAll()
-        return success(
-            "count" to list.size,
-            "world_books" to list.map {
-                mapOf(
-                    "id" to it.id,
-                    "name" to it.name,
-                    "description" to (it.description ?: ""),
-                    "character_id" to (it.characterId ?: ""),
-                    "enabled" to it.enabled,
-                    "created_at" to it.createdAt,
-                    "updated_at" to it.updatedAt
-                )
-            }
-        )
+    private suspend fun listWorldBooks(args: Map<String, Any>): Map<String, Any> {
+        val summaries = db.worldBookDao().listAll().map {
+            mapOf(
+                "id" to it.id,
+                "name" to it.name,
+                "description" to (it.description ?: ""),
+                "character_id" to (it.characterId ?: ""),
+                "enabled" to it.enabled,
+                "created_at" to it.createdAt,
+                "updated_at" to it.updatedAt
+            )
+        }
+        return dbPagedResult("world_books", dbToolPage(args, summaries))
     }
 
     private suspend fun getWorldBook(args: Map<String, Any>): Map<String, Any> {
         val id = args.string("book_id").ifBlank { return failure("book_id 不能为空") }
         val book = db.worldBookDao().getById(id) ?: return failure("世界书不存在: $id")
-        val entries = db.worldBookDao().listEntries(id)
-        return success(
-            "world_book" to mapOf(
-                "id" to book.id,
-                "name" to book.name,
-                "description" to (book.description ?: ""),
-                "character_id" to (book.characterId ?: ""),
-                "enabled" to book.enabled,
-                "created_at" to book.createdAt,
-                "updated_at" to book.updatedAt
-            ),
-            "entries" to entries.map { it.toMap() },
-            "entries_count" to entries.size
+        // 条目正文可能很长：按 limit/offset 分页，避免整本世界书一次性进上下文。
+        val page = dbToolPage(args, db.worldBookDao().listEntries(id).map { it.toMap() })
+        return dbPagedResult(
+            "entries",
+            page,
+            extra = mapOf(
+                "world_book" to mapOf(
+                    "id" to book.id,
+                    "name" to book.name,
+                    "description" to (book.description ?: ""),
+                    "character_id" to (book.characterId ?: ""),
+                    "enabled" to book.enabled,
+                    "created_at" to book.createdAt,
+                    "updated_at" to book.updatedAt
+                ),
+                "entries_count" to page.total
+            )
         )
     }
 
@@ -1014,26 +1165,24 @@ internal class LocalDbToolExecutor(
         val charId = args.string("character_id").ifBlank { null }
         val list = if (charId != null) db.memoryDao().listByCharacter(charId)
         else db.memoryDao().listAll()
-        return success(
-            "count" to list.size,
-            "memories" to list.map {
-                mapOf(
-                    "id" to it.id,
-                    "character_id" to it.characterId,
-                    "target_id" to it.targetId,
-                    "type" to it.type,
-                    "category" to it.category,
-                    "title" to it.title,
-                    "summary" to it.summary,
-                    "content" to it.content,
-                    "importance" to it.importance,
-                    "memory_path" to (it.memoryPath ?: ""),
-                    "conversation_id" to (it.conversationId ?: ""),
-                    "created_at" to it.createdAt,
-                    "updated_at" to (it.updatedAt ?: "")
-                )
-            }
-        )
+        val summaries = list.map {
+            mapOf(
+                "id" to it.id,
+                "character_id" to it.characterId,
+                "target_id" to it.targetId,
+                "type" to it.type,
+                "category" to it.category,
+                "title" to it.title,
+                "summary" to it.summary,
+                "content" to it.content,
+                "importance" to it.importance,
+                "memory_path" to (it.memoryPath ?: ""),
+                "conversation_id" to (it.conversationId ?: ""),
+                "created_at" to it.createdAt,
+                "updated_at" to (it.updatedAt ?: "")
+            )
+        }
+        return dbPagedResult("memories", dbToolPage(args, summaries))
     }
 
     private suspend fun saveMemory(args: Map<String, Any>): Map<String, Any> {
@@ -1077,29 +1226,27 @@ internal class LocalDbToolExecutor(
         return success("deleted" to true, "memory_id" to id)
     }
 
-    private suspend fun listStateHistory(): Map<String, Any> {
+    private suspend fun listStateHistory(args: Map<String, Any>): Map<String, Any> {
         val snapshots = db.stateSnapshotDao().listBySession(sessionId)
-        return success(
-            "count" to snapshots.size,
-            "history" to snapshots.mapIndexed { idx, snap ->
-                buildMap {
-                    put("index", idx + 1)
-                    put("timestamp", snap.timestamp)
-                    put("trigger_type", snap.triggerType)
-                    put("mood", snap.mood)
-                    put("mood_intensity", snap.moodIntensity)
-                    put("energy", snap.energy)
-                    put("affection", snap.affection)
-                    put("trust", snap.trust)
-                    put("familiarity", snap.familiarity)
-                    put("dependency", snap.dependency)
-                    put("security", snap.security)
-                    put("jealousy", snap.jealousy)
-                    snap.userMessage?.let { put("user_message", it) }
-                    snap.assistantMessage?.let { put("assistant_message", it) }
-                }
+        val history = snapshots.mapIndexed { idx, snap ->
+            buildMap {
+                put("index", idx + 1)
+                put("timestamp", snap.timestamp)
+                put("trigger_type", snap.triggerType)
+                put("mood", snap.mood)
+                put("mood_intensity", snap.moodIntensity)
+                put("energy", snap.energy)
+                put("affection", snap.affection)
+                put("trust", snap.trust)
+                put("familiarity", snap.familiarity)
+                put("dependency", snap.dependency)
+                put("security", snap.security)
+                put("jealousy", snap.jealousy)
+                snap.userMessage?.let { put("user_message", it) }
+                snap.assistantMessage?.let { put("assistant_message", it) }
             }
-        )
+        }
+        return dbPagedResult("history", dbToolPage(args, history))
     }
 
     private suspend fun getLatestState(): Map<String, Any> {
@@ -1124,12 +1271,9 @@ internal class LocalDbToolExecutor(
 
     // ==================== Hook ====================
 
-    private suspend fun listHooks(): Map<String, Any> {
-        val list = db.hookDao().listAll()
-        return success(
-            "count" to list.size,
-            "hooks" to list.map { it.toMap() }
-        )
+    private suspend fun listHooks(args: Map<String, Any>): Map<String, Any> {
+        val hooks = db.hookDao().listAll().map { it.toMap() }
+        return dbPagedResult("hooks", dbToolPage(args, hooks))
     }
 
     private suspend fun createHook(args: Map<String, Any>): Map<String, Any> {
@@ -1202,12 +1346,9 @@ internal class LocalDbToolExecutor(
 
     // ==================== 工作流 ====================
 
-    private suspend fun listWorkflows(): Map<String, Any> {
-        val list = db.workflowDao().listAll()
-        return success(
-            "count" to list.size,
-            "workflows" to list.map { it.toMap() }
-        )
+    private suspend fun listWorkflows(args: Map<String, Any>): Map<String, Any> {
+        val workflows = db.workflowDao().listAll().map { it.toMap() }
+        return dbPagedResult("workflows", dbToolPage(args, workflows))
     }
 
     private suspend fun createWorkflow(args: Map<String, Any>): Map<String, Any> {
@@ -1247,12 +1388,9 @@ internal class LocalDbToolExecutor(
 
     // ==================== 任务 ====================
 
-    private suspend fun listTasks(): Map<String, Any> {
-        val list = db.taskDao().listAll()
-        return success(
-            "count" to list.size,
-            "tasks" to list.map { it.toMap() }
-        )
+    private suspend fun listTasks(args: Map<String, Any>): Map<String, Any> {
+        val tasks = db.taskDao().listAll().map { it.toMap() }
+        return dbPagedResult("tasks", dbToolPage(args, tasks))
     }
 
     private suspend fun createTask(args: Map<String, Any>): Map<String, Any> {
@@ -1296,12 +1434,9 @@ internal class LocalDbToolExecutor(
 
     // ==================== Skill ====================
 
-    private suspend fun listSkills(): Map<String, Any> {
-        val list = db.skillDao().listAll()
-        return success(
-            "count" to list.size,
-            "skills" to list.map { it.toMap() }
-        )
+    private suspend fun listSkills(args: Map<String, Any>): Map<String, Any> {
+        val skills = db.skillDao().listAll().map { it.toMap() }
+        return dbPagedResult("skills", dbToolPage(args, skills))
     }
 
     private suspend fun createSkill(args: Map<String, Any>): Map<String, Any> {
@@ -1420,12 +1555,9 @@ internal class LocalDbToolExecutor(
 
     // ==================== AI 模型 ====================
 
-    private suspend fun listAiModels(): Map<String, Any> {
-        val list = db.aiModelDao().listAll()
-        return success(
-            "count" to list.size,
-            "models" to list.map { it.toSummary() }
-        )
+    private suspend fun listAiModels(args: Map<String, Any>): Map<String, Any> {
+        val models = db.aiModelDao().listAll().map { it.toSummary() }
+        return dbPagedResult("models", dbToolPage(args, models))
     }
 
     private suspend fun getAiModel(args: Map<String, Any>): Map<String, Any> {
