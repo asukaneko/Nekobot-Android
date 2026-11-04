@@ -105,6 +105,71 @@ internal object AgentToolLimits {
     /** 子代理参数预览里单个标量值的上限。 */
     const val PROGRESS_SCALAR_PREVIEW_CHARS = 40
 
+    // ============ 固定：分派层工具超时 ============
+
+    /**
+     * 工具执行的**分派层兜底超时**（毫秒）。
+     *
+     * 改造前超时只散落在各个工具内部（exec 30s、browser 15s、MCP 90s、授权等待 10 分钟…），
+     * 任何一个没有自带超时的工具（插件、数据库、无障碍、新接入的 MCP 工具）挂住，
+     * 整轮工具循环就会一直等下去，"停止"按钮要等工具自己返回才生效。
+     * 这里给分派层一个统一上限：超时后返回 `error_code = TIMEOUT` 的工具结果，
+     * 让模型自己决定重试、换方法还是向用户说明。
+     */
+    const val DEFAULT_TOOL_TIMEOUT_MS = 120_000L
+
+    /** 可能做重活（解析、下载、生成、浏览器、插件）的工具超时。 */
+    const val LONG_TOOL_TIMEOUT_MS = 300_000L
+
+    /**
+     * 需要等用户（授权弹窗最长 10 分钟）或本身是长任务的工具超时。
+     *
+     * 命令类还要叠加命令自身的 600s 上限，因此给到 30 分钟；子代理是独立循环，同样给足。
+     */
+    const val WAITING_TOOL_TIMEOUT_MS = 1_800_000L
+
+    /** 超时工具结果里的 `error_code`，与 [TIMEOUT_ERROR_CODE] 保持一致。 */
+    const val TIMEOUT_ERROR_CODE = "TIMEOUT"
+
+    /** 这些工具要么会等用户确认，要么本身就是长任务，不能用默认超时。 */
+    private val longRunningToolIds = setOf(
+        "download_file",
+        "browser_use",
+        "plugin_use",
+        "read_image",
+        "understand_image",
+        "generate_image",
+        "workspace_parse_file",
+        "workspace_extract_epub",
+        "android_step",
+    )
+
+    /** 这些工具会阻塞在用户身上或自身就是独立循环。 */
+    private val waitingToolIds = setOf(
+        "exec_command",
+        "shell_job",
+        "ask_user_question",
+        "request_environment_variables",
+    )
+
+    /**
+     * 按工具 id 取分派层超时（毫秒）。返回值恒为正数，调用方不需要再判空。
+     *
+     * 规则刻意写成前缀/白名单而不是让每个工具自己声明：新增工具默认就受兜底保护，
+     * 忘记声明也不会出现"永不超时"的漏洞。
+     */
+    fun toolTimeoutMs(toolName: String): Long {
+        val name = toolName.trim()
+        if (name.isEmpty()) return DEFAULT_TOOL_TIMEOUT_MS
+        return when {
+            name in waitingToolIds -> WAITING_TOOL_TIMEOUT_MS
+            name.startsWith("subagent") -> WAITING_TOOL_TIMEOUT_MS
+            name in longRunningToolIds -> LONG_TOOL_TIMEOUT_MS
+            name.startsWith("mcp__") -> LONG_TOOL_TIMEOUT_MS
+            else -> DEFAULT_TOOL_TIMEOUT_MS
+        }
+    }
+
     // ============ 取值入口 ============
 
     /** 工具输出统一上限：用户设置在「设置 → Agent 设置」里调整，未初始化（JVM 单测）时回落默认值。 */

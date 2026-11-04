@@ -5,6 +5,7 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import com.nekobot.app.R
 
@@ -306,6 +307,26 @@ private class AgentToolLoopGuard(
     }
 }
 
+/**
+ * 分派层工具超时的结果。
+ *
+ * 与工具自身的失败结果同构（`success=false` + `error`），额外带结构化字段：
+ * - [AgentToolLimits.TIMEOUT_ERROR_CODE]：让模型和日志能区分"超时"与"业务失败"；
+ * - `timeout_ms`：便于用户与诊断页判断是哪个上限被触发；
+ * - `retryable=true`：超时通常是暂时性的，允许模型换个方式重试。
+ */
+internal fun toolTimeoutResult(toolName: String, limitMs: Long): Map<String, Any> {
+    val seconds = (limitMs / 1000).coerceAtLeast(1)
+    return mapOf(
+        "success" to false,
+        "error" to "工具 $toolName 超过 $seconds 秒仍未返回，已中断本次调用。可以换一种更小的操作重试，或向用户说明当前进度。",
+        "error_code" to AgentToolLimits.TIMEOUT_ERROR_CODE,
+        "timeout_ms" to limitMs,
+        "retryable" to true,
+        "tool" to toolName
+    )
+}
+
 // ============================================================================
 // 异常类型
 // ============================================================================
@@ -410,7 +431,9 @@ data class ToolLoopSession(
      */
     val contextBudgetTokens: () -> Int = { 0 },
     val preserveConversation: Boolean = false,
-    val inputOverheadTokens: Int = 0
+    val inputOverheadTokens: Int = 0,
+    /** 分派层工具超时（毫秒），按工具 id 取值；返回 0 表示不设超时。 */
+    val toolTimeoutMs: (String) -> Long = { AgentToolLimits.toolTimeoutMs(it) }
 )
 
 /** 准备好的聊天上下文 */
@@ -1135,7 +1158,13 @@ suspend fun runToolCallLoop(
     /** 输出预留比例：预算中留给模型回复的部分（默认 20%）。 */
     contextOutputReserveRatio: Double = 0.2,
     preserveConversation: Boolean = false,
-    inputOverheadTokens: Int = 0
+    inputOverheadTokens: Int = 0,
+    /**
+     * 分派层工具超时（毫秒），按工具 id 取值；返回 0 或负数表示不设超时。
+     *
+     * 默认走 [AgentToolLimits.toolTimeoutMs]；单测通过注入短超时验证超时路径。
+     */
+    toolTimeoutMs: (String) -> Long = { AgentToolLimits.toolTimeoutMs(it) }
 ): ToolLoopResult {
     val toolMessages = initialMessages.map { it.toMutableMap() }.toMutableList()
     var finalContent = ""
@@ -1182,6 +1211,30 @@ suspend fun runToolCallLoop(
         if (persist) {
             hooks?.onToolMessageAppended?.invoke(message)
         }
+    }
+
+    /**
+     * 带分派层超时地执行一次工具调用。
+     *
+     * 各工具自带的超时（HTTP 读超时、命令杀进程、MCP 90s）只覆盖它自己负责的那段；
+     * 插件、数据库、无障碍、后续新接入的工具都没有兜底。这里统一加一层，
+     * 保证"某个工具挂住"不会让整轮循环永远等下去。
+     *
+     * 注意：超时依赖协程取消，只能在工具的挂起点生效。同步阻塞且不响应取消的实现
+     * （例如被锁住的本地 IO）仍会占用后台线程直到返回——这是进程内的固有边界，
+     * 但循环本身已经能拿到超时结果继续推进。
+     */
+    suspend fun executeToolWithDispatchTimeout(
+        toolCall: Map<String, Any>,
+        thinking: String,
+        iteration: Int,
+        snapshot: List<Map<String, Any>>
+    ): Map<String, Any> {
+        val toolName = (toolCall["name"] as? String).orEmpty()
+        val limit = toolTimeoutMs(toolName)
+        if (limit <= 0L) return toolExecutor(toolCall, thinking, iteration, snapshot)
+        return withTimeoutOrNull(limit) { toolExecutor(toolCall, thinking, iteration, snapshot) }
+            ?: toolTimeoutResult(toolName, limit)
     }
 
     for (iteration in 0 until maxIterations) {
@@ -1347,7 +1400,7 @@ suspend fun runToolCallLoop(
                                 }
                                 var exitContent: String? = null
                                 val value = try {
-                                    toolExecutor(toolCall, thinkingContent, iteration, snapshot)
+                                    executeToolWithDispatchTimeout(toolCall, thinkingContent, iteration, snapshot)
                                 } catch (e: ToolLoopExit) {
                                     exitContent = e.finalContent
                                     emptyMap()
@@ -1370,7 +1423,7 @@ suspend fun runToolCallLoop(
                         } else {
                             var exitContent: String? = null
                             val value = try {
-                                toolExecutor(toolCall, thinkingContent, iteration, snapshot)
+                                executeToolWithDispatchTimeout(toolCall, thinkingContent, iteration, snapshot)
                             } catch (e: ToolLoopExit) {
                                 exitContent = e.finalContent
                                 emptyMap()
@@ -1486,7 +1539,8 @@ suspend fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
         persistPendingUserMessages = session.persistPendingUserMessages,
         contextBudgetTokens = session.contextBudgetTokens,
         preserveConversation = session.preserveConversation,
-        inputOverheadTokens = session.inputOverheadTokens
+        inputOverheadTokens = session.inputOverheadTokens,
+        toolTimeoutMs = session.toolTimeoutMs
     )
     return ToolExecutionResult(loopResult = loopResult, preparedMessages = preparedMessages)
 }
