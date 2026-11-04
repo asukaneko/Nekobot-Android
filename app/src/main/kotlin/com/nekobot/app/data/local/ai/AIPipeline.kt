@@ -967,7 +967,11 @@ class AIPipeline {
             contextBudgetTokens = {
                 // 由 process() 写入的 max_context_tokens（= 模型配置的 token 上限）。
                 (ctx.metadata["max_context_tokens"] as? Int)?.takeIf { it > 0 } ?: 0
-            }
+            },
+            // 单轮运行预算（token / 墙钟 / 费用）：超限时带进度收尾，用户可回复「继续」接着跑。
+            budget = resolveAgentRunBudget().copy(
+                costEstimator = { input, output -> callbacks.estimateRunCostUsd(input, output) }
+            )
         )
 
         // Agent Hook：工具循环开始（agent.session.start）
@@ -1007,6 +1011,17 @@ class AIPipeline {
                 loopResult.toolMessages,
                 executionResult.preparedMessages
             )
+
+            if (loopResult.budgetBreach != null) {
+                // 预算收尾不是失败：保留预算文案与工具轨迹，标记元数据供诊断页/UI 区分。
+                ctx.metadata["budget_breach"] = loopResult.budgetBreach
+                com.nekobot.app.data.local.LocalLogger.i(
+                    TAG,
+                    "Agent 运行预算收尾: ${loopResult.budgetBreach}, iterations=${loopResult.iterations}"
+                )
+                ctx.finalContent = loopResult.finalContent
+                return
+            }
 
             if (loopResult.stopped) {
                 ctx.stoppedPrematurely = true

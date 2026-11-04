@@ -399,7 +399,13 @@ data class ToolLoopResult(
      * 与 [usage] 中累计的输出 token 配对：两者都覆盖循环内的每一次模型调用，
      * 因此「输出 token ÷ 该耗时」即为本轮真实的模型生成速度（tok/s）。
      */
-    val modelCallDurationMs: Double? = null
+    val modelCallDurationMs: Double? = null,
+    /**
+     * 本轮因预算收尾的原因（TOKENS / DURATION）；为空表示未触发预算。
+     *
+     * 上层据此决定文案与"可继续"提示——不能把它当成失败。
+     */
+    val budgetBreach: String? = null
 )
 
 /** 工具执行结果（含循环结果和准备好的消息） */
@@ -433,7 +439,9 @@ data class ToolLoopSession(
     val preserveConversation: Boolean = false,
     val inputOverheadTokens: Int = 0,
     /** 分派层工具超时（毫秒），按工具 id 取值；返回 0 表示不设超时。 */
-    val toolTimeoutMs: (String) -> Long = { AgentToolLimits.toolTimeoutMs(it) }
+    val toolTimeoutMs: (String) -> Long = { AgentToolLimits.toolTimeoutMs(it) },
+    /** 本轮运行预算（token / 墙钟）。 */
+    val budget: AgentRunBudget = AgentRunBudget.UNLIMITED
 )
 
 /** 准备好的聊天上下文 */
@@ -1164,7 +1172,11 @@ suspend fun runToolCallLoop(
      *
      * 默认走 [AgentToolLimits.toolTimeoutMs]；单测通过注入短超时验证超时路径。
      */
-    toolTimeoutMs: (String) -> Long = { AgentToolLimits.toolTimeoutMs(it) }
+    toolTimeoutMs: (String) -> Long = { AgentToolLimits.toolTimeoutMs(it) },
+    /** 本轮运行预算（token / 墙钟）；超限时带进度收尾而不是硬中断。 */
+    budget: AgentRunBudget = AgentRunBudget.UNLIMITED,
+    /** 时钟注入：单测用固定时钟验证超时判定。 */
+    nowMs: () -> Long = { System.currentTimeMillis() }
 ): ToolLoopResult {
     val toolMessages = initialMessages.map { it.toMutableMap() }.toMutableList()
     var finalContent = ""
@@ -1179,6 +1191,28 @@ suspend fun runToolCallLoop(
     // 本轮模型调用次数与累计耗时（毫秒）：与 usage 累计的输出 token 配对，用于 tok/s 统计
     var modelCallCount = 0
     var modelCallDurationMs = 0.0
+    val runStartedAtMs = nowMs()
+    var budgetBreach: AgentBudgetBreach? = null
+
+    /**
+     * 本轮累计的输入 token。
+     *
+     * 服务商给了分项就用分项；只给 `total_tokens` 时全部按输入计（保守：输出单价更高，
+     * 高估输入不会让费用上限"看起来还没到"）。
+     */
+    fun inputTokensSpent(): Long {
+        (usageTotal["prompt_tokens"] as? Number)?.toLong()?.takeIf { it > 0 }?.let { return it }
+        (usageTotal["input_tokens"] as? Number)?.toLong()?.takeIf { it > 0 }?.let { return it }
+        (usageTotal["total_tokens"] as? Number)?.toLong()?.takeIf { it > 0 }?.let { return it }
+        return 0L
+    }
+
+    /** 本轮累计的输出 token。 */
+    fun outputTokensSpent(): Long {
+        (usageTotal["completion_tokens"] as? Number)?.toLong()?.takeIf { it > 0 }?.let { return it }
+        (usageTotal["output_tokens"] as? Number)?.toLong()?.takeIf { it > 0 }?.let { return it }
+        return 0L
+    }
 
     fun result(
         finalContentArg: String? = null,
@@ -1198,8 +1232,36 @@ suspend fun runToolCallLoop(
         modelName = currentModelName,
         modelActualName = currentModelActualName,
         failoverEvents = allFailoverEvents.toList(),
-        modelCallDurationMs = modelCallDurationMs.takeIf { modelCallCount > 0 }
+        modelCallDurationMs = modelCallDurationMs.takeIf { modelCallCount > 0 },
+        budgetBreach = budgetBreach?.name
     )
+
+    /**
+     * 检查运行预算；超限时返回"带进度收尾"的结果。
+     *
+     * 收尾而不是抛异常：已经完成的工具结果、进度卡、检查点都要保留，
+     * 用户回复「继续」能接着跑，因此这里直接构造最终内容返回。
+     */
+    fun budgetStopOrNull(iteration: Int): ToolLoopResult? {
+        if (budget.isUnlimited) return null
+        val input = inputTokensSpent()
+        val output = outputTokensSpent()
+        val elapsed = (nowMs() - runStartedAtMs).coerceAtLeast(0L)
+        val breach = budget.breach(input, output, elapsed) ?: return null
+        budgetBreach = breach
+        return result(
+            finalContentArg = agentBudgetStopContent(
+                breach = breach,
+                inputTokens = input,
+                outputTokens = output,
+                elapsedMs = elapsed,
+                iteration = iteration,
+                costUsd = budget.costUsd(input, output)
+            ),
+            iterations = iteration
+        )
+    }
+
 
     /**
      * 追加本轮消息，并立即通知持久化钩子。
@@ -1241,6 +1303,9 @@ suspend fun runToolCallLoop(
         if (shouldStop()) {
             return result(stopped = true, iterations = iteration)
         }
+
+        // 运行预算：每轮模型调用前先看成本边界，超限就带进度收尾。
+        budgetStopOrNull(iteration)?.let { return it }
 
         // 注入排队用户消息：在下一轮模型调用（即下一次工具决策）前插入上下文，
         // 使用户的加急消息先于后续工具调用被模型看到。
@@ -1313,6 +1378,9 @@ suspend fun runToolCallLoop(
         val thinkingContent = responseReasoning.ifBlank { (response["content"] as? String).orEmpty() }
 
         if (toolCalls.isNotEmpty()) {
+            // 模型已经给出下一批工具调用，但预算可能刚好在这一轮用尽：
+            // 先收尾，避免"已经超预算还继续开新工具"。
+            budgetStopOrNull(iteration)?.let { return it }
             val protocolReasoning = (response[NATIVE_CHARACTER_THINKING_CONTENT] as? String) ?: responseReasoning
             val protocolSignature = (response[NATIVE_CHARACTER_THINKING_SIGNATURE] as? String)
                 ?: (response["thinking_signature"] as? String)
@@ -1540,7 +1608,8 @@ suspend fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
         contextBudgetTokens = session.contextBudgetTokens,
         preserveConversation = session.preserveConversation,
         inputOverheadTokens = session.inputOverheadTokens,
-        toolTimeoutMs = session.toolTimeoutMs
+        toolTimeoutMs = session.toolTimeoutMs,
+        budget = session.budget
     )
     return ToolExecutionResult(loopResult = loopResult, preparedMessages = preparedMessages)
 }

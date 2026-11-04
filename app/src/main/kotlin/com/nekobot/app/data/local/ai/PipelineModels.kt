@@ -197,6 +197,14 @@ open class PipelineCallbacks {
         (ctx.metadata["reasoning_effort"] ?: ctx.chatRequest.metadata["reasoning_effort"]) as? String
     )
 
+    /**
+     * 按当前模型单价估算本轮已消耗 token 的费用（美元）。
+     *
+     * 供 Agent 运行预算（[AgentRunBudget.maxCostUsd]）使用；返回 0 表示这条链路没有价格
+     * 信息，费用上限因此不会被触发。本地频道用当前激活模型的价格表覆盖。
+     */
+    open fun estimateRunCostUsd(inputTokens: Long, outputTokens: Long): Double = 0.0
+
     open suspend fun finalizeContext(ctx: PipelineContext, messages: List<Map<String, Any>>,
         tools: List<Map<String, Any>>, dynamic: String): List<Map<String, Any>> = messages
 

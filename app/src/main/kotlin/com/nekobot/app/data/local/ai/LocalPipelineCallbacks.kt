@@ -2079,6 +2079,29 @@ internal class LocalPipelineCallbacks(
 
     override fun getReasoningEffort(ctx: PipelineContext) = reasoningEffort
 
+    /**
+     * 按当前激活模型的单价估算本轮费用，供运行预算的"费用上限"使用。
+     *
+     * 没有配置价格（用户从未填过单价、目录里也没有同名模型）时返回 0：
+     * 此时费用预算不会触发，但 token / 时长预算照常生效。
+     */
+    override fun estimateRunCostUsd(inputTokens: Long, outputTokens: Long): Double = runCatching {
+        val prices = ModelPricingCatalog.resolveModelPrices(
+            modelName = activeModel.model.ifBlank { activeModel.name },
+            provider = activeModel.provider,
+            inputPrice = activeModel.inputPrice,
+            outputPrice = activeModel.outputPrice,
+            cacheReadPrice = activeModel.cacheReadPrice,
+            cacheWritePrice = activeModel.cacheWritePrice
+        )
+        if (prices.inputPerMillion == null && prices.outputPerMillion == null) return 0.0
+        ModelPricingCatalog.estimateCostUsd(
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            prices = prices
+        )
+    }.getOrDefault(0.0)
+
     // ---- 工具执行 ----
 
     override suspend fun executeTool(

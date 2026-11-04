@@ -365,6 +365,26 @@ class PrefsManager(context: Context) {
         get() = prefs.getInt(KEY_AGENT_MAX_TOOL_CALLS, 150)
         set(value) = prefs.edit().putInt(KEY_AGENT_MAX_TOOL_CALLS, value.coerceIn(1, 1000)).apply()
 
+    /**
+     * 单轮 Agent 任务的 token 预算；0 表示不限。
+     *
+     * 与 [agentMaxToolCalls] 互补：轮数限制不了"每轮都很贵"的任务，
+     * 这里给成本一个明确边界。超限时任务带进度收尾，用户回复「继续」可接着跑。
+     */
+    var agentRunTokenBudget: Int
+        get() = prefs.getInt(KEY_AGENT_RUN_TOKEN_BUDGET, 0)
+        set(value) = prefs.edit().putInt(KEY_AGENT_RUN_TOKEN_BUDGET, value.coerceAtLeast(0)).apply()
+
+    /** 单轮 Agent 任务的墙钟时限（分钟）；0 表示不限。默认 120 分钟。 */
+    var agentRunTimeoutMinutes: Int
+        get() = prefs.getInt(KEY_AGENT_RUN_TIMEOUT_MINUTES, 120)
+        set(value) = prefs.edit().putInt(KEY_AGENT_RUN_TIMEOUT_MINUTES, value.coerceAtLeast(0)).apply()
+
+    /** 单轮 Agent 任务的费用上限（美元）；0 表示不限。按当前模型单价估算。 */
+    var agentRunCostBudgetUsd: Double
+        get() = prefs.getString(KEY_AGENT_RUN_COST_BUDGET_USD, "0")?.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
+        set(value) = prefs.edit().putString(KEY_AGENT_RUN_COST_BUDGET_USD, value.coerceAtLeast(0.0).toString()).apply()
+
     /** 新建本地 Agent 会话是否默认启用 YOLO；默认关闭。 */
     var agentDefaultYoloEnabled: Boolean
         get() = prefs.getBoolean(KEY_AGENT_DEFAULT_YOLO_ENABLED, false)
@@ -1669,6 +1689,10 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_REASONING_EFFORT = "reasoning_effort_agent"
         private const val KEY_CHARACTER_REASONING_EFFORT = "reasoning_effort_character"
         private const val KEY_AGENT_MAX_TOOL_CALLS = "agent_max_tool_calls"
+        /** 单轮 Agent 任务预算：token（0=不限）与墙钟分钟（0=不限）。 */
+        private const val KEY_AGENT_RUN_TOKEN_BUDGET = "agent_run_token_budget"
+        private const val KEY_AGENT_RUN_TIMEOUT_MINUTES = "agent_run_timeout_minutes"
+        private const val KEY_AGENT_RUN_COST_BUDGET_USD = "agent_run_cost_budget_usd"
         private const val KEY_AGENT_DEFAULT_YOLO_ENABLED = "agent_default_yolo_enabled"
         /** 新会话默认工具集（全局）：未单独自定义过工具集的会话沿用它。 */
         private const val KEY_DEFAULT_SESSION_TOOLSET = "default_session_toolset"
