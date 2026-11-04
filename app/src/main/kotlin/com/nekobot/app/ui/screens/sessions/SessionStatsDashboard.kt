@@ -101,6 +101,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
@@ -839,8 +840,10 @@ private fun DashboardTrend(days: List<DashboardActivityDay>, todayTokens: Long) 
             )
         }
         Spacer(Modifier.height(16.dp))
+        // 柱子区只放「数值 + 柱体」，由 Row 底部对齐：各列高度天然不同，但柱底严格齐平。
+        // 不要给这里加固定高度——最长柱那一列会超出高度限制而向下溢出，导致柱底不齐。
         Row(
-            modifier = Modifier.fillMaxWidth().height(142.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
@@ -848,7 +851,13 @@ private fun DashboardTrend(days: List<DashboardActivityDay>, todayTokens: Long) 
                 val value = if (useTokens) day.tokens else day.activity
                 val barHeight = (16f + 82f * (value.toFloat() / max.toFloat())).dp
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatCompactNumber(value), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Text(
+                        formatCompactNumber(value),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     Spacer(Modifier.height(4.dp))
                     Box(
                         Modifier
@@ -858,9 +867,25 @@ private fun DashboardTrend(days: List<DashboardActivityDay>, todayTokens: Long) 
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.62f))
 
                     )
-                    Spacer(Modifier.height(5.dp))
-                    Text(day.date.format(formatter), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+        Spacer(Modifier.height(5.dp))
+        // 星期标签独立成行：与柱体解耦，单列文字换行也不会把柱底顶歪。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            days.forEach { day ->
+                Text(
+                    day.date.format(formatter),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
