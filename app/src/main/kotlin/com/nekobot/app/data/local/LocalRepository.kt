@@ -1161,6 +1161,20 @@ class LocalRepository(
     private var tokenUsageReconciled = false
 
     /**
+     * 待落盘的 token 用量记录。
+     *
+     * 一轮 Agent 任务会产生上百次模型调用，若每次都"读整份 JSON → 追加一条 → 全量
+     * commit"，写放大与磁盘同步会把 Worker 线程占满（旧实现正是如此）。这里改成
+     * 内存排队 + 防抖合并写入：正常情况下每次 flush 只有一次 parse/commit。
+     */
+    private val tokenUsagePending = mutableListOf<com.google.gson.JsonObject>()
+    private val tokenUsageFlushScheduled = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val tokenUsageFlushExecutor: java.util.concurrent.ScheduledExecutorService =
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "token-usage-flush").apply { isDaemon = true }
+        }
+
+    /**
      * 当前进行中会话 ID。二级 LLM 调用（AutoState/记忆抽取）在跨会话单例内触发，
      * 缺少 per-turn sessionId，故在此暂存，供 token 记账归属到正确会话。
      */
@@ -6016,9 +6030,108 @@ class LocalRepository(
         cacheReadPricePerMillion: Double? = null,
         cacheWritePricePerMillion: Double? = null
     ) {
-        val prefs = tokenUsagePrefs ?: return
+        if (tokenUsagePrefs == null) return
         // 临时会话不产生用量记录，避免在统计与排行榜里留下痕迹。
         if (TemporarySession.isTemporary(sessionId)) return
+        val cachedInput = cachedInputTokens.coerceIn(0, inputTokens.coerceAtLeast(0))
+        val cacheWrite = cacheWriteTokens.coerceIn(0, inputTokens.coerceAtLeast(0) - cachedInput)
+        val record = JsonObject().apply {
+            addProperty("id", UUID.randomUUID().toString())
+            // 子代理等非消息链路的记录没有关联消息，空值不写入，
+            // 避免留下空 message_id 干扰按消息回补的匹配逻辑。
+            messageId?.takeIf { it.isNotBlank() }?.let { addProperty("message_id", it) }
+            addProperty("session_id", sessionId)
+            addProperty("model", model)
+            // 实际模型标识，用于排行榜按模型聚合（相同模型名、不同提供商可合并）
+            if (actualModel.isNotBlank()) addProperty("actual_model", actualModel)
+            addProperty("input_tokens", inputTokens)
+            addProperty("output_tokens", outputTokens)
+            addProperty("total_tokens", inputTokens + outputTokens)
+            // 缓存命中/写入 token：命中率与缓存价计费的原始依据
+            if (cachedInput > 0) addProperty("cached_input_tokens", cachedInput)
+            if (cacheWrite > 0) addProperty("cache_write_tokens", cacheWrite)
+            addProperty("timestamp", timestamp)
+            addProperty("source", source)
+            addProperty("purpose", purpose)
+            addProperty("estimated", estimated)
+            val prices = ModelPricingCatalog.resolveModelPrices(
+                modelName = actualModel.ifBlank { model },
+                provider = provider,
+                inputPrice = inputPricePerMillion,
+                outputPrice = outputPricePerMillion,
+                cacheReadPrice = cacheReadPricePerMillion,
+                cacheWritePrice = cacheWritePricePerMillion
+            )
+            if (
+                prices.inputPerMillion != null || prices.outputPerMillion != null ||
+                prices.cacheReadPerMillion != null || prices.cacheWritePerMillion != null
+            ) {
+                addProperty(
+                    "estimated_cost_usd",
+                    ModelPricingCatalog.estimateCostUsd(
+                        inputTokens = inputTokens.toLong(),
+                        outputTokens = outputTokens.toLong(),
+                        cachedInputTokens = cachedInput.toLong(),
+                        cacheWriteTokens = cacheWrite.toLong(),
+                        prices = prices
+                    )
+                )
+            }
+            provider?.takeIf { it.isNotBlank() }?.let { addProperty("provider", it) }
+            // 完成耗时（毫秒），主对话路径来自 AIPipeline
+            durationMs?.let { addProperty("duration_ms", it) }
+            // 首字延迟（毫秒），主对话路径来自 AIPipeline
+            ttftMs?.let { addProperty("ttft_ms", it) }
+            // 提取日期部分（yyyy-MM-dd）用于按日聚合
+            addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
+        }
+        enqueueTokenUsageRecord(record)
+    }
+
+    /**
+     * 把一条用量记录放进待写队列。
+     *
+     * 达到批量阈值立即落盘，否则防抖 250ms 合并写入——一轮 Agent 任务的上百次模型调用
+     * 因此只会触发少数几次"读整份数组 + 全量 commit"。
+     */
+    private fun enqueueTokenUsageRecord(record: JsonObject) {
+        val flushNow = synchronized(tokenUsageLock) {
+            tokenUsagePending.add(record)
+            tokenUsagePending.size >= com.nekobot.app.data.local.ai.TOKEN_USAGE_PENDING_FLUSH_THRESHOLD
+        }
+        if (flushNow) {
+            runCatching { tokenUsageFlushExecutor.execute(::flushTokenUsageRecords) }
+        } else {
+            scheduleTokenUsageFlush()
+        }
+    }
+
+    private fun scheduleTokenUsageFlush() {
+        if (!tokenUsageFlushScheduled.compareAndSet(false, true)) return
+        val scheduled = runCatching {
+            tokenUsageFlushExecutor.schedule(
+                {
+                    tokenUsageFlushScheduled.set(false)
+                    flushTokenUsageRecords()
+                },
+                com.nekobot.app.data.local.ai.TOKEN_USAGE_FLUSH_DELAY_MS,
+                java.util.concurrent.TimeUnit.MILLISECONDS
+            )
+        }.isSuccess
+        if (!scheduled) tokenUsageFlushScheduled.set(false)
+    }
+
+    /**
+     * 立即把待写记录合并进 SharedPreferences。
+     *
+     * 写入失败（磁盘满、commit 失败）时把记录放回队列，下一轮再试，绝不静默丢弃。
+     */
+    internal fun flushTokenUsageRecords() {
+        val pending = synchronized(tokenUsageLock) {
+            if (tokenUsagePending.isEmpty()) return
+            tokenUsagePending.toList().also { tokenUsagePending.clear() }
+        }
+        val prefs = tokenUsagePrefs ?: return
         synchronized(tokenUsageLock) {
             val existing = prefs.getString("records", "[]") ?: "[]"
             try {
@@ -6028,87 +6141,40 @@ class LocalRepository(
                     LocalLogger.w(TAG, R.string.log_repo_token_usage_corrupt, it.message)
                     JsonArray()
                 }
-                val cachedInput = cachedInputTokens.coerceIn(0, inputTokens.coerceAtLeast(0))
-                val cacheWrite = cacheWriteTokens.coerceIn(0, inputTokens.coerceAtLeast(0) - cachedInput)
-                val record = JsonObject().apply {
-                    addProperty("id", UUID.randomUUID().toString())
-                    // 子代理等非消息链路的记录没有关联消息，空值不写入，
-                    // 避免留下空 message_id 干扰按消息回补的匹配逻辑。
-                    messageId?.takeIf { it.isNotBlank() }?.let { addProperty("message_id", it) }
-                    addProperty("session_id", sessionId)
-                    addProperty("model", model)
-                    // 实际模型标识，用于排行榜按模型聚合（相同模型名、不同提供商可合并）
-                    if (actualModel.isNotBlank()) addProperty("actual_model", actualModel)
-                    addProperty("input_tokens", inputTokens)
-                    addProperty("output_tokens", outputTokens)
-                    addProperty("total_tokens", inputTokens + outputTokens)
-                    // 缓存命中/写入 token：命中率与缓存价计费的原始依据
-                    if (cachedInput > 0) addProperty("cached_input_tokens", cachedInput)
-                    if (cacheWrite > 0) addProperty("cache_write_tokens", cacheWrite)
-                    addProperty("timestamp", timestamp)
-                    addProperty("source", source)
-                    addProperty("purpose", purpose)
-                    addProperty("estimated", estimated)
-                    val prices = ModelPricingCatalog.resolveModelPrices(
-                        modelName = actualModel.ifBlank { model },
-                        provider = provider,
-                        inputPrice = inputPricePerMillion,
-                        outputPrice = outputPricePerMillion,
-                        cacheReadPrice = cacheReadPricePerMillion,
-                        cacheWritePrice = cacheWritePricePerMillion
-                    )
-                    if (
-                        prices.inputPerMillion != null || prices.outputPerMillion != null ||
-                        prices.cacheReadPerMillion != null || prices.cacheWritePerMillion != null
-                    ) {
-                        addProperty(
-                            "estimated_cost_usd",
-                            ModelPricingCatalog.estimateCostUsd(
-                                inputTokens = inputTokens.toLong(),
-                                outputTokens = outputTokens.toLong(),
-                                cachedInputTokens = cachedInput.toLong(),
-                                cacheWriteTokens = cacheWrite.toLong(),
-                                prices = prices
-                            )
-                        )
-                    }
-                    provider?.takeIf { it.isNotBlank() }?.let { addProperty("provider", it) }
-                    // 完成耗时（毫秒），主对话路径来自 AIPipeline
-                    durationMs?.let { addProperty("duration_ms", it) }
-                    // 首字延迟（毫秒），主对话路径来自 AIPipeline
-                    ttftMs?.let { addProperty("ttft_ms", it) }
-                    // 提取日期部分（yyyy-MM-dd）用于按日聚合
-                    addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
-                }
-                arr.add(record)
-                // 限制最多 5000 条，超出则丢弃最早的
-                while (arr.size() > 5000) arr.remove(0)
+                pending.forEach(arr::add)
+                com.nekobot.app.data.local.ai.trimTokenUsageArray(arr)
                 val editor = prefs.edit().putString("records", arr.toString())
                 if (parsed.isFailure) editor.putString("records_corrupt_backup", existing)
                 if (!editor.commit()) {
                     tokenUsageReconciled = false
                     LocalLogger.w(TAG, R.string.log_repo_token_usage_write_deferred)
+                    synchronized(tokenUsageLock) { tokenUsagePending.addAll(0, pending) }
+                    return
                 }
                 // 成就触发：累计 token 消耗
-                kotlin.runCatching {
-                    val total = arr.sumOf { el ->
-                        (el as? JsonObject)?.get("total_tokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
-                    }
-                    reportAchievementProgress(AchievementManager.Target.Metric.TOKENS, total)
+                runCatching {
+                    reportAchievementProgress(
+                        AchievementManager.Target.Metric.TOKENS,
+                        com.nekobot.app.data.local.ai.tokenUsageTotalTokens(arr)
+                    )
                 }
             } catch (e: Exception) {
                 tokenUsageReconciled = false
+                synchronized(tokenUsageLock) { tokenUsagePending.addAll(0, pending) }
                 LocalLogger.w(TAG, R.string.log_repo_token_usage_write_failed, e.message)
             }
         }
     }
 
-    /** 读取所有 token 用量记录 */
+    /** 读取所有 token 用量记录（含尚未落盘的待写记录） */
     private fun readTokenUsageRecords(): List<JsonObject> {
         val prefs = tokenUsagePrefs ?: return emptyList()
         return synchronized(tokenUsageLock) {
             val raw = prefs.getString("records", "[]") ?: "[]"
-            runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList())
+            val stored = runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList())
+            // 刚产生的记录还在待写队列里：统计与排行榜必须立刻看到它们，
+            // 否则"刚花了钱却查不到"会让人以为记账失败。
+            stored + tokenUsagePending.toList()
         }
     }
 
@@ -6139,7 +6205,8 @@ class LocalRepository(
         return synchronized(tokenUsageLock) {
             if (tokenUsageReconciled) {
                 val raw = prefs.getString("records", "[]") ?: "[]"
-                return@synchronized runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList())
+                return@synchronized runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList()) +
+                    tokenUsagePending.toList()
             }
 
             val raw = prefs.getString("records", "[]") ?: "[]"
@@ -6163,14 +6230,14 @@ class LocalRepository(
                 if (!editor.commit()) {
                     tokenUsageReconciled = false
                     LocalLogger.w(TAG, R.string.log_repo_token_usage_repair_failed)
-                    return@synchronized normalized
+                    return@synchronized normalized + tokenUsagePending.toList()
                 }
                 if (reconciliation.recoveredCount > 0) {
                     LocalLogger.i(TAG, R.string.log_repo_token_usage_recovered, reconciliation.recoveredCount)
                 }
             }
             tokenUsageReconciled = true
-            normalized
+            normalized + tokenUsagePending.toList()
         }
     }
 
