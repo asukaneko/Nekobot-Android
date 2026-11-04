@@ -429,11 +429,15 @@ class AIPipeline {
             .map(String::trim)
             .filter(String::isNotBlank)
             .distinct()
-        val composedSystem = (baseParts + (pipelineExtraItems + characterFixedItems)
+        val fixedItems = (pipelineExtraItems + characterFixedItems)
             .filterNot { it in dynamicItems || it.key == CHARACTER_THINKING_STYLE_KEY }
-            .map { PromptStack.renderItem(it, fused) })
-            .joinToString("\n\n")
+        val split = splitSystemItems(baseParts, fixedItems, fused)
+        val stableSystem = split.stable
+        val volatileSystem = split.volatile
+        val composedSystem = split.composed
         ctx.metadata["composed_system_prompt"] = composedSystem
+        ctx.metadata["composed_system_stable"] = stableSystem
+        ctx.metadata["composed_system_volatile"] = volatileSystem
 
         // 合并提示词栈调试信息：管线栈 + 角色运行时栈（character.* 注入项）
         // 角色运行时在 beforeTurn 内部使用独立的 PromptStack 实例注册 character.* 注入，
@@ -465,7 +469,10 @@ class AIPipeline {
             injections = ctx.characterTurn?.worldBookDepthInjections.orEmpty()
         )
 
-        messagesForAi = listOf(mapOf("role" to "system", "content" to composedSystem)) + depthInjectedHistory
+        messagesForAi = buildList {
+            split.systemTexts.forEach { text -> add(mapOf("role" to "system", "content" to text)) }
+            addAll(depthInjectedHistory)
+        }
         val dynamic = (dynamicItems + if (fused) ctx.characterTurn?.promptStackItems.orEmpty()
             .filterNot { it.key in characterOutputPromptKeys } else emptyList())
             .filter { it.enabled && it.content.isNotBlank() }.joinToString("\n\n") { if (fused) it.content.trim() else "${it.key}: ${it.content}" }
@@ -478,8 +485,13 @@ class AIPipeline {
                     (pipelineExtraItems + characterFixedItems).filterNot { it in dynamicItems || it.key == CHARACTER_THINKING_STYLE_KEY }) else message
             }
         }
-        ctx.metadata["composed_system_prompt"] = messagesForAi.filter { it["role"] == "system" }
-            .joinToString("\n\n") { it["content"].toString() }
+        // system 拆成"稳定核 + 动态尾"后可能有多条；finalizeContext 也可能把几条改成同一段。
+        // 这里去重后再拼，保证记录下来的就是模型实际看到的文本，且不会把同一段重复两次。
+        ctx.metadata["composed_system_prompt"] = messagesForAi
+            .filter { it["role"] == "system" }
+            .mapNotNull { (it["content"] as? String)?.takeIf(String::isNotBlank) }
+            .distinct()
+            .joinToString("\n\n")
 
         // 裁剪上下文
         val prepared = prepareChatContext(
@@ -1397,6 +1409,79 @@ internal fun attachImagesToLatestUserMessage(
     return messages.mapIndexed { index, item ->
         if (index == userIndex) item.toMutableMap().apply { put("content", content) } else item
     }
+}
+
+// ============================================================================
+// system 提示词：稳定核 / 动态尾
+// ============================================================================
+
+/**
+ * 每轮都会变化的提示词段 key。
+ *
+ * 这些段包含时间、待办、目标、按当前消息检索出的记忆/知识、世界书命中结果等，
+ * 内容随轮次变化。它们会被挪到 system 的**最后一条**消息里，前面的稳定核保持
+ * 逐字节不变——这样提示词缓存（Anthropic 的 `cache_control` 断点、
+ * OpenAI/DeepSeek 的自动前缀缓存）才能命中，而不是每轮全量重算。
+ */
+internal val VOLATILE_SYSTEM_PROMPT_KEYS: Set<String> = setOf(
+    AGENT_ENV_PROMPT_KEY,
+    AGENT_TODOS_PROMPT_KEY,
+    AGENT_GOAL_PROMPT_KEY,
+    AGENT_SPEC_PROMPT_KEY,
+    GLOBAL_AGENT_MEMORY_PROMPT_KEY,
+    "knowledge.rag",
+    "real_time.continuity",
+    "character.circadian",
+    "plot.real_time_sync",
+    "memory_fs.context",
+    "memory_fs_context",
+    "companion.recall"
+)
+
+/** system 提示词拆分结果。 */
+internal data class SystemPromptSplit(
+    /** 稳定核：角色设定、行为规则、工具说明等逐轮不变的内容。 */
+    val stable: String,
+    /** 动态尾：时间、待办、检索结果等每轮可能变化的内容。 */
+    val volatile: String,
+    /** 完整文本（等于 stable + volatile），用于落库与调试展示。 */
+    val composed: String
+) {
+    /**
+     * 实际写入消息列表的 system 文本。
+     *
+     * 稳定核永远在前；动态尾只在非空时追加，保证没有动态内容时消息形状与旧版一致。
+     */
+    val systemTexts: List<String>
+        get() = buildList {
+            if (stable.isNotBlank()) add(stable)
+            if (volatile.isNotBlank()) add(volatile)
+            if (isEmpty()) add("")
+        }
+}
+
+/**
+ * 把已经拼好的 system 段拆成"稳定核 + 动态尾"。
+ *
+ * @param baseParts 角色卡基础提示词等前缀段（视为稳定）
+ * @param items 提示词栈注入项（已按优先级排序）
+ * @param fused 陪伴模式：注入项按原文渲染，不加 `## key` 标题
+ */
+internal fun splitSystemItems(
+    baseParts: List<String>,
+    items: List<PromptStack.PromptInjection>,
+    fused: Boolean
+): SystemPromptSplit {
+    val stableItems = items.filter { it.key !in VOLATILE_SYSTEM_PROMPT_KEYS }
+    val volatileItems = items.filter { it.key in VOLATILE_SYSTEM_PROMPT_KEYS }
+    val stable = (baseParts + stableItems.map { PromptStack.renderItem(it, fused) })
+        .filter { it.isNotBlank() }
+        .joinToString("\n\n")
+    val volatile = volatileItems.map { PromptStack.renderItem(it, fused) }
+        .filter { it.isNotBlank() }
+        .joinToString("\n\n")
+    val composed = listOf(stable, volatile).filter { it.isNotBlank() }.joinToString("\n\n")
+    return SystemPromptSplit(stable = stable, volatile = volatile, composed = composed)
 }
 
 val aiPipeline = AIPipeline()

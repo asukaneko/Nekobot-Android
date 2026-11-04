@@ -206,24 +206,17 @@ object AnthropicMessagesProtocol : LocalProtocol {
      * 多段 system 提示词按顺序转为块数组，只在最后一块打缓存断点。
      *
      * Anthropic 的 prompt caching 以"前缀命中"计费：Agent 模式下 system 提示词与工具定义
-     * 每轮都完全相同，标记断点后重复调用的输入成本大幅下降。断点打在最后一块，
-     * 缓存前缀就覆盖全部 system 段落。总长度低于最小缓存长度时不使用断点，避免无意义分块。
-     *
-     * 断点数量受 Anthropic 上限约束（最多 4 个）：system 1 个、tools 1 个，留有余量。
+     * 每轮都完全相同，标记断点后重复调用的输入成本大幅下降。总长度低于最小缓存长度时
+     * 不使用断点，避免无意义分块。具体的断点位置见 [anthropicSystemBlocks]。
      */
-    private fun systemBlocksOf(systemTexts: List<String>): List<Map<String, Any>> {
-        val blocks = systemTexts.map { text -> mapOf("type" to "text", "text" to text) }
-        val totalChars = systemTexts.sumOf { it.length }
-        if (totalChars < MIN_CACHEABLE_SYSTEM_CHARS) return blocks
-        return blocks.dropLast(1) + (blocks.last() + mapOf("cache_control" to EPHEMERAL_CACHE_CONTROL))
-    }
+    private fun systemBlocksOf(systemTexts: List<String>): List<Map<String, Any>> =
+        anthropicSystemBlocks(systemTexts)
 
     /**
      * 还原上一轮 assistant 的 thinking 块。
      *
      * Anthropic 的扩展思考 + 工具调用要求把 thinking 块（含 signature）原样带回，
-     * 缺失会被服务端判为非法消息序列；没有签名时宁可不回传——带 thinking 无 signature
-     * 同样非法，反而会把可用的请求变成失败请求。
+     * 缺失会让服务端判为非法消息序列；没有签名时不回传（带 thinking 无 signature 同样非法）。
      */
     private fun thinkingBlockOf(message: Map<String, Any>): Map<String, Any>? {
         val text = (message["reasoning_content"] as? String)
@@ -460,5 +453,33 @@ object AnthropicMessagesProtocol : LocalProtocol {
             thinkingContent = thinking,
             thinkingSignature = thinkingSignature
         )
+    }
+}
+
+/** Anthropic 的 ephemeral 缓存断点标记。 */
+private val EPHEMERAL_CACHE_BREAKPOINT = mapOf("type" to "ephemeral")
+
+/**
+ * 把 system 文本列表转成 Anthropic 的 system 块数组，并在**稳定前缀**上打缓存断点。
+ *
+ * 规则：
+ * - 只有一块：整段都是稳定内容，断点打在它上面（与旧行为一致）；
+ * - 多块：调用方按"稳定核在最前、动态尾在后"排列（见 `AIPipeline.splitSystemItems`），
+ *   因此只给第一块打点。断点打在最后一块（旧行为）会让整段缓存随动态尾一起失效；
+ *   而给中间块打点又会把易变的世界书/收尾说明算进前缀，同样命中率不稳。
+ * - 总长度低于 [minChars]：不打点，避免无意义分块。
+ *
+ * 断点数量受 Anthropic 上限（最多 4 个）约束：这里最多 1 个 system 断点 + 1 个 tools 断点。
+ */
+internal fun anthropicSystemBlocks(
+    systemTexts: List<String>,
+    minChars: Int = 3_000
+): List<Map<String, Any>> {
+    val blocks = systemTexts.map { text -> mapOf("type" to "text", "text" to text) }
+    if (blocks.isEmpty()) return blocks
+    if (systemTexts.sumOf { it.length } < minChars) return blocks
+    val breakpointAt = 0
+    return blocks.mapIndexed { index, block ->
+        if (index == breakpointAt) block + mapOf("cache_control" to EPHEMERAL_CACHE_BREAKPOINT) else block
     }
 }

@@ -79,9 +79,14 @@ class AnthropicSystemPromptBlocksTest {
         assertFalse("短提示词不打缓存断点", hasCacheControl(blocksOf(payload).single()))
     }
 
-    /** 总长度够长时，缓存断点只打最后一块——缓存前缀才能覆盖全部 system。 */
+    /**
+     * 总长度够长时，缓存断点打在**稳定前缀**（第一块）上。
+     *
+     * 旧实现打在最后一块：调用方把 system 拆成"稳定核 + 动态尾"后，动态尾（当前时间、
+     * 待办、检索到的记忆）几乎每轮都变，断点落在它上面等于缓存永远不命中。
+     */
     @Test
-    fun cacheBreakpointOnlyOnLastSystemBlock() {
+    fun cacheBreakpointGoesToTheStablePrefix() {
         val first = "甲".repeat(1_500)
         val second = "乙".repeat(1_500)
         val third = "丙".repeat(1_500)
@@ -91,10 +96,10 @@ class AnthropicSystemPromptBlocksTest {
         )
 
         assertEquals(3, blocks.size)
-        assertFalse(hasCacheControl(blocks[0]))
-        assertFalse(hasCacheControl(blocks[1]))
-        assertTrue(hasCacheControl(blocks[2]))
-        assertEquals("ephemeral", (blocks[2]["cache_control"] as Map<*, *>)["type"])
+        assertTrue("稳定核（第一块）必须打点", hasCacheControl(blocks[0]))
+        assertFalse("中间块不额外打点", hasCacheControl(blocks[1]))
+        assertFalse("动态尾不打点", hasCacheControl(blocks[2]))
+        assertEquals("ephemeral", (blocks[0]["cache_control"] as Map<*, *>)["type"])
     }
 
     /** 总长度不足最小缓存长度时，任何一块都不打缓存断点。 */

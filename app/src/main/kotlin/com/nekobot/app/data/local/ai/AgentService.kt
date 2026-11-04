@@ -566,8 +566,10 @@ internal fun groupMessageBlocks(messages: List<Map<String, Any>>): List<List<Map
  */
 fun trimMessages(messages: List<Map<String, Any>>, maxTotalChars: Int = 30000): List<Map<String, Any>> {
     if (messages.isEmpty()) return messages
-    val systemMessage = messages.first().takeIf { (it["role"] as? String) == "system" }
-    val body = if (systemMessage != null) messages.drop(1) else messages
+    // system 拆成"稳定核 + 动态尾"后会有连续多条 system 消息，全部都要保留：
+    // 只保留第一条会把当前时间、待办、检索到的记忆整段裁掉。
+    val leadingSystem = messages.takeWhile { (it["role"] as? String) == "system" }
+    val body = messages.drop(leadingSystem.size)
     if (body.isEmpty()) return messages
 
     var currentTotal = messages.sumOf(::messageSizeChars)
@@ -583,7 +585,7 @@ fun trimMessages(messages: List<Map<String, Any>>, maxTotalChars: Int = 30000): 
     val kept = blocks.drop(firstKept)
         .flatten()
         .dropWhile { (it["role"] as? String) == "tool" }
-    return if (systemMessage != null) listOf(systemMessage) + kept else kept
+    return leadingSystem + kept
 }
 
 /** 循环内裁剪后工具结果正文的最小保留长度（字符）；短于此长度的结果不值得裁剪。 */
