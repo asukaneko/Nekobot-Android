@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.knowledge.LocalKnowledgeDocumentImporter
 import com.nekobot.app.data.model.KnowledgeDocument
 import com.nekobot.app.data.model.KnowledgeDocumentRequest
 import com.nekobot.app.data.model.KnowledgeSearchRequest
@@ -139,7 +140,7 @@ class KnowledgeViewModel : BaseViewModel() {
                         if (cursor.moveToFirst()) cursor.getString(0) else null
                     } ?: uri.lastPathSegment?.substringAfterLast('/')
                         ?: string(R.string.knowledge_import_document)
-                    val data = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    val data = contentResolver.openInputStream(uri)?.use(LocalKnowledgeDocumentImporter::readFileBytes)
                         ?: error(string(R.string.knowledge_read_file_failed))
                     Triple(displayName, contentResolver.getType(uri), data)
                 }

@@ -11,6 +11,7 @@ import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 import com.nekobot.app.data.local.toHex
+import com.nekobot.app.data.remote.ExecAuthorization
 
 /**
  * 验证 LocalAgentToolExecutor 对文件变更工具的路径追踪，以及 git 摘要生成。
@@ -119,12 +120,15 @@ class LocalAgentGitTrackingTest {
         val ws = Files.createTempDirectory("wgt").toFile()
         val shared = Files.createTempDirectory("wgt-shared").toFile()
         root = ws
+        val authorizationManager = LocalExecAuthorizationManager(100)
         val executor = LocalAgentToolExecutor(
             sessionId = "session-git-shared",
             workspaceRoot = ws,
             sharedWorkspaceRoot = shared,
-            authorizationManager = LocalExecAuthorizationManager(100),
-            onConfirmationRequired = {},
+            authorizationManager = authorizationManager,
+            onConfirmationRequired = { request ->
+                authorizationManager.resolve(request.requestId, "session-git-shared", ExecAuthorization.Once)
+            },
             thinkingHistoryProvider = { emptyList() }
         )
         // 共享工作区预置一个 git 仓库（HEAD 含 main.py）

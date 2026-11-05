@@ -15,6 +15,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.google.gson.Gson
+import com.nekobot.app.data.local.readTextPreview
+import com.nekobot.app.data.local.saveLimitedDownload
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -73,6 +75,11 @@ internal class LocalBrowserTool(
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
+    private val fetchClient = LocalBrowserFetchClient(
+        httpClient,
+        cookiesForUrl = { url -> runOnMain { CookieManager.getInstance().getCookie(url.toString()).orEmpty() } },
+        isAllowedUrl = { url -> isAllowedWebUrl(url.toString()) }
+    )
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executionLock = ReentrantLock()
     private val tabs = LinkedHashMap<Int, BrowserTab>()
@@ -579,17 +586,13 @@ internal class LocalBrowserTool(
                 runOnMain { requireWebView().settings.userAgentString }
                     ?: LocalBrowserConfig.current().userAgent
             )
-        val cookieHeader = runOnMain {
-            CookieManager.getInstance().getCookie(normalized).orEmpty()
-        }
-        if (cookieHeader.isNotBlank()) requestBuilder.header("Cookie", cookieHeader)
         @Suppress("UNCHECKED_CAST")
         (args["headers"] as? Map<*, *>)?.forEach { (key, value) ->
             if (key != null && value != null && !key.toString().equals("Cookie", ignoreCase = true)) {
                 requestBuilder.header(key.toString(), value.toString())
             }
         }
-        httpClient.newCall(requestBuilder.get().build()).execute().use { response ->
+        fetchClient.execute(requestBuilder.get().build()).use { response ->
             if (!response.isSuccessful) {
                 return failure("HTTP ${response.code}", "url" to normalized)
             }
@@ -612,22 +615,7 @@ internal class LocalBrowserTool(
             if (!output.path.startsWith(browserDir.path + File.separator)) {
                 return failure("下载文件名无效")
             }
-            var total = 0L
-            body.byteStream().use { input ->
-                output.outputStream().use { stream ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        total += read
-                        if (total > MAX_FETCH_BYTES) {
-                            output.delete()
-                            return failure("响应超过 100MB 限制")
-                        }
-                        stream.write(buffer, 0, read)
-                    }
-                }
-            }
+            val total = body.byteStream().use { it.saveLimitedDownload(output, MAX_FETCH_BYTES) }
             val relativePath = workspace.toPath().relativize(output.toPath()).toString()
                 .replace(File.separatorChar, '/')
             val mime = response.header("Content-Type").orEmpty()
@@ -637,18 +625,18 @@ internal class LocalBrowserTool(
                 mime.contains("json") ||
                 mime.contains("xml")
             ) {
-                runCatching { output.readText(Charsets.UTF_8).take(previewLimit) }.getOrDefault("")
-            } else ""
+                runCatching { output.reader(Charsets.UTF_8).use { it.readTextPreview(previewLimit) } }.getOrNull()
+            } else null
             return success(
                 "action" to "fetch",
-                "content" to if (preview.isBlank()) "已使用当前浏览器登录态下载文件" else preview,
+                "content" to (preview?.content?.takeIf(String::isNotBlank) ?: "已使用当前浏览器登录态下载文件"),
                 "url" to normalized,
                 "status" to response.code,
                 "mime_type" to mime,
                 "size" to total,
                 "path" to relativePath,
                 "absolute_path" to output.absolutePath,
-                "truncated" to (preview.length == previewLimit)
+                "truncated" to (preview?.truncated == true)
             )
         }
     }

@@ -153,6 +153,7 @@ internal class PluginApiDispatcher(
         if (permission != null) {
             checkPluginPermission(context.plugin, permission, grants?.granted(context.plugin.id))
         }
+        checkPluginNetworkAccess(canonical, networkAllowed)
         return when (canonical) {
             "system.info" -> systemInfo()
             "log" -> {
@@ -258,7 +259,7 @@ internal class PluginApiDispatcher(
                 val sessionId = payload.string("sessionId").ifBlank { context.sessionId.orEmpty() }
                 if (sessionId.isBlank()) throw PluginApiException("缺少会话 id", "invalid_argument")
                 val limit = resolveLimit(payload, defaultLimit, maxLimit)
-                val messages = repository(context).listMessages(sessionId).takeLast(limit)
+                val messages = repository(context).listRecentMessages(sessionId, limit).messages
                 messages.map { if (context.isPage) messageSummary(it) else it }
             }
             "chat.messages.append" -> {
@@ -1296,12 +1297,7 @@ internal class PluginApiDispatcher(
     }
 
     private fun requireNetworkAllowed() {
-        if (!networkAllowed()) {
-            throw PluginApiException(
-                "Agent 网络访问已在设置中关闭，插件无法发起网络请求",
-                "network_disabled"
-            )
-        }
+        checkPluginNetworkAccess("http.get", networkAllowed)
     }
 
     private fun requirePublicHttpsUrl(raw: String, what: String) {

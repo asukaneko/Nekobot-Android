@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalImageResult
 import com.nekobot.app.data.local.WorkspaceGitDiff
+import com.nekobot.app.data.local.saveLimitedDownload
 import com.nekobot.app.data.local.db.BuiltinTools
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.data.model.GitDiffSummary
@@ -383,6 +384,7 @@ internal class LocalAgentToolExecutor(
     private val MAX_STICKER_LIST_ITEMS = 2000
     private val workspace = workspaceRoot?.canonicalFile
     private val sharedWorkspace = sharedWorkspaceRoot?.canonicalFile
+    private val workspacePaths = AgentWorkspacePaths(workspaceRoot, sharedWorkspaceRoot)
     /**
      * 本次会话中已成功变更（创建/编辑/删除）的工作区文件相对路径集合（去重、保持顺序）。
      * 用于 Agent 工具执行成功后，在进度卡片上展示 git 变更摘要与逐文件 diff。
@@ -413,6 +415,10 @@ internal class LocalAgentToolExecutor(
     suspend fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
         if (generationController.isStopped) return stoppedFailure()
         return try {
+            if (!authorizeWorkspaceMutation(toolName, args)) {
+                return failure("用户未授权该操作，已取消。请不要重复尝试同一操作，先向用户说明为什么需要它。")
+            }
+            if (generationController.isStopped) return stoppedFailure()
             when (toolName) {
                 "get_weather" -> getWeather(args)
                 "search_web" -> searchWeb(args)
@@ -1238,19 +1244,14 @@ internal class LocalAgentToolExecutor(
     private fun downloadFile(args: Map<String, Any>): Map<String, Any> {
         val url = args.string("url")
         if (url.isBlank()) return failure("URL 不能为空")
-        val requestedPath = args.string("save_path")
-        val defaultName = runCatching {
-            File(URI(url).path).name.takeIf { it.isNotBlank() }
-        }.getOrNull() ?: "download_${System.currentTimeMillis()}"
-        val target = resolveWorkspacePath(requestedPath.ifBlank { defaultName })
+        val target = workspacePaths.downloadTarget(args)
             ?: return failure("保存路径超出会话工作区")
-        target.parentFile?.mkdirs()
         withHttpResponse(Request.Builder().url(url).get().build()) { response ->
             if (!response.isSuccessful) return failure("下载失败: HTTP ${response.code}")
             val body = response.body ?: return failure("下载响应为空")
             val contentLength = body.contentLength()
             if (contentLength > 50L * 1024 * 1024) return failure("文件超过 50MB 限制")
-            target.outputStream().use { output -> body.byteStream().copyTo(output) }
+            body.byteStream().use { it.saveLimitedDownload(target, 50L * 1024 * 1024) }
         }
         return success(
             "path" to relativeWorkspacePath(target),
@@ -1753,11 +1754,7 @@ internal class LocalAgentToolExecutor(
             return failure("输入文件必须是 EPUB 格式")
         }
 
-        val defaultOutputPath = relativeWorkspacePath(
-            File(source.parentFile, "${source.nameWithoutExtension}.txt")
-        )
-        val outputPath = args.string("output_path").ifBlank { defaultOutputPath }
-        val output = resolveWorkspacePath(outputPath)
+        val output = workspacePaths.epubOutput(args)
             ?: return failure("输出路径为空或超出会话工作区")
         if (!output.extension.equals("txt", ignoreCase = true)) {
             return failure("输出文件必须使用 .txt 扩展名")
@@ -1790,49 +1787,23 @@ internal class LocalAgentToolExecutor(
         )
     }
 
-    private fun resolveWorkspacePath(path: String, allowRoot: Boolean = false): File? {
-        val trimmed = path.trim()
-        // shared:// 前缀 → 解析到共享工作区
-        if (trimmed.startsWith("shared://", ignoreCase = true)) {
-            val root = sharedWorkspace ?: return null
-            root.mkdirs()
-            val relPath = trimmed.removePrefix("shared://")
-                .replace('\\', '/')
-                .removePrefix("/")
-            if (relPath.isBlank()) return root.takeIf { allowRoot }
-            val target = File(root, relPath).canonicalFile
-            val rootPath = root.path
-            return target.takeIf {
-                it.path == rootPath || it.path.startsWith(rootPath + File.separator)
-            }
-        }
-        // 普通路径 → 解析到会话工作区
-        val root = workspace ?: return null
-        root.mkdirs()
-        val normalizedPath = trimmed
-            .replace('\\', '/')
-            .removePrefix("/workspace/")
-            .let { value -> if (value == "/workspace") "" else value }
-        if (normalizedPath.isBlank()) return root.takeIf { allowRoot }
-        val target = File(root, normalizedPath).canonicalFile
-        val rootPath = root.path
-        return target.takeIf {
-            it.path == rootPath || it.path.startsWith(rootPath + File.separator)
-        }
+    /** 放在实际执行入口，文字 Agent、子代理和实时语音都必须经过此检查。 */
+    private suspend fun authorizeWorkspaceMutation(toolName: String, args: Map<String, Any>): Boolean {
+        val path = workspacePaths.sharedMutationPath(toolName, args) ?: return true
+        val deleting = toolName == "workspace_delete_file"
+        return authorizationManager.requestToolAuthorization(
+            sessionId = sessionId,
+            toolName = toolName,
+            fingerprintArgument = if (deleting) path else path.substringBeforeLast('/', path),
+            message = if (deleting) "本地 Agent 请求删除共享工作区文件：$path" else "本地 Agent 请求写入共享工作区：$path",
+            onRequest = onConfirmationRequired
+        )
     }
 
-    private fun relativeWorkspacePath(file: File): String {
-        // 共享工作区文件返回 shared:// 前缀路径
-        val shared = sharedWorkspace
-        if (shared != null) {
-            val sharedPath = shared.path
-            if (file.path == sharedPath || file.path.startsWith(sharedPath + File.separator)) {
-                return "shared://" + file.relativeTo(shared).path.replace(File.separatorChar, '/').ifBlank { "." }
-            }
-        }
-        val root = workspace ?: return file.name
-        return file.relativeTo(root).path.replace(File.separatorChar, '/').ifBlank { "." }
-    }
+    private fun resolveWorkspacePath(path: String, allowRoot: Boolean = false): File? =
+        workspacePaths.resolve(path, allowRoot)
+
+    private fun relativeWorkspacePath(file: File): String = workspacePaths.relative(file)
 
     /** 记录一次成功变更的相对路径（去重保序）。 */
     private fun recordChangedPath(relativePath: String) {
@@ -1978,8 +1949,7 @@ internal class LocalAgentToolExecutor(
     private fun Map<String, Any>.string(key: String): String = this[key]?.toString().orEmpty()
 
     /** 兼容原仓库与不同模型常用的 filename/file_path 参数名。 */
-    private fun Map<String, Any>.workspacePath(): String =
-        string("path").ifBlank { string("filename") }.ifBlank { string("file_path") }
+    private fun Map<String, Any>.workspacePath(): String = agentWorkspacePath()
 
     private fun Map<String, Any>.int(key: String, default: Int): Int =
         (this[key] as? Number)?.toInt() ?: this[key]?.toString()?.toIntOrNull() ?: default
