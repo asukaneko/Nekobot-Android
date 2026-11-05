@@ -26,4 +26,7 @@
     <string name="companion_chat_clear_type">Type “%1$s” to confirm</string>
     <string name="companion_chat_retry">Regenerate</string>
     <string name="companion_chat_reply_versions">Other replies</string>
+    <string name="companion_settings_memory_group">Memory &amp; relationship</string>
+    <string name="companion_settings_relationship">Relationship &amp; feelings</string>
+    <string name="companion_settings_relationship_summary">View the relationship state and latest assessment</string>
 </resources>

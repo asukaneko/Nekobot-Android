@@ -26,4 +26,7 @@
     <string name="companion_chat_clear_type">확인하려면 “%1$s” 입력</string>
     <string name="companion_chat_retry">다시 답변</string>
     <string name="companion_chat_reply_versions">다른 답변</string>
+    <string name="companion_settings_memory_group">기억과 관계</string>
+    <string name="companion_settings_relationship">관계와 감정</string>
+    <string name="companion_settings_relationship_summary">관계 상태와 최근 평가 확인</string>
 </resources>

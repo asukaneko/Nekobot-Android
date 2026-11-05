@@ -275,8 +275,10 @@ fun ModernChatScreen(
     val agentSpec by viewModel.agentSpec.collectAsStateWithLifecycle()
     val companionName = if (session?.companionMode == true) companionChatTitle(session) else null
     var companionSettingsOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var companionRelationshipOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
     var companionSearchRequest by remember(sessionId) { mutableStateOf(0) }
     var companionFavoritesRequest by remember(sessionId) { mutableStateOf(0) }
+    var companionClearRequest by remember(sessionId) { mutableStateOf(0) }
     val settingsKeyboard = LocalSoftwareKeyboardController.current
     var companionShowReasoning by remember(sessionId, companionName != null) {
         mutableStateOf(companionName != null && ServiceContainer.localRepository.companionShowReasoning(sessionId))
@@ -357,6 +359,7 @@ fun ModernChatScreen(
             session = session,
             companionSearchRequest = companionSearchRequest,
             companionFavoritesRequest = companionFavoritesRequest,
+            companionClearRequest = companionClearRequest,
             onDismissCompanionSettings = { companionSettingsOpen = false },
             messages = messages,
             sending = sending,
@@ -426,8 +429,11 @@ fun ModernChatScreen(
             },
             onDismiss = { companionSettingsOpen = false },
             onDetails = { onOpenSessionDetail(sessionId) },
+            onMemories = { companionSettingsOpen = false; onOpenCompanionMemory(sessionId) },
+            onRelationship = { companionSettingsOpen = false; companionRelationshipOpen = true },
             onSearch = { companionSearchRequest++ },
             onFavorites = { companionFavoritesRequest++ },
+            onClear = { companionSettingsOpen = false; companionClearRequest++ },
             onUsage = { onOpenContextAnalysis(sessionId) },
             reasoningEffort = companionEffort,
             customReasoning = ServiceContainer.localRepository.companionCustomReasoning(sessionId),
@@ -438,6 +444,9 @@ fun ModernChatScreen(
                 { companionUtilityRequest = CompanionChatUtility.VIEW_ARCHIVE }
             } else null
         )
+    }
+    if (companionName != null && companionRelationshipOpen) {
+        com.nekobot.app.ui.screens.sessions.CompanionRelationshipScreen(sessionId) { companionRelationshipOpen = false }
     }
     }
     }
@@ -993,6 +1002,7 @@ private fun ModernChatComposer(
     session: Session?,
     companionSearchRequest: Int,
     companionFavoritesRequest: Int,
+    companionClearRequest: Int = 0,
     onDismissCompanionSettings: () -> Unit,
     messages: List<Message>,
     sending: Boolean,
@@ -1117,6 +1127,13 @@ private fun ModernChatComposer(
     }
     LaunchedEffect(companionFavoritesRequest) {
         if (companionFavoritesRequest > 0) showFavorites = true
+    }
+    // 单角色设置页没有下拉菜单，清空入口经请求计数交给这里统一弹确认框。
+    LaunchedEffect(companionClearRequest) {
+        if (companionClearRequest > 0) {
+            onDismissCompanionSettings()
+            showClearConfirm = true
+        }
     }
     var favoritesLoading by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf<List<JsonObject>>(emptyList()) }

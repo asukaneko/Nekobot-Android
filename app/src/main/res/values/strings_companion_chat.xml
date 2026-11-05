@@ -26,4 +26,7 @@
     <string name="companion_chat_clear_type">输入“%1$s”确认</string>
     <string name="companion_chat_retry">重新回复</string>
     <string name="companion_chat_reply_versions">其他回复</string>
+    <string name="companion_settings_memory_group">记忆与关系</string>
+    <string name="companion_settings_relationship">关系与感受</string>
+    <string name="companion_settings_relationship_summary">查看关系状态与最近一次评估</string>
 </resources>

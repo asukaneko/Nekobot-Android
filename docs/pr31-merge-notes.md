@@ -174,7 +174,7 @@ git diff pr31-upstream jxx/contrib/single-session-followups
 
 ### 8.5 遗留
 
-- `ui/screens/chat/ImportedHistoryViews.kt`（导入收藏图片/说明回看）在 PR 原分支中也只有自身测试引用，未接入任何页面；需要产品层面决定入口位置后再接。
+- ~~`ui/screens/chat/ImportedHistoryViews.kt`（导入收藏图片/说明回看）在 PR 原分支中也只有自身测试引用，未接入任何页面~~：已接线。`ImportedFavoriteSnapshotsEntry` 出现在单角色会话的收藏夹（`CompanionFavoritesReading` 的 `importedSnapshots` 槽位与聊天页收藏入口），`ImportedImageDescriptionButton` 出现在历史图片气泡的说明入口。
 - 合并树的 androidTest 仍未整体编译验证（项目 CI 只跑 `assembleDebug`，不编译 androidTest）。
 
 ---
@@ -302,4 +302,43 @@ PR 已合入 main（合并提交 `866abb2c`）。合并后按失败用例逐条�
 ### 10.5 复现命令
 
 同 9.3；去掉 instrumentation 的 class 参数可运行全量设备测试。
+
+---
+
+## 11. 单角色模式收尾（2026-11-05）
+
+### 11.1 审计结论
+
+按 PR30–32 的功能清单逐项核对，主要链路都已闭环，没有只声明不接线的半成品：
+
+| 检查项 | 结论 |
+|---|---|
+| 五语文案 | 齐全。`sessions_relationship_state_*`（`strings_p2.xml`）、`thinking_source_*`（`thinking_source.xml`）等分散在其它资源文件里，按「单文件对比」会误判缺失，按语言合并后无缺口 |
+| 创建 / 迁入 | 预览、转换、恢复、跨进程续做、错误报告、备份删除、记录清理都有入口；未完成记录可继续 |
+| 记忆 v2 | 编号证据、逐条入库、待确认、锁定队列、原话回看、整理阈值（`CompanionRecallSettingsScreen` 内）均可配置 |
+| 关系评估 | 模型与间隔设置、手动补评、失败/超时提示、七套皮肤都在 |
+| 导入回看 | `ImportedHistoryViews` 已接入收藏夹与图片说明入口（见 8.5） |
+
+遗留的“未完善”主要是死代码与从通用源码里带出的个人联系方式，而不是缺功能。
+
+### 11.2 本轮改动
+
+| 项 | 内容 |
+|---|---|
+| 设置页直达入口 | 单角色聊天设置新增「记忆与关系」分组：「记忆设置」直达角色记忆，「关系与感受」直接在聊天内打开关系页；此前只能经「角色与记忆 → 会话详情」绕行 |
+| 清空入口补齐 | 单角色聊天的顶部菜单被设置页取代，面板里的清空项又被隐藏，只剩快捷工具栏一条路。设置页「聊天内容」分组补「清空当前会话」行，仍走原有的关键字确认框，不新增文案 |
+| 联系地址外置 | `strings_companion_feedback.xml` 的收件地址改为空占位（空值不显示反馈入口），需要在本地构建里自行填写，且不提交回仓库 |
+| 死代码清理 | 删除 PR30 遗留且无人调用的 `CompanionChatSheet`、`CompanionReasoningSetting`、`CompanionSettingsRow` 及其无用导入 |
+| 回归保护 | 新增 `CompanionLocaleCoverageTest`：按语言合并全部 `strings*.xml`，校验单角色/陪伴相关键在 5 个语言里齐全、非空且格式参数一致（`translatable="false"` 的项除外） |
+
+### 11.3 验证
+
+| 项 | 结果 |
+|---|---|
+| `:app:testDebugUnitTest` | 通过（含新增语言一致性用例） |
+| `:app:lintDebug` | 0 错误 |
+| `:app:assembleDebug` | 通过 |
+
+未做：真机交互、TalkBack、真实模型与长期陪伴效果验收。
+
 

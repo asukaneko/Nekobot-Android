@@ -1,4 +1,5 @@
 <resources>
-    <!-- 本地定制构建可覆盖。空值时不展示联系入口，不在通用源码中公开私人联系方式。 -->
-    <string name="companion_feedback_email" translatable="false">1795744558@qq.com</string>
+    <!-- 联系入口的收件地址。通用源码保持空值：空值时设置页不展示「测试反馈」入口。
+         本地或定制构建需要该入口时，只改本行填入自己的地址，且不要把改动提交回仓库。 -->
+    <string name="companion_feedback_email" translatable="false"></string>
 </resources>

@@ -7,10 +7,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material3.*
@@ -21,11 +19,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
@@ -75,24 +71,6 @@ internal fun companionChatPalette(dark: Boolean, messageColorOverride: Color? = 
 }
 
 /** A display preference only; NONE applies to new requests, never to saved messages. */
-@Composable
-internal fun CompanionReasoningSetting(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    val palette = companionChatPalette()
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
-        .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
-        .padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Psychology, null, Modifier.size(22.dp), tint = palette.ink)
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(stringResource(R.string.companion_chat_show_reasoning),
-                style = MaterialTheme.typography.bodyLarge, color = palette.ink)
-            Text(stringResource(R.string.companion_chat_show_reasoning_hint),
-                style = MaterialTheme.typography.bodySmall, color = palette.secondary)
-        }
-        Switch(checked = checked, onCheckedChange = null,
-            colors = SwitchDefaults.colors(checkedTrackColor = palette.accent))
-    }
-}
 
 /** Reuses saved-run recovery, without exposing the Agent execution panel. */
 @Composable
@@ -234,49 +212,6 @@ internal fun CompanionAttachmentPanel(enabled: Boolean, onImage: () -> Unit, onF
                 Text(label, style = MaterialTheme.typography.labelLarge, color = palette.secondary)
             }
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun CompanionChatSheet(
-    title: String, onDismiss: () -> Unit, onBack: (() -> Unit)? = null,
-    scrollable: Boolean = true, content: @Composable ColumnScope.() -> Unit
-) {
-    val palette = companionChatPalette()
-    ModalBottomSheet(onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = palette.surface, contentColor = palette.ink) {
-        Row(Modifier.fillMaxWidth().padding(start = if (onBack == null) 20.dp else 4.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            if (onBack != null) IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
-            }
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.common_close)) }
-        }
-        Column(Modifier.fillMaxWidth().weight(1f, fill = false)
-            .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-            .padding(bottom = 24.dp), content = content)
-    }
-}
-
-@Composable
-internal fun CompanionSettingsRow(
-    title: String, icon: ImageVector, subtitle: String? = null,
-    enabled: Boolean = true, destructive: Boolean = false, onClick: () -> Unit
-) {
-    val palette = companionChatPalette()
-    val color = if (destructive) MaterialTheme.colorScheme.error else palette.ink
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = enabled, onClick = onClick)
-        .padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(22.dp), tint = color.copy(alpha = if (enabled) 1f else 0.4f))
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = color.copy(alpha = if (enabled) 1f else 0.4f))
-            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = palette.secondary)
-        }
-        Icon(Icons.Default.ChevronRight, null, tint = palette.secondary, modifier = Modifier.size(20.dp))
     }
 }
 

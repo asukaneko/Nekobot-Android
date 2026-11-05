@@ -28,6 +28,7 @@ captures/
 /.env.*
 !/.env.example
 /personal-build.json
+/dist/
 /*.jks
 /*.keystore
 /*.apk

@@ -96,18 +96,23 @@ internal fun CompanionPreferenceRow(
     checked: Boolean? = null, onCheckedChange: ((Boolean) -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    destructive: Boolean = false
 ) {
     val interaction = when {
         checked != null && onCheckedChange != null -> Modifier.toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
         onClick != null -> Modifier.clickable(enabled = enabled, onClick = onClick)
         else -> Modifier
     }
+    val titleColor = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified
     Row(modifier.fillMaxWidth().then(interaction).heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        CompanionPreferenceIcon(icon)
+        if (destructive) Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.error.copy(alpha = 0.09f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
+        } else CompanionPreferenceIcon(icon)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = titleColor)
             if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -135,7 +140,13 @@ internal fun CompanionSettingsScreen(
     onCustomReasoningChange: (CustomReasoningParam) -> Unit = {},
     onSaved: () -> Unit = {},
     sessionId: String? = null,
-    characterId: String? = null
+    characterId: String? = null,
+    /** 直达角色记忆；为空时不显示入口。 */
+    onMemories: (() -> Unit)? = null,
+    /** 直达关系与感受；为空时不显示入口。 */
+    onRelationship: (() -> Unit)? = null,
+    /** 清空本会话消息；为空时不显示入口。 */
+    onClear: (() -> Unit)? = null
 ) {
     val textResources = LocalResources.current
     var promptsOpen by androidx.compose.runtime.saveable.rememberSaveable(sessionId) { mutableStateOf(false) }
@@ -160,6 +171,24 @@ internal fun CompanionSettingsScreen(
                             CompanionSettingsAction(textResources.getString(R.string.single_role_save_messages), Icons.Outlined.StarBorder, onFavorites, Modifier.weight(1f))
                             if (onArchive != null) CompanionSettingsAction(textResources.getString(R.string.chat_view_archive), Icons.Outlined.FolderOpen, onArchive, Modifier.weight(1f))
                         }
+                        if (onClear != null) {
+                            CompanionPreferenceDivider()
+                            CompanionPreferenceRow(textResources.getString(R.string.chat_clear_current_session),
+                                Icons.Outlined.DeleteOutline, textResources.getString(R.string.chat_clear_current_subtitle),
+                                modifier = Modifier.testTag("companion-settings-clear"), onClick = onClear, destructive = true)
+                        }
+                    }
+                    if (onMemories != null || onRelationship != null) CompanionPreferenceGroup(
+                        textResources.getString(R.string.companion_settings_memory_group)) {
+                        if (onMemories != null) CompanionPreferenceRow(
+                            textResources.getString(R.string.single_role_memory_settings), Icons.Outlined.MenuBook,
+                            textResources.getString(R.string.single_role_character_s_independent_memories),
+                            modifier = Modifier.testTag("companion-settings-memories"), onClick = onMemories)
+                        if (onMemories != null && onRelationship != null) CompanionPreferenceDivider()
+                        if (onRelationship != null) CompanionPreferenceRow(
+                            textResources.getString(R.string.companion_settings_relationship), Icons.Outlined.FavoriteBorder,
+                            textResources.getString(R.string.companion_settings_relationship_summary),
+                            modifier = Modifier.testTag("companion-settings-relationship"), onClick = onRelationship)
                     }
                     if (sessionId != null && characterId != null) CompanionPreferenceGroup {
                         CompanionPreferenceRow(textResources.getString(R.string.companion_prompts_title), Icons.Outlined.Tune,
