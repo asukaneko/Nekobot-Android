@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -272,7 +271,7 @@ fun WorldBooksScreen(
                         ServiceContainer.prefs.worldBookViewMode = newMode.name
                     }) {
                         Icon(
-                            if (viewMode == WorldBookViewMode.LIST) Icons.Filled.Apps else Icons.Filled.ViewList,
+                            if (viewMode == WorldBookViewMode.LIST) Icons.Filled.GridView else Icons.Filled.ViewList,
                             contentDescription = stringResource(
                                 if (viewMode == WorldBookViewMode.LIST) R.string.worldbook_view_grid
                                 else R.string.worldbook_view_list

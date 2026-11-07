@@ -18,8 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
@@ -242,7 +242,7 @@ fun CharactersScreen(
             listOf(
                 LibraryTopAction(
                     key = "view_mode",
-                    icon = if (viewMode == CharacterViewMode.LIST) Icons.Filled.Apps else Icons.Filled.ViewList,
+                    icon = if (viewMode == CharacterViewMode.LIST) Icons.Filled.GridView else Icons.Filled.ViewList,
                     label = viewToggleLabel
                 ) {
                     val newMode =
@@ -315,7 +315,7 @@ fun CharactersScreen(
                         ServiceContainer.prefs.characterViewMode = newMode.name
                     }) {
                         Icon(
-                            if (viewMode == CharacterViewMode.LIST) Icons.Filled.Apps else Icons.Filled.ViewList,
+                            if (viewMode == CharacterViewMode.LIST) Icons.Filled.GridView else Icons.Filled.ViewList,
                             contentDescription = if (viewMode == CharacterViewMode.LIST) stringResource(R.string.characters_view_grid) else stringResource(R.string.characters_view_list),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
