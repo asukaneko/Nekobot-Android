@@ -1,12 +1,11 @@
 package com.nekobot.app.ui.screens.settings
 
-import androidx.compose.ui.platform.LocalResources
-
 import androidx.compose.animation.AnimatedVisibility
 import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,7 +38,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.nekobot.app.ui.components.BorderlessFilterChip as FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -89,7 +88,6 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun StyleSettingsScreen(onBack: () -> Unit) {
-    val textResources = LocalResources.current
     val prefs = ServiceContainer.prefs
 
     var themeColorOverride by remember { mutableStateOf(prefs.themeColorOverride) }
@@ -251,22 +249,64 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                 onUserMessageColor = { messageColorOverride = it; prefs.messageColorOverride = it },
                 onAssistantMessageColor = { assistantMessageColorOverride = it; prefs.assistantMessageColorOverride = it })
             ChatEffectsSettings()
+            // 字体与文字：折叠头与其它卡片标题同级；展开后的设置放进独立内层面板，
+            // 让这一整组内容被明确框住，而不是散落在卡片背景里。
             GlassCard(Modifier.fillMaxWidth()) {
-                AppearanceSettingRow(textResources.getString(R.string.single_role_fonts_and_text), textResources.getString(R.string.single_role_font_text_size_and_text_color), onClick = { fontsExpanded = !fontsExpanded }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { fontsExpanded = !fontsExpanded }
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.single_role_fonts_and_text),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            stringResource(R.string.single_role_font_text_size_and_text_color),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
                     Icon(
                         if (fontsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                         contentDescription = stringResource(if (fontsExpanded) R.string.common_collapse else R.string.common_expand),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (fontsExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 AnimatedVisibility(visible = fontsExpanded) {
-                    Column {
-                        AppearanceDivider()
+                    // 展开内容整体放进一层内层浅底面板，形成明确的边界
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(
+                                // 深浅色都取比卡片底色更亮一档的填充，形成"框住"的内层面板
+                                if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceContainerHigh
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .padding(horizontal = 14.dp, vertical = 2.dp)
+                    ) {
                         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                            Text(
+                                stringResource(R.string.style_realtime_preview),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(8.dp))
                             val previewTypography = buildTypography(fontFamily, fontScale)
                             val previewColor = parseHexColor(fontColorOverride) ?: MaterialTheme.colorScheme.onSurface
-                            Text(stringResource(R.string.style_realtime_preview), style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(8.dp))
                             Text(stringResource(R.string.style_preview_title), style = previewTypography.titleLarge, color = previewColor)
                             Spacer(Modifier.height(4.dp))
                             Text(stringResource(R.string.style_preview_body), style = previewTypography.bodyLarge, color = previewColor)
@@ -274,7 +314,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                         AppearanceDivider()
                         // 字体类型
                         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                            Text(stringResource(R.string.style_font_type), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.style_font_type), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(8.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 fontFamilyOptions.forEach { (value, label) ->
@@ -306,7 +346,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(MaterialTheme.shapes.small)
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                         .padding(horizontal = 10.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -352,7 +392,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                         AppearanceDivider()
                         // 字体大小
                         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                            Text(stringResource(R.string.style_font_size), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.style_font_size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                             Text(
                                 stringResource(R.string.style_font_size_desc),
                                 style = MaterialTheme.typography.bodySmall,
@@ -396,7 +436,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                                 steps = (PrefsManager.MAX_BODY_FONT_SP - PrefsManager.MIN_BODY_FONT_SP).roundToInt() - 1
                             )
                             Spacer(Modifier.height(12.dp))
-                            HorizontalDivider()
+                            AppearanceDivider()
                             Spacer(Modifier.height(12.dp))
                             // 跟随系统字号开关
                             Row(
@@ -428,7 +468,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                         AppearanceDivider()
                         // 字体颜色
                         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                            Text(stringResource(R.string.style_font_color), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.style_font_color), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(8.dp))
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
