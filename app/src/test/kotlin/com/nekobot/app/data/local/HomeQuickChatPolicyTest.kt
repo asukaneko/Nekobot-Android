@@ -90,6 +90,24 @@ class HomeQuickChatPolicyTest {
     }
 
     @Test
+    fun quickChatBubblesSplitOnSeparator() {
+        assertEquals(
+            listOf("第一段", "第二段", "第三段"),
+            splitHomeQuickChatBubbles("第一段<||>第二段<||>第三段")
+        )
+        // Markdown 原样保留，交给渲染层解析
+        assertEquals(
+            listOf("- 列表项", "**加粗** 与 `code`"),
+            splitHomeQuickChatBubbles("- 列表项 <||> **加粗** 与 `code`")
+        )
+        // 空段丢弃，首尾空白裁剪
+        assertEquals(listOf("只有一段"), splitHomeQuickChatBubbles("  <||>只有一段<||>  "))
+        assertTrue(splitHomeQuickChatBubbles(null).isEmpty())
+        assertTrue(splitHomeQuickChatBubbles("   ").isEmpty())
+        assertTrue(splitHomeQuickChatBubbles("<||>").isEmpty())
+    }
+
+    @Test
     fun plotChoicesParseObjectAndArray() {
         val objectJson = """{"choices":[{"id":"c1","text":"继续往前走"},{"text":"留在原地"}]}"""
         val fromObject = parseHomePlotChoices(objectJson)

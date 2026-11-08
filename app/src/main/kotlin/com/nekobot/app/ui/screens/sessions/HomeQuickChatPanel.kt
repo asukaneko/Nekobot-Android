@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,7 +53,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nekobot.app.R
 import com.nekobot.app.data.local.HomePlotChoice
+import com.nekobot.app.data.local.splitHomeQuickChatBubbles
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
@@ -301,7 +304,7 @@ private fun QuickChatMessages(state: HomeQuickChatUiState, modifier: Modifier = 
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 } else {
-                    QuickChatBubble(text = streaming, isUser = false)
+                    QuickChatBubble(text = streaming, isUser = false, isStreaming = true)
                 }
             }
         }
@@ -309,30 +312,38 @@ private fun QuickChatMessages(state: HomeQuickChatUiState, modifier: Modifier = 
 }
 
 @Composable
-private fun QuickChatBubble(text: String, isUser: Boolean) {
-    if (text.isBlank()) return
-    Row(
+private fun QuickChatBubble(text: String, isUser: Boolean, isStreaming: Boolean = false) {
+    // 与完整会话一致：<||> 分隔的多段各自渲染成一个气泡
+    val segments = remember(text) { splitHomeQuickChatBubbles(text) }
+    if (segments.isEmpty()) return
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(
-                    if (isUser) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                    }
+        segments.forEach { segment ->
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 300.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (isUser) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        }
+                    )
+                    .padding(horizontal = 11.dp, vertical = 8.dp)
+            ) {
+                MarkdownText(
+                    text = segment,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodySmall,
+                    chatMode = true,
+                    processParens = !isUser,
+                    isStreaming = isStreaming
                 )
-                .padding(horizontal = 11.dp, vertical = 8.dp)
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            }
         }
     }
 }

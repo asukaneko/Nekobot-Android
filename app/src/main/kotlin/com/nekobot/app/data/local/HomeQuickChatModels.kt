@@ -86,6 +86,18 @@ object HomeQuickChatDraftCodec {
 }
 
 /**
+ * 轻聊面板的正文分段：与完整会话一致，按 `<||>` 拆成多条短消息气泡。
+ *
+ * 每段去除首尾空白并丢弃空段；没有实际内容时返回空列表。
+ */
+fun splitHomeQuickChatBubbles(content: String?): List<String> {
+    if (content.isNullOrBlank()) return emptyList()
+    return content.split("<||>")
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+}
+
+/**
  * 解析剧情选项 JSON，兼容 `{"choices":[...]}` 与直接数组两种形态。
  *
  * 失败、空串或结构不符时返回空列表，不影响轻聊面板其它内容。
