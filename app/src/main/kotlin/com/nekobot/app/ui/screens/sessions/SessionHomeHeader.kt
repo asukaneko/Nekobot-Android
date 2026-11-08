@@ -231,9 +231,10 @@ fun SessionHomeHeaderContent(
             targetTitle = targetTitle,
             targetSubtitle = targetSubtitle,
             targetPortraitUrl = targetPortraitUrl,
-            targetPinned = scenePinned,
             // 非聚合模式下「接着聊」只关心欢迎角色自己有没有会话
             hasTarget = if (aggregateBanner) hasTarget else sceneSessions.isNotEmpty(),
+            // 固定角色还没有会话时，卡片右下的胶囊要说「开始聊」而不是「接着聊」
+            targetHasSession = shownRow != null,
             showTargetRow = aggregateBanner,
             onOpenTarget = {
                 when {
@@ -332,8 +333,9 @@ fun SessionHomeHeaderContent(
                 )
             }
         }
+        // 卡片与列表之间先留一段空白再落线，卡片不会像被压在分隔线上
+        Spacer(Modifier.height(14.dp))
         NekoDivider()
-        Spacer(Modifier.height(16.dp))
         // 分段控件覆盖三类会话；其它筛选（收藏 / 归档 / 频道 / 按角色）由「筛选」抽屉承担。
         // 右侧胶囊：左段是归档快捷开关，右段打开筛选抽屉，抽屉里选中非分段项时直接显示该筛选项。
         val filterLabel = if (filter in sessionSegmentFilters) {
@@ -345,7 +347,7 @@ fun SessionHomeHeaderContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 24.dp, bottom = 8.dp)
+                .padding(top = 20.dp, bottom = 8.dp)
                 .heightIn(min = 38.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -561,12 +563,13 @@ private fun HomeSessionBanner(
     showEmptySubtitle: Boolean = true
 ) {
     val shape = RoundedCornerShape(18.dp)
+    // 与场景卡里的「继续」白卡同一套语言：白底 + 1dp 细线，暖色只留给上面的问候卡
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.primaryContainer, 0.45f))
-            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
             .clickable(onClick = onOpen)
             .heightIn(min = 72.dp)
             .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
@@ -827,8 +830,9 @@ private fun HomeSceneCard(
     targetTitle: String,
     targetSubtitle: String?,
     targetPortraitUrl: String?,
-    targetPinned: Boolean,
     hasTarget: Boolean,
+    /** 目标角色是否已有会话：决定右下角胶囊说「接着聊」还是「开始聊」。 */
+    targetHasSession: Boolean,
     /** 聚合模式：卡片内展示「接着上次」；关闭后改由独立 banner 承担。 */
     showTargetRow: Boolean,
     onOpenTarget: () -> Unit,
@@ -928,15 +932,23 @@ private fun HomeSceneCard(
     GlassCard(
         modifier = modifier.fillMaxWidth(),
         cornerRadius = 24,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-        contentPadding = PaddingValues(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 12.dp)
+        // 场景卡是首屏唯一的暖色面：主色淡化到 40% 作底，再用 1dp 细线收边，
+        // 与下方的白底列表拉开一层；下半层再用纯白内嵌卡压回来，形成「暖底 + 白块」的层级。
+        containerColor = lerp(
+            MaterialTheme.colorScheme.surface,
+            MaterialTheme.colorScheme.primaryContainer,
+            0.40f
+        ),
+        borderWidth = 1,
+        borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+        contentPadding = PaddingValues(14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             WelcomePortrait(character = character, crop = crop, onClick = { showPicker = true })
-            Spacer(Modifier.width(15.dp))
+            Spacer(Modifier.width(14.dp))
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -953,11 +965,14 @@ private fun HomeSceneCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.size(4.dp))
+                Spacer(Modifier.size(5.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = line,
-                        style = nekoRowSubtitleStyle().copy(fontSize = nekoTextSize(13f)),
+                        style = nekoRowSubtitleStyle().copy(
+                            fontSize = nekoTextSize(13f),
+                            lineHeight = nekoTextSize(19f)
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                             alpha = if (generating) 0.5f else 1f
                         ),
@@ -978,19 +993,13 @@ private fun HomeSceneCard(
         }
         if (showTargetRow) {
             Spacer(Modifier.height(12.dp))
-            // 卡内分隔线：问候与「继续上次」仍是同一张卡，但分成上下两层
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
-            )
-            Spacer(Modifier.height(8.dp))
+            // 不用贯穿整卡的细线分隔：下半层做成一张内嵌白卡，
+            // 「问候」与「哪段对话」各自成块，谁是谁一眼可辨。
             HomeSceneCardFooter(
                 targetTitle = targetTitle,
                 targetSubtitle = targetSubtitle,
-                targetPinned = targetPinned,
                 hasTarget = hasTarget,
+                targetHasSession = targetHasSession,
                 showTargetRow = showTargetRow,
                 canQuickChat = canQuickChat,
                 onOpenTarget = onOpenTarget,
@@ -1064,13 +1073,13 @@ private fun HomeSceneCard(
     }
 }
 
-/** 场景卡下半层：聚合模式放「接着上次」，非聚合模式只留轻聊入口。 */
+/** 场景卡下半层：把「继续哪段对话」收成一张内嵌白卡，左侧内容、右侧动作。 */
 @Composable
 private fun HomeSceneCardFooter(
     targetTitle: String,
     targetSubtitle: String?,
-    targetPinned: Boolean,
     hasTarget: Boolean,
+    targetHasSession: Boolean,
     showTargetRow: Boolean,
     canQuickChat: Boolean,
     onOpenTarget: () -> Unit,
@@ -1080,103 +1089,30 @@ private fun HomeSceneCardFooter(
 ) {
     if (!showTargetRow) return
     when {
-        hasTarget -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 44.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = onOpenTarget)
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(
-                            if (targetPinned) R.string.shell_banner_pinned else R.string.shell_banner_continue
-                        ),
-                        style = nekoCaptionStyle(),
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
-                    if (targetTitle.isNotBlank()) {
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = targetTitle,
-                            style = nekoRowTitleStyle(),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    val visibleSubtitle = targetSubtitle?.takeIf { it.isNotBlank() }
-                    if (visibleSubtitle != null) {
-                        Spacer(Modifier.height(1.dp))
-                        Text(
-                            text = visibleSubtitle,
-                            style = nekoRowSubtitleStyle(),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-            if (canQuickChat) {
-                SceneActionChip(
-                    text = stringResource(R.string.shell_scene_card_chat),
-                    onClick = { onStartChat(true) }
-                )
-                Spacer(Modifier.width(2.dp))
-            }
-            SceneIconButton(
-                icon = Icons.Filled.SwapHoriz,
-                contentDescription = stringResource(R.string.shell_banner_choose),
-                onClick = onChooseSource
-            )
-        }
+        hasTarget -> SceneResumeRow(
+            title = targetTitle,
+            subtitle = targetSubtitle,
+            actionText = stringResource(
+                if (targetHasSession) R.string.shell_scene_card_chat else R.string.shell_scene_card_start
+            ),
+            onOpen = onOpenTarget,
+            onAction = if (canQuickChat) {
+                { onStartChat(true) }
+            } else {
+                null
+            },
+            onChoose = onChooseSource
+        )
 
-        canQuickChat -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 44.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.shell_scene_card_first_meet),
-                    style = nekoRowTitleStyle(),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.shell_banner_no_session),
-                    style = nekoRowSubtitleStyle(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SceneActionChip(
-                text = stringResource(R.string.shell_scene_card_start),
-                onClick = { onStartChat(false) }
-            )
-            Spacer(Modifier.width(2.dp))
-            SceneIconButton(
-                icon = Icons.Filled.SwapHoriz,
-                contentDescription = stringResource(R.string.shell_banner_choose),
-                onClick = onChooseSource
-            )
-        }
+        canQuickChat -> SceneResumeRow(
+            title = stringResource(R.string.shell_scene_card_first_meet),
+            subtitle = stringResource(R.string.shell_banner_no_session),
+            actionText = stringResource(R.string.shell_scene_card_start),
+            // 还没有会话：整行没有可进入的目标，只保留「开始聊」
+            onOpen = null,
+            onAction = { onStartChat(false) },
+            onChoose = onChooseSource
+        )
 
         else -> NekoPrimaryAction(
             text = stringResource(R.string.shell_new_chat),
@@ -1186,29 +1122,96 @@ private fun HomeSceneCardFooter(
     }
 }
 
-/** 场景卡上的小型胶囊动作。 */
+/**
+ * 内嵌的「继续上次」白卡：角色名 + 一行摘要，
+ * 右侧是主行动胶囊与换角色的图标。
+ *
+ * 没有会话时 [onOpen] 传 null，整张卡不再可点，避免点了没反应。
+ */
+@Composable
+private fun SceneResumeRow(
+    title: String,
+    subtitle: String?,
+    actionText: String,
+    onOpen: (() -> Unit)?,
+    onAction: (() -> Unit)?,
+    onChoose: () -> Unit
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+            .padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = nekoRowTitleStyle(),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val visibleSubtitle = subtitle?.takeIf { it.isNotBlank() }
+            if (visibleSubtitle != null) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = visibleSubtitle,
+                    style = nekoRowSubtitleStyle(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (onAction != null) {
+            Spacer(Modifier.width(8.dp))
+            SceneActionChip(text = actionText, onClick = onAction)
+        }
+        Spacer(Modifier.width(4.dp))
+        SceneIconButton(
+            icon = Icons.Filled.SwapHoriz,
+            contentDescription = stringResource(R.string.shell_banner_choose),
+            onClick = onChoose
+        )
+    }
+}
+
+/** 场景卡上的主行动胶囊：实心主色，和摘要区分开，一眼能看出「点这里继续」。 */
 @Composable
 private fun SceneActionChip(text: String, onClick: () -> Unit) {
-    Box(
+    Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+            .heightIn(min = 34.dp)
+            .clip(RoundedCornerShape(11.dp))
+            .background(MaterialTheme.colorScheme.primary)
             .clickable(onClick = onClick)
-            .heightIn(min = 32.dp)
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        Icon(
+            Icons.AutoMirrored.Outlined.Chat,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(Modifier.width(5.dp))
         Text(
             text = text,
-            style = nekoCaptionStyle(),
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium,
+            style = nekoCaptionStyle().copy(fontSize = nekoTextSize(12f)),
+            color = MaterialTheme.colorScheme.onPrimary,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1
         )
     }
 }
 
-/** 场景卡上的紧凑图标动作（比顶栏 48dp 触摸区更窄）。 */
+/** 场景卡上的次要图标动作：淡底圆形，弱于主胶囊。 */
 @Composable
 private fun SceneIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -1219,6 +1222,7 @@ private fun SceneIconButton(
         modifier = Modifier
             .size(32.dp)
             .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -1226,7 +1230,7 @@ private fun SceneIconButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(17.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
 }
