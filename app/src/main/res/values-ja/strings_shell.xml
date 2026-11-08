@@ -122,7 +122,7 @@
     <string name="shell_quick_chat_title">シーンチャット</string>
     <string name="shell_quick_chat_subtitle_new">新しいシーン</string>
     <string name="shell_quick_chat_subtitle_continue">前回の続き</string>
-    <string name="shell_quick_chat_input_hint">キャラクターの口調で続ける…</string>
+    <string name="shell_quick_chat_input_hint">メッセージを入力…</string>
     <string name="shell_quick_chat_send">送信</string>
     <string name="shell_quick_chat_typing">入力中…</string>
     <string name="shell_quick_chat_empty">このシーンの続きを話してみましょう。</string>

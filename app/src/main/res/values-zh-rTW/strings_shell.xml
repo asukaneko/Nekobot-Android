@@ -122,7 +122,7 @@
     <string name="shell_quick_chat_title">場景輕聊</string>
     <string name="shell_quick_chat_subtitle_new">新場景</string>
     <string name="shell_quick_chat_subtitle_continue">接著上次</string>
-    <string name="shell_quick_chat_input_hint">以角色的口吻繼續…</string>
+    <string name="shell_quick_chat_input_hint">說點什麼…</string>
     <string name="shell_quick_chat_send">傳送</string>
     <string name="shell_quick_chat_typing">正在輸入…</string>
     <string name="shell_quick_chat_empty">說點什麼，接著這個場景開始吧。</string>

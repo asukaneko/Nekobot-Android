@@ -131,7 +131,7 @@
     <string name="shell_quick_chat_title">场景轻聊</string>
     <string name="shell_quick_chat_subtitle_new">新场景</string>
     <string name="shell_quick_chat_subtitle_continue">接着上次</string>
-    <string name="shell_quick_chat_input_hint">以角色的口吻继续…</string>
+    <string name="shell_quick_chat_input_hint">说点什么…</string>
     <string name="shell_quick_chat_send">发送</string>
     <string name="shell_quick_chat_typing">正在输入…</string>
     <string name="shell_quick_chat_empty">说点什么，接着这个场景开始吧。</string>

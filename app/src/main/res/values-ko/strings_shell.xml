@@ -122,7 +122,7 @@
     <string name="shell_quick_chat_title">장면 대화</string>
     <string name="shell_quick_chat_subtitle_new">새 장면</string>
     <string name="shell_quick_chat_subtitle_continue">지난 대화 이어서</string>
-    <string name="shell_quick_chat_input_hint">캐릭터 말투로 이어서…</string>
+    <string name="shell_quick_chat_input_hint">메시지 입력…</string>
     <string name="shell_quick_chat_send">전송</string>
     <string name="shell_quick_chat_typing">입력 중…</string>
     <string name="shell_quick_chat_empty">이 장면의 다음 대사를 말해 보세요.</string>

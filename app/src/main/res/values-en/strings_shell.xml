@@ -122,7 +122,7 @@
     <string name="shell_quick_chat_title">Scene chat</string>
     <string name="shell_quick_chat_subtitle_new">New scene</string>
     <string name="shell_quick_chat_subtitle_continue">Continuing last chat</string>
-    <string name="shell_quick_chat_input_hint">Reply in character…</string>
+    <string name="shell_quick_chat_input_hint">Say something…</string>
     <string name="shell_quick_chat_send">Send</string>
     <string name="shell_quick_chat_typing">Typing…</string>
     <string name="shell_quick_chat_empty">Say something to start this scene.</string>
