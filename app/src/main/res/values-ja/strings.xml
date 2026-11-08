@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nekobot</string>
 
@@ -190,6 +190,8 @@
     <string name="settings_recent_sessions_include_archived_desc">有効にすると、アーカイブ済みのチャットもホーム画面の最近のチャット一覧に表示します</string>
     <string name="settings_open_latest_session_on_launch">起動時に最新のチャットを開く</string>
     <string name="settings_open_latest_session_on_launch_desc">アプリ起動後、最後に更新されたチャットを自動的に開きます</string>
+    <string name="settings_home_banner_aggregated">ホーム上部カードを統合</string>
+    <string name="settings_home_banner_aggregated_desc">「前回の続き」をウェルカムカードに統合します。オフにすると独立したバナーに戻ります</string>
     <string name="settings_message_image_prompt_optimize">画像プロンプト最適化</string>
     <string name="settings_message_image_prompt_optimize_desc">画像生成の前にチャットモデルでメッセージを純粋な画面描写に書き換え、キャラカードの文字が画像に現れにくくします</string>
     <string name="settings_data_portability">データのインポートとエクスポート</string>

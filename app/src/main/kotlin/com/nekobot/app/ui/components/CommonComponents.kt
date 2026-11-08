@@ -201,6 +201,13 @@ fun NekoDialog(
     extraActionText: String? = null,
     extraActionEnabled: Boolean = true,
     onExtraAction: (() -> Unit)? = null,
+    /**
+     * 动作按钮是否用紧凑排版。
+     *
+     * 传 true 时缩小按钮左右内边距，让「关闭 / 接着聊 / 重新生成」这类三按钮组合
+     * 能排在同一行（默认排版下它们会因按钮过宽而换行）。
+     */
+    compactActions: Boolean = false,
     confirmIcon: ImageVector? = null,
     confirmIconContentDescription: String? = null,
     contentScrollable: Boolean = false,
@@ -297,52 +304,141 @@ fun NekoDialog(
                     }
                 }
                 Spacer(Modifier.height(20.dp))
-                // FlowRow：按钮横向放不下时自动换行，避免窄屏/大字体下「确认」按钮被前面的按钮挤扁
+                // 动作按钮：默认按「取消 → 次要动作 → 确认」顺序排布。
+                // 两个分支共用同一份按钮定义，只在容器与是否压缩宽度上有区别。
+                val actions = buildList {
+                    if (cancelText != null && onCancel != null) {
+                        add(
+                            NekoDialogAction(
+                                label = cancelText,
+                                onClick = onCancel,
+                                style = NekoDialogActionStyle.TEXT
+                            )
+                        )
+                    }
+                    if (extraActionText != null && onExtraAction != null) {
+                        add(
+                            NekoDialogAction(
+                                label = extraActionText,
+                                onClick = onExtraAction,
+                                enabled = extraActionEnabled,
+                                style = NekoDialogActionStyle.NEUTRAL
+                            )
+                        )
+                    }
+                    add(
+                        NekoDialogAction(
+                            label = confirmText,
+                            onClick = { onConfirm?.invoke() ?: onDismiss() },
+                            enabled = confirmEnabled,
+                            style = NekoDialogActionStyle.PRIMARY,
+                            icon = confirmIcon,
+                            iconContentDescription = confirmIconContentDescription
+                        )
+                    )
+                }
+                // FlowRow：紧凑排版下三个动作能并排；万一仍然放不下（超大字体）再换行，
+                // 而不是把「确认」按钮挤扁或截断文案。
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (cancelText != null && onCancel != null) {
-                        TextButton(onClick = onCancel) {
-                            Text(cancelText, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    actions.forEach { action ->
+                        NekoDialogActionButton(
+                            action = action,
+                            modifier = Modifier,
+                            compact = compactActions
+                        )
                     }
-                    if (extraActionText != null && onExtraAction != null) {
-                        Button(
-                            onClick = onExtraAction,
-                            enabled = extraActionEnabled,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        ) {
-                            Text(extraActionText)
-                        }
-                    }
-                    if (confirmIcon != null) {
-                        FilledIconButton(
-                            onClick = { onConfirm?.invoke() ?: onDismiss() },
-                            enabled = confirmEnabled,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Icon(
-                                imageVector = confirmIcon,
-                                contentDescription = confirmIconContentDescription ?: confirmText
-                            )
-                        }
-                    } else {
-                        Button(
-                            onClick = { onConfirm?.invoke() ?: onDismiss() },
-                            enabled = confirmEnabled,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Text(confirmText, color = MaterialTheme.colorScheme.onPrimary)
-                        }
-                    }
+                }
+            }
+        }
+    }
+}
+
+/** 弹窗动作的强调层级：纯文字（取消）/ 次要 / 主要。 */
+private enum class NekoDialogActionStyle { TEXT, NEUTRAL, PRIMARY }
+
+/** 弹窗动作按钮的一份声明，供单排与换行两种容器复用。 */
+private data class NekoDialogAction(
+    val label: String,
+    val onClick: () -> Unit,
+    val enabled: Boolean = true,
+    val style: NekoDialogActionStyle = NekoDialogActionStyle.PRIMARY,
+    val icon: ImageVector? = null,
+    val iconContentDescription: String? = null
+)
+
+@Composable
+private fun NekoDialogActionButton(
+    action: NekoDialogAction,
+    modifier: Modifier,
+    /** 紧凑模式：缩小内边距、单行省略，用于「必须同一排」的布局。 */
+    compact: Boolean
+) {
+    val padding = if (compact) PaddingValues(horizontal = 6.dp) else ButtonDefaults.ContentPadding
+    val maxLines = if (compact) 1 else Int.MAX_VALUE
+    when (action.style) {
+        NekoDialogActionStyle.TEXT -> TextButton(
+            onClick = action.onClick,
+            modifier = modifier,
+            contentPadding = padding
+        ) {
+            Text(
+                text = action.label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        NekoDialogActionStyle.NEUTRAL -> Button(
+            onClick = action.onClick,
+            enabled = action.enabled,
+            modifier = modifier,
+            contentPadding = padding,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        ) {
+            Text(
+                text = action.label,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        NekoDialogActionStyle.PRIMARY -> {
+            val icon = action.icon
+            if (icon != null) {
+                FilledIconButton(
+                    onClick = action.onClick,
+                    enabled = action.enabled,
+                    modifier = modifier,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = action.iconContentDescription ?: action.label
+                    )
+                }
+            } else {
+                Button(
+                    onClick = action.onClick,
+                    enabled = action.enabled,
+                    modifier = modifier,
+                    contentPadding = padding,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text(
+                        text = action.label,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

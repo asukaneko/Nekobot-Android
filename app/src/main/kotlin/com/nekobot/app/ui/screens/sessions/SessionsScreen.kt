@@ -412,6 +412,9 @@ fun SessionsScreen(
     onSelectionModeChange: (Boolean) -> Unit = {}
 ) {
     val viewModel: SessionsViewModel = viewModel()
+    // 首页轻聊：独立轻量 VM，只负责绑定会话与发送，不接管完整会话页的后台事件
+    val quickChatViewModel: HomeQuickChatViewModel = viewModel()
+    val quickChatState by quickChatViewModel.state.collectAsStateWithLifecycle()
     val sessionRows by viewModel.displayedSessionRows.collectAsStateWithLifecycle()
     val matchingSessionCount by viewModel.matchingSessionCount.collectAsStateWithLifecycle()
     // banner 用未过滤的会话行（最新会话 / 固定的那一个）
@@ -830,6 +833,15 @@ fun SessionsScreen(
                     onCreateSessionForCharacter = { characterId ->
                         createCharacterId = characterId.takeIf { it.isNotBlank() }
                         createConfigMode = "character"
+                    },
+                    // 服务器模式没有通用补全接口，轻聊入口只保留本地模式
+                    onQuickChat = if (ServiceContainer.prefs.isLocalMode) {
+                        { request -> quickChatViewModel.open(request) }
+                    } else {
+                        null
+                    },
+                    onQuickChatGreetingChanged = { characterId, line ->
+                        quickChatViewModel.updateOpeningLine(characterId, line)
                     }
                 )
             }
@@ -983,6 +995,29 @@ fun SessionsScreen(
 
                 // 错误提示统一走系统 Toast（屏幕下方横条）
                 ErrorToast(message = error, onShown = { viewModel.clearError() })
+            }
+
+            // 首页轻聊面板：浮在列表上方，展开后进入同一条会话
+            if (quickChatState.visible) {
+                HomeQuickChatPanel(
+                    state = quickChatState,
+                    onDismiss = {
+                        quickChatViewModel.close()
+                        // 轻聊可能新建/更新了会话，收起后刷新列表
+                        viewModel.loadSessions()
+                    },
+                    onSend = quickChatViewModel::send,
+                    onExpand = {
+                        val sessionId = quickChatState.sessionId
+                        quickChatViewModel.keepSession {
+                            viewModel.loadSessions()
+                            if (sessionId.isNotBlank()) handleOpenChat(sessionId)
+                        }
+                    },
+                    onNewScene = quickChatViewModel::newScene,
+                    onPlotChoice = { choice -> quickChatViewModel.send(choice.text) },
+                    onDismissHint = quickChatViewModel::dismissHint
+                )
             }
             }
         }

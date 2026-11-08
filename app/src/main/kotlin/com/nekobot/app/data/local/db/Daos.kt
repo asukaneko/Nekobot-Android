@@ -259,6 +259,10 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM local_messages WHERE session_id = :sessionId AND deleted = 0")
     suspend fun countBySession(sessionId: String): Int
 
+    /** 首页轻聊草稿结算：用户是否真的说过话。 */
+    @Query("SELECT COUNT(*) FROM local_messages WHERE session_id = :sessionId AND role = 'user' AND deleted = 0")
+    suspend fun countUserMessagesBySession(sessionId: String): Int
+
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND role = 'user' AND deleted = 0 ORDER BY created_at DESC LIMIT 1")
     suspend fun latestUserBySession(sessionId: String): LocalMessageEntity?
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND deleted = 0 AND role IN ('user','assistant') ORDER BY created_at DESC, rowid DESC LIMIT 1")

@@ -115,4 +115,24 @@
     <!-- 會話首頁 -->
     <string name="shell_banner_pinned">固定角色</string>
     <string name="shell_action_more">更多</string>
+
+    <string name="shell_scene_card_chat">接著聊</string>
+    <string name="shell_scene_card_start">開始聊</string>
+    <string name="shell_scene_card_first_meet">第一次見面</string>
+    <string name="shell_quick_chat_title">場景輕聊</string>
+    <string name="shell_quick_chat_subtitle_new">新場景</string>
+    <string name="shell_quick_chat_subtitle_continue">接著上次</string>
+    <string name="shell_quick_chat_input_hint">以角色的口吻繼續…</string>
+    <string name="shell_quick_chat_send">傳送</string>
+    <string name="shell_quick_chat_typing">正在輸入…</string>
+    <string name="shell_quick_chat_empty">說點什麼，接著這個場景開始吧。</string>
+    <string name="shell_quick_chat_relation_delta">關係 · %1$s</string>
+    <string name="shell_quick_chat_hint">聊天會記入該角色的會話與關係</string>
+    <string name="shell_quick_chat_hint_dismiss">知道了</string>
+    <string name="shell_quick_chat_busy">正在生成，稍後繼續</string>
+    <string name="shell_quick_chat_new_scene">換個場景</string>
+    <string name="shell_quick_chat_expand">展開為完整會話</string>
+    <string name="shell_quick_chat_close">收起</string>
+    <string name="shell_quick_chat_error">傳送失敗</string>
+    <string name="shell_quick_chat_open_failed">開啟輕聊失敗</string>
 </resources>

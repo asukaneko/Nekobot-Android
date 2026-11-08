@@ -285,6 +285,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     val appMode by vm.appMode.collectAsStateWithLifecycle()
     val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsStateWithLifecycle()
     val openLatestSessionOnLaunch by ServiceContainer.prefs.openLatestSessionOnLaunchFlow.collectAsStateWithLifecycle()
+    val homeBannerAggregated by ServiceContainer.prefs.homeBannerAggregatedFlow.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
@@ -597,6 +598,17 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         checked = openLatestSessionOnLaunch,
                         onCheckedChange = { enabled ->
                             ServiceContainer.prefs.openLatestSessionOnLaunch = enabled
+                        }
+                    )
+                    SettingDivider()
+                    SettingSwitchRow(
+                        icon = Icons.Filled.Tune,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        title = stringResource(R.string.settings_home_banner_aggregated),
+                        subtitle = stringResource(R.string.settings_home_banner_aggregated_desc),
+                        checked = homeBannerAggregated,
+                        onCheckedChange = { enabled ->
+                            ServiceContainer.prefs.homeBannerAggregated = enabled
                         }
                     )
                     if (appMode == AppMode.LOCAL) {

@@ -115,4 +115,24 @@
     <!-- 세션 홈 -->
     <string name="shell_banner_pinned">고정 캐릭터</string>
     <string name="shell_action_more">더보기</string>
+
+    <string name="shell_scene_card_chat">이어서 대화</string>
+    <string name="shell_scene_card_start">대화 시작</string>
+    <string name="shell_scene_card_first_meet">첫 만남</string>
+    <string name="shell_quick_chat_title">장면 대화</string>
+    <string name="shell_quick_chat_subtitle_new">새 장면</string>
+    <string name="shell_quick_chat_subtitle_continue">지난 대화 이어서</string>
+    <string name="shell_quick_chat_input_hint">캐릭터 말투로 이어서…</string>
+    <string name="shell_quick_chat_send">전송</string>
+    <string name="shell_quick_chat_typing">입력 중…</string>
+    <string name="shell_quick_chat_empty">이 장면의 다음 대사를 말해 보세요.</string>
+    <string name="shell_quick_chat_relation_delta">관계 · %1$s</string>
+    <string name="shell_quick_chat_hint">대화는 이 캐릭터의 세션과 관계에 기록됩니다</string>
+    <string name="shell_quick_chat_hint_dismiss">확인</string>
+    <string name="shell_quick_chat_busy">생성 중입니다. 잠시 후 다시 시도하세요</string>
+    <string name="shell_quick_chat_new_scene">장면 바꾸기</string>
+    <string name="shell_quick_chat_expand">전체 대화로 열기</string>
+    <string name="shell_quick_chat_close">닫기</string>
+    <string name="shell_quick_chat_error">전송 실패</string>
+    <string name="shell_quick_chat_open_failed">대화를 열 수 없습니다</string>
 </resources>

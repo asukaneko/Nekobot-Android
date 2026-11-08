@@ -123,4 +123,25 @@
     <!-- 会话首页 -->
     <string name="shell_banner_pinned">固定角色</string>
     <string name="shell_action_more">更多</string>
+
+    <!-- 场景卡与首页轻聊 -->
+    <string name="shell_scene_card_chat">接着聊</string>
+    <string name="shell_scene_card_start">开始聊</string>
+    <string name="shell_scene_card_first_meet">第一次见面</string>
+    <string name="shell_quick_chat_title">场景轻聊</string>
+    <string name="shell_quick_chat_subtitle_new">新场景</string>
+    <string name="shell_quick_chat_subtitle_continue">接着上次</string>
+    <string name="shell_quick_chat_input_hint">以角色的口吻继续…</string>
+    <string name="shell_quick_chat_send">发送</string>
+    <string name="shell_quick_chat_typing">正在输入…</string>
+    <string name="shell_quick_chat_empty">说点什么，接着这个场景开始吧。</string>
+    <string name="shell_quick_chat_relation_delta">关系 · %1$s</string>
+    <string name="shell_quick_chat_hint">聊天会记入该角色的会话与关系</string>
+    <string name="shell_quick_chat_hint_dismiss">知道了</string>
+    <string name="shell_quick_chat_busy">正在生成，稍后继续</string>
+    <string name="shell_quick_chat_new_scene">换个场景</string>
+    <string name="shell_quick_chat_expand">展开为完整会话</string>
+    <string name="shell_quick_chat_close">收起</string>
+    <string name="shell_quick_chat_error">发送失败</string>
+    <string name="shell_quick_chat_open_failed">打开轻聊失败</string>
 </resources>

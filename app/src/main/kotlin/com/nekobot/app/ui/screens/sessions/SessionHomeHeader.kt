@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import com.nekobot.app.ui.components.NekoDialog
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
@@ -40,6 +39,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -84,6 +84,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.repeatCount
@@ -129,7 +130,11 @@ fun SessionHomeHeaderContent(
     onSelectFilter: (SessionFilter) -> Unit,
     modifier: Modifier = Modifier,
     /** 用指定角色走「新建角色会话」弹窗。 */
-    onCreateSessionForCharacter: (String) -> Unit = {}
+    onCreateSessionForCharacter: (String) -> Unit = {},
+    /** 打开首页轻聊面板；服务器模式不传，入口只保留「继续会话」。 */
+    onQuickChat: ((HomeQuickChatRequest) -> Unit)? = null,
+    /** 问候语更新时同步给轻聊面板（角色 ID + 当前问候）。 */
+    onQuickChatGreetingChanged: (String, String) -> Unit = { _, _ -> }
 ) {
     val prefs = ServiceContainer.prefs
     // prefs 不是可观察状态：这里另存一份局部状态，选择后 banner 立刻刷新
@@ -170,62 +175,165 @@ fun SessionHomeHeaderContent(
         it.modeLabel == SessionModeLabel.COMPANION
     }
 
+    // 场景卡：问候区与「继续上次」合并成同一张卡，避免两块内容各说各话。
+    // 卡片始终围绕一个角色：固定角色 > 显式指定的角色 > 最近会话的角色 > 应用图标。
+    // 关闭聚合后恢复原来的独立 banner：卡片只认手动选择的欢迎角色。
+    val aggregateBanner by prefs.homeBannerAggregatedFlow.collectAsStateWithLifecycle()
+    // 欢迎形象 / 来源 / 取景都必须可观察：非聚合模式下选完形象没有本地状态变化，
+    // 直接读 SharedPreferences 不会触发重组，卡片要等被销毁重建（滑走再滑回）才刷新。
+    val manualCharacterId by prefs.homeWelcomeCharacterIdFlow.collectAsStateWithLifecycle()
+    val sceneSource by prefs.homeSceneSourceFlow.collectAsStateWithLifecycle()
+    val sceneCharacterId = remember(
+        aggregateBanner, pinnedActive, pinnedCharacterId, manualCharacterId, sceneSource, latestRow
+    ) {
+        if (!aggregateBanner) {
+            if (sceneSource == PrefsManager.HOME_SCENE_SOURCE_NONE) "" else manualCharacterId
+        } else when {
+            pinnedActive && pinnedCharacterId.isNotBlank() -> pinnedCharacterId
+            sceneSource == PrefsManager.HOME_SCENE_SOURCE_NONE -> ""
+            sceneSource == PrefsManager.HOME_SCENE_SOURCE_CHARACTER -> manualCharacterId
+            else -> latestRow?.characterId.orEmpty()
+        }
+    }
+    val sceneCharacter = remember(bannerCharacters, sceneCharacterId) {
+        bannerCharacters.firstOrNull { it.id == sceneCharacterId }?.character
+    }
+    val sceneSessions = remember(homeRows, sceneCharacterId) {
+        homeRows.filter { it.characterId == sceneCharacterId }
+    }
+    val shownRow = when {
+        pinnedActive -> pinnedRow
+        sceneCharacterId.isNotBlank() -> sceneSessions.firstOrNull()
+        else -> latestRow
+    }
+    val scenePinned = pinnedActive && pinnedCharacter != null
+    val targetTitle = when {
+        scenePinned -> pinnedCharacter?.displayName.orEmpty()
+        else -> shownRow?.listTitle.orEmpty()
+    }
+    val targetSubtitle = when {
+        // 固定角色时只展示角色简介：不再把最新会话的消息内容挂在角色名下方
+        scenePinned -> pinnedCharacter?.description?.trim()?.takeIf { it.isNotBlank() }
+            ?: if (pinnedSessions.isEmpty()) stringResource(R.string.shell_banner_no_session) else null
+        else -> shownRow?.lastMessage
+    }
+    val targetPortraitUrl = when {
+        scenePinned -> pinnedCharacter?.let(::characterPortraitUrl) ?: shownRow?.portraitUrl
+        else -> shownRow?.portraitUrl
+    }
+    val hasTarget = shownRow != null || scenePinned
+
     Column(modifier.fillMaxWidth()) {
-        SessionHomeWelcome(characters = characters)
-        // 问候区与 banner 之间用一条细线分隔：避免两块内容糊在一起
+        HomeSceneCard(
+            characters = characters,
+            character = sceneCharacter,
+            characterId = sceneCharacterId,
+            targetTitle = targetTitle,
+            targetSubtitle = targetSubtitle,
+            targetPortraitUrl = targetPortraitUrl,
+            targetPinned = scenePinned,
+            // 非聚合模式下「接着聊」只关心欢迎角色自己有没有会话
+            hasTarget = if (aggregateBanner) hasTarget else sceneSessions.isNotEmpty(),
+            showTargetRow = aggregateBanner,
+            onOpenTarget = {
+                when {
+                    // 未固定：直接继续该角色最近那段对话
+                    !scenePinned -> shownRow?.id?.let(onOpenSession)
+                    // 单角色只有一个会话，且不能再新建：直接进入
+                    pinnedCompanionSession?.id != null -> onOpenSession(pinnedCompanionSession.id)
+                    // 角色还没有会话：直接打开「新建角色会话」弹窗
+                    pinnedCharacter != null && pinnedSessions.isEmpty() ->
+                        onCreateSessionForCharacter(sceneCharacterId)
+                    // 老数据只有会话 id：退回直接进入
+                    pinnedCharacter == null -> shownRow?.id?.let(onOpenSession)
+                    else -> showSessionPicker = true
+                }
+            },
+            onNewChat = onNewChat,
+            onChooseSource = { showSourceSheet = true },
+            onQuickChat = onQuickChat,
+            onGreetingChanged = onQuickChatGreetingChanged,
+            onSceneCharacterChanged = { id, portraitCrop ->
+                if (id.isBlank()) {
+                    prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_NONE
+                    prefs.homeWelcomeCharacterId = ""
+                    prefs.homePortraitCrop = ""
+                } else {
+                    prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_CHARACTER
+                    prefs.homeWelcomeCharacterId = id
+                    if (portraitCrop != null) prefs.homePortraitCrop = portraitCrop
+                }
+                // 只有聚合模式才让欢迎形象与「继续入口」指向同一个角色；
+                // 关闭聚合时保持原来的语义：选形象不改变独立 banner 的来源。
+                if (aggregateBanner) {
+                    if (id.isBlank()) {
+                        bannerMode = PrefsManager.HOME_BANNER_LATEST
+                        bannerCharacterId = ""
+                        bannerSessionId = ""
+                        prefs.homeBannerMode = PrefsManager.HOME_BANNER_LATEST
+                        prefs.homeBannerCharacterId = ""
+                        prefs.homeBannerSessionId = ""
+                    } else {
+                        val latest = homeRows.firstOrNull { it.characterId == id }
+                        bannerMode = PrefsManager.HOME_BANNER_PINNED
+                        bannerCharacterId = id
+                        bannerSessionId = latest?.id.orEmpty()
+                        prefs.homeBannerMode = PrefsManager.HOME_BANNER_PINNED
+                        prefs.homeBannerCharacterId = id
+                        prefs.homeBannerSessionId = latest?.id.orEmpty()
+                    }
+                }
+            }
+        )
+        if (!aggregateBanner) {
+            Spacer(Modifier.height(12.dp))
+            if (pinnedActive || latestRow != null) {
+                val bannerRow = if (pinnedActive) pinnedRow else latestRow
+                HomeSessionBanner(
+                    title = if (pinnedActive) {
+                        pinnedCharacter?.displayName ?: bannerRow?.listTitle.orEmpty()
+                    } else {
+                        bannerRow?.listTitle.orEmpty()
+                    },
+                    subtitle = if (pinnedActive && pinnedCharacter != null) {
+                        pinnedCharacter.description?.trim()?.takeIf { it.isNotBlank() }
+                            ?: if (pinnedSessions.isEmpty()) stringResource(R.string.shell_banner_no_session) else null
+                    } else if (pinnedActive) {
+                        bannerRow?.lastMessage ?: stringResource(R.string.shell_banner_no_session)
+                    } else {
+                        bannerRow?.lastMessage
+                    },
+                    showEmptySubtitle = !(pinnedActive && pinnedCharacter != null),
+                    portraitUrl = if (pinnedActive) {
+                        pinnedCharacter?.let(::characterPortraitUrl) ?: bannerRow?.portraitUrl
+                    } else {
+                        bannerRow?.portraitUrl
+                    },
+                    modeLabel = bannerRow?.modeLabel ?: SessionModeLabel.CHARACTER,
+                    isGroupSession = bannerRow?.isGroupSession == true,
+                    pinned = pinnedActive,
+                    onOpen = {
+                        when {
+                            !pinnedActive -> bannerRow?.id?.let(onOpenSession)
+                            pinnedCompanionSession?.id != null -> onOpenSession(pinnedCompanionSession.id)
+                            pinnedCharacter != null && pinnedSessions.isEmpty() ->
+                                onCreateSessionForCharacter(pinnedCharacterId)
+                            pinnedCharacter == null -> bannerRow?.id?.let(onOpenSession)
+                            else -> showSessionPicker = true
+                        }
+                    },
+                    onChoose = { showSourceSheet = true }
+                )
+            } else {
+                NekoPrimaryAction(
+                    text = stringResource(R.string.shell_new_chat),
+                    leadingIcon = Icons.Filled.Edit,
+                    onClick = onNewChat
+                )
+            }
+        }
         NekoDivider()
         Spacer(Modifier.height(16.dp))
-        if (pinnedActive || latestRow != null) {
-            val shownRow = if (pinnedActive) pinnedRow else latestRow
-            HomeSessionBanner(
-                title = if (pinnedActive) {
-                    pinnedCharacter?.displayName ?: shownRow?.listTitle.orEmpty()
-                } else {
-                    shownRow?.listTitle.orEmpty()
-                },
-                // 固定角色时只展示角色简介：不再把最新会话的消息内容挂在角色名下方
-                subtitle = if (pinnedActive && pinnedCharacter != null) {
-                    pinnedCharacter.description?.trim()?.takeIf { it.isNotBlank() }
-                        ?: if (pinnedSessions.isEmpty()) stringResource(R.string.shell_banner_no_session) else null
-                } else if (pinnedActive) {
-                    shownRow?.lastMessage ?: stringResource(R.string.shell_banner_no_session)
-                } else {
-                    shownRow?.lastMessage
-                },
-                // 固定角色没有简介时整行隐藏，避免露出会话内容或占位空行
-                showEmptySubtitle = !(pinnedActive && pinnedCharacter != null),
-                portraitUrl = if (pinnedActive) {
-                    pinnedCharacter?.let(::characterPortraitUrl) ?: shownRow?.portraitUrl
-                } else {
-                    shownRow?.portraitUrl
-                },
-                modeLabel = shownRow?.modeLabel ?: SessionModeLabel.CHARACTER,
-                isGroupSession = shownRow?.isGroupSession == true,
-                pinned = pinnedActive,
-                onOpen = {
-                    when {
-                        // 未固定：直接继续最近那段对话
-                        !pinnedActive -> shownRow?.id?.let(onOpenSession)
-                        // 单角色只有一个会话，且不能再新建：直接进入
-                        pinnedCompanionSession?.id != null -> onOpenSession(pinnedCompanionSession.id)
-                        // 角色还没有会话：直接打开「新建角色会话」弹窗
-                        pinnedCharacter != null && pinnedSessions.isEmpty() ->
-                            onCreateSessionForCharacter(pinnedCharacterId)
-                        // 老数据只有会话 id：退回直接进入
-                        pinnedCharacter == null -> shownRow?.id?.let(onOpenSession)
-                        else -> showSessionPicker = true
-                    }
-                },
-                onChoose = { showSourceSheet = true }
-            )
-        } else {
-            // 一条会话都还没有：banner 位置仍给一个明确的主要行动
-            NekoPrimaryAction(
-                text = stringResource(R.string.shell_new_chat),
-                leadingIcon = Icons.Filled.Edit,
-                onClick = onNewChat
-            )
-        }
         // 分段控件覆盖三类会话；其它筛选（收藏 / 归档 / 频道 / 按角色）由「筛选」抽屉承担。
         // 右侧胶囊：左段是归档快捷开关，右段打开筛选抽屉，抽屉里选中非分段项时直接显示该筛选项。
         val filterLabel = if (filter in sessionSegmentFilters) {
@@ -348,6 +456,10 @@ fun SessionHomeHeaderContent(
             onSelectLatest = {
                 bannerMode = PrefsManager.HOME_BANNER_LATEST
                 prefs.homeBannerMode = PrefsManager.HOME_BANNER_LATEST
+                // 跟随最近会话：清掉显式角色，场景卡与问候重新跟随最新会话
+                prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_AUTO
+                prefs.homeWelcomeCharacterId = ""
+                prefs.homePortraitCrop = ""
                 showSourceSheet = false
             },
             onSelectCharacter = { entry ->
@@ -357,6 +469,8 @@ fun SessionHomeHeaderContent(
                 prefs.homeBannerMode = PrefsManager.HOME_BANNER_PINNED
                 prefs.homeBannerCharacterId = entry.id
                 prefs.homeBannerSessionId = entry.latestSession?.id.orEmpty()
+                prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_CHARACTER
+                prefs.homeWelcomeCharacterId = entry.id
                 showSourceSheet = false
             }
         )
@@ -429,7 +543,7 @@ val sessionSegmentFilters = listOf(
 // ---------------------------------------------------------------- 会话 banner
 
 /**
- * 会话 banner：把"继续上次那段对话"做成页面上最显眼的一行。
+ * 独立会话 banner（关闭聚合时使用，保持原版视觉）。
  *
  * 默认跟随最近聊过的会话；也可以在右侧「切换」里固定某个角色（普通角色或单角色），
  * 固定后 banner 不再随新消息跳动；单角色直接进入会话，还没有会话的角色点击即新建。
@@ -517,7 +631,7 @@ private fun HomeSessionBanner(
 
 /** banner 头像：与列表行同一套兜底（立绘 → 首字 → 图标）。 */
 @Composable
-private fun BannerAvatar(
+internal fun BannerAvatar(
     portraitUrl: String?,
     modeLabel: SessionModeLabel,
     fallbackText: String,
@@ -696,22 +810,37 @@ private fun PinnedRoleSheet(
     }
 }
 
-// ---------------------------------------------------------------- 问候区
+// ---------------------------------------------------------------- 场景卡
 
 /**
- * 问候区：大一些的欢迎立绘 + 一句问候。
+ * 场景卡：欢迎立绘 + 场景开场白 +「继续上次」入口。
  *
- * 问候文案先显示本地候选池（立即可见、避免重复），随后由 AI 按当前欢迎角色的
- * 角色卡口吻重写一句；结果按「角色 + 时段」缓存半小时，失败则保留本地文案。
+ * 问候先显示本地候选池（立即可见、避免重复），随后由 AI 按角色卡、记忆、
+ * 最近对话与关系状态重写一句；点「接着聊」在首页浮出轻聊面板，
+ * 面板与完整会话页共用同一条会话和同一套关系/剧情推进。
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
+private fun HomeSceneCard(
+    characters: List<CharacterPreset>,
+    character: CharacterPreset?,
+    characterId: String,
+    targetTitle: String,
+    targetSubtitle: String?,
+    targetPortraitUrl: String?,
+    targetPinned: Boolean,
+    hasTarget: Boolean,
+    /** 聚合模式：卡片内展示「接着上次」；关闭后改由独立 banner 承担。 */
+    showTargetRow: Boolean,
+    onOpenTarget: () -> Unit,
+    onNewChat: () -> Unit,
+    onChooseSource: () -> Unit,
+    onQuickChat: ((HomeQuickChatRequest) -> Unit)?,
+    /** 问候语变化时同步给轻聊面板（角色 ID + 当前问候）。 */
+    onGreetingChanged: (String, String) -> Unit,
+    onSceneCharacterChanged: (String, String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val prefs = ServiceContainer.prefs
-    val characterId = prefs.homeWelcomeCharacterId
-    val character = remember(characterId, characters) {
-        characters.firstOrNull { it.id == characterId }
-    }
     val period = remember {
         greetingPeriodFor(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
     }
@@ -727,8 +856,10 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
     var regenerateKey by remember { mutableIntStateOf(0) }
     var generating by remember { mutableStateOf(false) }
     var showFullGreeting by remember { mutableStateOf(false) }
-    val crop = remember(characterId, prefs.homePortraitCrop) {
-        parsePortraitCrop(prefs.homePortraitCrop, characterId)
+    // 取景参数同样要可观察：重新裁剪后立绘应立即套用新取景
+    val portraitCropPref by prefs.homePortraitCropFlow.collectAsStateWithLifecycle()
+    val crop = remember(characterId, portraitCropPref) {
+        parsePortraitCrop(portraitCropPref, characterId)
     }
 
     LaunchedEffect(period.key, characterId, character, localeTag, regenerateKey) {
@@ -737,12 +868,18 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
         if (characterId.isNotBlank() && character == null) return@LaunchedEffect
         // regenerateKey > 0 表示用户主动点了问候语：跳过缓存强制重新生成
         val force = regenerateKey > 0
-        // 先取角色记忆（单角色会话的融合记忆 + 普通角色会话的记忆）：
-        // 既作为提示词素材，也参与缓存键，记忆更新后问候会自动重写。
+        // 先取角色记忆（单角色会话的融合记忆 + 普通角色会话的记忆）：只作为提示词素材。
         val memoryBrief = if (characterId.isBlank()) "" else runCatching {
             ServiceContainer.unified.homeGreetingMemoryBrief(characterId)
         }.getOrDefault("")
-        val cacheKey = "$characterId|${period.key}|$localeTag|${memoryBrief.hashCode()}"
+        // 最近对话 + 当前关系：让开场白承接上一次聊天，避免只按长期记忆说空话
+        val sceneBrief = if (characterId.isBlank()) "" else runCatching {
+            ServiceContainer.unified.homeSceneBrief(characterId)
+        }.getOrDefault("")
+        // 缓存键只按「角色 + 时段 + 语言」定位：问候一旦生成，就在 TTL 内保持稳定。
+        // 记忆与最近对话只作素材，不算进缓存键——否则聊完一轮、或在首页轻聊里退出，
+        // 素材变了就会立刻重写问候，看起来像问候语自己莫名换了台词。
+        val cacheKey = "$characterId|${period.key}|$localeTag"
         if (!force) {
             val cachedKey = prefs.homeGreetingAiKey
             val cachedLine = prefs.homeGreetingAiLine
@@ -757,7 +894,9 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
         }
         generating = true
         val result = runCatching {
-            ServiceContainer.unified.generateHomeGreeting(character, period.labelForPrompt, memoryBrief)
+            ServiceContainer.unified.generateHomeGreeting(
+                character, period.labelForPrompt, memoryBrief, sceneBrief
+            )
         }.getOrNull()
         generating = false
         val generated = (result as? Resource.Success<String>)?.data?.trim()
@@ -768,55 +907,106 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
         }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        WelcomePortrait(character = character, crop = crop, onClick = { showPicker = true })
-        Spacer(Modifier.width(15.dp))
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(onClickLabel = stringResource(R.string.shell_greeting_full_title)) {
-                    showFullGreeting = true
-                }
-                .padding(vertical = 2.dp)
-        ) {
-            Text(
-                text = stringResource(period.titleRes),
-                style = nekoWelcomeTitleStyle(),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    // 问候语可能先本地候选、后 AI 重写：面板若已打开且还没聊，跟着换成最新一句。
+    LaunchedEffect(line, characterId) {
+        onGreetingChanged(characterId, line)
+    }
+
+    val canQuickChat = onQuickChat != null && characterId.isNotBlank()
+    val startQuickChat: (Boolean) -> Unit = { preferExisting ->
+        onQuickChat?.invoke(
+            HomeQuickChatRequest(
+                characterId = characterId,
+                characterName = character?.displayName ?: targetTitle,
+                portraitUrl = character?.let(::characterPortraitUrl) ?: targetPortraitUrl,
+                openingLine = line,
+                preferExisting = preferExisting
             )
-            Spacer(Modifier.size(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        )
+    }
+
+    GlassCard(
+        modifier = modifier.fillMaxWidth(),
+        cornerRadius = 24,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        contentPadding = PaddingValues(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            WelcomePortrait(character = character, crop = crop, onClick = { showPicker = true })
+            Spacer(Modifier.width(15.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClickLabel = stringResource(R.string.shell_greeting_full_title)) {
+                        showFullGreeting = true
+                    }
+                    .padding(vertical = 2.dp)
+            ) {
                 Text(
-                    text = line,
-                    style = nekoRowSubtitleStyle().copy(fontSize = nekoTextSize(13f)),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                        alpha = if (generating) 0.5f else 1f
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    text = stringResource(period.titleRes),
+                    style = nekoWelcomeTitleStyle(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                if (generating) {
-                    Spacer(Modifier.width(6.dp))
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(11.dp),
-                        strokeWidth = 1.5.dp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                Spacer(Modifier.size(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = line,
+                        style = nekoRowSubtitleStyle().copy(fontSize = nekoTextSize(13f)),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = if (generating) 0.5f else 1f
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (generating) {
+                        Spacer(Modifier.width(6.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(11.dp),
+                            strokeWidth = 1.5.dp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
+        }
+        if (showTargetRow) {
+            Spacer(Modifier.height(12.dp))
+            // 卡内分隔线：问候与「继续上次」仍是同一张卡，但分成上下两层
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            )
+            Spacer(Modifier.height(8.dp))
+            HomeSceneCardFooter(
+                targetTitle = targetTitle,
+                targetSubtitle = targetSubtitle,
+                targetPinned = targetPinned,
+                hasTarget = hasTarget,
+                showTargetRow = showTargetRow,
+                canQuickChat = canQuickChat,
+                onOpenTarget = onOpenTarget,
+                onNewChat = onNewChat,
+                onChooseSource = onChooseSource,
+                onStartChat = startQuickChat
+            )
         }
     }
 
     if (showFullGreeting) {
+        val quickChatLabel = stringResource(
+            if (hasTarget) R.string.shell_scene_card_chat else R.string.shell_scene_card_start
+        )
+        // 非聚合模式：轻聊入口放在这里，卡片本身只保留问候
+        val quickChatAvailable = !showTargetRow && canQuickChat
         NekoDialog(
             onDismiss = { showFullGreeting = false },
             title = stringResource(R.string.shell_greeting_full_title),
@@ -826,6 +1016,15 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
                 showFullGreeting = false
                 regenerateKey++
             },
+            extraActionText = quickChatLabel.takeIf { quickChatAvailable },
+            onExtraAction = if (quickChatAvailable) {
+                {
+                    showFullGreeting = false
+                    startQuickChat(hasTarget)
+                }
+            } else null,
+            // 「关闭 / 接着聊 / 重新生成」用紧凑按钮排在同一行
+            compactActions = quickChatAvailable,
             cancelText = stringResource(R.string.common_close),
             onCancel = { showFullGreeting = false }
         )
@@ -839,9 +1038,8 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
             onSelect = { id ->
                 showPicker = false
                 if (id.isEmpty()) {
-                    // 应用图标不需要取景
-                    prefs.homeWelcomeCharacterId = ""
-                    prefs.homePortraitCrop = ""
+                    // 应用图标不需要取景：回到「跟随最近会话」
+                    onSceneCharacterChanged("", null)
                 } else {
                     characters.firstOrNull { it.id == id }?.let { croppingCharacter = it }
                 }
@@ -856,10 +1054,179 @@ private fun SessionHomeWelcome(characters: List<CharacterPreset>) {
             initial = parsePortraitCrop(prefs.homePortraitCrop, target.id.orEmpty()),
             onDismiss = { croppingCharacter = null },
             onConfirm = { confirmed ->
-                prefs.homeWelcomeCharacterId = target.id.orEmpty()
-                prefs.homePortraitCrop = serialisePortraitCrop(target.id.orEmpty(), confirmed)
+                onSceneCharacterChanged(
+                    target.id.orEmpty(),
+                    serialisePortraitCrop(target.id.orEmpty(), confirmed)
+                )
                 croppingCharacter = null
             }
+        )
+    }
+}
+
+/** 场景卡下半层：聚合模式放「接着上次」，非聚合模式只留轻聊入口。 */
+@Composable
+private fun HomeSceneCardFooter(
+    targetTitle: String,
+    targetSubtitle: String?,
+    targetPinned: Boolean,
+    hasTarget: Boolean,
+    showTargetRow: Boolean,
+    canQuickChat: Boolean,
+    onOpenTarget: () -> Unit,
+    onNewChat: () -> Unit,
+    onChooseSource: () -> Unit,
+    onStartChat: (preferExisting: Boolean) -> Unit
+) {
+    if (!showTargetRow) return
+    when {
+        hasTarget -> Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onOpenTarget)
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            if (targetPinned) R.string.shell_banner_pinned else R.string.shell_banner_continue
+                        ),
+                        style = nekoCaptionStyle(),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                    if (targetTitle.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = targetTitle,
+                            style = nekoRowTitleStyle(),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    val visibleSubtitle = targetSubtitle?.takeIf { it.isNotBlank() }
+                    if (visibleSubtitle != null) {
+                        Spacer(Modifier.height(1.dp))
+                        Text(
+                            text = visibleSubtitle,
+                            style = nekoRowSubtitleStyle(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            if (canQuickChat) {
+                SceneActionChip(
+                    text = stringResource(R.string.shell_scene_card_chat),
+                    onClick = { onStartChat(true) }
+                )
+                Spacer(Modifier.width(2.dp))
+            }
+            SceneIconButton(
+                icon = Icons.Filled.SwapHoriz,
+                contentDescription = stringResource(R.string.shell_banner_choose),
+                onClick = onChooseSource
+            )
+        }
+
+        canQuickChat -> Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.shell_scene_card_first_meet),
+                    style = nekoRowTitleStyle(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.shell_banner_no_session),
+                    style = nekoRowSubtitleStyle(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SceneActionChip(
+                text = stringResource(R.string.shell_scene_card_start),
+                onClick = { onStartChat(false) }
+            )
+            Spacer(Modifier.width(2.dp))
+            SceneIconButton(
+                icon = Icons.Filled.SwapHoriz,
+                contentDescription = stringResource(R.string.shell_banner_choose),
+                onClick = onChooseSource
+            )
+        }
+
+        else -> NekoPrimaryAction(
+            text = stringResource(R.string.shell_new_chat),
+            leadingIcon = Icons.Filled.Edit,
+            onClick = onNewChat
+        )
+    }
+}
+
+/** 场景卡上的小型胶囊动作。 */
+@Composable
+private fun SceneActionChip(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+            .clickable(onClick = onClick)
+            .heightIn(min = 32.dp)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = nekoCaptionStyle(),
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
+    }
+}
+
+/** 场景卡上的紧凑图标动作（比顶栏 48dp 触摸区更窄）。 */
+@Composable
+private fun SceneIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(17.dp)
         )
     }
 }

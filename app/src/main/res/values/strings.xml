@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nekobot</string>
     <string name="agent_accessibility_service_label">Nekobot Agent 系统操作</string>
@@ -234,6 +234,8 @@
     <string name="settings_recent_sessions_include_archived_desc">开启后，已归档会话也会出现在首页的最近会话列表中</string>
     <string name="settings_open_latest_session_on_launch">打开应用时进入最新会话</string>
     <string name="settings_open_latest_session_on_launch_desc">启动应用后自动打开最近更新的会话</string>
+    <string name="settings_home_banner_aggregated">聚合首页顶部卡片</string>
+    <string name="settings_home_banner_aggregated_desc">把「继续上次」并入欢迎卡片；关闭后恢复独立的会话横幅</string>
     <string name="settings_message_image_prompt_optimize">生图提示词优化</string>
     <string name="settings_message_image_prompt_optimize_desc">生成图片前先用聊天模型把消息改写为纯画面描述，减少角色卡文字出现在图片中</string>
     <string name="settings_data_portability">数据导入与导出</string>

@@ -320,6 +320,9 @@ object ServiceContainer {
         // 初始化本地日志记录器
         com.nekobot.app.data.local.LocalLogger.init(app)
         localRepository.scheduleTemporarySessionCleanup()
+        applicationScope.launch {
+            runCatching { localRepository.settleStaleHomeQuickChatDraft() }
+        }
         // 初始化成就系统；本地模式按数据库 Profile 隔离解锁记录。
         com.nekobot.app.data.local.AchievementManager.init(app, achievementScopeId())
         // 初始化带语言配置的上下文（ViewModel 通过此上下文获取本地化字符串）
@@ -409,6 +412,9 @@ object ServiceContainer {
             localRepository.attachAgentNoticeWakeUp()
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
             localRepository.scheduleTemporarySessionCleanup()
+            applicationScope.launch {
+                runCatching { localRepository.settleStaleHomeQuickChatDraft() }
+            }
             com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
             _dataSourceRevision.value += 1L
             clearGeneratingSessions()

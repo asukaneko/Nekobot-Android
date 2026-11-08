@@ -115,4 +115,24 @@
     <!-- Session home -->
     <string name="shell_banner_pinned">Pinned character</string>
     <string name="shell_action_more">More</string>
+
+    <string name="shell_scene_card_chat">Continue</string>
+    <string name="shell_scene_card_start">Start</string>
+    <string name="shell_scene_card_first_meet">First meeting</string>
+    <string name="shell_quick_chat_title">Scene chat</string>
+    <string name="shell_quick_chat_subtitle_new">New scene</string>
+    <string name="shell_quick_chat_subtitle_continue">Continuing last chat</string>
+    <string name="shell_quick_chat_input_hint">Reply in character…</string>
+    <string name="shell_quick_chat_send">Send</string>
+    <string name="shell_quick_chat_typing">Typing…</string>
+    <string name="shell_quick_chat_empty">Say something to start this scene.</string>
+    <string name="shell_quick_chat_relation_delta">Bond · %1$s</string>
+    <string name="shell_quick_chat_hint">Chats are saved to the session and relationship</string>
+    <string name="shell_quick_chat_hint_dismiss">Got it</string>
+    <string name="shell_quick_chat_busy">Generating, try again later</string>
+    <string name="shell_quick_chat_new_scene">New scene</string>
+    <string name="shell_quick_chat_expand">Open full chat</string>
+    <string name="shell_quick_chat_close">Close</string>
+    <string name="shell_quick_chat_error">Failed to send</string>
+    <string name="shell_quick_chat_open_failed">Could not open chat</string>
 </resources>

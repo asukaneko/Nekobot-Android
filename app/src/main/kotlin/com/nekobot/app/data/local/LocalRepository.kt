@@ -1959,7 +1959,9 @@ class LocalRepository(
      */
     suspend fun createSession(
         req: CreateSessionRequest,
-        temporary: Boolean = false
+        temporary: Boolean = false,
+        /** 首页轻聊草稿等可能被回收的会话：不参与成就统计，避免先加后删的计数噪声。 */
+        reportAchievement: Boolean = true
     ): Session = withContext(Dispatchers.IO) {
         val now = nowIso()
         val id = if (temporary) TemporarySession.newId() else UUID.randomUUID().toString()
@@ -2026,7 +2028,7 @@ class LocalRepository(
         }
 
         // 成就触发：会话数量（临时会话不计入）
-        if (!temporary) kotlin.runCatching {
+        if (!temporary && reportAchievement) kotlin.runCatching {
             reportAchievementProgress(
                 AchievementManager.Target.Metric.SESSIONS,
                 sessionDao.count().toLong()
@@ -11793,6 +11795,13 @@ ${AiOutputLanguage.directive()}
             "user_persona", "recent_digest", "important_event", "character_persona", "timeline", "life_sim"
         )
 
+        /** 场景开场白引用的最近对话轮数 */
+        private const val HOME_SCENE_TURNS = 4
+        /** 场景开场白里每条对话的截断长度 */
+        private const val HOME_SCENE_TURN_CHARS = 80
+        /** 场景开场白只引用真实对话，不引用系统/摘要消息 */
+        private val HOME_SCENE_ROLES = setOf("user", "assistant")
+
         /** 静态时间戳工具（供 LocalPipelineCallbacks 等外部类使用） */
         fun nowIsoStatic(): String =
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -12145,6 +12154,194 @@ ${AiOutputLanguage.directive()}
             }
             builder.toString()
         }
+
+    // ==================== 首页场景卡 / 轻聊 ====================
+
+    /**
+     * 场景开场白的对话素材：最近一段对话 + 当前关系六维与心情。
+     *
+     * 与 [homeGreetingMemoryBrief] 互补：前者给长期记忆，这里给"刚才发生了什么"。
+     * 只读，不写任何状态；读取失败返回空串，问候退回记忆依据。
+     */
+    suspend fun homeSceneBrief(characterId: String, maxChars: Int = 600): String =
+        withContext(Dispatchers.IO) {
+            if (characterId.isBlank()) return@withContext ""
+            val builder = StringBuilder()
+            runCatching {
+                val session = sessionDao.listForCompanionEligibility(characterId)
+                    .firstOrNull { !it.archived && !TemporarySession.isTemporary(it.id) }
+                    ?: return@runCatching
+                val rows = messageDao.listBySession(session.id)
+                    .filter { !it.deleted && it.role in HOME_SCENE_ROLES }
+                    .takeLast(HOME_SCENE_TURNS)
+                if (rows.isNotEmpty()) {
+                    builder.append("最近对话：\n")
+                    rows.forEach { row ->
+                        val speaker = if (row.role == "user") "我" else "角色"
+                        val text = row.content.replace('\n', ' ').trim().take(HOME_SCENE_TURN_CHARS)
+                        if (text.isNotBlank()) builder.append(speaker).append('：').append(text).append('\n')
+                    }
+                }
+                val snapshot = db.stateSnapshotDao().listBySession(session.id).lastOrNull()
+                if (snapshot != null) {
+                    builder.append("当前状态：心情").append(snapshot.mood)
+                        .append("，精力").append(snapshot.energy)
+                        .append("；关系 好感").append(snapshot.affection)
+                        .append(" 信任").append(snapshot.trust)
+                        .append(" 熟悉").append(snapshot.familiarity)
+                }
+            }
+            builder.toString().take(maxChars)
+        }
+
+    /**
+     * 为首页轻聊确定要绑定的会话。
+     *
+     * 顺序与 [HomeQuickChatPolicy] 一致：单角色会话独占优先 → 用户选择接着上次 → 新建场景会话。
+     * 新建时把当前场景开场白写成第一条 assistant 消息（不触发状态评估，草稿删除无副作用）。
+     */
+    suspend fun resolveHomeQuickChatSession(
+        characterId: String,
+        preferExisting: Boolean,
+        openingLine: String
+    ): HomeQuickChatBinding = withContext(Dispatchers.IO) {
+        require(characterId.isNotBlank()) { "缺少角色" }
+        val rows = sessionDao.listForCompanionEligibility(characterId)
+            .filterNot { TemporarySession.isStale(it.id) }
+        val companion = rows.firstOrNull { it.companionMode && !it.archived }
+        val existing = rows.firstOrNull {
+            !it.archived && !it.companionMode &&
+                !it.sessionMode.equals("agent", ignoreCase = true) &&
+                !it.sessionMode.equals("group", ignoreCase = true)
+        }
+        // 默认行为：24 小时内聊过就接着上次，超过则开新场景（用户仍可在面板里手动换）。
+        val fresh = existing != null && HomeQuickChatPolicy.preferExistingByDefault(
+            lastActiveAtMillis = parseHomeQuickChatTimestamp(existing.updatedAt),
+            nowMillis = System.currentTimeMillis()
+        )
+        when (HomeQuickChatPolicy.binding(
+            preferExisting = preferExisting && fresh,
+            hasCompanionSession = companion != null,
+            hasExistingSession = existing != null
+        )) {
+            HomeQuickChatPolicy.Binding.COMPANION ->
+                HomeQuickChatBinding(companion!!.toSession(), created = false, companion = true)
+
+            HomeQuickChatPolicy.Binding.EXISTING ->
+                HomeQuickChatBinding(existing!!.toSession(), created = false, companion = false)
+
+            HomeQuickChatPolicy.Binding.NEW -> {
+                val character = characterDao.getById(characterId)
+                val session = createSession(
+                    req = CreateSessionRequest(
+                        name = character?.name,
+                        sessionMode = "character",
+                        characterId = characterId,
+                        firstMessage = openingLine.takeIf { it.isNotBlank() },
+                        userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                    ),
+                    reportAchievement = false
+                )
+                HomeQuickChatBinding(session, created = true, companion = false)
+            }
+        }
+    }
+
+    /** 会话 `updated_at` 的解析：解析失败按 null 处理（默认开新场景）。 */
+    private fun parseHomeQuickChatTimestamp(raw: String?): Long? = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+            .parse(raw.orEmpty())?.time
+    }.getOrNull()
+
+    /** 轻聊会话里的用户消息条数：0 表示只是打开了面板，没真的聊。 */
+    suspend fun countSessionUserMessages(sessionId: String): Int = withContext(Dispatchers.IO) {
+        messageDao.countUserMessagesBySession(sessionId)
+    }
+
+    /** 该会话最近一轮的关系六维与心情；没有快照时返回 null。 */
+    suspend fun sessionRelationSnapshot(sessionId: String): HomeRelationSnapshot? =
+        withContext(Dispatchers.IO) {
+            db.stateSnapshotDao().listBySession(sessionId).lastOrNull()?.let { snapshot ->
+                HomeRelationSnapshot(
+                    affection = snapshot.affection,
+                    trust = snapshot.trust,
+                    familiarity = snapshot.familiarity,
+                    dependency = snapshot.dependency,
+                    security = snapshot.security,
+                    jealousy = snapshot.jealousy,
+                    mood = snapshot.mood,
+                    energy = snapshot.energy
+                )
+            }
+        }
+
+    /**
+     * 结算首页轻聊草稿。
+     *
+     * - [keep] = true：保留会话（用户发过言或主动展开），只清掉草稿标记；
+     * - [keep] = false 且一条用户消息都没有：删除会话，并清理只在 sessionId 上挂着的
+     *   关系行、状态快照与剧情选项，避免残留。
+     */
+    suspend fun settleHomeQuickChatDraft(
+        characterId: String,
+        sessionId: String,
+        keep: Boolean
+    ) = withContext(Dispatchers.IO) {
+        val prefs = ServiceContainer.prefs
+        val draft = prefs.homeQuickChatDraft
+        if (!HomeQuickChatDraftCodec.matches(draft, sessionId)) return@withContext
+        prefs.homeQuickChatDraft = ""
+        if (keep) return@withContext
+        if (!HomeQuickChatPolicy.shouldDiscardDraft(messageDao.countUserMessagesBySession(sessionId))) {
+            return@withContext
+        }
+        runCatching {
+            db.stateSnapshotDao().deleteBySession(sessionId)
+            db.relationshipDao().delete(characterId, sessionRelationshipTargetId(sessionId))
+            deleteSession(sessionId)
+        }.onFailure {
+            LocalLogger.w(TAG, "首页轻聊草稿回收失败：${it.message}")
+        }
+    }
+
+    /** 冷启动 / 切换档案后清理上次进程遗留的草稿。 */
+    suspend fun settleStaleHomeQuickChatDraft() = withContext(Dispatchers.IO) {
+        val prefs = ServiceContainer.prefs
+        val draft = prefs.homeQuickChatDraft
+        if (draft.isBlank()) return@withContext
+        val characterId = HomeQuickChatDraftCodec.characterId(draft)
+        val sessionId = HomeQuickChatDraftCodec.sessionId(draft)
+        if (sessionId.isBlank() || sessionDao.getById(sessionId) == null) {
+            prefs.homeQuickChatDraft = ""
+            return@withContext
+        }
+        settleHomeQuickChatDraft(characterId, sessionId, keep = false)
+    }
+
+    /**
+     * 同步草稿会话的场景开场白。
+     *
+     * 问候语是异步生成的：面板可能先用本地候选打开，AI 重写完成后才拿到最终文案。
+     * 用户还没发过言时，把草稿的唯一一条角色消息改成当前问候；发过言后不再改写历史。
+     */
+    suspend fun updateHomeQuickChatOpeningLine(sessionId: String, line: String) =
+        withContext(Dispatchers.IO) {
+            if (line.isBlank() || sessionId.isBlank()) return@withContext
+            val prefs = ServiceContainer.prefs
+            if (!HomeQuickChatDraftCodec.matches(prefs.homeQuickChatDraft, sessionId)) return@withContext
+            if (messageDao.countUserMessagesBySession(sessionId) > 0) return@withContext
+            val rows = messageDao.listBySession(sessionId)
+                .filter { !it.deleted && it.role in HOME_SCENE_ROLES }
+            val first = rows.firstOrNull() ?: return@withContext
+            if (first.role != "assistant" || first.content == line) return@withContext
+            runCatching {
+                messageDao.updateContent(first.id, line)
+                sessionDao.touch(sessionId, line.take(200), messageDao.countBySession(sessionId), nowIso())
+            }.onFailure {
+                LocalLogger.w(TAG, "首页轻聊开场白同步失败：${it.message}")
+            }
+        }
+
     suspend fun companionMemoriesWithSources(sessionId: String): Set<String> = withContext(Dispatchers.IO) {
         val session = sessionDao.getById(sessionId)?.takeIf { it.usesCompanionMemory() }
             ?: return@withContext emptySet()

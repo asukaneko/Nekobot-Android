@@ -115,4 +115,24 @@
     <!-- 会話ホーム -->
     <string name="shell_banner_pinned">固定キャラ</string>
     <string name="shell_action_more">その他</string>
+
+    <string name="shell_scene_card_chat">続きを話す</string>
+    <string name="shell_scene_card_start">話し始める</string>
+    <string name="shell_scene_card_first_meet">はじめまして</string>
+    <string name="shell_quick_chat_title">シーンチャット</string>
+    <string name="shell_quick_chat_subtitle_new">新しいシーン</string>
+    <string name="shell_quick_chat_subtitle_continue">前回の続き</string>
+    <string name="shell_quick_chat_input_hint">キャラクターの口調で続ける…</string>
+    <string name="shell_quick_chat_send">送信</string>
+    <string name="shell_quick_chat_typing">入力中…</string>
+    <string name="shell_quick_chat_empty">このシーンの続きを話してみましょう。</string>
+    <string name="shell_quick_chat_relation_delta">関係 · %1$s</string>
+    <string name="shell_quick_chat_hint">会話はこのキャラクターのセッションと関係に記録されます</string>
+    <string name="shell_quick_chat_hint_dismiss">了解</string>
+    <string name="shell_quick_chat_busy">生成中です。しばらくお待ちください</string>
+    <string name="shell_quick_chat_new_scene">シーンを変える</string>
+    <string name="shell_quick_chat_expand">通常のチャットで開く</string>
+    <string name="shell_quick_chat_close">閉じる</string>
+    <string name="shell_quick_chat_error">送信に失敗しました</string>
+    <string name="shell_quick_chat_open_failed">チャットを開けませんでした</string>
 </resources>

@@ -7,6 +7,8 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.HomeQuickChatBinding
+import com.nekobot.app.data.local.HomeRelationSnapshot
 import com.nekobot.app.data.local.AgentLiveContextUsage
 import com.nekobot.app.data.local.ai.ContextUsageBreakdown
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
@@ -958,7 +960,9 @@ class UnifiedRepository(
     suspend fun generateHomeGreeting(
         character: CharacterPreset?,
         periodLabel: String,
-        memoryBrief: String = ""
+        memoryBrief: String = "",
+        /** 最近对话与关系状态摘要：[LocalRepository.homeSceneBrief] 的结果。 */
+        sceneBrief: String = ""
     ): Resource<String> {
         if (!isLocal) return Resource.Error("home_greeting_unsupported")
         val persona = buildString {
@@ -972,6 +976,10 @@ class UnifiedRepository(
                     ?.let { append("场景：").append(it.take(240)).append(" ") }
             } else {
                 append("你是用户手机里的 AI 伙伴 Neko，语气温和、克制，像熟人说话。")
+            }
+            if (sceneBrief.isNotBlank()) {
+                append("\n\n你们最近发生的事与当前关系（用于让问候承接上一次对话，不要复述）：\n")
+                append(sceneBrief.take(600))
             }
             if (memoryBrief.isNotBlank()) {
                 append("\n\n你记得的、关于用户和你们之间已经发生的事（历史会话记忆）：\n")
@@ -999,6 +1007,74 @@ class UnifiedRepository(
         } catch (e: Exception) {
             Resource.Error(e.message ?: "AI 生成失败")
         }
+    }
+
+    // ==================== 首页场景卡 / 轻聊 ====================
+
+    /** 场景开场白的对话素材（最近对话 + 关系状态），仅本地模式有数据。 */
+    suspend fun homeSceneBrief(characterId: String): String =
+        if (!isLocal || characterId.isBlank()) "" else runCatching {
+            local.homeSceneBrief(characterId)
+        }.getOrDefault("")
+
+    /**
+     * 为首页轻聊绑定会话：单角色会话独占优先，其次接着上次，最后新建场景会话。
+     *
+     * 仅本地模式可用；服务器模式的首页只保留跳转完整会话的入口。
+     */
+    suspend fun resolveHomeQuickChatSession(
+        characterId: String,
+        preferExisting: Boolean,
+        openingLine: String
+    ): Resource<HomeQuickChatBinding> =
+        if (!isLocal) Resource.Error("home_quick_chat_local_only")
+        else try {
+            Resource.Success(
+                local.resolveHomeQuickChatSession(characterId, preferExisting, openingLine)
+            )
+        } catch (e: com.nekobot.app.data.local.CompanionCreationException) {
+            Resource.Error(ServiceContainer.getString(e.messageRes))
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "创建会话失败")
+        }
+
+    /** 轻聊会话里的用户消息条数（草稿结算用）。 */
+    suspend fun countSessionUserMessages(sessionId: String): Int =
+        if (!isLocal || sessionId.isBlank()) 0 else runCatching {
+            local.countSessionUserMessages(sessionId)
+        }.getOrDefault(0)
+
+    /** 该会话最近一轮关系六维与心情；没有快照时返回 null。 */
+    suspend fun sessionRelationSnapshot(sessionId: String): HomeRelationSnapshot? =
+        if (!isLocal || sessionId.isBlank()) null else runCatching {
+            local.sessionRelationSnapshot(sessionId)
+        }.getOrNull()
+
+    /** 已保存的剧情选项 JSON（本地模式）。 */
+    fun sessionPlotChoices(sessionId: String): String? =
+        if (!isLocal) null else runCatching { local.getPlotChoices(sessionId) }.getOrNull()
+
+    /**
+     * 结算首页轻聊草稿。
+     *
+     * [keep] = true 表示保留会话（展开为完整会话或已经聊过），只清掉草稿标记；
+     * false 且没有用户消息时会话连同关系行/快照一起回收。
+     */
+    suspend fun settleHomeQuickChatDraft(characterId: String, sessionId: String, keep: Boolean) {
+        if (!isLocal) return
+        local.settleHomeQuickChatDraft(characterId, sessionId, keep)
+    }
+
+    /** 冷启动/切换档案后清理遗留草稿。 */
+    suspend fun settleStaleHomeQuickChatDraft() {
+        if (!isLocal) return
+        local.settleStaleHomeQuickChatDraft()
+    }
+
+    /** 草稿会话还没有用户消息时，把开场白更新为当前问候语。 */
+    suspend fun updateHomeQuickChatOpeningLine(sessionId: String, line: String) {
+        if (!isLocal) return
+        local.updateHomeQuickChatOpeningLine(sessionId, line)
     }
 
     /**

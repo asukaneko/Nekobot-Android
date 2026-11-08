@@ -985,10 +985,21 @@ class PrefsManager(context: Context) {
 
     // ============ 会话页欢迎区 ============
 
-    /** 首页欢迎形象：空串表示应用图标，否则为角色 ID（使用角色立绘）。 */
+    /**
+     * 首页欢迎形象：空串表示应用图标，否则为角色 ID（使用角色立绘）。
+     *
+     * 用 StateFlow 承载：首页在非聚合模式下也要在选完形象后立刻换图换问候，
+     * 直接读 SharedPreferences 不会触发重组。
+     */
+    private val _homeWelcomeCharacterId = MutableStateFlow(
+        prefs.getString(KEY_HOME_WELCOME_CHARACTER, "").orEmpty()
+    )
+    val homeWelcomeCharacterIdFlow: StateFlow<String> = _homeWelcomeCharacterId.asStateFlow()
+
     var homeWelcomeCharacterId: String
-        get() = prefs.getString(KEY_HOME_WELCOME_CHARACTER, "").orEmpty()
+        get() = _homeWelcomeCharacterId.value
         set(value) {
+            _homeWelcomeCharacterId.value = value
             prefs.edit().putString(KEY_HOME_WELCOME_CHARACTER, value).apply()
         }
 
@@ -998,9 +1009,15 @@ class PrefsManager(context: Context) {
      * offsetX/Y 是相对"可移动范围"的归一化比例（-1..1），因此同一组参数在
      * 76dp 头像与取景预览框里得到完全一致的画面。
      */
+    private val _homePortraitCrop = MutableStateFlow(
+        prefs.getString(KEY_HOME_PORTRAIT_CROP, "").orEmpty()
+    )
+    val homePortraitCropFlow: StateFlow<String> = _homePortraitCrop.asStateFlow()
+
     var homePortraitCrop: String
-        get() = prefs.getString(KEY_HOME_PORTRAIT_CROP, "").orEmpty()
+        get() = _homePortraitCrop.value
         set(value) {
+            _homePortraitCrop.value = value
             prefs.edit().putString(KEY_HOME_PORTRAIT_CROP, value).apply()
         }
 
@@ -1065,6 +1082,74 @@ class PrefsManager(context: Context) {
         get() = prefs.getString(KEY_HOME_BANNER_SESSION, "").orEmpty()
         set(value) {
             prefs.edit().putString(KEY_HOME_BANNER_SESSION, value).apply()
+        }
+
+    /**
+     * 首页是否把「继续上次」聚合进欢迎卡片（默认开启）。
+     *
+     * 关闭后恢复原来的独立会话 banner，欢迎区只保留问候与轻聊入口。
+     */
+    private val _homeBannerAggregated = MutableStateFlow(
+        prefs.getBoolean(KEY_HOME_BANNER_AGGREGATED, true)
+    )
+    val homeBannerAggregatedFlow: StateFlow<Boolean> = _homeBannerAggregated.asStateFlow()
+
+    var homeBannerAggregated: Boolean
+        get() = _homeBannerAggregated.value
+        set(value) {
+            _homeBannerAggregated.value = value
+            prefs.edit().putBoolean(KEY_HOME_BANNER_AGGREGATED, value).apply()
+        }
+
+    /**
+     * 场景卡角色来源：
+     * - AUTO：跟随最近一段会话的角色；
+     * - CHARACTER：固定为 [homeWelcomeCharacterId] 指定的角色；
+     * - NONE：不绑定角色，显示应用图标。
+     *
+     * 同样是可观察状态：换形象时来源会一起切换，卡片要跟着立即刷新。
+     */
+    private val _homeSceneSource = MutableStateFlow(
+        prefs.getString(KEY_HOME_SCENE_SOURCE, null)?.let(::normalizeHomeSceneSource)
+            // 旧版本只存了欢迎形象：有角色就按「指定角色」，否则跟随最近会话
+            ?: if (_homeWelcomeCharacterId.value.isNotBlank()) {
+                HOME_SCENE_SOURCE_CHARACTER
+            } else {
+                HOME_SCENE_SOURCE_AUTO
+            }
+    )
+    val homeSceneSourceFlow: StateFlow<String> = _homeSceneSource.asStateFlow()
+
+    var homeSceneSource: String
+        get() = _homeSceneSource.value
+        set(value) {
+            val normalized = normalizeHomeSceneSource(value)
+            _homeSceneSource.value = normalized
+            prefs.edit().putString(KEY_HOME_SCENE_SOURCE, normalized).apply()
+        }
+
+    private fun normalizeHomeSceneSource(value: String): String = when (value) {
+        HOME_SCENE_SOURCE_CHARACTER, HOME_SCENE_SOURCE_NONE -> value
+        else -> HOME_SCENE_SOURCE_AUTO
+    }
+
+    /**
+     * 首页轻聊草稿：`角色ID|会话ID|创建时间戳`，空串表示没有草稿。
+     *
+     * 草稿是「打开面板时新建、还没发过言」的场景会话；关闭面板时若仍没有用户消息，
+     * 会连同会话一起回收，避免污染列表。
+     */
+    var homeQuickChatDraft: String
+        get() = prefs.getString(KEY_HOME_QUICK_CHAT_DRAFT, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_HOME_QUICK_CHAT_DRAFT, value).apply()
+        }
+
+    /** 轻聊面板底部的「聊天会记入会话与关系」说明是否已被用户关掉。 */
+    var homeQuickChatHintDismissed: Boolean
+        get() = prefs.getBoolean(KEY_HOME_QUICK_CHAT_HINT_DISMISSED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_HOME_QUICK_CHAT_HINT_DISMISSED, value).apply()
         }
 
     /** 世界书列表视图模式：LIST / GRID，持久化用户选择 */
@@ -1770,6 +1855,10 @@ class PrefsManager(context: Context) {
         private const val KEY_HOME_BANNER_MODE = "home_banner_mode"
         private const val KEY_HOME_BANNER_SESSION = "home_banner_session"
         private const val KEY_HOME_BANNER_CHARACTER = "home_banner_character"
+        private const val KEY_HOME_BANNER_AGGREGATED = "home_banner_aggregated"
+        private const val KEY_HOME_QUICK_CHAT_DRAFT = "home_quick_chat_draft"
+        private const val KEY_HOME_QUICK_CHAT_HINT_DISMISSED = "home_quick_chat_hint_dismissed"
+        private const val KEY_HOME_SCENE_SOURCE = "home_scene_source"
         private const val KEY_WORLD_BOOK_VIEW_MODE = "world_book_view_mode"
         private const val KEY_ACHIEVEMENT_VIEW_MODE = "achievement_view_mode"
         private const val DEFAULT_SERVER = "https://localhost:5000"
@@ -1978,6 +2067,11 @@ class PrefsManager(context: Context) {
         // 会话页 banner 来源
         const val HOME_BANNER_LATEST = "LATEST"
         const val HOME_BANNER_PINNED = "PINNED"
+
+        /** 场景卡角色来源（与 [homeSceneSource] 对应）。 */
+        const val HOME_SCENE_SOURCE_AUTO = "AUTO"
+        const val HOME_SCENE_SOURCE_CHARACTER = "CHARACTER"
+        const val HOME_SCENE_SOURCE_NONE = "NONE"
     }
 
     /** 当前语言偏好：system / zh / zh-TW / en / ja / ko */

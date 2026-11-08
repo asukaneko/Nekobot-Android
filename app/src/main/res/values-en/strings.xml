@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nekobot</string>
 
@@ -202,6 +202,8 @@
     <string name="settings_recent_sessions_include_archived_desc">When enabled, archived chats also appear in the Recent chats list on the home screen</string>
     <string name="settings_open_latest_session_on_launch">Open latest chat on launch</string>
     <string name="settings_open_latest_session_on_launch_desc">Automatically open the most recently updated chat when the app starts</string>
+    <string name="settings_home_banner_aggregated">Merge home top card</string>
+    <string name="settings_home_banner_aggregated_desc">Put Continue last chat inside the welcome card; turn off to restore the separate banner</string>
     <string name="settings_message_image_prompt_optimize">Optimize image prompt</string>
     <string name="settings_message_image_prompt_optimize_desc">Rewrite the message into a pure visual description with a chat model before image generation, reducing character card text in images</string>
     <string name="settings_data_portability">Data import and export</string>
