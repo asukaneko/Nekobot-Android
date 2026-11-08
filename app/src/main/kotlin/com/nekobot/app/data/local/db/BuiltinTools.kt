@@ -59,11 +59,11 @@ object BuiltinTools {
             id = "get_weather",
             category = "basic",
             name = "查询天气",
-            description = "查询指定城市的当前天气与未来预报。",
+            description = "查询指定城市的当前天气与逐日预报，days 控制预报天数。",
             parametersJson = params(
                 mapOf(
                     "city" to mapOf("type" to "string", "description" to "城市名称"),
-                    "days" to mapOf("type" to "integer", "description" to "预报天数，1-7")
+                    "days" to mapOf("type" to "integer", "description" to "预报天数，1-16，默认 1")
                 ),
                 listOf("city")
             )

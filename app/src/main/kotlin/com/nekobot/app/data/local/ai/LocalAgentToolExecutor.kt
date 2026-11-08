@@ -714,26 +714,37 @@ internal class LocalAgentToolExecutor(
         )
     }
 
-    private fun getWeather(args: Map<String, Any>): Map<String, Any> {        val city = args.string("city").ifBlank { "北京" }
-        val encoded = URLEncoder.encode(city, StandardCharsets.UTF_8.name())
-        val raw = fetchText("https://wttr.in/$encoded?format=j1")
-        @Suppress("UNCHECKED_CAST")
-        val data = gson.fromJson(raw, Map::class.java) as? Map<String, Any>
-            ?: return failure("天气响应格式错误")
-        val current = (data["current_condition"] as? List<*>)
-            ?.firstOrNull() as? Map<*, *>
-            ?: return failure("未获取到天气信息")
-        val description = ((current["lang_zh"] as? List<*>)?.firstOrNull() as? Map<*, *>)
-            ?.get("value")
-            ?: ((current["weatherDesc"] as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("value")
-            ?: ""
-        return success(
-            "city" to city,
-            "temperature_c" to (current["temp_C"] ?: ""),
-            "feels_like_c" to (current["FeelsLikeC"] ?: ""),
-            "description" to description,
-            "humidity" to (current["humidity"] ?: ""),
-            "wind_kmph" to (current["windspeedKmph"] ?: "")
+    /**
+     * get_weather：实况 + 逐日预报。
+     *
+     * `days` 真正生效（改造前被忽略，days>1 也只返回当天快照）：
+     * 主用 Open-Meteo（Geocoding → 逐日预报，最多 [LocalWeather.MAX_FORECAST_DAYS] 天），
+     * 城市解析或主接口失败时退回 wttr.in，并在结果 `note` 里说明天数上限。
+     */
+    private fun getWeather(args: Map<String, Any>): Map<String, Any> {
+        val city = args.string("city").ifBlank { "北京" }
+        val requestedDays = args.int("days", 1).coerceAtLeast(1)
+        val primary = runCatching {
+            // 名称带「市/县/区/镇」时先按原名查，查不到再去掉后缀重试
+            val point = LocalWeather.geocodingQueries(city).firstNotNullOfOrNull { query ->
+                runCatching {
+                    LocalWeather.parseGeocoding(fetchText(LocalWeather.geocodingUrl(query)), query)
+                }.getOrNull()
+            } ?: error("未找到城市「$city」")
+            LocalWeather.parseForecast(
+                raw = fetchText(LocalWeather.forecastUrl(point, requestedDays)),
+                city = city,
+                requestedDays = requestedDays,
+                resolvedCity = point.resolvedName,
+            ) ?: error("天气响应格式错误")
+        }
+        primary.getOrNull()?.let { return it }
+        val fallback = runCatching {
+            LocalWeather.parseLegacy(fetchText(LocalWeather.legacyUrl(city)), city, requestedDays)
+                ?: error("备用天气源响应格式错误")
+        }
+        return fallback.getOrNull() ?: failure(
+            "天气获取失败：${primary.exceptionOrNull()?.message ?: fallback.exceptionOrNull()?.message ?: "未知错误"}"
         )
     }
 
