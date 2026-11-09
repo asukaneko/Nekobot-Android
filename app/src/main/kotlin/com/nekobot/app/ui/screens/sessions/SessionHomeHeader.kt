@@ -251,7 +251,21 @@ fun SessionHomeHeaderContent(
                 }
             },
             onNewChat = onNewChat,
-            onChooseSource = { showSourceSheet = true },
+            // 聚合模式下「改角色」统一收在立绘右下角的编辑按钮里：
+            // 跟随最近会话 / 应用图标 / 指定角色 三选一，不再单独放「切换」图标。
+            followLatestSelected = !pinnedMode &&
+                sceneSource == PrefsManager.HOME_SCENE_SOURCE_AUTO,
+            onFollowLatest = {
+                bannerMode = PrefsManager.HOME_BANNER_LATEST
+                bannerCharacterId = ""
+                bannerSessionId = ""
+                prefs.homeBannerMode = PrefsManager.HOME_BANNER_LATEST
+                prefs.homeBannerCharacterId = ""
+                prefs.homeBannerSessionId = ""
+                prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_AUTO
+                prefs.homeWelcomeCharacterId = ""
+                prefs.homePortraitCrop = ""
+            },
             onQuickChat = onQuickChat,
             onGreetingChanged = onQuickChatGreetingChanged,
             onSceneCharacterChanged = { id, portraitCrop ->
@@ -837,7 +851,9 @@ private fun HomeSceneCard(
     showTargetRow: Boolean,
     onOpenTarget: () -> Unit,
     onNewChat: () -> Unit,
-    onChooseSource: () -> Unit,
+    /** 当前是否跟随最近会话（聚合模式编辑按钮里的勾选状态）。 */
+    followLatestSelected: Boolean,
+    onFollowLatest: () -> Unit,
     onQuickChat: ((HomeQuickChatRequest) -> Unit)?,
     /** 问候语变化时同步给轻聊面板（角色 ID + 当前问候）。 */
     onGreetingChanged: (String, String) -> Unit,
@@ -1004,7 +1020,6 @@ private fun HomeSceneCard(
                 canQuickChat = canQuickChat,
                 onOpenTarget = onOpenTarget,
                 onNewChat = onNewChat,
-                onChooseSource = onChooseSource,
                 onStartChat = startQuickChat
             )
         }
@@ -1043,11 +1058,18 @@ private fun HomeSceneCard(
         WelcomePortraitSheet(
             characters = characters,
             selectedCharacterId = characterId,
+            // 聚合模式：这张抽屉同时承担「继续哪段对话」的来源选择
+            showFollowLatest = showTargetRow,
+            followLatestSelected = followLatestSelected,
+            onFollowLatest = {
+                showPicker = false
+                onFollowLatest()
+            },
             onDismiss = { showPicker = false },
             onSelect = { id ->
                 showPicker = false
                 if (id.isEmpty()) {
-                    // 应用图标不需要取景：回到「跟随最近会话」
+                    // 应用图标不需要取景：直接把来源切成「应用图标」
                     onSceneCharacterChanged("", null)
                 } else {
                     characters.firstOrNull { it.id == id }?.let { croppingCharacter = it }
@@ -1084,7 +1106,6 @@ private fun HomeSceneCardFooter(
     canQuickChat: Boolean,
     onOpenTarget: () -> Unit,
     onNewChat: () -> Unit,
-    onChooseSource: () -> Unit,
     onStartChat: (preferExisting: Boolean) -> Unit
 ) {
     if (!showTargetRow) return
@@ -1100,8 +1121,7 @@ private fun HomeSceneCardFooter(
                 { onStartChat(true) }
             } else {
                 null
-            },
-            onChoose = onChooseSource
+            }
         )
 
         canQuickChat -> SceneResumeRow(
@@ -1110,8 +1130,7 @@ private fun HomeSceneCardFooter(
             actionText = stringResource(R.string.shell_scene_card_start),
             // 还没有会话：整行没有可进入的目标，只保留「开始聊」
             onOpen = null,
-            onAction = { onStartChat(false) },
-            onChoose = onChooseSource
+            onAction = { onStartChat(false) }
         )
 
         else -> NekoPrimaryAction(
@@ -1134,8 +1153,7 @@ private fun SceneResumeRow(
     subtitle: String?,
     actionText: String,
     onOpen: (() -> Unit)?,
-    onAction: (() -> Unit)?,
-    onChoose: () -> Unit
+    onAction: (() -> Unit)?
 ) {
     val shape = RoundedCornerShape(18.dp)
     Row(
@@ -1145,7 +1163,7 @@ private fun SceneResumeRow(
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.outline, shape)
             .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
-            .padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
@@ -1173,12 +1191,6 @@ private fun SceneResumeRow(
             Spacer(Modifier.width(8.dp))
             SceneActionChip(text = actionText, onClick = onAction)
         }
-        Spacer(Modifier.width(4.dp))
-        SceneIconButton(
-            icon = Icons.Filled.SwapHoriz,
-            contentDescription = stringResource(R.string.shell_banner_choose),
-            onClick = onChoose
-        )
     }
 }
 
@@ -1207,30 +1219,6 @@ private fun SceneActionChip(text: String, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onPrimary,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1
-        )
-    }
-}
-
-/** 场景卡上的次要图标动作：淡底圆形，弱于主胶囊。 */
-@Composable
-private fun SceneIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp)
         )
     }
 }
@@ -1297,20 +1285,60 @@ private fun WelcomePortrait(
     }
 }
 
-/** 欢迎形象选择抽屉：应用图标 + 内容库里的角色立绘。 */
+/**
+ * 欢迎形象选择抽屉：应用图标 + 内容库里的角色立绘。
+ *
+ * 聚合模式下这张抽屉同时承担「继续哪段对话」的来源：多一行「最新会话」，
+ * 选角色也会把首页 banner 固定到该角色（与立绘同步）。
+ */
 @Composable
 private fun WelcomePortraitSheet(
     characters: List<CharacterPreset>,
     selectedCharacterId: String,
+    showFollowLatest: Boolean,
+    followLatestSelected: Boolean,
+    onFollowLatest: () -> Unit,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit
 ) {
     NekoSheet(onDismissRequest = onDismiss) {
         NekoSheetHeader(
             title = stringResource(R.string.shell_welcome_picker_title),
-            description = stringResource(R.string.shell_welcome_picker_desc),
+            description = stringResource(
+                if (showFollowLatest) {
+                    R.string.shell_welcome_picker_desc_aggregate
+                } else {
+                    R.string.shell_welcome_picker_desc
+                }
+            ),
             onClose = onDismiss
         )
+        if (showFollowLatest) {
+            NekoChoiceRow(
+                title = stringResource(R.string.shell_banner_source_latest),
+                subtitle = stringResource(R.string.shell_banner_source_latest_desc),
+                onClick = onFollowLatest,
+                leading = {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Chat,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                },
+                trailing = { NekoCheckMark(selected = followLatestSelected) },
+                showChevron = false,
+                showDivider = true
+            )
+        }
         NekoChoiceRow(
             title = stringResource(R.string.shell_welcome_app_icon),
             subtitle = stringResource(R.string.shell_welcome_app_icon_desc),

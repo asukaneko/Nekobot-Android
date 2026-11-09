@@ -44,6 +44,7 @@
 
     <string name="shell_welcome_picker_title">Home portrait</string>
     <string name="shell_welcome_picker_desc">The app icon is the default. You can use a character portrait instead.</string>
+    <string name="shell_welcome_picker_desc_aggregate">Picking a character sets both the home portrait and the chat you continue.</string>
     <string name="shell_welcome_app_icon">App icon</string>
     <string name="shell_welcome_app_icon_desc">Default Neko look</string>
     <string name="shell_welcome_character_desc">Character portrait · from Library</string>

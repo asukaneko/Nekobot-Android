@@ -44,6 +44,7 @@
 
     <string name="shell_welcome_picker_title">首頁歡迎形象</string>
     <string name="shell_welcome_picker_desc">預設使用應用圖示，也可以換成本地已有的角色立繪。</string>
+    <string name="shell_welcome_picker_desc_aggregate">選一個角色，會同時決定首頁立繪和繼續的會話。</string>
     <string name="shell_welcome_app_icon">應用圖示</string>
     <string name="shell_welcome_app_icon_desc">Neko 預設形象</string>
     <string name="shell_welcome_character_desc">角色立繪 · 來自內容庫</string>

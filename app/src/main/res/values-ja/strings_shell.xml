@@ -44,6 +44,7 @@
 
     <string name="shell_welcome_picker_title">ホームの姿</string>
     <string name="shell_welcome_picker_desc">既定はアプリアイコン。ローカルのキャラクター画像にも変更できます。</string>
+    <string name="shell_welcome_picker_desc_aggregate">キャラを選ぶと、ホームの立ち絵と続きの会話が同時に決まります。</string>
     <string name="shell_welcome_app_icon">アプリアイコン</string>
     <string name="shell_welcome_app_icon_desc">Neko の既定の姿</string>
     <string name="shell_welcome_character_desc">キャラクター画像 · ライブラリから</string>

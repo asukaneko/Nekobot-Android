@@ -49,6 +49,7 @@
     <!-- 欢迎形象 -->
     <string name="shell_welcome_picker_title">首页欢迎形象</string>
     <string name="shell_welcome_picker_desc">默认使用应用图标，也可以换成本地已有的角色立绘。</string>
+    <string name="shell_welcome_picker_desc_aggregate">选一个角色，会同时决定首页立绘和继续的会话。</string>
     <string name="shell_welcome_app_icon">应用图标</string>
     <string name="shell_welcome_app_icon_desc">Neko 默认形象</string>
     <string name="shell_welcome_character_desc">角色立绘 · 来自内容库</string>

@@ -44,6 +44,7 @@
 
     <string name="shell_welcome_picker_title">홈 환영 이미지</string>
     <string name="shell_welcome_picker_desc">기본은 앱 아이콘이며, 기기에 있는 캐릭터 이미지로 바꿀 수 있어요.</string>
+    <string name="shell_welcome_picker_desc_aggregate">캐릭터를 고르면 홈 일러스트와 이어갈 대화가 함께 정해져요.</string>
     <string name="shell_welcome_app_icon">앱 아이콘</string>
     <string name="shell_welcome_app_icon_desc">Neko 기본 모습</string>
     <string name="shell_welcome_character_desc">캐릭터 이미지 · 콘텐츠에서</string>
