@@ -2,6 +2,61 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.9.0 - 2026-11-09
+
+### 新增
+
+- 新增会话首页聚合场景卡与轻聊面板：可直接召唤角色轻聊，按 `<||>` 分段渲染多气泡并支持 Markdown，同时展示关系变化与剧情选项，可一键展开为完整会话。
+- 天气工具支持最多 16 天逐日预报，主用 Open-Meteo 并以 wttr.in 兜底（#34）。
+- 临时会话改用专属开始页，明确说明不保存记录、不读写长期记忆、结束即清除。
+- 单角色设置新增「记忆与关系」直达入口，并补齐「清空当前会话」。
+- 新增「高级选项」页：隐私锁、归档会话显示、启动打开最新会话、首页顶部卡片聚合等开关集中管理。
+- 本地数据库工具支持分页与输出上限，避免整库正文一次性撑爆上下文。
+- Agent 新增单轮运行预算（token / 时长 / 费用），超预算时带进度收尾，回复「继续」可接着执行。
+- 工具分派层统一超时，超时返回结构化 TIMEOUT，单个工具挂住不再拖死整轮任务。
+- system 提示词拆分为稳定核与动态尾，多轮对话的提示词缓存不再每轮失效。
+
+### 修复
+
+- 修复 WorkBuddy 模型目录混入账号不可用模型、聊天鉴权头不正确的问题，并自动清理失效旧模型。
+- 修复天气工具 days 参数被忽略、请求多日仍只返回当天的问题（#34）。
+- 修复会话统计趋势图柱底不齐、超长数值撑破布局的问题。
+- 修复消息详情抽屉样式不统一的问题，统一改用通用抽屉组件。
+- 加固本地 Agent 与插件执行安全边界：统一路径鉴权、下载按实际读取量限额、浏览器跳转逐跳校验、压缩包解包预算。
+
+### 重构
+
+- 聚合模式下来源切换整合进立绘编辑抽屉，移除场景卡上的切换按钮。
+- 重构会话首页头部与场景卡的视觉层级，固定角色尚无会话时显示「开始聊」。
+
+### 优化
+
+- 用量记录改为合并写盘并按字符预算保留，减少磁盘同步且不再静默丢历史。
+- 优化字体与文字设置区的视觉层次，展开内容改用内嵌面板。
+- 列表视图切换图标统一为 GridView，快捷聊天输入框提示统一为「说点什么…」。
+
+### English
+
+- Added an aggregated scene card and a quick-chat panel on the sessions home: summon a character to chat, render multiple bubbles split by `<||>` with Markdown, see relationship changes and plot options, and expand into a full session in one tap.
+- The weather tool now supports up to 16-day daily forecasts, backed by Open-Meteo with a wttr.in fallback (#34).
+- Temporary sessions now open a dedicated start page that states records are not saved, long-term memory is untouched, and everything is cleared on exit.
+- Companion settings gained direct entries for memory and relationship, plus a "clear current session" action.
+- Added an Advanced Options page that gathers the privacy lock, archived-session display, open-latest-session-on-launch, and home-top-card aggregation switches.
+- Local database tools now paginate and cap their output so a whole library no longer floods the context window.
+- Agents now have a per-run budget (tokens / duration / cost); exceeding it ends the run with progress and a "continue" prompt to resume.
+- Tool dispatch applies a unified timeout and returns a structured TIMEOUT, so one stuck tool no longer stalls the whole run.
+- The system prompt is split into a stable core and a dynamic tail, so prompt caching no longer resets every turn.
+- Fixed WorkBuddy model catalogs including models the account cannot use and incorrect chat auth headers, and stale models are now pruned.
+- Fixed the weather tool ignoring the days parameter and returning only today despite multi-day requests (#34).
+- Fixed misaligned bars and overflowing labels in the session-statistics trend chart.
+- Fixed inconsistent styling in the message details sheet by reusing the shared sheet components.
+- Hardened the local agent and plugin execution boundaries: unified path authorization, download limits by actual bytes read, per-hop browser redirect validation, and archive extraction budgets.
+- Source switching in aggregated mode moved into the portrait editor sheet; the scene card button was removed.
+- Reworked the visual hierarchy of the sessions home header and scene cards; pinned characters without a session now show "Start chat".
+- Token usage records are now written in batches under a character budget, cutting disk syncs without silently dropping history.
+- Refined the visual hierarchy of the font and text settings area with an inset panel when expanded.
+- Unified the list view-mode icon to GridView and the quick-chat input placeholder to "Say something…".
+
 ## v0.8.9 - 2026-11-03
 
 ### 新增
