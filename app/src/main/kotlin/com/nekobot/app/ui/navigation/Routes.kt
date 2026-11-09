@@ -97,6 +97,8 @@ object Routes {
     const val CONFIG_TRANSFER = "config_transfer"
     const val DATA_PORTABILITY = "data_portability"
     const val FEATURE_SWITCHES = "feature_switches"
+    /** 高级选项：隐私锁与若干应用行为开关（由高级设置页进入） */
+    const val ADVANCED_OPTIONS = "advanced_options"
     const val DATA_MAINTENANCE = "data_maintenance"
     /** 本地模式：会话工作区文件管理（查看 / 删除残留工作区文件） */
     const val WORKSPACE_MANAGER = "workspace_manager"

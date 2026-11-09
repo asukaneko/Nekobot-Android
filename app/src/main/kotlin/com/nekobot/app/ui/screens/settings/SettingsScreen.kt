@@ -3,13 +3,9 @@ package com.nekobot.app.ui.screens.settings
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
-import android.view.WindowManager
 import android.widget.Toast
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +28,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
@@ -45,7 +40,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
@@ -87,9 +81,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.biometric.BiometricManager
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import com.nekobot.app.R
@@ -283,9 +274,6 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     val loggedOut by vm.loggedOut.collectAsStateWithLifecycle()
     val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
     val appMode by vm.appMode.collectAsStateWithLifecycle()
-    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsStateWithLifecycle()
-    val openLatestSessionOnLaunch by ServiceContainer.prefs.openLatestSessionOnLaunchFlow.collectAsStateWithLifecycle()
-    val homeBannerAggregated by ServiceContainer.prefs.homeBannerAggregatedFlow.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
@@ -297,90 +285,6 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
     var settingsInput by remember(settingsJson) { mutableStateOf(settingsJson) }
     var showLanguagePicker by remember { mutableStateOf(false) }
-    val appLockState = remember { mutableStateOf(ServiceContainer.prefs.appLockEnabled) }
-    var appLockEnabled by appLockState
-    val pendingAppLockState = remember { mutableStateOf<Boolean?>(null) }
-    var imagePromptOptimizeEnabled by remember {
-        mutableStateOf(ServiceContainer.prefs.messageImagePromptOptimizeEnabled)
-    }
-    val activity = remember(context) { context.findFragmentActivity() }
-    val appLockPrompt = remember(activity) {
-        activity?.let { host ->
-            BiometricPrompt(
-                host,
-                ContextCompat.getMainExecutor(host),
-                object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(
-                        result: BiometricPrompt.AuthenticationResult
-                    ) {
-                        val enabled = pendingAppLockState.value ?: return
-                        ServiceContainer.prefs.appLockEnabled = enabled
-                        appLockState.value = enabled
-                        pendingAppLockState.value = null
-                        // 立即更新 FLAG_SECURE，保证下次切后台时最近任务页预览已被隐藏
-                        if (enabled) {
-                            host.window.setFlags(
-                                WindowManager.LayoutParams.FLAG_SECURE,
-                                WindowManager.LayoutParams.FLAG_SECURE
-                            )
-                        } else {
-                            host.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                        }
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                if (enabled) {
-                                    R.string.settings_app_lock_enabled
-                                } else {
-                                    R.string.settings_app_lock_disabled
-                                }
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        pendingAppLockState.value = null
-                        Toast.makeText(context, errString, Toast.LENGTH_SHORT).show()
-                    }
-                }
-            )
-        }
-    }
-
-    fun requestAppLockChange(enabled: Boolean) {
-        if (enabled == appLockState.value || pendingAppLockState.value != null) return
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
-        val available = activity != null &&
-            BiometricManager.from(context).canAuthenticate(authenticators) ==
-            BiometricManager.BIOMETRIC_SUCCESS
-        if (!available || appLockPrompt == null) {
-            Toast.makeText(
-                context,
-                context.getString(R.string.settings_app_lock_unavailable),
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        pendingAppLockState.value = enabled
-        appLockPrompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(context.getString(R.string.settings_app_lock_auth_title))
-                .setSubtitle(
-                    context.getString(
-                        if (enabled) {
-                            R.string.settings_app_lock_enable_auth_desc
-                        } else {
-                            R.string.settings_app_lock_disable_auth_desc
-                        }
-                    )
-                )
-                .setAllowedAuthenticators(authenticators)
-                .setNegativeButtonText(context.getString(R.string.common_cancel))
-                .build()
-        )
-    }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -569,62 +473,13 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 ) {
                     SettingsSectionHeader(title = stringResource(R.string.settings_advanced))
                     Spacer(Modifier.height(8.dp))
-                    SettingSwitchRow(
-                        icon = Icons.Filled.Fingerprint,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        title = stringResource(R.string.settings_app_lock),
-                        subtitle = stringResource(R.string.settings_app_lock_desc),
-                        checked = appLockEnabled,
-                        enabled = pendingAppLockState.value == null,
-                        onCheckedChange = ::requestAppLockChange
-                    )
-                    SettingDivider()
-                    SettingSwitchRow(
+                    SettingNavRow(
                         icon = Icons.Filled.Tune,
                         iconColor = MaterialTheme.colorScheme.primary,
-                        title = stringResource(R.string.settings_recent_sessions_include_archived),
-                        subtitle = stringResource(R.string.settings_recent_sessions_include_archived_desc),
-                        checked = recentSessionsIncludeArchived,
-                        onCheckedChange = { enabled ->
-                            ServiceContainer.prefs.recentSessionsIncludeArchived = enabled
-                        }
-                    )
-                    SettingDivider()
-                    SettingSwitchRow(
-                        icon = Icons.Filled.Tune,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        title = stringResource(R.string.settings_open_latest_session_on_launch),
-                        subtitle = stringResource(R.string.settings_open_latest_session_on_launch_desc),
-                        checked = openLatestSessionOnLaunch,
-                        onCheckedChange = { enabled ->
-                            ServiceContainer.prefs.openLatestSessionOnLaunch = enabled
-                        }
-                    )
-                    SettingDivider()
-                    SettingSwitchRow(
-                        icon = Icons.Filled.Tune,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        title = stringResource(R.string.settings_home_banner_aggregated),
-                        subtitle = stringResource(R.string.settings_home_banner_aggregated_desc),
-                        checked = homeBannerAggregated,
-                        onCheckedChange = { enabled ->
-                            ServiceContainer.prefs.homeBannerAggregated = enabled
-                        }
-                    )
-                    if (appMode == AppMode.LOCAL) {
-                        SettingDivider()
-                        SettingSwitchRow(
-                            icon = Icons.Filled.AutoAwesome,
-                            iconColor = MaterialTheme.colorScheme.primary,
-                            title = stringResource(R.string.settings_message_image_prompt_optimize),
-                            subtitle = stringResource(R.string.settings_message_image_prompt_optimize_desc),
-                            checked = imagePromptOptimizeEnabled,
-                            onCheckedChange = { enabled ->
-                                imagePromptOptimizeEnabled = enabled
-                                ServiceContainer.prefs.messageImagePromptOptimizeEnabled = enabled
-                            }
-                        )
-                    } else {
+                        title = stringResource(R.string.settings_advanced_options),
+                        subtitle = stringResource(R.string.settings_advanced_options_desc)
+                    ) { onNavigate("advanced_options") }
+                    if (appMode != AppMode.LOCAL) {
                         SettingDivider()
                         SettingNavRow(
                             icon = Icons.Filled.Tune,
@@ -875,7 +730,7 @@ private fun LanguagePickerDialog(
 
 /** 设置分组标题：与更多页保持一致的主色小标题。 */
 @Composable
-private fun SettingsSectionHeader(title: String) {
+internal fun SettingsSectionHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
@@ -887,7 +742,7 @@ private fun SettingsSectionHeader(title: String) {
 
 /** 设置组内行分隔线，起点避开左侧图标。 */
 @Composable
-private fun SettingDivider() {
+internal fun SettingDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(start = 52.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
@@ -896,7 +751,7 @@ private fun SettingDivider() {
 
 /** 通用设置导航行：图标底座 + 标题 + 副标题 + 右箭头。 */
 @Composable
-private fun SettingNavRow(
+internal fun SettingNavRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconColor: Color,
     title: String,
@@ -948,7 +803,7 @@ private fun SettingIconBadge(
 
 /** 通用设置开关行：图标 + 标题 + 副标题 + 开关。 */
 @Composable
-private fun SettingSwitchRow(
+internal fun SettingSwitchRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconColor: Color,
     title: String,
@@ -989,12 +844,6 @@ private fun SettingSwitchRow(
             onCheckedChange = onCheckedChange
         )
     }
-}
-
-private fun Context.findFragmentActivity(): FragmentActivity? = when (this) {
-    is FragmentActivity -> this
-    is ContextWrapper -> baseContext.findFragmentActivity()
-    else -> null
 }
 
 /** 用浏览器打开指定 URL，失败时 Toast 提示。 */

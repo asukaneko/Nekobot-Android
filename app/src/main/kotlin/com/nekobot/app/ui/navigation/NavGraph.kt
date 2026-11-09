@@ -83,6 +83,7 @@ import com.nekobot.app.ui.screens.settings.WorkspaceManagerScreen
 import com.nekobot.app.ui.screens.settings.DataPortabilityScreen
 import com.nekobot.app.ui.screens.settings.DbProfileScreen
 import com.nekobot.app.ui.screens.settings.DiagnosticCenterScreen
+import com.nekobot.app.ui.screens.settings.AdvancedOptionsScreen
 import com.nekobot.app.ui.screens.settings.FeatureSwitchesScreen
 import com.nekobot.app.ui.screens.settings.LogViewerScreen
 import com.nekobot.app.ui.screens.stickers.StickerStoreScreen
@@ -896,6 +897,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.FEATURE_SWITCHES) {
                 FeatureSwitchesScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.ADVANCED_OPTIONS) {
+                AdvancedOptionsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AGENT_SETTINGS) {
                 AgentSettingsScreen(
