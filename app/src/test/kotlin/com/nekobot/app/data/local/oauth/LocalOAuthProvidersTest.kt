@@ -71,6 +71,74 @@ class LocalOAuthProvidersTest {
     }
 
     @Test
+    fun `workbuddy models keep per-model capacity limits`() {
+        val cn = requireNotNull(LocalOAuthProviders.get(LocalOAuthProviders.WORKBUDDY_CN))
+        val intl = requireNotNull(LocalOAuthProviders.get(LocalOAuthProviders.WORKBUDDY_INTL))
+
+        // 两个站点是两套账号，模型 id 只有部分重合，不能共用同一份列表。
+        assertTrue(cn.models.isNotEmpty())
+        assertTrue(intl.models.isNotEmpty())
+        assertTrue(intl.models.contains("default-model"))
+        assertTrue(cn.models.contains("hy4-preview"))
+        assertTrue(!cn.models.contains("default-model"))
+
+        // 兜底列表里不能出现上游根本不存在的模型 id。
+        assertTrue(cn.models.none { it == "hy3-preview" || it == "hy3-preview-agent" })
+        assertTrue(cn.models.contains("hy4-preview"))
+        assertTrue(cn.models.contains("deepseek-v4.1-flash"))
+
+        // 每个模型都要有自己的容量，不能统一套 300k / 32k：
+        // kimi-k2.7 的输出上限是 32000，发 32768 就会被上游拒绝。
+        cn.models.forEach { model ->
+            val target = LocalOAuthProviders.resolveModelTarget(LocalOAuthProviders.WORKBUDDY_CN, model)
+            assertEquals("openai_chat", target.protocol)
+            assertEquals("https://copilot.tencent.com/v2", target.baseUrl)
+            assertTrue("$model 缺少容量上限", target.maxContextLength in 1..2_000_000)
+            assertTrue("$model 缺少输出上限", target.maxTokens in 1..200_000)
+        }
+        assertEquals(256_000, LocalOAuthProviders.resolveModelTarget(
+            LocalOAuthProviders.WORKBUDDY_CN, "kimi-k2.7"
+        ).maxContextLength)
+        assertEquals(32_000, LocalOAuthProviders.resolveModelTarget(
+            LocalOAuthProviders.WORKBUDDY_CN, "kimi-k2.7"
+        ).maxTokens)
+        assertEquals(200_000, LocalOAuthProviders.resolveModelTarget(
+            LocalOAuthProviders.WORKBUDDY_CN, "glm-5.1"
+        ).maxContextLength)
+        assertEquals(64_000, LocalOAuthProviders.resolveModelTarget(
+            LocalOAuthProviders.WORKBUDDY_CN, "glm-5.2"
+        ).maxTokens)
+
+        intl.models.forEach { model ->
+            val target = LocalOAuthProviders.resolveModelTarget(LocalOAuthProviders.WORKBUDDY_INTL, model)
+            assertTrue(target.maxContextLength > 0)
+            assertTrue(target.maxTokens > 0)
+        }
+    }
+
+    @Test
+    fun `workbuddy resync refreshes the stored model capacity`() {
+        val account = LocalOAuthAccountEntity(
+            id = "account-2",
+            provider = LocalOAuthProviders.WORKBUDDY_CN,
+            label = "WorkBuddy",
+            encryptedCredentials = "encrypted",
+            createdAt = "2026-11-09T00:00:00Z",
+            updatedAt = "2026-11-09T00:00:00Z"
+        )
+        val stale = LocalOAuthProviders.createLocalModel(account, "kimi-k2.7", priority = 0)
+            .copy(maxContextLength = 300_000, maxTokens = 32_768)
+
+        val refreshed = LocalOAuthProviders.createLocalModel(
+            account, "kimi-k2.7", priority = 0, existing = stale
+        )
+
+        assertEquals(256_000, refreshed.maxContextLength)
+        assertEquals(32_000, refreshed.maxTokens)
+        assertEquals(stale.id, refreshed.id)
+    }
+
+    @Test
     fun `kimi models target the coding plan chat completion endpoint`() {
         val target = LocalOAuthProviders.resolveModelTarget(
             LocalOAuthProviders.KIMI,

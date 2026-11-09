@@ -96,19 +96,103 @@ object LocalOAuthProviders {
 
     /**
      * WorkBuddy / 腾讯 CodeBuddy 内置模型兜底目录。
-     * 实际可用列表以 `/v3/config` 在线目录为准，这里只用于离线或拉取失败时展示。
+     * 实际可用列表以 `/v3/config` 在线目录为准，这里只用于离线或拉取失败时展示；
+     * 两个站点是两套账号、两套模型 id，不能共用同一份列表。
      */
-    private val WORKBUDDY_MODELS = listOf(
+    private val WORKBUDDY_CN_MODELS = listOf(
+        "hy4-preview",
+        "hy3",
+        "hy3-x",
+        "deepseek-v4.1-flash",
+        "deepseek-v4-pro",
+        "glm-5.3",
+        "glm-5.3-flash",
+        "glm-5.3-flashx",
         "glm-5.2",
         "glm-5.1",
         "glm-5v-turbo",
-        "kimi-k2.7",
         "minimax-m3-pay",
+        "minimax-m2.7",
+        "kimi-k3-2",
+        "kimi-k2.8-preview",
+        "kimi-k2.7",
+        "kimi-k2.6"
+    )
+
+    private val WORKBUDDY_INTL_MODELS = listOf(
+        "default-model",
+        "fast-model",
+        "balanced-model",
+        "primary-model",
+        "deep-model",
+        "gpt-5.5",
+        "gpt-5.4",
+        "gemini-3.1-pro",
+        "gemini-3.5-flash",
+        "glm-5.3",
+        "glm-5.2",
         "hy3",
-        "hy3-preview",
-        "hy3-preview-agent",
-        "deepseek-v4-pro",
-        "deepseek-v4-flash"
+        "kimi-k3",
+        "kimi-k2.6",
+        "minimax-m3"
+    )
+
+    /** 单个模型的容量上限（输入 / 输出），来自官方产品配置的 maxInputTokens / maxOutputTokens。 */
+    private data class WorkBuddyLimits(val context: Int, val output: Int)
+
+    /**
+     * 服务端按模型校验容量：超出 maxOutputTokens 或 maxInputTokens 的请求会被拒，
+     * 因此不能给所有模型套同一份预算。
+     */
+    private val WORKBUDDY_CN_LIMITS = mapOf(
+        "default" to WorkBuddyLimits(200_000, 24_000),
+        "deepseek-v4-pro" to WorkBuddyLimits(1_000_000, 128_000),
+        "deepseek-v4.1-flash" to WorkBuddyLimits(1_000_000, 128_000),
+        "deepseek-v4-flash" to WorkBuddyLimits(1_000_000, 50_000),
+        "deepseek-v3-2-volc" to WorkBuddyLimits(96_000, 32_000),
+        "minimax-m3-pay" to WorkBuddyLimits(512_000, 128_000),
+        "minimax-m2.7" to WorkBuddyLimits(200_000, 48_000),
+        "minimax-m2.5" to WorkBuddyLimits(200_000, 48_000),
+        "glm-5.3" to WorkBuddyLimits(1_000_000, 64_000),
+        "glm-5.3-flash" to WorkBuddyLimits(1_000_000, 131_072),
+        "glm-5.3-flashx" to WorkBuddyLimits(1_000_000, 131_072),
+        "glm-5.2" to WorkBuddyLimits(1_000_000, 64_000),
+        "glm-5.1" to WorkBuddyLimits(200_000, 48_000),
+        "glm-5.0" to WorkBuddyLimits(200_000, 48_000),
+        "glm-5.0-turbo" to WorkBuddyLimits(200_000, 48_000),
+        "glm-5v-turbo" to WorkBuddyLimits(200_000, 64_000),
+        "glm-4.7" to WorkBuddyLimits(200_000, 48_000),
+        "glm-4.6" to WorkBuddyLimits(168_000, 32_000),
+        "glm-4.6v" to WorkBuddyLimits(128_000, 32_000),
+        "kimi-k3-2" to WorkBuddyLimits(1_000_000, 32_000),
+        "kimi-k2.8-preview" to WorkBuddyLimits(1_000_000, 64_000),
+        "kimi-k2.7" to WorkBuddyLimits(256_000, 32_000),
+        "kimi-k2.6" to WorkBuddyLimits(256_000, 32_000),
+        "kimi-k2.5" to WorkBuddyLimits(164_000, 32_000),
+        "kimi-k2-thinking" to WorkBuddyLimits(164_000, 32_000),
+        "hy3" to WorkBuddyLimits(192_000, 64_000),
+        "hy3-x" to WorkBuddyLimits(192_000, 64_000),
+        "hy4-preview" to WorkBuddyLimits(1_000_000, 64_000),
+        "hy4-preview-x" to WorkBuddyLimits(1_000_000, 64_000),
+        "hunyuan-chat" to WorkBuddyLimits(200_000, 8_192)
+    )
+
+    private val WORKBUDDY_INTL_LIMITS = mapOf(
+        "default-model" to WorkBuddyLimits(176_000, 24_000),
+        "fast-model" to WorkBuddyLimits(200_000, 32_000),
+        "balanced-model" to WorkBuddyLimits(256_000, 32_000),
+        "primary-model" to WorkBuddyLimits(272_000, 72_000),
+        "deep-model" to WorkBuddyLimits(176_000, 32_000),
+        "gpt-5.5" to WorkBuddyLimits(1_000_000, 128_000),
+        "gpt-5.4" to WorkBuddyLimits(272_000, 64_000),
+        "gemini-3.1-pro" to WorkBuddyLimits(400_000, 64_000),
+        "gemini-3.5-flash" to WorkBuddyLimits(1_000_000, 65_536),
+        "glm-5.3" to WorkBuddyLimits(1_000_000, 64_000),
+        "glm-5.2" to WorkBuddyLimits(1_000_000, 48_000),
+        "hy3" to WorkBuddyLimits(192_000, 64_000),
+        "kimi-k3" to WorkBuddyLimits(1_000_000, 32_000),
+        "kimi-k2.6" to WorkBuddyLimits(256_000, 32_000),
+        "minimax-m3" to WorkBuddyLimits(512_000, 128_000)
     )
 
     val all: List<OAuthProviderSpec> = listOf(
@@ -285,8 +369,8 @@ object LocalOAuthProviders {
             loginMode = OAuthLoginMode.BROWSER_POLL,
             protocol = "openai_chat",
             baseUrl = "https://copilot.tencent.com/v2",
-            models = WORKBUDDY_MODELS,
-            defaultContextLength = 300_000,
+            models = WORKBUDDY_CN_MODELS,
+            defaultContextLength = 200_000,
             defaultMaxTokens = 32_768,
             authBaseUrl = "https://copilot.tencent.com"
         ),
@@ -297,8 +381,8 @@ object LocalOAuthProviders {
             loginMode = OAuthLoginMode.BROWSER_POLL,
             protocol = "openai_chat",
             baseUrl = "https://www.workbuddy.ai/v2",
-            models = WORKBUDDY_MODELS,
-            defaultContextLength = 300_000,
+            models = WORKBUDDY_INTL_MODELS,
+            defaultContextLength = 200_000,
             defaultMaxTokens = 32_768,
             authBaseUrl = "https://www.workbuddy.ai"
         )
@@ -308,6 +392,18 @@ object LocalOAuthProviders {
 
     fun resolveModelTarget(provider: String, modelId: String): LocalOAuthModelTarget {
         val spec = requireNotNull(get(provider)) { "未知账号提供商: $provider" }
+        if (provider == WORKBUDDY_CN || provider == WORKBUDDY_INTL) {
+            val limits = (if (provider == WORKBUDDY_CN) WORKBUDDY_CN_LIMITS else WORKBUDDY_INTL_LIMITS)
+                .entries
+                .firstOrNull { it.key.equals(modelId.trim(), ignoreCase = true) }
+                ?.value
+            return LocalOAuthModelTarget(
+                protocol = spec.protocol,
+                baseUrl = spec.baseUrl,
+                maxContextLength = limits?.context ?: spec.defaultContextLength,
+                maxTokens = limits?.output ?: spec.defaultMaxTokens
+            )
+        }
         if (provider != OPENCODE_ZEN && provider != OPENCODE_GO) {
             return LocalOAuthModelTarget(
                 protocol = spec.protocol,
