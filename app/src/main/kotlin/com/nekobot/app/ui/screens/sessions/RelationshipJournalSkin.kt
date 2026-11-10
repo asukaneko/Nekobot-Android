@@ -1,6 +1,5 @@
 package com.nekobot.app.ui.screens.sessions
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -14,6 +13,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.data.local.RelationshipBackground
+import com.nekobot.app.ui.theme.isNekoDark
 
 /** Appearance selection owns this palette; the application's theme never selects a journal skin. */
 internal data class JournalSkin(
@@ -57,7 +57,7 @@ internal val LocalJournalSkin = staticCompositionLocalOf { journalSkin(Relations
 
 @Composable
 internal fun RelationshipSkinTheme(background: RelationshipBackground, content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    val dark = isNekoDark()
     val skin = remember(background, dark) { journalSkin(background, dark) }
     val colors = MaterialTheme.colorScheme.copy(
         primary = skin.accent, onPrimary = readableOn(skin.accent),

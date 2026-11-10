@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色模式下的冷启动窗口底色：与 NekoBgDark 对齐 -->
+    <color name="app_window_background">#141414</color>
+</resources>

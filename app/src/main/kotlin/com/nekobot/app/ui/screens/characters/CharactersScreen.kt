@@ -386,6 +386,24 @@ fun CharactersScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(48.dp)
                         )
+                    },
+                    // 还没有角色时直接给入口；搜索无结果时不加，避免和「新建」语义冲突
+                    action = if (searchQuery.isBlank()) {
+                        {
+                            Button(
+                                onClick = { showAddMenu = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text(
+                                    stringResource(R.string.characters_new),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                    } else {
+                        null
                     }
                 )
             } else if (viewMode == CharacterViewMode.LIST) {

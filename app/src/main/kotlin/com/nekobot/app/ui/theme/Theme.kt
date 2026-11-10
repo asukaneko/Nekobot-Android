@@ -124,9 +124,30 @@ private val NekoShapes = Shapes(
  */
 val LocalNekoTypeScale = compositionLocalOf { 1f }
 
+/**
+ * 当前是否深色。
+ *
+ * 由 [NekobotTheme] 依据「跟随系统 / 浅色 / 深色」偏好写入；null 表示还没有主题外壳
+ * （预览、独立 Dialog 等），此时回退到系统深浅色。取色一律走 [isNekoDark]，不要直接调
+ * `isSystemInDarkTheme()`，否则用户在样式页强制浅色/深色后这些位置仍会跟随系统。
+ */
+val LocalNekoDark = compositionLocalOf<Boolean?> { null }
+
+/** 当前是否深色：优先用主题外壳解析出的值，缺失时回退系统设置。 */
+@Composable
+fun isNekoDark(): Boolean = LocalNekoDark.current ?: isSystemInDarkTheme()
+
+/** 按用户偏好解析深浅色：跟随系统 / 强制浅色 / 强制深色。 */
+@Composable
+fun resolveNekoDarkTheme(): Boolean = when (ServiceContainer.prefs.themeMode) {
+    com.nekobot.app.data.local.PrefsManager.THEME_LIGHT -> false
+    com.nekobot.app.data.local.PrefsManager.THEME_DARK -> true
+    else -> isSystemInDarkTheme()
+}
+
 @Composable
 fun NekobotTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = resolveNekoDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
@@ -190,7 +211,10 @@ fun NekobotTheme(
         }
     }
 
-    CompositionLocalProvider(LocalNekoTypeScale provides typeScale) {
+    CompositionLocalProvider(
+        LocalNekoTypeScale provides typeScale,
+        LocalNekoDark provides darkTheme
+    ) {
         MaterialTheme(
             colorScheme = finalColorScheme,
             typography = typography,

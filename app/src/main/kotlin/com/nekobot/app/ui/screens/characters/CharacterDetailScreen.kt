@@ -694,6 +694,7 @@ fun CharacterDetailScreen(
             title = stringResource(R.string.character_delete_title),
             message = stringResource(R.string.character_delete_confirm),
             confirmText = stringResource(R.string.common_delete),
+            destructive = true,
             cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 showDeleteDialog = false

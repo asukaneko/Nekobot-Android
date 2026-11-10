@@ -373,6 +373,9 @@
     <string name="chat_send_prompt">%1$s와(과) 함께 이야기를 시작하려면 메시지를 보내세요</string>
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">메시지 삭제</string>
+    <string name="chat_delete_selected_title">선택한 메시지 삭제</string>
+    <string name="chat_delete_selected_confirm">선택한 메시지 %1$d개를 삭제합니다. 삭제 후 복구할 수 없습니다.</string>
+    <string name="chat_delete_selected_partial_failed">메시지 %1$d개를 삭제하지 못했습니다. 잠시 후 다시 시도하세요.</string>
     <string name="chat_delete_message_confirm">이 메시지를 삭제할까요?</string>
     <string name="chat_edit_message_title">메시지 편집</string>
     <string name="chat_edit_message_input">메시지 내용</string>

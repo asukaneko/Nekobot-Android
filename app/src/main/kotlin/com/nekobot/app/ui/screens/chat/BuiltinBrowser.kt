@@ -19,7 +19,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -113,6 +112,7 @@ import com.nekobot.app.ui.components.liquidGlassMenuSurface
 import com.nekobot.app.ui.components.rememberLiquidGlassAvailable
 import com.nekobot.app.ui.components.rememberWindowGlassBackdrop
 import java.io.File
+import com.nekobot.app.ui.theme.isNekoDark
 
 private const val MIN_BROWSER_ZOOM_PERCENT = 50
 private const val MAX_BROWSER_ZOOM_PERCENT = 200
@@ -294,7 +294,7 @@ internal fun BuiltinBrowserDialog(
         )
     ) {
         MaterialTheme(
-            colorScheme = if (isSystemInDarkTheme()) BrowserPinkDark else BrowserPinkLight,
+            colorScheme = if (isNekoDark()) BrowserPinkDark else BrowserPinkLight,
         ) {
             BuiltinBrowserScreen(
                 sessionId = sessionId,

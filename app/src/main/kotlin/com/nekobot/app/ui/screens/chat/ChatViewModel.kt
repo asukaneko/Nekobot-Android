@@ -19,7 +19,6 @@ import androidx.compose.foundation.background
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -4337,12 +4336,15 @@ class ChatViewModel : BaseViewModel() {
         // 与单条删除一致：先登记，防止 loadMessages 的孤儿保留逻辑复活已删消息。
         runtime.deletedMessageIds.addAll(ids)
         viewModelScope.launch {
+            // 逐条删除：单条失败不影响其余条目，但失败条数要告诉用户，不能静默吞掉
+            var failed = 0
             ids.forEach { id ->
-                try { unified.deleteMessage(sid, id) } catch (_: Exception) {}
+                try { unified.deleteMessage(sid, id) } catch (_: Exception) { failed++ }
             }
             exitSelectionMode()
             _messages.value = _messages.value.filterNot { it.id in ids }
             loadMessages()
+            if (failed > 0) showError(string(R.string.chat_delete_selected_partial_failed, failed))
         }
     }
 

@@ -341,6 +341,23 @@ fun WorldBooksScreen(
                         if (searchQuery.isBlank()) R.string.worldbook_empty_hint
                         else R.string.shell_library_empty_hint
                     ),
+                    action = if (searchQuery.isBlank()) {
+                        {
+                            Button(
+                                onClick = { showAddMenu = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text(
+                                    stringResource(R.string.worldbook_new),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                    } else {
+                        null
+                    },
                     icon = {
                         Icon(
                             Icons.Filled.Book,

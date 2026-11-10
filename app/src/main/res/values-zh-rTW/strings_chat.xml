@@ -379,6 +379,9 @@
     <string name="chat_send_prompt">發送訊息，與%1$s開啟一段故事</string>
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">刪除訊息</string>
+    <string name="chat_delete_selected_title">刪除所選訊息</string>
+    <string name="chat_delete_selected_confirm">將刪除選取的 %1$d 則訊息，刪除後無法復原。</string>
+    <string name="chat_delete_selected_partial_failed">有 %1$d 則訊息刪除失敗，請稍後再試</string>
     <string name="chat_delete_message_confirm">確定刪除這條訊息嗎？</string>
     <string name="chat_edit_message_title">編輯訊息</string>
     <string name="chat_edit_message_input">訊息內容</string>

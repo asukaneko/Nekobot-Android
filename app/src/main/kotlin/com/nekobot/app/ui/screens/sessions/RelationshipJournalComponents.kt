@@ -3,7 +3,6 @@ package com.nekobot.app.ui.screens.sessions
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +25,7 @@ import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.data.local.RelationshipBackground
 import kotlin.math.roundToInt
+import com.nekobot.app.ui.theme.isNekoDark
 
 private val LocalJournalAtlas = staticCompositionLocalOf<ImageBitmap?> { null }
 
@@ -62,7 +62,7 @@ internal fun RelationshipScene(background: RelationshipBackground, modifier: Mod
         AsyncImage(model = background.resource, contentDescription = null, contentScale = ContentScale.Crop,
             onSuccess = { ready = true },
             modifier = Modifier.matchParentSize().testTag(if (ready) "relationship_scene_${background.id}_ready" else "relationship_scene_loading"))
-        if (isSystemInDarkTheme()) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .30f)))
+        if (isNekoDark()) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .30f)))
     }
 }
 

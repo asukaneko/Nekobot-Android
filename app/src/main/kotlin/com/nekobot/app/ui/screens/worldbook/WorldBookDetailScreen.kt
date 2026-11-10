@@ -643,6 +643,7 @@ fun WorldBookDetailScreen(
             title = stringResource(R.string.worldbook_delete_book_title),
             message = stringResource(R.string.worldbook_delete_book_message),
             confirmText = stringResource(R.string.common_delete),
+            destructive = true,
             cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 showDeleteBookDialog = false

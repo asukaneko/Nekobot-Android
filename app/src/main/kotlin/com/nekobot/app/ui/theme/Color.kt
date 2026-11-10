@@ -1,6 +1,5 @@
 package com.nekobot.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -97,19 +96,19 @@ val BubbleAssistantLight = NekoSurfaceLight
 
 /** 线条色（分隔线 / 卡片描边）：浅色 #E7E9E3，深色 #363D35。 */
 @Composable
-fun nekoLine(): Color = if (isSystemInDarkTheme()) NekoLineDark else NekoLineLight
+fun nekoLine(): Color = if (isNekoDark()) NekoLineDark else NekoLineLight
 
 /** 更淡的一级文字（时间戳、脚注）。 */
 @Composable
-fun nekoFaint(): Color = if (isSystemInDarkTheme()) NekoMutedDark.copy(alpha = 0.82f) else NekoMutedLight.copy(alpha = 0.72f)
+fun nekoFaint(): Color = if (isNekoDark()) NekoMutedDark.copy(alpha = 0.82f) else NekoMutedLight.copy(alpha = 0.72f)
 
 /** 强调色底（标签、选中态）。 */
 @Composable
-fun nekoAccentSoft(): Color = if (isSystemInDarkTheme()) NekoAccentSoftDark else NekoAccentSoftLight
+fun nekoAccentSoft(): Color = if (isNekoDark()) NekoAccentSoftDark else NekoAccentSoftLight
 
 /** 绿（正常/成功）：仅用于状态点与提示，不作大块填充。 */
 @Composable
-fun nekoGreen(): Color = if (isSystemInDarkTheme()) NekoGreenDark else NekoGreenLight
+fun nekoGreen(): Color = if (isNekoDark()) NekoGreenDark else NekoGreenLight
 
 /**
  * 根据主色派生 primaryContainer（深色主题用，亮度降低到 ~38%）。
@@ -157,7 +156,7 @@ fun parseHexColor(hex: String?): Color? {
  */
 @Composable
 fun defaultPrimaryColor(): Color =
-    if (isSystemInDarkTheme()) Primary else PrimaryLight
+    if (isNekoDark()) Primary else PrimaryLight
 
 // ==================== 深浅色自适应语义色 ====================
 // 用于图标着色、日志等级、剧情事件等"点缀色"场景，
@@ -166,22 +165,22 @@ fun defaultPrimaryColor(): Color =
 /** 蓝灰（深色 Secondary / 浅色 SecondaryLight） */
 @Composable
 fun accentSecondary(): Color =
-    if (isSystemInDarkTheme()) Secondary else SecondaryLight
+    if (isNekoDark()) Secondary else SecondaryLight
 
 /** 陶土棕（深色 Tertiary / 浅色 TertiaryLight） */
 @Composable
 fun accentTertiary(): Color =
-    if (isSystemInDarkTheme()) Tertiary else TertiaryLight
+    if (isNekoDark()) Tertiary else TertiaryLight
 
 /** 琥珀（深色 WarningAmber / 浅色 WarningAmberLight） */
 @Composable
 fun accentWarning(): Color =
-    if (isSystemInDarkTheme()) WarningAmber else WarningAmberLight
+    if (isNekoDark()) WarningAmber else WarningAmberLight
 
 /** 绿（深色 SuccessGreen / 浅色 SuccessGreenLight） */
 @Composable
 fun accentSuccess(): Color =
-    if (isSystemInDarkTheme()) SuccessGreen else SuccessGreenLight
+    if (isNekoDark()) SuccessGreen else SuccessGreenLight
 
 // ==================== 链接色 ====================
 // 聊天气泡内的链接必须与气泡底色、正文色都能区分：
@@ -193,7 +192,7 @@ val LinkBlueLight = Color(0xFF1B6D8F)
 /** AI 气泡内的链接色：深色主题用亮蓝，浅色主题用深蓝。 */
 @Composable
 fun accentLink(): Color =
-    if (isSystemInDarkTheme()) Secondary else LinkBlueLight
+    if (isNekoDark()) Secondary else LinkBlueLight
 
 /**
  * 用户气泡内的链接色。

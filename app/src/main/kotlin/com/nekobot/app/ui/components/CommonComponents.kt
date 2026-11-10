@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import com.nekobot.app.ui.components.withoutBorder as border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -195,6 +194,8 @@ fun NekoDialog(
     confirmText: String = stringResource(R.string.common_confirm),
     confirmEnabled: Boolean = true,
     onConfirm: (() -> Unit)? = null,
+    /** 确认动作是否不可逆（删除、清空等）：为 true 时确认按钮改用错误色，和「保存」区分开。 */
+    destructive: Boolean = false,
     cancelText: String? = stringResource(R.string.common_cancel),
     onCancel: (() -> Unit)? = null,
     /** 可选的低优先级动作，显示在「取消」右侧、「确认」左侧（如「仅保存」）。 */
@@ -331,7 +332,7 @@ fun NekoDialog(
                             label = confirmText,
                             onClick = { onConfirm?.invoke() ?: onDismiss() },
                             enabled = confirmEnabled,
-                            style = NekoDialogActionStyle.PRIMARY,
+                            style = if (destructive) NekoDialogActionStyle.DANGER else NekoDialogActionStyle.PRIMARY,
                             icon = confirmIcon,
                             iconContentDescription = confirmIconContentDescription
                         )
@@ -357,8 +358,8 @@ fun NekoDialog(
     }
 }
 
-/** 弹窗动作的强调层级：纯文字（取消）/ 次要 / 主要。 */
-private enum class NekoDialogActionStyle { TEXT, NEUTRAL, PRIMARY }
+/** 弹窗动作的强调层级：纯文字（取消）/ 次要 / 主要 / 危险（删除、清空等不可逆操作）。 */
+private enum class NekoDialogActionStyle { TEXT, NEUTRAL, PRIMARY, DANGER }
 
 /** 弹窗动作按钮的一份声明，供单排与换行两种容器复用。 */
 private data class NekoDialogAction(
@@ -408,6 +409,44 @@ private fun NekoDialogActionButton(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        // 危险动作：用错误色而不是主色，避免「删除」和「保存」在视觉上完全一样
+        NekoDialogActionStyle.DANGER -> {
+            val icon = action.icon
+            if (icon != null) {
+                FilledIconButton(
+                    onClick = action.onClick,
+                    enabled = action.enabled,
+                    modifier = modifier,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = action.iconContentDescription ?: action.label
+                    )
+                }
+            } else {
+                Button(
+                    onClick = action.onClick,
+                    enabled = action.enabled,
+                    modifier = modifier,
+                    contentPadding = padding,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text(
+                        text = action.label,
+                        color = MaterialTheme.colorScheme.onError,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
         NekoDialogActionStyle.PRIMARY -> {
             val icon = action.icon
             if (icon != null) {
@@ -446,7 +485,13 @@ private fun NekoDialogActionButton(
 }
 
 @Composable
-fun EmptyState(title: String, hint: String? = null, icon: @Composable (() -> Unit)? = null) {
+fun EmptyState(
+    title: String,
+    hint: String? = null,
+    icon: @Composable (() -> Unit)? = null,
+    /** 空态里的主行动（新建、导入…），避免用户只看到一句提示却不知道下一步点哪。 */
+    action: (@Composable ColumnScope.() -> Unit)? = null
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -492,6 +537,10 @@ fun EmptyState(title: String, hint: String? = null, icon: @Composable (() -> Uni
         if (!hint.isNullOrBlank()) {
             Spacer(Modifier.height(8.dp))
             Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (action != null) {
+            Spacer(Modifier.height(20.dp))
+            action()
         }
     }
 }

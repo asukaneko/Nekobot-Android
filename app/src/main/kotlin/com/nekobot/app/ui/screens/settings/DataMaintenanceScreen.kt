@@ -582,6 +582,7 @@ fun DataMaintenanceScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {})
             title = stringResource(R.string.maintenance_confirm_clear_title),
             message = stringResource(R.string.maintenance_confirm_clear_msg),
             confirmText = stringResource(R.string.maintenance_confirm_clear),
+            destructive = true,
             onConfirm = {
                 showClearDataDialog = false
                 vm.clearAllData(context)

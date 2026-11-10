@@ -1195,6 +1195,17 @@ class PrefsManager(context: Context) {
             prefs.edit().putFloat(KEY_FONT_SCALE, value).apply()
         }
 
+    /** 深浅色模式：system 跟随系统 / light 强制浅色 / dark 强制深色。 */
+    var themeMode: String
+        get() = prefs.getString(KEY_THEME_MODE, THEME_SYSTEM) ?: THEME_SYSTEM
+        set(value) {
+            val normalized = when (value) {
+                THEME_LIGHT, THEME_DARK -> value
+                else -> THEME_SYSTEM
+            }
+            prefs.edit().putString(KEY_THEME_MODE, normalized).apply()
+        }
+
     /** 聊天背景来源：关闭 / 跟随当前会话立绘 / 自定义图片。 */
     var chatBackgroundMode: String
         get() = prefs.getString(KEY_CHAT_BACKGROUND_MODE, CHAT_BACKGROUND_NONE)
@@ -1864,6 +1875,10 @@ class PrefsManager(context: Context) {
         private const val DEFAULT_SERVER = "https://localhost:5000"
 
         // 样式相关 KEY
+        const val KEY_THEME_MODE = "theme_mode"
+        const val THEME_SYSTEM = "system"
+        const val THEME_LIGHT = "light"
+        const val THEME_DARK = "dark"
         const val KEY_FONT_FAMILY = "font_family"
         const val KEY_FONT_SCALE = "font_scale"
         const val KEY_FONT_COLOR = "font_color"

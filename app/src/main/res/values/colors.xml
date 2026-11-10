@@ -3,4 +3,6 @@
     <color name="nekobot_primary">#7C5CFF</color>
     <color name="ic_launcher_background">#FFFFFF</color>
     <color name="nekobot_dark">#12121A</color>
+    <!-- 冷启动窗口底色：与 NekoBgLight 对齐，避免从系统默认深色闪一下 -->
+    <color name="app_window_background">#FAFAFA</color>
 </resources>

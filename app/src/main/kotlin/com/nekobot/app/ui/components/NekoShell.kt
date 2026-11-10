@@ -797,13 +797,15 @@ fun NekoIconTile(
     }
 }
 
-/** 空状态：一个淡图标 + 一句标题 + 一句提示。 */
+/** 空状态：一个淡图标 + 一句标题 + 一句提示，可再带一个"下一步"按钮。 */
 @Composable
 fun NekoEmpty(
     title: String,
     modifier: Modifier = Modifier,
     hint: String? = null,
-    icon: ImageVector? = null
+    icon: ImageVector? = null,
+    /** 空态里的主行动（新建、导入…）。空列表时用户最容易卡住，按钮比只留文字提示有用。 */
+    action: (@Composable ColumnScope.() -> Unit)? = null
 ) {
     Column(
         modifier = modifier
@@ -833,6 +835,10 @@ fun NekoEmpty(
                 style = nekoRowSubtitleStyle(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        if (action != null) {
+            Spacer(Modifier.height(18.dp))
+            action()
         }
     }
 }

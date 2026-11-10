@@ -68,6 +68,8 @@ import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -75,6 +77,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -902,7 +905,27 @@ fun SessionsScreen(
                                 NekoEmpty(
                                     title = emptyTitle,
                                     hint = emptyHint,
-                                    icon = Icons.AutoMirrored.Outlined.Chat
+                                    icon = Icons.AutoMirrored.Outlined.Chat,
+                                    // 真的没有会话时才给行动按钮；搜索/筛选无结果时只提示，避免误导
+                                    action = if (searchQuery.isBlank() && filter == SessionFilter.ALL) {
+                                        {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                Button(
+                                                    onClick = { showCreateModeMenu = true },
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = MaterialTheme.colorScheme.primary
+                                                    )
+                                                ) {
+                                                    Text(newSessionDesc, color = MaterialTheme.colorScheme.onPrimary)
+                                                }
+                                                OutlinedButton(onClick = { importFileLauncher.launch("*/*") }) {
+                                                    Text(importDesc)
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    }
                                 )
                             }
                             else -> itemsIndexed(
@@ -1034,6 +1057,7 @@ fun SessionsScreen(
             title = deleteTitle,
             message = batchDeleteConfirmFmt.format(selectedSessionIds.size),
             confirmText = deleteText,
+            destructive = true,
             onConfirm = {
                 showBatchDeleteConfirm = false
                 runBatchAction(SessionBatchAction.DELETE, true)
@@ -1107,6 +1131,7 @@ fun SessionsScreen(
             title = deleteTitle,
             message = deleteConfirmFmt.format(row.displayName),
             confirmText = deleteText,
+            destructive = true,
             onConfirm = {
                 viewModel.deleteSession(row.id.orEmpty()) { deleting = null }
             }

@@ -2,6 +2,11 @@
 <resources>
     <!-- ==================== 样式设置 ==================== -->
     <string name="style_title">样式设置</string>
+    <string name="style_theme">主题</string>
+    <string name="style_theme_desc">浅色与深色外观</string>
+    <string name="style_theme_system">跟随系统</string>
+    <string name="style_theme_light">浅色</string>
+    <string name="style_theme_dark">深色</string>
     <string name="style_realtime_preview">实时预览</string>
     <string name="style_preview_title">标题文字示例</string>
     <string name="style_preview_body">这是正文内容示例，用于展示当前字体类型、大小与颜色配置的效果。</string>

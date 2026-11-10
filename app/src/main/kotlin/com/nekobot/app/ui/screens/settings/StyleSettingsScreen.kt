@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -73,6 +72,7 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.theme.buildTypography
 import com.nekobot.app.ui.theme.defaultPrimaryColor
 import com.nekobot.app.ui.theme.parseHexColor
+import com.nekobot.app.ui.theme.isNekoDark
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,6 +91,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
     val prefs = ServiceContainer.prefs
 
     var themeColorOverride by remember { mutableStateOf(prefs.themeColorOverride) }
+    var themeMode by remember { mutableStateOf(prefs.themeMode) }
     var messageColorOverride by remember { mutableStateOf(prefs.messageColorOverride) }
     var assistantMessageColorOverride by remember { mutableStateOf(prefs.assistantMessageColorOverride) }
     var fontsExpanded by remember { mutableStateOf(false) }
@@ -124,6 +125,13 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
         PrefsManager.CHAT_BACKGROUND_NONE to stringResource(R.string.style_chat_background_none),
         PrefsManager.CHAT_BACKGROUND_PORTRAIT to stringResource(R.string.style_chat_background_portrait),
         PrefsManager.CHAT_BACKGROUND_CUSTOM to stringResource(R.string.style_chat_background_custom)
+    )
+
+    // 深浅色模式：跟随时随系统切换，也可固定浅色/深色（夜里固定深色是聊天类应用的常见需求）
+    val themeModeOptions = listOf(
+        PrefsManager.THEME_SYSTEM to stringResource(R.string.style_theme_system),
+        PrefsManager.THEME_LIGHT to stringResource(R.string.style_theme_light),
+        PrefsManager.THEME_DARK to stringResource(R.string.style_theme_dark)
     )
 
     // 主题色选项：null 表示默认色（陶土红）
@@ -243,6 +251,37 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // 深浅色模式：切换后立即生效（重建页面，与其它外观项的应用方式一致）
+            GlassCard(Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(R.string.style_theme),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.style_theme_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    themeModeOptions.forEach { (value, label) ->
+                        FilterChip(
+                            selected = themeMode == value,
+                            onClick = {
+                                if (themeMode != value) {
+                                    themeMode = value
+                                    prefs.themeMode = value
+                                    applyAndRecreate()
+                                }
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
             ChatAppearancePreview(messageColorOverride, assistantMessageColorOverride)
             ChatColorSettings(themeColorOverride, messageColorOverride, assistantMessageColorOverride, themeColorOptions,
                 onThemeColor = { themeColorOverride = it; prefs.themeColorOverride = it },
@@ -292,7 +331,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                             .clip(MaterialTheme.shapes.medium)
                             .background(
                                 // 深浅色都取比卡片底色更亮一档的填充，形成"框住"的内层面板
-                                if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceContainerHigh
+                                if (isNekoDark()) MaterialTheme.colorScheme.surfaceContainerHigh
                                 else MaterialTheme.colorScheme.surface
                             )
                             .padding(horizontal = 14.dp, vertical = 2.dp)

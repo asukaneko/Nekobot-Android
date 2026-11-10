@@ -44,7 +44,6 @@ import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -535,6 +534,8 @@ fun ChatScreen(
         mutableStateOf<LocalMessageImageEntity?>(null)
     }
     var showClearConfirm by rememberSaveable(sessionId) { mutableStateOf(false) }
+    // 多选批量删除：误点一次会永久丢多条消息，先确认
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     var showEndTemporaryConfirm by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showMyMessages by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showRestoreArchiveDialog by rememberSaveable(sessionId) { mutableStateOf(false) }
@@ -874,9 +875,18 @@ fun ChatScreen(
             viewModel.setChatVisible(false)
         }
     }
+    // 是否需要跟到最新：新增的是自己发的消息（发送后必须看到自己那条），或列表当前贴在底部。
+    fun shouldFollowLatest(): Boolean {
+        val lastIsUser = renderMessages.lastOrNull()?.isUser == true
+        return lastIsUser || !listState.canScrollForward
+    }
     // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用动画滚动。
     // 向上分页会在头部插入更早历史，此时首条消息与列表长度同时变化——
     // 这种"前插"必须保持用户当前位置（LazyColumn 依稳定 key 会自然锚定），不能滚到底部。
+    //
+    // 阅读位置归用户所有：只有「用户原本就贴在底部」或「这次新增的是自己发出的消息」才跟到最新。
+    // 上滑读历史期间有新消息（排队消息、工具卡片、后台回复）不拉回，回复结束也不回底部，
+    // 需要回到最新时用户自己滑或点「跳到最新」。
     LaunchedEffect(visibleMessages.size) {
         if (visibleMessages.isNotEmpty()) {
             val currentFirstId = renderMessages.firstOrNull()?.id
@@ -893,7 +903,7 @@ fun ChatScreen(
                 // 首次加载：直接跳到底部，无动画
                 listState.scrollToItem(renderMessages.lastIndex)
                 initialLoad = false
-            } else {
+            } else if (shouldFollowLatest()) {
                 listState.animateScrollToItem(renderMessages.lastIndex)
             }
         } else {
@@ -1041,7 +1051,7 @@ fun ChatScreen(
                             }
                         },
                         actions = {
-                            IconButton(onClick = { viewModel.deleteSelectedMessages() }) {
+                            IconButton(onClick = { showBatchDeleteConfirm = true }) {
                                 Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.onSurface)
                             }
                             IconButton(onClick = {
@@ -2144,6 +2154,22 @@ fun ChatScreen(
         }
     }
 
+    // 多选批量删除确认
+    if (showBatchDeleteConfirm) {
+        val selectedCount = selectedIds.size
+        NekoDialog(
+            onDismiss = { showBatchDeleteConfirm = false },
+            title = stringResource(R.string.chat_delete_selected_title),
+            message = stringResource(R.string.chat_delete_selected_confirm, selectedCount),
+            confirmText = stringResource(R.string.common_delete),
+            destructive = true,
+            onConfirm = {
+                showBatchDeleteConfirm = false
+                viewModel.deleteSelectedMessages()
+            }
+        )
+    }
+
     // 删除消息确认
     deletingMessage?.let { msg ->
         NekoDialog(
@@ -2151,6 +2177,7 @@ fun ChatScreen(
             title = stringResource(R.string.chat_delete_message_title),
             message = stringResource(R.string.chat_delete_message_confirm),
             confirmText = stringResource(R.string.common_delete),
+            destructive = true,
             onConfirm = {
                 viewModel.deleteMessage(sessionId, msg.id.orEmpty()) { deletingMessage = null }
             }
@@ -2164,6 +2191,7 @@ fun ChatScreen(
             title = stringResource(R.string.chat_clear_messages_title),
             message = stringResource(R.string.chat_clear_messages_confirm),
             confirmText = stringResource(R.string.common_clear),
+            destructive = true,
             onConfirm = {
                 viewModel.clearMessages(sessionId) { showClearConfirm = false }
             }

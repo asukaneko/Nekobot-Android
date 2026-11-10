@@ -32,7 +32,6 @@ import androidx.compose.foundation.border as actualBorder
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -196,6 +195,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.nekobot.app.ui.theme.isNekoDark
 
 /**
  * 现代聊天容器。
@@ -1880,7 +1880,7 @@ private fun ModernChatComposer(
                     )
                     // 输入框描边：与底栏液态玻璃一致——深色模式下白边必须非常克制
                     // （淡化 + 收细），否则整块输入框像被镶了一圈银边。
-                    val composerDark = isSystemInDarkTheme()
+                    val composerDark = isNekoDark()
                     val composerBorderWidth = if (composerDark) 0.6.dp else 1.dp
                     val composerGlassBorder = Brush.verticalGradient(
                         if (composerDark) {

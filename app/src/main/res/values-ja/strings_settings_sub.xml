@@ -2,6 +2,11 @@
 <resources>
     <!-- ==================== スタイル設定 ==================== -->
     <string name="style_title">スタイル設定</string>
+    <string name="style_theme">テーマ</string>
+    <string name="style_theme_desc">ライト／ダークの外観</string>
+    <string name="style_theme_system">システムに従う</string>
+    <string name="style_theme_light">ライト</string>
+    <string name="style_theme_dark">ダーク</string>
     <string name="style_realtime_preview">リアルタイムプレビュー</string>
     <string name="style_preview_title">サンプルタイトルテキスト</string>
     <string name="style_preview_body">これはサンプル本文で、現在のフォントの種類、サイズ、色の設定効果を示しています。</string>

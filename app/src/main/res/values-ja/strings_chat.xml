@@ -373,6 +373,9 @@
     <string name="chat_send_prompt">%1$s との物語を始めるためにメッセージを送信してください</string>
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">メッセージを削除</string>
+    <string name="chat_delete_selected_title">選択したメッセージを削除</string>
+    <string name="chat_delete_selected_confirm">選択した %1$d 件のメッセージを削除します。元に戻せません。</string>
+    <string name="chat_delete_selected_partial_failed">%1$d 件のメッセージを削除できませんでした。後でもう一度お試しください。</string>
     <string name="chat_delete_message_confirm">このメッセージを削除してもよろしいですか？</string>
     <string name="chat_edit_message_title">メッセージを編集</string>
     <string name="chat_edit_message_input">メッセージ内容</string>

@@ -2,6 +2,11 @@
 <resources>
     <!-- ==================== 스타일 설정 ==================== -->
     <string name="style_title">스타일 설정</string>
+    <string name="style_theme">테마</string>
+    <string name="style_theme_desc">라이트/다크 화면</string>
+    <string name="style_theme_system">시스템 설정 따르기</string>
+    <string name="style_theme_light">라이트</string>
+    <string name="style_theme_dark">다크</string>
     <string name="style_realtime_preview">실시간 미리보기</string>
     <string name="style_preview_title">샘플 제목 텍스트</string>
     <string name="style_preview_body">현재 글꼴 유형, 크기, 색상 설정의 효과를 보여주는 샘플 본문 텍스트예요.</string>
