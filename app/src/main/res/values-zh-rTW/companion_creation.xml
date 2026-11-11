@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="companion_create_missing">請先選擇一個有效角色，再建立 Agent 角色。</string>
-    <string name="companion_create_reserved">這個角色已綁定過 Agent 主對話。請還原原對話，或選擇另一個角色。</string>
     <string name="companion_create_existing">這個角色已有 Agent 主對話，請開啟既有對話。</string>
     <string name="companion_create_used">這個角色已有對話。請透過對話遷入建立獨立副本，或選擇尚未使用的角色。</string>
     <string name="companion_create_changed">角色資料已變更，請重新選擇角色後繼續。</string>

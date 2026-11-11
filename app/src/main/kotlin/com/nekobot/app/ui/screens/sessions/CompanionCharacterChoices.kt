@@ -28,7 +28,7 @@ internal suspend fun loadCompanionCharacterChoices(
             CompanionEligibility.Available -> true
             is CompanionEligibility.Existing -> state.sessionId.isNotBlank()
             is CompanionEligibility.Used -> state.candidates.isNotEmpty()
-            CompanionEligibility.MissingCharacter, CompanionEligibility.ReservedCharacter -> false
+            CompanionEligibility.MissingCharacter -> false
         }
         if (selectable) add(CompanionCharacterChoice(character, state))
     }

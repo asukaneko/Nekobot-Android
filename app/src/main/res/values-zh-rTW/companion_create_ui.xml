@@ -18,7 +18,6 @@
   <string name="companion_available">尚未使用，可以建立</string>
   <string name="companion_has_main">已有 Agent 主對話</string>
   <string name="companion_has_sessions">已有對話，可以建立獨立副本</string>
-  <string name="companion_reserved">已保留主對話歸屬</string>
   <string name="companion_select_hint">選擇後會檢查角色的使用情況</string>
   <string name="companion_change">更換</string>
   <string name="companion_group_unsupported">這個角色已用於群聊或未繼承角色的 Agent 對話，暫不支援遷入。請選擇其他角色。</string>

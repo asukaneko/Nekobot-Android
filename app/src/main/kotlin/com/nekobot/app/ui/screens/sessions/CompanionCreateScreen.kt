@@ -267,7 +267,6 @@ internal fun CompanionCreateContent(
                                     CompanionEligibility.Available -> R.string.companion_available
                                     is CompanionEligibility.Existing -> R.string.companion_has_main
                                     is CompanionEligibility.Used -> R.string.companion_has_sessions
-                                    CompanionEligibility.ReservedCharacter -> R.string.companion_reserved
                                     else -> R.string.companion_select_hint
                                 }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -283,7 +282,6 @@ internal fun CompanionCreateContent(
                         }
                     }
                 }
-                if (state.eligibility == CompanionEligibility.ReservedCharacter) item { Text(stringResource(R.string.companion_create_reserved), style = MaterialTheme.typography.bodyMedium) }
                 if (state.eligibility == CompanionEligibility.Available) {
                     item { OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.companion_optional_name)) }, singleLine = true) }
                     item { TextButton(onClick = { advanced = !advanced }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(if (advanced) R.string.companion_less_settings else R.string.companion_more_settings)) } }
@@ -363,7 +361,21 @@ internal fun CompanionCreateContent(
                 }
             }
             LazyColumn { items(matches, key = { it.id.orEmpty() }) { character ->
-                ListItem(headlineContent = { Text(character.displayName) }, supportingContent = { character.description?.take(90)?.let { Text(it, maxLines = 2) } },
+                ListItem(
+                    leadingContent = {
+                        // 选择抽屉与角色卡一致：优先立绘，回退头像；都没有时用首字兜底。
+                        val image = resolveAvatarUrl(character.avatarUrl)
+                        if (image != null) AsyncImage(image, contentDescription = null,
+                            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+                        else Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                Text(character.displayName.take(1), style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+                    },
+                    headlineContent = { Text(character.displayName) },
+                    supportingContent = { character.description?.take(90)?.let { Text(it, maxLines = 2) } },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(enabled = !state.busy) { character.id?.let(onSelect); picker = false })
             } }
         }

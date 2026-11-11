@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="companion_create_missing">请先选择一个有效角色，再创建单会话角色。</string>
-    <string name="companion_create_reserved">这个角色已绑定过固定聊天窗口。请恢复原会话，或选择另一个角色。</string>
     <string name="companion_create_existing">这个角色已有固定聊天窗口，请打开已有会话。</string>
     <string name="companion_create_used">这个角色已有会话。请通过会话迁入建立独立副本，或选择尚未使用的角色。</string>
     <string name="companion_create_changed">角色资料已发生变化，请重新选择角色后继续。</string>

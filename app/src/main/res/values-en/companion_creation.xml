@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="companion_create_missing">Choose a valid character before creating an Agent character.</string>
-    <string name="companion_create_reserved">This character was bound to an Agent conversation. Restore that conversation or choose another character.</string>
     <string name="companion_create_existing">This character already has an Agent conversation. Open the existing conversation.</string>
     <string name="companion_create_used">This character has existing conversations. Transfer one to an independent copy, or choose an unused character.</string>
     <string name="companion_create_changed">The character data changed. Select the character again to continue.</string>

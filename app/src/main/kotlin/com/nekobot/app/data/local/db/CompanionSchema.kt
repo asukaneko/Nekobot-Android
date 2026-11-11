@@ -106,8 +106,27 @@ internal object CompanionSchema {
             WHEN OLD.character_id IS NOT NEW.character_id OR OLD.long_conversation_enabled != NEW.long_conversation_enabled
               OR OLD.inherit_character != NEW.inherit_character OR OLD.session_mode IS NOT NEW.session_mode
             BEGIN UPDATE companion_scopes SET revision = revision + 1 WHERE sessionId = NEW.id; END""")
+        /**
+         * 删除单角色窗口等于清空它的记忆与历史、重新开始：除作用域内的记忆外，
+         * 也要清掉按作用域/会话保存的内部进度（操作回执、待核对项、请求辅助资料）。
+         * 这些表不都有外键级联，缺一步就会留下只属于已删除窗口的残渣。
+         */
+        fun tableExists(table: String) =
+            db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='$table'").use { it.moveToFirst() }
+        val scopePurge = buildString {
+            if (tableExists("companion_context_materials")) append("DELETE FROM companion_context_materials WHERE scopeId IN (SELECT id FROM companion_scopes WHERE sessionId = OLD.id); ")
+            if (tableExists("companion_applied_ops")) append("DELETE FROM companion_applied_ops WHERE scopeId IN (SELECT id FROM companion_scopes WHERE sessionId = OLD.id); ")
+            if (tableExists("companion_locked_reviews")) append("DELETE FROM companion_locked_reviews WHERE sessionId = OLD.id OR scopeId IN (SELECT id FROM companion_scopes WHERE sessionId = OLD.id); ")
+        }
+        if (scopePurge.isNotBlank()) {
+            // 旧触发器的语句不包含这些清理；补装后老库也会在下次打开时升级。
+            val updated = db.query("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='companion_session_deleted'")
+                .use { it.moveToFirst() && it.getString(0).contains("companion_locked_reviews") }
+            if (!updated) db.execSQL("DROP TRIGGER IF EXISTS companion_session_deleted")
+        }
         db.execSQL("""CREATE TRIGGER IF NOT EXISTS companion_session_deleted AFTER DELETE ON local_sessions
             BEGIN
+              $scopePurge
               ${if (hasSearch) "DELETE FROM companion_vectors WHERE scopeId IN (SELECT id FROM companion_scopes WHERE sessionId = OLD.id); DELETE FROM companion_clarifications WHERE scopeId IN (SELECT id FROM companion_scopes WHERE sessionId = OLD.id);" else ""}
               DELETE FROM companion_sources WHERE memoryId IN (SELECT id FROM companion_memories WHERE scopeId IN (SELECT id FROM companion_scopes WHERE sessionId = OLD.id));
               DELETE FROM companion_memories WHERE scopeId IN (SELECT id FROM companion_scopes WHERE sessionId = OLD.id);

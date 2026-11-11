@@ -457,6 +457,7 @@ fun SessionsScreen(
     val emptyHintText = stringResource(R.string.sessions_empty_hint)
     val deleteTitle = stringResource(R.string.sessions_delete_title)
     val deleteConfirmFmt = stringResource(R.string.sessions_delete_confirm)
+    val deleteCompanionNotice = stringResource(R.string.sessions_delete_companion_notice)
     val deleteText = stringResource(R.string.common_delete)
     val dashboardTitle = stringResource(R.string.stats_dashboard_title)
     val dashboardRefreshDesc = stringResource(R.string.stats_dashboard_refresh)
@@ -1052,10 +1053,18 @@ fun SessionsScreen(
     BackHandler(enabled = selectionMode) { exitSelection() }
 
     if (showBatchDeleteConfirm) {
+        val summaries by viewModel.sessionSummaries.collectAsStateWithLifecycle()
+        // 批量删除里只要含单角色窗口，就必须说明删除等于清空该窗口的记忆与历史。
+        val deletesCompanionWindow = remember(summaries, selectedSessionIds) {
+            summaries.deletesCompanionWindow(selectedSessionIds)
+        }
         NekoDialog(
             onDismiss = { showBatchDeleteConfirm = false },
             title = deleteTitle,
-            message = batchDeleteConfirmFmt.format(selectedSessionIds.size),
+            message = buildString {
+                append(batchDeleteConfirmFmt.format(selectedSessionIds.size))
+                if (deletesCompanionWindow) append("\n\n").append(deleteCompanionNotice)
+            },
             confirmText = deleteText,
             destructive = true,
             onConfirm = {
@@ -1129,7 +1138,10 @@ fun SessionsScreen(
         NekoDialog(
             onDismiss = { deleting = null },
             title = deleteTitle,
-            message = deleteConfirmFmt.format(row.displayName),
+            message = buildString {
+                append(deleteConfirmFmt.format(row.displayName))
+                if (row.modeLabel == SessionModeLabel.COMPANION) append("\n\n").append(deleteCompanionNotice)
+            },
             confirmText = deleteText,
             destructive = true,
             onConfirm = {

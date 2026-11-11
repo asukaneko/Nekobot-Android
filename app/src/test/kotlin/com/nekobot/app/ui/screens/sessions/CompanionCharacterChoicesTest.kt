@@ -14,13 +14,12 @@ class CompanionCharacterChoicesTest {
         LocalSessionEntity(id, id, characterId = characterId, sessionMode = mode, createdAt = "now", updatedAt = "now")
 
     @Test fun mixedLibraryOnlyOffersActionsThatCanProceed() = runBlocking {
-        val characters = listOf("new", "main", "convert", "group", "reserved", "missing").map { character(it) }
+        val characters = listOf("new", "main", "convert", "group", "missing").map { character(it) }
         val states = mapOf(
             "new" to CompanionEligibility.Available,
             "main" to CompanionEligibility.Existing("main-window"),
             "convert" to CompanionEligibility.Used(listOf(session(characterId = "convert"))),
             "group" to CompanionEligibility.Used(emptyList()),
-            "reserved" to CompanionEligibility.ReservedCharacter,
             "missing" to CompanionEligibility.MissingCharacter
         )
 
@@ -35,8 +34,8 @@ class CompanionCharacterChoicesTest {
     }
 
     @Test fun entirelyUnavailableLibraryProducesEmptyPicker() = runBlocking {
-        val choices = loadCompanionCharacterChoices(listOf(character("group"), character("reserved"))) {
-            if (it == "group") CompanionEligibility.Used(emptyList()) else CompanionEligibility.ReservedCharacter
+        val choices = loadCompanionCharacterChoices(listOf(character("group"), character("gone"))) {
+            if (it == "group") CompanionEligibility.Used(emptyList()) else CompanionEligibility.MissingCharacter
         }
         assertTrue(choices.isEmpty())
     }
@@ -57,7 +56,7 @@ class CompanionCharacterChoicesTest {
         val second = character("b")
         val choices = loadCompanionCharacterChoices(listOf(first, character("a", "重复记录"), second)) {
             lookedUp += it
-            if (it == "a") CompanionEligibility.ReservedCharacter else CompanionEligibility.Available
+            if (it == "a") CompanionEligibility.MissingCharacter else CompanionEligibility.Available
         }
         assertEquals(listOf("a", "b"), lookedUp)
         assertEquals(listOf(second), choices.map { it.character })
@@ -81,9 +80,9 @@ class CompanionCharacterChoicesTest {
         assertTrue(choices.isEmpty())
     }
 
-    @Test fun recheckRemovesRoleWhoseOwnershipBecameReserved() = runBlocking {
+    @Test fun recheckRemovesRoleThatNoLongerExists() = runBlocking {
         val available = loadCompanionCharacterChoices(listOf(character())) { CompanionEligibility.Available }
-        assertTrue(loadCompanionCharacterChoices(available.map { it.character }) { CompanionEligibility.ReservedCharacter }.isEmpty())
+        assertTrue(loadCompanionCharacterChoices(available.map { it.character }) { CompanionEligibility.MissingCharacter }.isEmpty())
     }
 
     @Test fun eligibilityFailureIsNotMisreportedAsAnEmptyLibrary() = runBlocking {

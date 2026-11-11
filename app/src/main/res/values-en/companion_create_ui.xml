@@ -18,7 +18,6 @@
   <string name="companion_available">Unused and ready to create</string>
   <string name="companion_has_main">Already has an Agent conversation</string>
   <string name="companion_has_sessions">Has conversations; create an independent copy</string>
-  <string name="companion_reserved">Main conversation ownership is reserved</string>
   <string name="companion_select_hint">Usage will be checked after selection</string>
   <string name="companion_change">Change</string>
   <string name="companion_group_unsupported">This character is used in a group or an Agent conversation without character inheritance. This source cannot be transferred yet. Choose another character.</string>

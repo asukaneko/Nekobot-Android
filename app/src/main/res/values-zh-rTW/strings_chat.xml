@@ -23,6 +23,7 @@
     <string name="sessions_rename_title">重命名會話</string>
     <string name="sessions_delete_title">刪除會話</string>
     <string name="sessions_delete_confirm">確定刪除「%1$s」嗎？此操作不可撤銷。</string>
+    <string name="sessions_delete_companion_notice">這是該角色的固定聊天視窗：刪除後這個會話的長期記憶與歷史一併清除，角色重新開始，可以再建固定視窗。</string>
     <string name="sessions_recent">最近會話</string>
     <string name="sessions_results_count">%1$d 個結果</string>
     <string name="sessions_search_hint">搜尋會話、角色…</string>

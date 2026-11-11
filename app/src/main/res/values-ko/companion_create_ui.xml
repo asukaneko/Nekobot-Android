@@ -18,7 +18,6 @@
   <string name="companion_available">사용되지 않아 생성할 수 있습니다</string>
   <string name="companion_has_main">Agent 주 대화가 이미 있습니다</string>
   <string name="companion_has_sessions">기존 대화의 독립된 사본을 만들 수 있습니다</string>
-  <string name="companion_reserved">주 대화 연결이 유지되어 있습니다</string>
   <string name="companion_select_hint">선택하면 캐릭터 사용 상태를 확인합니다</string>
   <string name="companion_change">변경</string>
   <string name="companion_group_unsupported">그룹 대화 또는 캐릭터를 상속하지 않는 Agent 대화에서 사용된 캐릭터입니다. 아직 가져오기를 지원하지 않으므로 다른 캐릭터를 선택하세요.</string>

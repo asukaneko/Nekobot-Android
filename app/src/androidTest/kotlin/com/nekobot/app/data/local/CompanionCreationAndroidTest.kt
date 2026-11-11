@@ -12,26 +12,27 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class CompanionCreationAndroidTest {
-    @Test fun ordinarySessionChoicesExcludeOwnedReservedAndLegacyCompanionCharacters() = runBlocking {
+    @Test fun ordinarySessionChoicesExcludeOwnedAndLegacyCompanionCharacters() = runBlocking {
         val db = database()
         try {
             FusedCompanionSchema.installTriggers(db.openHelper.writableDatabase)
-            val ids = listOf("fresh", "ordinary", "owned", "reserved", "legacy")
+            val ids = listOf("fresh", "ordinary", "owned", "deleted", "legacy")
             ids.forEach { id ->
                 db.characterDao().upsert(LocalCharacterEntity(id, "同名角色", createdAt = "now", updatedAt = "now"))
             }
             db.sessionDao().upsert(session("ordinary-chat").copy(characterId = "ordinary"))
-            for (id in listOf("owned", "reserved", "legacy")) {
+            for (id in listOf("owned", "deleted", "legacy")) {
                 db.sessionDao().upsert(session("$id-chat", "agent").copy(
                     characterId = id, companionMode = true, inheritCharacter = true, longConversationEnabled = true
                 ))
             }
-            db.sessionDao().deleteById("reserved-chat")
+            db.sessionDao().deleteById("deleted-chat")
             db.openHelper.writableDatabase.execSQL("DELETE FROM companion_owners WHERE characterId='legacy'")
 
             val repo = LocalRepository(db, appContext = ApplicationProvider.getApplicationContext())
             assertEquals(ids.toSet(), repo.listCharacters().map { it.id }.toSet())
-            assertEquals(setOf("fresh", "ordinary"), repo.listCharactersForSessionCreation().map { it.id }.toSet())
+            // 删除窗口即释放归属：该角色回到可选状态，不会被永久排除在新建入口之外。
+            assertEquals(setOf("fresh", "ordinary", "deleted"), repo.listCharactersForSessionCreation().map { it.id }.toSet())
         } finally { db.close() }
     }
 
@@ -50,8 +51,8 @@ class CompanionCreationAndroidTest {
             assertEquals("main", repo.companionSessionForCharacter("c")) // 兼容旧资料的归属标记缺失。
             db.sessionDao().upsert(requireNotNull(db.sessionDao().getById("main")))
             db.sessionDao().deleteById("main")
-            try { repo.companionSessionForCharacter("c"); fail("保留归属不能开放新建入口") }
-            catch (expected: IllegalArgumentException) { assertTrue(expected.message.orEmpty().contains("主窗口")) }
+            // 删除窗口后归属悬空：资料页必须仍能打开，按未绑定处理而不是抛错。
+            assertNull(repo.companionSessionForCharacter("c"))
         } finally { db.close() }
     }
 
@@ -93,7 +94,7 @@ class CompanionCreationAndroidTest {
         } finally { db.close() }
     }
 
-    @Test fun ownerRemainsReservedAfterSessionDeletion() = runBlocking {
+    @Test fun deletingWindowReleasesOwnershipSoTheCharacterCanStartOver() = runBlocking {
         val db = database()
         try {
             FusedCompanionSchema.installTriggers(db.openHelper.writableDatabase)
@@ -101,7 +102,13 @@ class CompanionCreationAndroidTest {
             db.sessionDao().upsert(session("main", "agent").copy(companionMode = true, inheritCharacter = true, longConversationEnabled = true))
             assertEquals(CompanionEligibility.Existing("main"), CompanionCreation(db).eligibility("c"))
             db.sessionDao().deleteById("main")
-            assertEquals(CompanionEligibility.ReservedCharacter, CompanionCreation(db).eligibility("c"))
+            // 归属随窗口一起释放：角色回到普通角色卡，可重新建立窗口。
+            assertNull(db.companionMemoryDao().owner("c"))
+            assertEquals(CompanionEligibility.Available, CompanionCreation(db).eligibility("c"))
+            val repo = LocalRepository(db, appContext = ApplicationProvider.getApplicationContext())
+            val again = repo.createSession(com.nekobot.app.data.model.CreateSessionRequest(
+                characterId = "c", sessionMode = "agent", companionMode = true))
+            assertEquals(CompanionEligibility.Existing(requireNotNull(again.id)), CompanionCreation(db).eligibility("c"))
         } finally { db.close() }
     }
 

@@ -23,6 +23,7 @@
     <string name="sessions_rename_title">チャット名を変更</string>
     <string name="sessions_delete_title">チャットを削除</string>
     <string name="sessions_delete_confirm">\"%1$s\" を削除してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="sessions_delete_companion_notice">これはこのキャラクターの固定チャットウィンドウです。削除すると長期記憶と履歴も消え、キャラクターは最初からやり直せます。</string>
     <string name="sessions_recent">最近のチャット</string>
     <string name="sessions_results_count">%1$d 件</string>
     <string name="sessions_search_hint">チャット、キャラクターを検索…</string>

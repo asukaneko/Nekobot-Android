@@ -56,6 +56,10 @@ internal object FusedCompanionSchema {
               (characterId = NEW.characterId AND sessionId != NEW.sessionId) OR
               (sessionId = NEW.sessionId AND characterId != NEW.characterId))
             BEGIN SELECT RAISE(ABORT, '导入的长久陪伴归属与本机已有窗口冲突'); END""")
+        // 归属只对仍存在的窗口有意义：窗口被删除（含导入/恢复流程）后必须一并释放，
+        // 否则角色页会读到悬空归属而打不开，该角色也无法再建窗口。
+        db.execSQL("""CREATE TRIGGER IF NOT EXISTS fused_session_owner_deleted AFTER DELETE ON local_sessions
+            BEGIN DELETE FROM companion_owners WHERE sessionId = OLD.id; END""")
         db.execSQL("""CREATE TRIGGER IF NOT EXISTS fused_material_scope_deleted AFTER DELETE ON companion_scopes
             BEGIN DELETE FROM companion_context_materials WHERE scopeId = OLD.id; END""")
     }

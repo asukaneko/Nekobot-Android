@@ -23,6 +23,7 @@
     <string name="sessions_rename_title">Rename chat</string>
     <string name="sessions_delete_title">Delete chat</string>
     <string name="sessions_delete_confirm">Are you sure you want to delete \"%1$s\"? This cannot be undone.</string>
+    <string name="sessions_delete_companion_notice">This is the fixed chat window for this character. Deleting it clears this chat memories and history; the character starts over and can open a new window.</string>
     <string name="sessions_recent">Recent chats</string>
     <string name="sessions_results_count">%1$d results</string>
     <string name="sessions_search_hint">Search chats, characters…</string>

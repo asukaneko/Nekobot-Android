@@ -1058,6 +1058,7 @@ fun SessionDetailScreen(
     val lastMessageLabel = stringResource(R.string.sessions_detail_last_message)
     val deleteDialogTitle = stringResource(R.string.sessions_detail_delete_title)
     val deleteConfirmFmt = stringResource(R.string.sessions_detail_delete_confirm)
+    val deleteCompanionNotice = stringResource(R.string.sessions_delete_companion_notice)
     val copyDesc = stringResource(R.string.common_copy)
     val addDesc = stringResource(R.string.common_add)
     val yesText = stringResource(R.string.common_yes)
@@ -2020,7 +2021,10 @@ fun SessionDetailScreen(
         NekoDialog(
             onDismiss = { showDeleteDialog = false },
             title = deleteDialogTitle,
-            message = deleteConfirmFmt.format(session?.displayName ?: ""),
+            message = buildString {
+                append(deleteConfirmFmt.format(session?.displayName ?: ""))
+                if (singleSessionRole) append("\n\n").append(deleteCompanionNotice)
+            },
             confirmText = deleteDesc,
             onConfirm = {
                 showDeleteDialog = false

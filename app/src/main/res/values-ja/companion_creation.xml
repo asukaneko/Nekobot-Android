@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="companion_create_missing">有効なキャラクターを選択してから Agent キャラクターを作成してください。</string>
-    <string name="companion_create_reserved">このキャラクターには Agent 会話との関連付けが残っています。元の会話を復元するか、別のキャラクターを選択してください。</string>
     <string name="companion_create_existing">このキャラクターには Agent のメイン会話があります。既存の会話を開いてください。</string>
     <string name="companion_create_used">既存の会話があります。独立したコピーへ移行するか、未使用のキャラクターを選択してください。</string>
     <string name="companion_create_changed">キャラクターデータが変更されました。選択し直してください。</string>

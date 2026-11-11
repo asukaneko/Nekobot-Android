@@ -18,7 +18,6 @@
   <string name="companion_available">未使用・作成できます</string>
   <string name="companion_has_main">Agent のメイン会話があります</string>
   <string name="companion_has_sessions">既存の会話から独立したコピーを作成できます</string>
-  <string name="companion_reserved">メイン会話との関連付けが残っています</string>
   <string name="companion_select_hint">選択後に使用状況を確認します</string>
   <string name="companion_change">変更</string>
   <string name="companion_group_unsupported">グループ会話、またはキャラクターを継承しない Agent 会話で使われています。この種類はまだ移行できません。別のキャラクターを選択してください。</string>

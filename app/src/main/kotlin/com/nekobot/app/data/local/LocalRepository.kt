@@ -1753,18 +1753,18 @@ class LocalRepository(
         db.withTransaction { CompanionCreation(db).eligibility(characterId) }
     }
 
-    /** 资料页使用真实归属；缺失或损坏的主窗口不能回退为普通角色的新建入口。 */
+    /**
+     * 资料页使用真实归属。
+     *
+     * 归属行指向的窗口已被删除时会先释放悬空归属，再按未绑定返回：
+     * 角色卡必须始终能打开，删除窗口只代表「不再有固定窗口」，不是资料损坏。
+     */
     suspend fun companionSessionForCharacter(characterId: String): String? = withContext(Dispatchers.IO) {
         db.withTransaction {
-            val owner = db.companionMemoryDao().owner(characterId)
-            if (owner == null) {
-                val actual = sessionDao.listForCompanionEligibility(characterId).filter { it.companionMode }
-                require(actual.size <= 1) { "发现多个单会话主窗口，请先核对资料归属。" }
-                return@withTransaction actual.singleOrNull()?.also { require(it.characterId == characterId) }?.id
-            }
-            val bound = sessionDao.getById(owner.sessionId)
-            require(bound?.companionMode == true && bound.characterId == characterId) { "单会话角色的主窗口暂不可读取，请检查资料库或备份。" }
-            bound.id
+            CompanionCreation(db).boundSession(characterId)?.let { return@withTransaction it.id }
+            val actual = sessionDao.listForCompanionEligibility(characterId).filter { it.companionMode }
+            require(actual.size <= 1) { "发现多个单会话主窗口，请先核对资料归属。" }
+            actual.singleOrNull()?.also { require(it.characterId == characterId) }?.id
         }
     }
 
@@ -2005,10 +2005,11 @@ class LocalRepository(
             if (req.companionMode) {
                 CompanionCreation(db).requireNew(req.characterId)
             } else {
-                // 普通角色与群聊入口同样不能绕过 Agent 角色的独占归属。
+                // 普通角色与群聊入口同样不能绕过 Agent 角色的独占归属；
+                // 归属已悬空（窗口被删除）时 boundSession 会先释放，不再挡住新建。
                 (groupCharacterIds + listOfNotNull(req.characterId)).distinct().forEach { characterId ->
-                    db.companionMemoryDao().owner(characterId)?.let {
-                        throw CompanionCreationException(CompanionCreation(db).eligibility(characterId))
+                    CompanionCreation(db).boundSession(characterId)?.let { bound ->
+                        throw CompanionCreationException(CompanionEligibility.Existing(bound.id))
                     }
                 }
             }
@@ -2634,7 +2635,12 @@ class LocalRepository(
         experienceBackfillLocks.getOrPut(id) { Mutex() }.withLock {
             historyCopyMutationLock.withLock {
                 invalidateHistoryCopy(id)
-                sessionDao.deleteById(id)
+                db.withTransaction {
+                    sessionDao.deleteById(id)
+                    // 归属行只对仍然存在的窗口有意义：窗口删除后必须释放，
+                    // 否则角色卡会读到悬空归属而打不开，该角色也无法再建窗口。
+                    db.companionMemoryDao().eraseOwnerBySession(id)
+                }
             }
         }
         // 会话级设置（自动技能沉淀提示 / 审查计数）随会话一起清理，避免残留无用键。
@@ -9984,7 +9990,11 @@ class LocalRepository(
 
     /** 普通角色和群聊只提供未被单会话窗口独占的角色。 */
     suspend fun listCharactersForSessionCreation(): List<CharacterPreset> = withContext(Dispatchers.IO) {
-        characterDao.listForSessionCreation().map { it.toCharacterPreset() }
+        // 旧版本删除窗口后可能留下悬空归属；这里先释放，角色才不会从新建入口里永久消失。
+        db.withTransaction {
+            CompanionCreation(db).releaseDanglingOwnership()
+            characterDao.listForSessionCreation().map { it.toCharacterPreset() }
+        }
     }
 
     suspend fun countHighAffectionCharacters(threshold: Int = 90): Int =

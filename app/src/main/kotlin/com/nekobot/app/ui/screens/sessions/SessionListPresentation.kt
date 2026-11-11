@@ -134,6 +134,17 @@ internal fun Session.isAgentSession(): Boolean =
 internal fun Session.isAgentCharacterSession(): Boolean =
     isAgentSession() && companionMode == true
 
+/**
+ * 选中的会话里是否包含单角色窗口。
+ *
+ * 删除单角色窗口等于清空它的记忆与历史、重新开始，删除确认必须写明这一点；
+ * 旧版长久陪伴（长对话 + 继承角色）同样带单角色记忆，一并算作窗口。
+ */
+internal fun List<Session>.deletesCompanionWindow(ids: Set<String>): Boolean = any { session ->
+    session.id in ids && (session.companionMode == true ||
+        (session.longConversationEnabled == true && session.inheritCharacter == true))
+}
+
 internal fun Session.isCharacterSession(): Boolean =
     sessionMode.isNullOrBlank() || sessionMode.equals("character", ignoreCase = true)
 

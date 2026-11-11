@@ -195,4 +195,18 @@ class SessionListPresentationTest {
         assertTrue(rows[1].tags.isEmpty())
         assertTrue(rows[2].tags.isEmpty())
     }
+
+    @Test
+    fun batchSelectionWarnsOnlyWhenItContainsACompanionWindow() {
+        val companion = Session(id = "companion", characterId = "role", sessionMode = "agent", companionMode = true)
+        val legacy = Session(id = "legacy", characterId = "role", sessionMode = "agent",
+            inheritCharacter = true, longConversationEnabled = true)
+        val ordinary = Session(id = "ordinary", characterId = "role", sessionMode = "character")
+        val sessions = listOf(companion, legacy, ordinary)
+
+        assertTrue(sessions.deletesCompanionWindow(setOf("companion", "ordinary")))
+        assertTrue(sessions.deletesCompanionWindow(setOf("legacy")))
+        assertTrue(!sessions.deletesCompanionWindow(setOf("ordinary")))
+        assertTrue(!sessions.deletesCompanionWindow(emptySet()))
+    }
 }

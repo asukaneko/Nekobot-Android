@@ -165,6 +165,12 @@ interface CompanionMemoryDao {
     suspend fun eraseContextMaterials(scopeId: String)
     @Query("SELECT * FROM companion_owners WHERE characterId = :characterId")
     suspend fun owner(characterId: String): CompanionOwnerEntity?
+    @Query("SELECT * FROM companion_owners")
+    suspend fun owners(): List<CompanionOwnerEntity>
+    @Query("DELETE FROM companion_owners WHERE characterId = :characterId")
+    suspend fun eraseOwner(characterId: String)
+    @Query("DELETE FROM companion_owners WHERE sessionId = :sessionId")
+    suspend fun eraseOwnerBySession(sessionId: String)
     @Query("SELECT * FROM companion_vectors WHERE scopeId = :scopeId AND modelKey = :modelKey")
     suspend fun vectors(scopeId: String, modelKey: String): List<CompanionVectorEntity>
     @Upsert suspend fun saveVectors(rows: List<CompanionVectorEntity>)
@@ -245,7 +251,7 @@ interface CompanionMemoryDao {
     suspend fun deleteScopes(sessionId: String)
 }
 
-/** Ownership survives deleting a window; re-entry requires an explicit external conversion. */
+/** 归属随窗口存续：窗口删除时一并释放，角色可重新建立唯一窗口。 */
 @Entity(tableName = "companion_owners", indices = [Index(value = ["sessionId"], unique = true)])
 data class CompanionOwnerEntity(@PrimaryKey val characterId: String, val sessionId: String)
 

@@ -23,6 +23,7 @@
     <string name="sessions_rename_title">대화 이름 변경</string>
     <string name="sessions_delete_title">대화 삭제</string>
     <string name="sessions_delete_confirm">\"%1$s\"을(를) 삭제할까요? 되돌릴 수 없어요.</string>
+    <string name="sessions_delete_companion_notice">이 캐릭터의 고정 채팅 창입니다. 삭제하면 장기 기억과 기록도 함께 지워지고 캐릭터는 처음부터 다시 시작할 수 있습니다.</string>
     <string name="sessions_recent">최근 대화</string>
     <string name="sessions_results_count">결과 %1$d건</string>
     <string name="sessions_search_hint">대화, 캐릭터 검색…</string>
