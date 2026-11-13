@@ -880,13 +880,13 @@ fun ChatScreen(
         val lastIsUser = renderMessages.lastOrNull()?.isUser == true
         return lastIsUser || !listState.canScrollForward
     }
-    // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用动画滚动。
+    // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用真实滚动（逐帧推进到底部）。
     // 向上分页会在头部插入更早历史，此时首条消息与列表长度同时变化——
     // 这种"前插"必须保持用户当前位置（LazyColumn 依稳定 key 会自然锚定），不能滚到底部。
     //
     // 阅读位置归用户所有：只有「用户原本就贴在底部」或「这次新增的是自己发出的消息」才跟到最新。
     // 上滑读历史期间有新消息（排队消息、工具卡片、后台回复）不拉回，回复结束也不回底部，
-    // 需要回到最新时用户自己滑或点「跳到最新」。
+    // 需要回到最新时用户自己滑或点右下角的滚动到底部按钮。
     LaunchedEffect(visibleMessages.size) {
         if (visibleMessages.isNotEmpty()) {
             val currentFirstId = renderMessages.firstOrNull()?.id
@@ -900,11 +900,12 @@ fun ChatScreen(
             renderedMessageCount = visibleMessages.size
             if (prepended || unchangedCompanionHistory) return@LaunchedEffect
             if (initialLoad) {
-                // 首次加载：直接跳到底部，无动画
-                listState.scrollToItem(renderMessages.lastIndex)
+                // 首次加载：直接落到真正的底部（最后一条比屏幕高时也要停在它的末尾，而不是开头）
+                listState.jumpToBottom(renderMessages.lastIndex)
                 initialLoad = false
             } else if (shouldFollowLatest()) {
-                listState.animateScrollToItem(renderMessages.lastIndex)
+                // 真实滚动：逐帧推进到底部，消息在屏幕上滚过去而不是瞬间跳到末尾
+                listState.smoothScrollToBottom()
             }
         } else {
             firstRenderedMessageId = null
@@ -1278,7 +1279,8 @@ fun ChatScreen(
                     },
                     onScrollToBottom = {
                         if (visibleMessages.isNotEmpty()) {
-                            scope.launch { listState.animateScrollToItem(renderMessages.lastIndex) }
+                            // 与右下角悬浮按钮同一套真实滚动：逐帧推进，不直接跳到末尾
+                            scope.launch { listState.smoothScrollToBottom() }
                         }
                     },
                     onShowMyMessages = { showMyMessages = true },
@@ -1719,6 +1721,17 @@ fun ChatScreen(
 
             // 错误提示统一走系统 Toast（屏幕下方横条），不再在聊天页底部叠一层错误卡片
             ErrorToast(message = error, onShown = { viewModel.clearError() })
+
+            // 右下角「滚动到底部」悬浮按钮：列表离开底部时才出现，点击后真实滚动（逐帧推进）到底部
+            if (sessionStateReady && !waitingForInitialData && visibleMessages.isNotEmpty()) {
+                ChatScrollToBottomButton(
+                    listState = listState,
+                    onClick = { scope.launch { listState.smoothScrollToBottom() } },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 12.dp)
+                )
+            }
 
             // Hook 触发通知：顶部居中叠加成就式弹窗（磨砂玻璃 + 琥珀描边）
             if (hookNotifications.isNotEmpty()) {
