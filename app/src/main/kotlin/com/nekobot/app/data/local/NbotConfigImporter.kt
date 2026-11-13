@@ -264,7 +264,8 @@ object NbotConfigImporter {
      * - 明文 bundle：直接 JSON.parse
      */
     private fun parseBundle(cfgBytes: ByteArray, password: String): JsonObject? {
-        val raw = String(cfgBytes, Charsets.UTF_8).trim()
+        // 配置包可能由 Windows 服务端以本地编码写出，按文件内容识别编码后再解析。
+        val raw = WebDavTextDecoder.decode(cfgBytes).trim()
         val bundle = JsonParser.parseString(raw).takeIf { it.isJsonObject }?.asJsonObject ?: return null
         val encrypted = bundle.get("encrypted")?.asBoolean ?: false
         if (!encrypted) {
@@ -314,7 +315,7 @@ object NbotConfigImporter {
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(encryptionKey, "AES"), IvParameterSpec(iv))
             val plaintext = cipher.doFinal(ciphertext)
-            String(plaintext, Charsets.UTF_8)
+            WebDavTextDecoder.decode(plaintext)
         } catch (e: Exception) {
             null
         }

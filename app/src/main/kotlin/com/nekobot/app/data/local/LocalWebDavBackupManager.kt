@@ -47,6 +47,7 @@ import java.io.OutputStreamWriter
 import java.io.PushbackReader
 import java.io.InputStreamReader
 import java.io.RandomAccessFile
+import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.net.URLEncoder
 import java.nio.ByteBuffer
@@ -58,6 +59,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -4802,6 +4804,7 @@ internal object LocalWebDavArchiveCodec {
     private const val FERNET_VERSION: Byte = 0x80.toByte()
     private const val BASE64_CHUNK_CHARS = 8192
     private const val MAX_HEADER_VALUE_CHARS = 16 * 1024
+    private const val ENVELOPE_ENCODING_SAMPLE_BYTES = 64 * 1024
     private val gson = Gson()
     private val random = SecureRandom()
 
@@ -4832,8 +4835,12 @@ internal object LocalWebDavArchiveCodec {
 
     fun decrypt(payload: ByteArray, password: String): ByteArray {
         require(password.isNotBlank()) { "解密密码不能为空" }
+        // 先按文件头判断格式：ZIP/GZIP 等二进制载荷不能当作文本解析。
+        require(WebDavPayloadInspector.detect(payload) == WebDavPayloadFormat.JSON) {
+            "备份文件格式无法识别：不是加密的 NekoBot 配置包"
+        }
         val outer = runCatching {
-            JsonParser.parseString(String(payload, Charsets.UTF_8)).asJsonObject
+            JsonParser.parseString(WebDavTextDecoder.decode(payload)).asJsonObject
         }.getOrElse { throw IllegalArgumentException("远程备份不是有效 JSON", it) }
         require(outer.get("type")?.asString == "nbot_config_bundle") {
             "不是有效的 NekoBot 配置包"
@@ -4911,8 +4918,11 @@ internal object LocalWebDavArchiveCodec {
     }
 
     /**
-     * 逐块解析外层 Base64、校验 Fernet HMAC，再将解密 ZIP 写入文件。
-     * 这样同步大备份时堆内存只保留固定大小缓冲区。
+     * 按文件头识别载荷格式后写入明文归档：
+     * - 加密 JSON（config.nbotcfg）：逐块解析外层 Base64、校验 Fernet HMAC，再写入 ZIP。
+     * - ZIP / GZIP：按二进制直接复制或解压，兼容旧版本或第三方工具生成的备份。
+     *
+     * 这样同步大备份时堆内存只保留固定大小缓冲区，也不会把二进制内容按 UTF-8 文本打开。
      */
     fun decryptFile(
         payload: File,
@@ -4920,6 +4930,21 @@ internal object LocalWebDavArchiveCodec {
         output: File,
         maxOutputBytes: Long = 1024L * 1024L * 1024L
     ) {
+        when (WebDavPayloadInspector.detect(payload)) {
+            WebDavPayloadFormat.ZIP -> {
+                require(payload.length() <= maxOutputBytes) { "备份包超过大小限制" }
+                copyPayload(payload, output)
+                return
+            }
+            WebDavPayloadFormat.GZIP -> {
+                gunzipPayload(payload, output, maxOutputBytes)
+                return
+            }
+            WebDavPayloadFormat.JSON -> Unit
+            WebDavPayloadFormat.UNKNOWN -> throw IllegalArgumentException(
+                "备份文件格式无法识别：既不是加密 JSON，也不是 ZIP/GZIP 归档"
+            )
+        }
         require(password.isNotBlank()) { "解密密码不能为空" }
         val tokenFile = File.createTempFile("webdav-fernet-", ".token", output.parentFile)
         try {
@@ -4946,10 +4971,38 @@ internal object LocalWebDavArchiveCodec {
         }
     }
 
+    /** 原样复制已有 ZIP 归档，不经过任何文本解码。 */
+    private fun copyPayload(payload: File, output: File) {
+        try {
+            BufferedInputStream(FileInputStream(payload)).use { input ->
+                BufferedOutputStream(FileOutputStream(output)).use { out -> input.copyTo(out) }
+            }
+        } catch (error: Exception) {
+            output.delete()
+            throw IllegalArgumentException("备份文件读取失败", error)
+        }
+    }
+
+    /** 解压 GZIP 归档，并复用统一的解压后大小上限。 */
+    private fun gunzipPayload(payload: File, output: File, maxOutputBytes: Long) {
+        try {
+            GZIPInputStream(BufferedInputStream(FileInputStream(payload))).use { input ->
+                SizeLimitedOutputStream(
+                    BufferedOutputStream(FileOutputStream(output)),
+                    maxOutputBytes
+                ).use { out -> input.copyTo(out) }
+            }
+        } catch (error: Exception) {
+            output.delete()
+            throw IllegalArgumentException("备份文件解压失败", error)
+        }
+    }
+
     private fun decodeEnvelope(payload: File, tokenFile: File): JsonObject {
         val metadata = JsonObject()
         var foundPayload = false
-        PushbackReader(InputStreamReader(FileInputStream(payload), StandardCharsets.UTF_8), 2).use { reader ->
+        val charset = detectEnvelopeCharset(payload)
+        PushbackReader(InputStreamReader(FileInputStream(payload), charset), 2).use { reader ->
             require(nextNonWhitespace(reader) == '{'.code) { "远程备份不是有效 JSON" }
             while (true) {
                 val key = readJsonString(reader, MAX_HEADER_VALUE_CHARS)
@@ -4975,13 +5028,50 @@ internal object LocalWebDavArchiveCodec {
         return metadata
     }
 
+    /**
+     * 用文件头的元数据判断 JSON 编码。
+     * 只取 payload 之前的字节，避免把 Base64 正文误当成文本样本。
+     */
+    private fun detectEnvelopeCharset(payload: File): Charset {
+        val sample = ByteArray(ENVELOPE_ENCODING_SAMPLE_BYTES)
+        var size = 0
+        BufferedInputStream(FileInputStream(payload)).use { input ->
+            while (size < sample.size) {
+                val read = input.read(sample, size, sample.size - size)
+                if (read < 0) break
+                if (read == 0) continue
+                size += read
+            }
+        }
+        return WebDavTextDecoder.detectCharset(trimAtPayloadKey(sample, size))
+    }
+
+    private fun trimAtPayloadKey(bytes: ByteArray, size: Int): ByteArray {
+        val marker = "\"payload\"".toByteArray(StandardCharsets.US_ASCII)
+        val limit = size - marker.size
+        var index = 0
+        while (index <= limit) {
+            var matched = true
+            for (offset in marker.indices) {
+                if (bytes[index + offset] != marker[offset]) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) return bytes.copyOfRange(0, index)
+            index++
+        }
+        return bytes.copyOfRange(0, size)
+    }
+
     private fun decodeBase64String(reader: PushbackReader, tokenFile: File) {
         require(nextNonWhitespace(reader) == '"'.code) { "备份负载格式无效" }
         FileOutputStream(tokenFile).buffered().use { output ->
             val chunk = StringBuilder(BASE64_CHUNK_CHARS)
             while (true) {
-                val value = reader.read()
+                var value = reader.read()
                 require(value >= 0) { "备份负载不完整" }
+                if (value == '\\'.code) value = readJsonEscape(reader)
                 if (value == '"'.code) break
                 val char = value.toChar()
                 require(char.isLetterOrDigit() || char == '-' || char == '_' || char == '=') {
@@ -5008,37 +5098,37 @@ internal object LocalWebDavArchiveCodec {
             require(value >= 0) { "远程备份 JSON 字符串未结束" }
             when (val char = value.toChar()) {
                 '"' -> return result.toString()
-                '\\' -> {
-                    val escaped = reader.read()
-                    require(escaped >= 0) { "远程备份 JSON 转义无效" }
-                    result.append(
-                        when (val escape = escaped.toChar()) {
-                            '"', '\\', '/' -> escape
-                            'b' -> '\b'
-                            'f' -> '\u000C'
-                            'n' -> '\n'
-                            'r' -> '\r'
-                            't' -> '\t'
-                            'u' -> {
-                                val hex = CharArray(4)
-                                repeat(4) { index ->
-                                    val digit = reader.read()
-                                    require(digit >= 0) { "远程备份 JSON 转义无效" }
-                                    hex[index] = digit.toChar()
-                                }
-                                hex.concatToString().toIntOrNull(16)?.toChar()
-                                    ?: error("远程备份 JSON 转义无效")
-                            }
-                            else -> error("远程备份 JSON 转义无效")
-                        }
-                    )
-                }
+                '\\' -> result.append(readJsonEscape(reader).toChar())
                 else -> {
                     require(char.code >= 0x20) { "远程备份 JSON 包含控制字符" }
                     result.append(char)
                 }
             }
             require(result.length <= maxChars) { "远程备份元数据过大" }
+        }
+    }
+
+    /** 解析反斜杠转义，返回字符编码。 */
+    private fun readJsonEscape(reader: PushbackReader): Int {
+        val escaped = reader.read()
+        require(escaped >= 0) { "远程备份 JSON 转义无效" }
+        return when (val escape = escaped.toChar()) {
+            '"', '\\', '/' -> escape.code
+            'b' -> '\b'.code
+            'f' -> '\u000C'.code
+            'n' -> '\n'.code
+            'r' -> '\r'.code
+            't' -> '\t'.code
+            'u' -> {
+                val hex = CharArray(4)
+                repeat(4) { index ->
+                    val digit = reader.read()
+                    require(digit >= 0) { "远程备份 JSON 转义无效" }
+                    hex[index] = digit.toChar()
+                }
+                hex.concatToString().toIntOrNull(16) ?: error("远程备份 JSON 转义无效")
+            }
+            else -> error("远程备份 JSON 转义无效")
         }
     }
 
@@ -5066,7 +5156,11 @@ internal object LocalWebDavArchiveCodec {
     private fun nextNonWhitespace(reader: PushbackReader): Int {
         while (true) {
             val value = reader.read()
-            if (value < 0 || !value.toChar().isWhitespace()) return value
+            if (value < 0) return value
+            val char = value.toChar()
+            // 某些编辑器写出的 UTF-8 BOM 不是空白字符，解析前需要跳过。
+            if (char.isWhitespace() || char == '\uFEFF') continue
+            return value
         }
     }
 
