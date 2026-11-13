@@ -1834,6 +1834,12 @@ fun ChatScreen(
                 dismissMenu()
                 editingMessage = target
             })
+            add(MessageMenuAction(stringResource(R.string.chat_message_generate_image), Icons.Filled.AutoAwesome,
+                enabled = targetId != null && target.displayContent.isNotBlank(),
+                testTag = "message-action-generate-image") {
+                dismissMenu()
+                viewModel.generateImageForMessage(target)
+            })
             add(MessageMenuAction(stringResource(R.string.common_delete), Icons.Filled.Delete,
                 enabled = targetId != null, destructive = true, testTag = "message-action-delete") {
                 dismissMenu()
