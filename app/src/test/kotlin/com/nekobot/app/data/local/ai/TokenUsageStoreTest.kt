@@ -56,6 +56,16 @@ class TokenUsageStoreTest {
     }
 
     @Test
+    fun `default budget keeps serialized payload within budget`() {
+        // 每条记录约 260 字符：6000 条远超默认预算，必须裁剪到能塞进 SharedPreferences 的量级
+        val arr = arrayOf(6_000, padding = 200)
+        assertTrue(trimTokenUsageArray(arr))
+        val size = arr.toString().length
+        assertTrue("裁剪后体积应回到预算内，实际 $size", size <= TOKEN_USAGE_BUDGET_CHARS)
+        assertTrue("最少保留条数不能被突破", arr.size() >= TOKEN_USAGE_MIN_KEEP)
+    }
+
+    @Test
     fun `total token helper sums only well-formed records`() {
         val arr = JsonArray().apply {
             add(record(1))

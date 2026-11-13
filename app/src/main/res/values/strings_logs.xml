@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!-- 本地日志文案（LocalLogger 资源化消息）。由 logtools/gen_logs.py 生成，请勿手工编辑。 -->
 <resources>
     <string name="log_a11y_connected">无障碍服务已连接</string>
@@ -232,6 +232,7 @@
     <string name="log_repo_oversize_row_repair_retry">消息行超出 CursorWindow 限制，修复后重试: %1$s</string>
     <string name="log_repo_task_expired">任务「%1$s」上次执行点已过期，顺延到 %2$s</string>
     <string name="log_repo_token_usage_corrupt">Token 用量记录损坏，已备份并重建: %1$s</string>
+    <string name="log_repo_token_usage_discarded">Token 用量记录文件过大或无法读取，已重置后重建: %1$s</string>
     <string name="log_repo_token_usage_recovered">已从消息记录补回 %1$s 条 Token 用量</string>
     <string name="log_repo_token_usage_repair_failed">Token 用量修复写入失败，下次读取将重试</string>
     <string name="log_repo_token_usage_write_deferred">Token 用量记录写入失败，稍后将从消息记录恢复</string>

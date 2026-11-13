@@ -887,7 +887,8 @@ object NbotConfigImporter {
      */
     private suspend fun syncTokenUsageFromMessages(db: NekobotDatabase, prefs: android.content.SharedPreferences) {
         try {
-            val messages = db.messageDao().listAllAssistant()
+            // 只要记账字段，正文在 SQL 侧截断，避免导入时把整段历史读进内存。
+            val messages = db.messageDao().listTokenUsageMessages()
             if (messages.isEmpty()) return
             val arr = com.google.gson.JsonArray()
             for (msg in messages) {
@@ -908,6 +909,9 @@ object NbotConfigImporter {
                 }.also { arr.add(it) }
             }
             if (arr.size() > 0) {
+                // 导入的会话可能有上千条历史消息，同样要压到字符预算内再落盘，
+                // 否则这份 prefs 会在下一次启动时撑爆解析。
+                com.nekobot.app.data.local.ai.trimTokenUsageArray(arr)
                 prefs.edit().putString("records", arr.toString()).apply()
             }
         } catch (_: Exception) { }

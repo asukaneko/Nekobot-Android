@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!-- 本地日志文案（LocalLogger 资源化消息）。由 logtools/gen_logs.py 生成，请勿手工编辑。 -->
 <resources>
     <string name="log_a11y_connected">ユーザー補助サービスが接続されました</string>
@@ -232,6 +232,7 @@
     <string name="log_repo_oversize_row_repair_retry">メッセージ行が CursorWindow の上限を超えたため修復後に再試行: %1$s</string>
     <string name="log_repo_task_expired">タスク「%1$s」の前回実行ポイントが期限切れ、%2$s に繰り越し</string>
     <string name="log_repo_token_usage_corrupt">Token使用量記録が破損、バックアップして再構築: %1$s</string>
+    <string name="log_repo_token_usage_discarded">Token使用量ファイルが大きすぎるか読み取れないため、リセットして再構築: %1$s</string>
     <string name="log_repo_token_usage_recovered">メッセージ記録から %1$s 件のToken使用量を復元</string>
     <string name="log_repo_token_usage_repair_failed">Token使用量修復の書き込みに失敗、次回読み取り時に再試行</string>
     <string name="log_repo_token_usage_write_deferred">Token使用量の書き込みに失敗、後でメッセージ記録から復元</string>

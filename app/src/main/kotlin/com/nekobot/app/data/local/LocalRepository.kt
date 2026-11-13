@@ -1160,6 +1160,10 @@ class LocalRepository(
     @Volatile
     private var tokenUsageReconciled = false
 
+    /** prefs 读不出来（多半是历史超大文件解析失败）后不再尝试读写，避免反复触发同样的 OOM。 */
+    @Volatile
+    private var tokenUsageStorageBroken = false
+
     /**
      * 待落盘的 token 用量记录。
      *
@@ -5998,8 +6002,34 @@ class LocalRepository(
      * 切换 db 后自动隔离到对应 profile 的用量记录。
      */
     private val tokenUsagePrefs by lazy {
-        val dbName = db.dbName
-        appContext?.getSharedPreferences("token_usage_$dbName", android.content.Context.MODE_PRIVATE)
+        val context = appContext ?: return@lazy null
+        val prefsName = "token_usage_${db.dbName}"
+        // 必须在第一次 getSharedPreferences 之前判断体积：历史版本允许在这里塞约 6MB 的
+        // JSON，系统解析 XML 时会再申请一份等长缓冲，低内存机型直接死在 loadFromDisk；
+        // 一旦开始解析就再没有机会清理。删掉后记录会从 Room 消息重新回补。
+        val discarded = com.nekobot.app.data.local.ai.discardOversizedTokenUsagePrefs(
+            sharedPrefsDir = java.io.File(context.applicationInfo.dataDir, "shared_prefs"),
+            prefsName = prefsName
+        )
+        if (discarded) {
+            LocalLogger.w(TAG, R.string.log_repo_token_usage_discarded, prefsName)
+        }
+        context.getSharedPreferences(prefsName, android.content.Context.MODE_PRIVATE)
+    }
+
+    /**
+     * 读取原始记录串。
+     *
+     * SharedPreferences 首次访问会把整份 XML 解析进内存，解析阶段的 OOM 会被系统
+     * 包装成 `IllegalStateException` 抛出，且后续每次访问都会重复抛出。
+     * 这里兜底成 null，让统计降级为空，而不是把整个进程带走。
+     */
+    private fun readTokenUsageRaw(): String? = runCatching {
+        tokenUsagePrefs?.getString("records", "[]") ?: "[]"
+    }.getOrElse { error ->
+        tokenUsageStorageBroken = true
+        LocalLogger.w(TAG, R.string.log_repo_token_usage_discarded, error.message.orEmpty())
+        null
     }
 
     /**
@@ -6039,6 +6069,7 @@ class LocalRepository(
         cacheWritePricePerMillion: Double? = null
     ) {
         if (tokenUsagePrefs == null) return
+        if (tokenUsageStorageBroken) return
         // 临时会话不产生用量记录，避免在统计与排行榜里留下痕迹。
         if (TemporarySession.isTemporary(sessionId)) return
         val cachedInput = cachedInputTokens.coerceIn(0, inputTokens.coerceAtLeast(0))
@@ -6141,7 +6172,12 @@ class LocalRepository(
         }
         val prefs = tokenUsagePrefs ?: return
         synchronized(tokenUsageLock) {
-            val existing = prefs.getString("records", "[]") ?: "[]"
+            val existing = readTokenUsageRaw()
+            if (existing == null) {
+                // prefs 已经读不出来了：保留待写记录但不落盘，等下次进程重建文件后再试。
+                synchronized(tokenUsageLock) { tokenUsagePending.addAll(0, pending) }
+                return
+            }
             try {
                 val parsed = runCatching { JsonParser.parseString(existing).asJsonArray }
                 val arr = parsed.getOrElse {
@@ -6152,7 +6188,11 @@ class LocalRepository(
                 pending.forEach(arr::add)
                 com.nekobot.app.data.local.ai.trimTokenUsageArray(arr)
                 val editor = prefs.edit().putString("records", arr.toString())
-                if (parsed.isFailure) editor.putString("records_corrupt_backup", existing)
+                // 损坏原文只留一小段：备份本身也写在同一个 prefs 里，
+                // 整份复制等于把体积翻倍，下一轮启动照样 OOM。
+                if (parsed.isFailure && existing.length <= com.nekobot.app.data.local.ai.TOKEN_USAGE_CORRUPT_BACKUP_CHARS) {
+                    editor.putString("records_corrupt_backup", existing)
+                }
                 if (!editor.commit()) {
                     tokenUsageReconciled = false
                     LocalLogger.w(TAG, R.string.log_repo_token_usage_write_deferred)
@@ -6176,9 +6216,9 @@ class LocalRepository(
 
     /** 读取所有 token 用量记录（含尚未落盘的待写记录） */
     private fun readTokenUsageRecords(): List<JsonObject> {
-        val prefs = tokenUsagePrefs ?: return emptyList()
+        if (tokenUsagePrefs == null) return emptyList()
         return synchronized(tokenUsageLock) {
-            val raw = prefs.getString("records", "[]") ?: "[]"
+            val raw = readTokenUsageRaw() ?: "[]"
             val stored = runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList())
             // 刚产生的记录还在待写队列里：统计与排行榜必须立刻看到它们，
             // 否则"刚花了钱却查不到"会让人以为记账失败。
@@ -6191,7 +6231,9 @@ class LocalRepository(
         if (tokenUsageReconciled) return readTokenUsageRecords()
 
         val sessionCreatedAtById = sessionDao.listAll().associate { it.id to it.createdAt }
-        val messages = messageDao.listAllAssistant().asReversed().mapNotNull { message ->
+        // 只取记账需要的列：旧实现 SELECT * 会把每条回复的正文、思考卡片和工具调用
+        // 记录一起拉进内存，长会话下光这一处就能吃满堆。
+        val messages = messageDao.listTokenUsageMessages().asReversed().mapNotNull { message ->
             val input = message.inputTokens ?: return@mapNotNull null
             val output = message.outputTokens ?: return@mapNotNull null
             if (input <= 0 && output <= 0) return@mapNotNull null
@@ -6208,16 +6250,21 @@ class LocalRepository(
             )
         }
         val prefs = tokenUsagePrefs
-            ?: return reconcileLocalTokenUsageRecords(emptyList(), messages).records.takeLast(5000)
+        if (prefs == null) {
+            val array = JsonArray().apply {
+                reconcileLocalTokenUsageRecords(emptyList(), messages).records.forEach(::add)
+            }
+            com.nekobot.app.data.local.ai.trimTokenUsageArray(array)
+            return array.mapNotNull { it.takeIf(JsonElement::isJsonObject)?.asJsonObject }
+        }
 
         return synchronized(tokenUsageLock) {
+            val raw = readTokenUsageRaw() ?: "[]"
             if (tokenUsageReconciled) {
-                val raw = prefs.getString("records", "[]") ?: "[]"
                 return@synchronized runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList()) +
                     tokenUsagePending.toList()
             }
 
-            val raw = prefs.getString("records", "[]") ?: "[]"
             val parsed = runCatching { parseTokenUsageRecords(raw) }
             val existingRecords = parsed.getOrDefault(emptyList())
             // 历史 life_sim 心跳记录来源误标为 web（界面显示「联网搜索」），读取时一次性纠正
@@ -6227,14 +6274,18 @@ class LocalRepository(
                 records = existingRecords,
                 messages = messages
             )
-            val normalized = reconciliation.records.takeLast(5000)
-            val needsWrite = parsed.isFailure || reconciliation.changed || legacySourceFixed ||
-                normalized.size != reconciliation.records.size
+            // 写回前同样要走字符预算：旧实现按"最多 5000 条"硬切并整份落盘，
+            // 长会话下能把这份 JSON 撑到好几 MB，下一轮启动在解析阶段就 OOM。
+            val writeBack = JsonArray().apply { reconciliation.records.forEach(::add) }
+            val trimmed = com.nekobot.app.data.local.ai.trimTokenUsageArray(writeBack)
+            val normalized = writeBack.mapNotNull { it.takeIf(JsonElement::isJsonObject)?.asJsonObject }
+            val needsWrite = parsed.isFailure || reconciliation.changed || legacySourceFixed || trimmed
 
             if (needsWrite) {
-                val array = JsonArray().apply { normalized.forEach(::add) }
-                val editor = prefs.edit().putString("records", array.toString())
-                if (parsed.isFailure) editor.putString("records_corrupt_backup", raw)
+                val editor = prefs.edit().putString("records", writeBack.toString())
+                if (parsed.isFailure && raw.length <= com.nekobot.app.data.local.ai.TOKEN_USAGE_CORRUPT_BACKUP_CHARS) {
+                    editor.putString("records_corrupt_backup", raw)
+                }
                 if (!editor.commit()) {
                     tokenUsageReconciled = false
                     LocalLogger.w(TAG, R.string.log_repo_token_usage_repair_failed)

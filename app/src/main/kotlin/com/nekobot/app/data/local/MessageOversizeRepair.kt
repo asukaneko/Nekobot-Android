@@ -118,10 +118,19 @@ object MessageOversizeRepair {
         for (field in fields.sortedByDescending { it.sizeBytes }) {
             if (remaining <= ROW_BYTE_BUDGET) break
             if (field.sizeBytes < MIN_FIELD_BYTES_TO_SHRINK) continue
-            val full = readFieldInChunks(field.read)
-            if (full.isNullOrEmpty()) continue
-            val dumpFile = context?.let { dumpToFile(it, id, field.name, full) }
-            val head = full.take(KEPT_HEAD_CHARS)
+            // 边读边写：历史版本把整个字段拼成一个 String 再转存，几十 MB 的
+            // tool_call_history（含 base64 截图）光这一份拷贝就能把堆打满。
+            val dumpFile = context?.let { openDumpFile(it, id, field.name) }
+            val head = try {
+                transferFieldInChunks(field.read, dumpFile?.writer)
+            } catch (e: Exception) {
+                LocalLogger.w(TAG, "读取超大字段失败 id=$id/${field.name}: ${e.message}")
+                dumpFile?.closeQuietly()
+                continue
+            }
+            // 无论成功与否都要关流，避免转存文件句柄泄漏。
+            dumpFile?.closeQuietly()
+            if (head.isEmpty()) continue
             val originalDesc = formatByteSize(field.sizeBytes)
             val marker = buildString {
                 append("\n\n[该字段原始内容约 ")
@@ -129,7 +138,7 @@ object MessageOversizeRepair {
                 append("，超过单条消息体积上限，已截断以恢复会话可读")
                 if (dumpFile != null) {
                     append("；完整内容转存至应用私有目录 oversized_message_fields/")
-                    append(dumpFile.name)
+                    append(dumpFile.file.name)
                 }
                 append("。]")
             }
@@ -144,28 +153,41 @@ object MessageOversizeRepair {
         return changed
     }
 
-    /** 用 substr 分块把整个字段读出来；空字段返回空串。 */
-    private suspend fun readFieldInChunks(
-        read: suspend (offset: Int, length: Int) -> String?
+    /**
+     * 用 substr 分块读取整个字段：开头 [KEPT_HEAD_CHARS] 字符留在内存里，
+     * 其余分块直接写进转存文件，全程不再拼出一份完整字符串。
+     *
+     * @return 字段开头的片段（空字段返回空串）
+     */
+    private suspend fun transferFieldInChunks(
+        read: suspend (offset: Int, length: Int) -> String?,
+        sink: java.io.Writer?
     ): String {
-        val sb = StringBuilder()
+        val head = StringBuilder(KEPT_HEAD_CHARS)
         var offset = 1
         while (true) {
             val chunk = read(offset, CHUNK_CHARS) ?: break
             if (chunk.isEmpty()) break
-            sb.append(chunk)
+            if (head.length < KEPT_HEAD_CHARS) {
+                head.append(chunk, 0, minOf(chunk.length, KEPT_HEAD_CHARS - head.length))
+            }
+            if (sink != null) runCatching { sink.write(chunk) }
             if (chunk.length < CHUNK_CHARS) break
             offset += CHUNK_CHARS
         }
-        return sb.toString()
+        return head.toString()
     }
 
-    private fun dumpToFile(context: Context, messageId: String, field: String, content: String): File? =
+    /** 转存文件与它的写入流；流由 [repairRow] 负责关闭。 */
+    private class DumpTarget(val file: File, val writer: java.io.BufferedWriter) {
+        fun closeQuietly() = runCatching { writer.close() }
+    }
+
+    private fun openDumpFile(context: Context, messageId: String, field: String): DumpTarget? =
         try {
             val dir = File(context.filesDir, DUMP_DIR).apply { mkdirs() }
             val file = File(dir, "${messageId}_$field.txt")
-            file.writeText(content)
-            file
+            DumpTarget(file, file.bufferedWriter(Charsets.UTF_8))
         } catch (e: Exception) {
             LocalLogger.w(TAG, "超大字段转存文件失败: ${e.message}")
             null

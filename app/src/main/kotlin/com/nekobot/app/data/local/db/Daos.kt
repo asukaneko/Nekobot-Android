@@ -442,6 +442,20 @@ interface MessageDao {
     @Query("SELECT * FROM local_messages WHERE role='assistant' ORDER BY created_at DESC")
     suspend fun listAllAssistant(): List<LocalMessageEntity>
 
+    /**
+     * Token 用量回补专用的轻量查询。
+     *
+     * 只取记账需要的列，正文在 SQL 侧截断（指纹去重够用），并跳过没有 token 数值的消息；
+     * 避免 `SELECT *` 把整段正文、思考卡片、工具调用历史一并读进内存。
+     */
+    @Query(
+        "SELECT id, session_id, model, input_tokens, output_tokens, timestamp, created_at, " +
+            "substr(content, 1, 512) AS content FROM local_messages " +
+            "WHERE role = 'assistant' AND input_tokens IS NOT NULL AND output_tokens IS NOT NULL " +
+            "AND (input_tokens > 0 OR output_tokens > 0) ORDER BY created_at DESC"
+    )
+    suspend fun listTokenUsageMessages(): List<TokenUsageMessageRow>
+
     @Query("SELECT * FROM local_messages WHERE role='assistant' AND created_at >= :start AND created_at < :end ORDER BY created_at DESC")
     suspend fun listAssistantInRange(start: String, end: String): List<LocalMessageEntity>
 }
