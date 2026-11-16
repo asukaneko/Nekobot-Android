@@ -125,4 +125,36 @@ class MarkdownTextTest {
             tableToTsv(table, Color.Black, TextStyle.Default)
         )
     }
+
+    /**
+     * 长回复渲染曾经在逐行循环里现场编译正则：Android 上每条消息要编译上万次 ICU pattern，
+     * 把主线程卡住数秒后触发「输入事件无响应」。这里用一份多行文档守住解析路径，
+     * 既校验区块结构，也给整段解析留一个宽松的时间上限（预编译后仅数十毫秒）。
+     */
+    @Test
+    fun `long reply parses blocks without per line pattern compilation stalls`() {
+        val reply = buildString {
+            repeat(400) { index ->
+                appendLine("## 小节 $index")
+                appendLine("第 $index 段正文，含 `code`、**粗体** 与（内心：独白 $index）。")
+                appendLine("1. 有序项")
+                appendLine("- 无序项")
+                appendLine("| A | B |")
+                appendLine("| --- | --- |")
+                appendLine("| 1 | 2 |")
+                appendLine()
+            }
+        }
+
+        parseBlocks("预热", chatMode = true) // 排除类加载与 JIT 首次开销
+        val startedAt = System.nanoTime()
+        val blocks = parseBlocks(reply, chatMode = true)
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertTrue(blocks.any { it is MdBlock.Header })
+        assertTrue(blocks.any { it is MdBlock.Table })
+        assertTrue(blocks.any { it is MdBlock.ListItem })
+        assertTrue(blocks.any { it is MdBlock.InnerMonologue })
+        assertTrue("解析 $elapsedMs ms 过慢", elapsedMs < 5_000)
+    }
 }

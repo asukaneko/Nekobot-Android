@@ -455,6 +455,25 @@ sealed class MdBlock {
     data class Paragraph(val content: String) : MdBlock()
 }
 
+// ==================== 解析用正则（预编译） ====================
+
+/**
+ * 这些正则原先在 [parseBlocks] 的逐行循环和 [parseInline] 的逐段循环里现场 `Regex(...)`，
+ * 一条消息有多少行就要编译多少次（每行 6~10 次）。Android 的 `java.util.regex.Pattern`
+ * 走 ICU，单次编译远比匹配贵；长回复渲染时上万次编译会把主线程卡住数秒，
+ * 表现为界面冻结并被系统判定为「输入事件无响应」(ANR)。
+ * 因此统一在这里编译一次，循环里只做匹配。
+ */
+private val MD_IMAGE_LINE = Regex("^!\\[([^]]*)]\\(([^\\s)]+)\\)\\s*$")
+private val MD_HORIZONTAL_RULE_LINE = Regex("^(-{3,}|\\*{3,}|_{3,})\\s*$")
+private val MD_HEADER_LINE = Regex("^(#{1,6})\\s+(.*)")
+private val MD_TABLE_DIVIDER_LINE = Regex("^[|\\s-:]+$")
+private val MD_ORDERED_ITEM_LINE = Regex("^\\d+\\.\\s+.*")
+private val MD_ORDERED_ITEM_PREFIX = Regex("^(\\d+)\\.\\s+")
+private val MD_BULLET_ITEM_LINE = Regex("^[-*+]\\s+.*")
+private val MD_BULLET_ITEM_PREFIX = Regex("^[-*+]\\s+")
+private val MD_INNER_MONOLOGUE_PREFIX = Regex("^(?:内心|心里|心想|内白)[：:]")
+
 /**
  * 将文本解析为区块列表。
  */
@@ -484,7 +503,7 @@ fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
         }
 
         // 独立图片块：兼容历史 AI 回复中的 ![说明](https://...) / file:// URI。
-        val imageMatch = Regex("^!\\[([^]]*)]\\(([^\\s)]+)\\)\\s*$").find(line)
+        val imageMatch = MD_IMAGE_LINE.find(line)
         if (imageMatch != null) {
             blocks.add(MdBlock.Image(imageMatch.groupValues[1], imageMatch.groupValues[2]))
             i++
@@ -492,14 +511,14 @@ fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
         }
 
         // 水平分割线
-        if (line.matches(Regex("^(-{3,}|\\*{3,}|_{3,})\\s*$"))) {
+        if (MD_HORIZONTAL_RULE_LINE.matches(line)) {
             blocks.add(MdBlock.HorizontalRule)
             i++
             continue
         }
 
         // 标题
-        val headerMatch = Regex("^(#{1,6})\\s+(.*)").find(line)
+        val headerMatch = MD_HEADER_LINE.find(line)
         if (headerMatch != null) {
             blocks.add(MdBlock.Header(headerMatch.groupValues[1].length, headerMatch.groupValues[2]))
             i++
@@ -518,7 +537,7 @@ fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
         }
 
         // 表格（含 | 分隔）
-        if (line.contains("|") && i + 1 < lines.size && lines[i + 1].matches(Regex("^[|\\s-:]+$"))) {
+        if (line.contains("|") && i + 1 < lines.size && MD_TABLE_DIVIDER_LINE.matches(lines[i + 1])) {
             val header = parseTableRow(line)
             i += 2 // 跳过分隔行
             val rows = mutableListOf<List<String>>()
@@ -531,29 +550,29 @@ fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
         }
 
         // 有序列表（允许项之间有空行：1.\n\n2. 视为同一列表）
-        if (line.matches(Regex("^\\d+\\.\\s+.*"))) {
+        if (MD_ORDERED_ITEM_LINE.matches(line)) {
             val items = mutableListOf<String>()
             // 提取起始编号用于显示连续编号（保留 AI 原始编号或用 idx+1）
-            val firstNumMatch = Regex("^(\\d+)\\.\\s+").find(line)
+            val firstNumMatch = MD_ORDERED_ITEM_PREFIX.find(line)
             val startNum = firstNumMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
             var currentNum = startNum
             while (i < lines.size) {
                 val cur = lines[i]
-                if (cur.matches(Regex("^\\d+\\.\\s+.*"))) {
+                if (MD_ORDERED_ITEM_LINE.matches(cur)) {
                     // 同一编号（如都是 1.）或连续编号都视为列表项
-                    val numMatch = Regex("^(\\d+)\\.\\s+").find(cur)
+                    val numMatch = MD_ORDERED_ITEM_PREFIX.find(cur)
                     val num = numMatch?.groupValues?.get(1)?.toIntOrNull() ?: currentNum
                     // 编号必须连续或相同才视为同一列表；若跳变（如 1. 然后 5.）则结束列表
                     if (num != currentNum && num != currentNum + 1 && num != startNum) {
                         break
                     }
                     currentNum = num
-                    items.add(cur.replaceFirst(Regex("^\\d+\\.\\s+"), ""))
+                    items.add(cur.replaceFirst(MD_ORDERED_ITEM_PREFIX, ""))
                     i++
                 } else if (cur.isBlank()) {
                     // 空行：检查下一行是否还是列表项，是则跳过空行继续，否则结束
                     val next = lines.getOrNull(i + 1)
-                    if (next != null && next.matches(Regex("^\\d+\\.\\s+.*"))) {
+                    if (next != null && MD_ORDERED_ITEM_LINE.matches(next)) {
                         i++
                     } else {
                         break
@@ -567,16 +586,16 @@ fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
         }
 
         // 无序列表（允许项之间有空行）
-        if (line.matches(Regex("^[-*+]\\s+.*"))) {
+        if (MD_BULLET_ITEM_LINE.matches(line)) {
             val items = mutableListOf<String>()
             while (i < lines.size) {
                 val cur = lines[i]
-                if (cur.matches(Regex("^[-*+]\\s+.*"))) {
-                    items.add(cur.replaceFirst(Regex("^[-*+]\\s+"), ""))
+                if (MD_BULLET_ITEM_LINE.matches(cur)) {
+                    items.add(cur.replaceFirst(MD_BULLET_ITEM_PREFIX, ""))
                     i++
                 } else if (cur.isBlank()) {
                     val next = lines.getOrNull(i + 1)
-                    if (next != null && next.matches(Regex("^[-*+]\\s+.*"))) {
+                    if (next != null && MD_BULLET_ITEM_LINE.matches(next)) {
                         i++
                     } else {
                         break
@@ -611,9 +630,9 @@ fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
             !lines[i].startsWith("```") &&
             !lines[i].startsWith("#") &&
             !lines[i].startsWith("> ") &&
-            !lines[i].matches(Regex("^\\d+\\.\\s+.*")) &&
-            !lines[i].matches(Regex("^[-*+]\\s+.*")) &&
-            !lines[i].matches(Regex("^(-{3,}|\\*{3,}|_{3,})\\s*$"))
+            !MD_ORDERED_ITEM_LINE.matches(lines[i]) &&
+            !MD_BULLET_ITEM_LINE.matches(lines[i]) &&
+            !MD_HORIZONTAL_RULE_LINE.matches(lines[i])
         ) {
             paraLines.add(lines[i])
             i++
@@ -1374,8 +1393,7 @@ fun parseInline(
                 if (end > i + 1 && end - i - 1 <= 50) {
                     val content = text.substring(i + 1, end)
                     val isSimple = content.none { it == '（' || it == '）' || it == '(' || it == ')' }
-                    val isInnerMonologue = Regex("^(?:内心|心里|心想|内白)[：:]")
-                        .containsMatchIn(content)
+                    val isInnerMonologue = MD_INNER_MONOLOGUE_PREFIX.containsMatchIn(content)
                     if (isSimple && !isInnerMonologue) {
                         withStyle(
                             SpanStyle(
