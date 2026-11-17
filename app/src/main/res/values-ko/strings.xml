@@ -334,6 +334,9 @@
     <!-- ==================== 파일 변경 git 요약 카드 ==================== -->
     <string name="agent_git_step_name">파일 변경 (git)</string>
     <string name="agent_git_files_changed">총 %1$d개 파일 변경</string>
+    <string name="agent_git_file_count">%1$d개 파일</string>
+    <string name="agent_git_expanded">펼쳐짐</string>
+    <string name="agent_git_collapsed">접힘</string>
     <string name="agent_git_modified">수정</string>
     <string name="agent_git_added">추가</string>
     <string name="agent_git_deleted">삭제</string>

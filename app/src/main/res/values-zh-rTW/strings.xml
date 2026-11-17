@@ -359,6 +359,9 @@
     <!-- ==================== 文件变更 git 摘要卡片 ==================== -->
     <string name="agent_git_step_name">檔案變更（git）</string>
     <string name="agent_git_files_changed">共 %1$d 個檔案變更</string>
+    <string name="agent_git_file_count">%1$d 個檔案</string>
+    <string name="agent_git_expanded">已展開</string>
+    <string name="agent_git_collapsed">已收合</string>
     <string name="agent_git_modified">修改</string>
     <string name="agent_git_added">新增</string>
     <string name="agent_git_deleted">刪除</string>

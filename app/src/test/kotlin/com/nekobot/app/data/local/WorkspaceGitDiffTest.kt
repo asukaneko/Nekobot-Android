@@ -400,6 +400,114 @@ class WorkspaceGitDiffTest {
         assertEquals(GitDiffFile.STATUS_ADDED, changed.summary.files.single().status)
     }
 
+    // ---------- 共享工作区的会话归属过滤 ----------
+
+    /**
+     * 共享工作区内的仓库只展示本会话改动过的文件。
+     *
+     * 回归场景：会话 A 在共享工作区改了文件后，会话 B 的进度卡片也扫描到了同一仓库，
+     * 于是每个会话都显示同一张变更卡片。归属过滤把范围收敛到“本会话改过的路径”。
+     */
+    @Test
+    fun sessionOwnedPathFilterOnlyAllowsOwnChangesInsideSharedWorkspace() {
+        val shared = newTempDir()
+        val project = File(shared, "project")
+        initRepo(
+            File(project, ".git"),
+            mapOf(
+                "own.py" to "print(1)\n".toByteArray(Charsets.UTF_8),
+                "other.py" to "print(2)\n".toByteArray(Charsets.UTF_8)
+            )
+        )
+        File(project, "own.py").writeText("print(11)\n", Charsets.UTF_8)
+        File(project, "other.py").writeText("print(22)\n", Charsets.UTF_8)
+
+        val filter = WorkspaceGitDiff.sessionOwnedPathFilter(
+            gitRoot = project,
+            sharedRoot = shared,
+            ownChangedAbsolutePaths = listOf(File(project, "own.py").canonicalPath)
+        )
+        assertNotNull("共享工作区内的仓库应生成归属过滤器", filter)
+        assertTrue("本会话改过的文件应放行", filter!!("own.py"))
+        assertFalse("别的会话改过的文件不应放行", filter("other.py"))
+
+        // 会话独占工作区里的仓库：不做过滤，展示仓库全部改动
+        val isolated = newTempDir()
+        initRepo(File(isolated, ".git"), mapOf("a.py" to "x\n".toByteArray(Charsets.UTF_8)))
+        assertNull(
+            "会话独占工作区不需要归属过滤",
+            WorkspaceGitDiff.sessionOwnedPathFilter(isolated, shared, emptyList())
+        )
+    }
+
+    /** 实时扫描按归属过滤器收敛：别的会话的改动不进摘要，本会话没有改动时返回干净。 */
+    @Test
+    fun watchRepositoriesAppliesSessionOwnedPathFilter() {
+        val shared = newTempDir()
+        val project = File(shared, "project")
+        initRepo(
+            File(project, ".git"),
+            mapOf(
+                "own.py" to "print(1)\n".toByteArray(Charsets.UTF_8),
+                "other.py" to "print(2)\n".toByteArray(Charsets.UTF_8)
+            )
+        )
+        File(project, "own.py").writeText("print(11)\n", Charsets.UTF_8)
+        File(project, "other.py").writeText("print(22)\n", Charsets.UTF_8)
+
+        val ownOnly = WorkspaceGitDiff.watchRepositories(
+            roots = listOf(shared),
+            pathFilterForRepo = { gitRoot ->
+                WorkspaceGitDiff.sessionOwnedPathFilter(
+                    gitRoot = gitRoot,
+                    sharedRoot = shared,
+                    ownChangedAbsolutePaths = listOf(File(project, "own.py").canonicalPath)
+                )
+            }
+        )
+        val changed = ownOnly as? WorkspaceGitDiff.GitScanResult.Changed
+            ?: throw AssertionError("本会话有改动时应展示摘要: $ownOnly")
+        assertEquals(listOf("own.py"), changed.summary.files.map { it.path })
+
+        // 本会话没有改动过共享工作区：整个仓库不展示（而不是把别人的改动播给每个会话）
+        val untouched = WorkspaceGitDiff.watchRepositories(
+            roots = listOf(shared),
+            pathFilterForRepo = { gitRoot ->
+                WorkspaceGitDiff.sessionOwnedPathFilter(gitRoot, shared, emptyList())
+            }
+        )
+        assertEquals(
+            "没有本会话改动时不应展示共享工作区的变更",
+            WorkspaceGitDiff.GitScanResult.Clean,
+            untouched
+        )
+    }
+
+    /** 过滤器同样作用于删除检测：被本会话删除的文件仍要展示。 */
+    @Test
+    fun scanRepositoryPathFilterKeepsOwnDeletedFile() {
+        val shared = newTempDir()
+        val project = File(shared, "project")
+        initRepo(
+            File(project, ".git"),
+            mapOf(
+                "own.py" to "print(1)\n".toByteArray(Charsets.UTF_8),
+                "other.py" to "print(2)\n".toByteArray(Charsets.UTF_8)
+            )
+        )
+        assertTrue(File(project, "own.py").delete())
+        File(project, "other.py").writeText("print(22)\n", Charsets.UTF_8)
+
+        val result = WorkspaceGitDiff.scanRepository(
+            gitRoot = project,
+            pathFilter = { rel -> rel == "own.py" }
+        )
+        val changed = result as? WorkspaceGitDiff.GitScanResult.Changed
+            ?: throw AssertionError("本会话删除的文件应出现在摘要里: $result")
+        assertEquals("own.py", changed.summary.files.single().path)
+        assertEquals(GitDiffFile.STATUS_DELETED, changed.summary.files.single().status)
+    }
+
     // ---------- 纯逻辑单测 ----------
 
     @Test

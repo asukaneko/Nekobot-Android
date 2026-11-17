@@ -210,12 +210,16 @@ object WorkspaceGitDiff {
      * @param hintPaths 额外提示路径（绝对路径），仅用于定位仓库，不限制展示范围
      * @param nameForRepo 卡片上展示的仓库名；默认取目录名，仓库根就是工作区时可由调用方改成"工作区"
      * @param baselineForRepo 每个仓库的差异基线；默认与当前 HEAD 比较
+     * @param pathFilterForRepo 按仓库给出「只展示哪些仓库相对路径」的过滤器；
+     *   返回 null 表示该仓库不受限。共享工作区用它把展示范围收敛到本会话真正改动过的文件，
+     *   避免别的会话在共享工作区里的改动出现在每个会话的进度卡片上。
      */
     fun watchRepositories(
         roots: Collection<File>,
         hintPaths: Collection<String> = emptyList(),
         nameForRepo: (File) -> String = { it.name },
-        baselineForRepo: (File) -> GitBaseline = { GitBaseline.Head }
+        baselineForRepo: (File) -> GitBaseline = { GitBaseline.Head },
+        pathFilterForRepo: (File) -> ((String) -> Boolean)? = { null }
     ): GitScanResult {
         return try {
             val repositories = discoverRepositories(roots, hintPaths)
@@ -223,7 +227,8 @@ object WorkspaceGitDiff {
             var best: GitDiffSummary? = null
             var unavailable = false
             for (gitRoot in repositories.take(MAX_MONITORED_REPOS)) {
-                when (val result = scanRepository(gitRoot, baselineForRepo(gitRoot))) {
+                val pathFilter = pathFilterForRepo(gitRoot)
+                when (val result = scanRepository(gitRoot, baselineForRepo(gitRoot), pathFilter)) {
                     is GitScanResult.Changed -> {
                         val named = result.summary.copy(repoName = nameForRepo(gitRoot))
                         if (best == null || named.files.size > best.files.size) best = named
@@ -258,10 +263,47 @@ object WorkspaceGitDiff {
     fun headShaOf(gitRoot: File): String? =
         runCatching { repositoryFor(canonicalDirectory(gitRoot)).headSha() }.getOrNull()
 
+    /**
+     * 按会话归属生成仓库路径过滤器。
+     *
+     * 共享工作区是跨会话共用的容器：仓库里任何改动（别的会话写入、用户手动修改）都会出现在
+     * 仓库级扫描结果里。这个方法把展示范围收敛到 [ownChangedAbsolutePaths]（本会话本次运行
+     * 真正改动过的绝对路径）：
+     * - 仓库与共享工作区无关（会话独占的工作区 / 提示路径定位到的仓库）→ 返回 null，不过滤；
+     * - 仓库在共享工作区内，或包含共享工作区（工作区根本身是仓库）→ 只放行本会话改过的文件。
+     *
+     * @param gitRoot 被扫描的仓库根目录
+     * @param sharedRoot 共享工作区根目录；为 null 时说明当前会话没有共享工作区，不做归属过滤
+     * @param ownChangedAbsolutePaths 本会话改动过的文件绝对路径
+     * @return 仓库相对路径判定器；null 表示该仓库不需要过滤
+     */
+    fun sessionOwnedPathFilter(
+        gitRoot: File,
+        sharedRoot: File?,
+        ownChangedAbsolutePaths: Collection<String>
+    ): ((String) -> Boolean)? {
+        val shared = sharedRoot?.let { canonicalDirectory(it) } ?: return null
+        val root = canonicalDirectory(gitRoot)
+        // 仓库与共享工作区没有包含关系：会话工作区是独占的，展示仓库全部改动即可
+        if (!root.isSameOrChildOf(shared) && !shared.isSameOrChildOf(root)) return null
+        val prefix = root.path + File.separator
+        val own = HashSet<String>(ownChangedAbsolutePaths.size)
+        for (path in ownChangedAbsolutePaths) {
+            val canonical = runCatching { File(path).canonicalPath }.getOrNull() ?: continue
+            if (!canonical.startsWith(prefix)) continue
+            own += canonical.removePrefix(prefix)
+        }
+        return { repoRelative -> repoRelative in own }
+    }
+
     /** 扫描单个仓库：[gitRoot] 工作区相对 [baseline] 的全部更改（新增 / 修改 / 删除）。 */
-    fun scanRepository(gitRoot: File, baseline: GitBaseline = GitBaseline.Head): GitScanResult {
+    fun scanRepository(
+        gitRoot: File,
+        baseline: GitBaseline = GitBaseline.Head,
+        pathFilter: ((String) -> Boolean)? = null
+    ): GitScanResult {
         return try {
-            scanRepositoryInternal(gitRoot, baseline)
+            scanRepositoryInternal(gitRoot, baseline, pathFilter)
         } catch (t: Throwable) {
             com.nekobot.app.data.local.LocalLogger.w("WorkspaceGit", R.string.log_git_diff_failed, t.message)
             GitScanResult.Unavailable
@@ -271,7 +313,14 @@ object WorkspaceGitDiff {
     private fun canonicalDirectory(dir: File): File =
         runCatching { dir.canonicalFile }.getOrElse { dir.absoluteFile }
 
-    private fun scanRepositoryInternal(gitRoot: File, baseline: GitBaseline): GitScanResult {
+    private fun File.isSameOrChildOf(root: File): Boolean =
+        path == root.path || path.startsWith(root.path + File.separator)
+
+    private fun scanRepositoryInternal(
+        gitRoot: File,
+        baseline: GitBaseline,
+        pathFilter: ((String) -> Boolean)? = null
+    ): GitScanResult {
         val root = canonicalDirectory(gitRoot)
         if (!root.isDirectory) return GitScanResult.Clean
         val repo = repositoryFor(root)
@@ -288,12 +337,13 @@ object WorkspaceGitDiff {
             emptyMap()
         }
         // 工作区遍历：尽量拿到能拿到的文件；只有根目录都读不到才算不可信
-        val worktree = scanWorktree(root) ?: return GitScanResult.Unavailable
+        val worktree = scanWorktree(root, pathFilter) ?: return GitScanResult.Unavailable
         if (worktree.files.isEmpty() && headTree.isEmpty()) return GitScanResult.Clean
 
         val entries = LinkedHashMap<String, File>(worktree.files.size)
         var hashedBytes = 0L
         for ((rel, file) in worktree.files) {
+            if (pathFilter != null && !pathFilter(rel)) continue
             val headBlob = headTree[rel]
             if (headBlob == null) {
                 entries[rel] = file
@@ -315,6 +365,7 @@ object WorkspaceGitDiff {
         // 未遍历到的目录下状态未知，直接跳过，避免把"没读到"误报成"已删除"。
         if (!worktree.truncated) {
             for (rel in headTree.keys) {
+                if (pathFilter != null && !pathFilter(rel)) continue
                 if (worktree.files.containsKey(rel)) continue
                 if (worktree.isIncomplete(rel)) continue
                 entries[rel] = File(root, rel)
@@ -392,9 +443,15 @@ object WorkspaceGitDiff {
      * 沙盒命令可能在工作区里造出 app 读不到的文件/目录，整次放弃会让卡片永久消失。
      * 只有仓库根目录本身读不到时才返回 null（此时无法判断任何状态）。
      *
+     * @param gitRoot 仓库根目录
+     * @param pathFilter 只需遍历哪些仓库相对路径（共享工作区按会话归属收敛时使用）；
+     *   被排除的文件既不哈希也不计入变更，避免为别的会话的改动做无用功
      * @return 遍历结果；根目录不可读时返回 null
      */
-    private fun scanWorktree(gitRoot: File): WorktreeScan? {
+    private fun scanWorktree(
+        gitRoot: File,
+        pathFilter: ((String) -> Boolean)? = null
+    ): WorktreeScan? {
         val files = LinkedHashMap<String, File>()
         val incompleteDirs = mutableListOf<String>()
         val stack = ArrayDeque<Pair<File, String>>()
@@ -429,6 +486,7 @@ object WorkspaceGitDiff {
                     continue
                 }
                 if (!child.isFile) continue
+                if (pathFilter != null && !pathFilter(rel)) continue
                 if (child.length() > MAX_BLOB_BYTES) continue
                 files[rel] = child
                 if (files.size > MAX_SCAN_FILES) {

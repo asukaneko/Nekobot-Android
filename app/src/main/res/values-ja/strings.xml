@@ -334,6 +334,9 @@
     <!-- ==================== ファイル変更 git サマリーカード ==================== -->
     <string name="agent_git_step_name">ファイル変更（git）</string>
     <string name="agent_git_files_changed">全 %1$d ファイルが変更</string>
+    <string name="agent_git_file_count">%1$d ファイル</string>
+    <string name="agent_git_expanded">展開中</string>
+    <string name="agent_git_collapsed">折りたたみ</string>
     <string name="agent_git_modified">変更</string>
     <string name="agent_git_added">追加</string>
     <string name="agent_git_deleted">削除</string>

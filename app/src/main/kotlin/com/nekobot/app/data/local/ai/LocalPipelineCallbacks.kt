@@ -2434,12 +2434,15 @@ internal class LocalPipelineCallbacks(
      *
      * 与旧实现的关键区别：这里不再关心 AI 改了哪个文件，而是直接扫描工作区相关的 git 仓库，
      * 返回仓库**当前相对 HEAD 的全部更改**。因此：
-     * - 用户手动修改 / 沙盒命令改动 / 别的会话写入，同样会出现在卡片上；
+     * - 会话工作区（本会话独占）里的用户手动修改 / 沙盒命令改动同样会出现在卡片上；
      * - AI 用 `git add` / `git commit` 把这些改动收掉后，卡片会自动变空。
      *
+     * 共享工作区是跨会话共用的容器：只展示本会话本次运行真正改动过的文件
+     * （见 [WorkspaceGitDiff.sessionOwnedPathFilter]），否则别的会话在共享工作区里的改动
+     * 会出现在每个会话的进度卡片上。
+     *
      * 仓库来源：会话工作区、共享工作区（含其内部的嵌套仓库）；
-     * 已记录的工作区写入路径只用来定位工作区之外的仓库（例如共享存储里的项目），
-     * 不参与“展示哪些文件”的判断。
+     * 已记录的工作区写入路径用于定位仓库，同时也作为共享工作区文件的归属依据。
      */
     private fun scanWorkspaceGitSummary(): WorkspaceGitDiff.GitScanResult {
         val roots = buildList {
@@ -2449,7 +2452,7 @@ internal class LocalPipelineCallbacks(
         if (roots.isEmpty()) return WorkspaceGitDiff.GitScanResult.Clean
         // 只有本轮真的跑过本地工具（工作区写入记录存在）时才需要提示路径，
         // 否则不为了“可能在别处改过文件”去提前构造工具执行器。
-        val hints = if (localToolExecutorDelegate.isInitialized()) {
+        val changedPaths = if (localToolExecutorDelegate.isInitialized()) {
             runCatching { localToolExecutor.changedAbsolutePaths() }.getOrDefault(emptyList())
         } else {
             emptyList()
@@ -2460,12 +2463,19 @@ internal class LocalPipelineCallbacks(
         }.toSet()
         return WorkspaceGitDiff.watchRepositories(
             roots = roots,
-            hintPaths = hints,
+            hintPaths = changedPaths,
             nameForRepo = { gitRoot ->
                 val path = runCatching { gitRoot.canonicalPath }.getOrNull()
                 if (path != null && path in workspacePaths) workspaceGitRepoName() else gitRoot.name
             },
-            baselineForRepo = { gitRoot -> gitBaselineFor(gitRoot) }
+            baselineForRepo = { gitRoot -> gitBaselineFor(gitRoot) },
+            pathFilterForRepo = { gitRoot ->
+                WorkspaceGitDiff.sessionOwnedPathFilter(
+                    gitRoot = gitRoot,
+                    sharedRoot = sharedWorkspaceRoot,
+                    ownChangedAbsolutePaths = changedPaths
+                )
+            }
         )
     }
 

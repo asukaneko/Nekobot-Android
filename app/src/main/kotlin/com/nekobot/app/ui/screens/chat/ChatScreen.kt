@@ -197,6 +197,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -4145,7 +4147,7 @@ private fun ProgressCard(
             LocalBrowserPreview(sessionId = sessionId)
         }
 
-        // 文件变更 git 摘要区域：始终渲染（不随卡片折叠），逐文件 diff 可展开
+        // 文件变更 git 摘要区域：始终渲染（不随卡片折叠），仓库可整体折叠、逐文件 diff 可展开
         val gitSummary = card.steps.firstNotNullOfOrNull { it.gitDiff }
         if (gitSummary != null && gitSummary.hasChanges) {
             Spacer(Modifier.height(8.dp))
@@ -4600,9 +4602,11 @@ private const val GIT_DIFF_INLINE_FILE_LIMIT = 5
 /**
  * 文件变更 git 摘要卡片区域：始终显示于进度卡片头部之下。
  *
- * 顶部展示仓库名/分支与总增减行数；下方最多列出 [GIT_DIFF_INLINE_FILE_LIMIT] 个变更文件，
- * 每个文件可展开查看完整的统一 diff 内容（上下文 3 行）。
- * 文件数超过上限时，底部给出「查看全部」入口，点击进入 [GitDiffAllDialog] 子界面查看全部更改。
+ * 头部即「仓库级」折叠开关：点击收起/展开整个仓库的变更列表，收起后只保留仓库名、
+ * 分支与总增减（避免长变更列表把进度卡片撑高）。
+ * 下方最多列出 [GIT_DIFF_INLINE_FILE_LIMIT] 个变更文件，每个文件可展开查看完整的统一 diff
+ * 内容（上下文 3 行）；文件数超过上限时，底部给出「查看全部」入口，
+ * 点击进入 [GitDiffAllDialog] 子界面查看全部更改。
  */
 @Composable
 private fun GitDiffSummarySection(
@@ -4611,16 +4615,30 @@ private fun GitDiffSummarySection(
     val addColor = Color(0xFF2EA043)
     val delColor = Color(0xFFCF6679)
     var showAllChanges by remember { mutableStateOf(false) }
+    // 仓库整体折叠：变更区域随卡片实时刷新，折叠状态与卡片更新解耦，只跟随仓库
+    var collapsed by rememberSaveable(summary.repoName) { mutableStateOf(false) }
+    val collapseState = stringResource(
+        if (collapsed) R.string.agent_git_collapsed else R.string.agent_git_expanded
+    )
+    val headerInteraction = remember { MutableInteractionSource() }
     val visibleFiles = summary.files.take(GIT_DIFF_INLINE_FILE_LIMIT)
     val hiddenCount = summary.files.size - visibleFiles.size
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 头部：标题 + 仓库/分支 + 总增减
+        // 头部：仓库名 + 分支 + 总增减 + 折叠箭头（整行可点，收起/展开整个仓库）
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.45f))
+                .clickable(interactionSource = headerInteraction, indication = null) {
+                    collapsed = !collapsed
+                }
+                .semantics { stateDescription = collapseState }
+                .padding(start = 8.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Filled.Add,
+                imageVector = Icons.Filled.Folder,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(14.dp)
@@ -4641,11 +4659,13 @@ private fun GitDiffSummarySection(
                     text = summary.branch,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 96.dp)
                 )
             }
             if (summary.totalAdditions > 0 || summary.totalDeletions > 0) {
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 DiffStatText(
                     additions = summary.totalAdditions,
                     deletions = summary.totalDeletions,
@@ -4653,22 +4673,40 @@ private fun GitDiffSummarySection(
                     delColor = delColor
                 )
             }
-        }
-
-        Spacer(Modifier.height(6.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            visibleFiles.forEach { file ->
-                GitDiffFileRow(file, addColor = addColor, delColor = delColor)
+            if (collapsed) {
+                // 收起时补一个文件数，避免折叠后看不出仓库里改了多少文件
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.agent_git_file_count, summary.files.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
             }
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                imageVector = if (collapsed) Icons.Filled.KeyboardArrowDown
+                else Icons.Filled.KeyboardArrowUp,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
         }
 
-        // 超出内联上限：底部入口进入子界面查看全部更改
-        if (hiddenCount > 0) {
-            Spacer(Modifier.height(4.dp))
-            GitDiffViewAllRow(
-                text = stringResource(R.string.agent_git_view_all, summary.files.size),
-                onClick = { showAllChanges = true }
-            )
+        if (!collapsed) {
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                visibleFiles.forEach { file ->
+                    GitDiffFileRow(file, addColor = addColor, delColor = delColor)
+                }
+            }
+            // 超出内联上限：底部入口进入子界面查看全部更改
+            if (hiddenCount > 0) {
+                GitDiffViewAllRow(
+                    text = stringResource(R.string.agent_git_view_all, summary.files.size),
+                    onClick = { showAllChanges = true }
+                )
+            }
         }
     }
 
@@ -4680,44 +4718,46 @@ private fun GitDiffSummarySection(
     }
 }
 
-/** 「查看全部更改」入口行：子界面（弹窗）打开。 */
+/**
+ * 「查看全部更改」入口：右对齐的 TextButton，和进度卡片内其它操作按钮（如子代理操作）统一。
+ * 点击打开 [GitDiffAllDialog] 子界面。
+ */
 @Composable
 private fun GitDiffViewAllRow(
     text: String,
     onClick: () -> Unit
 ) {
-    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(top = 2.dp),
+        horizontalArrangement = Arrangement.End
     ) {
-        Icon(
-            imageVector = Icons.Filled.Checklist,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(14.dp)
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(16.dp)
-        )
+        TextButton(
+            onClick = onClick,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 10.dp,
+                vertical = 4.dp
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Checklist,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }
 
