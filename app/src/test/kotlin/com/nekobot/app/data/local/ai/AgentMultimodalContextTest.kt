@@ -68,7 +68,7 @@ class AgentMultimodalContextTest {
                 "path" to "${toolCall["id"]}.jpg", "_image_urls" to listOf("data:image/jpeg;base64," + "A".repeat(50_000))
             ) },
             hooks = ToolLoopHooks(
-                onToolMessageAppended = { persisted.add(encodeAgentToolMessageRow(it)) },
+                onToolMessageAppended = { message, _ -> persisted.add(encodeAgentToolMessageRow(message)) },
                 onContextTrimmed = { messages ->
                     trims++
                     val synced = synchronizeAgentToolMessagePayloads(persisted, messages).filterNotNull()

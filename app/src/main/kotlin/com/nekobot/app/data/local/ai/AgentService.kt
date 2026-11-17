@@ -362,8 +362,19 @@ data class ToolLoopHooks(
      *
      * 落库动作必须发生在消息产生的当下，而不是等整轮结束：
      * 一轮任务可能有上百次工具调用，中断或进程回收时只有即时落库的内容能恢复。
+     *
+     * 第二个参数是生成该条 assistant 消息的那次模型调用的 Token 用量与模型（tool 行、注入的
+     * 用户消息与旧路径为 null），实现方应与消息同一行落库，中断后仍可看到已产生的用量。
      */
-    val onToolMessageAppended: ((Map<String, Any>) -> Unit)? = null,
+    val onToolMessageAppended: ((Map<String, Any>, ModelCallUsage?) -> Unit)? = null,
+    /**
+     * 每一次模型调用完成（即每完成一轮工具决策）后立即回调该轮的 Token 用量与模型。
+     *
+     * 与 [onToolMessageAppended] 的区别：这里只关心记账，不关心消息正文；
+     * 实现在此逐轮写入用量明细，Token 用量界面因此能在任务进行中就出现记录，
+     * 不必等整轮 Agent 会话结束再合并成一条。
+     */
+    val onModelUsageRecorded: ((ModelCallUsage) -> Unit)? = null,
     /**
      * Agent Hook：每轮模型决策前触发（agent.iteration.start）。
      * 与 [onIterationStart] 分开，是因为 Hook 需要 suspend 才能读写数据库。
@@ -393,6 +404,13 @@ data class ToolLoopResult(
     /** 实际模型标识（如 gpt-4o），用于排行榜按模型聚合 */
     val modelActualName: String = "",
     val failoverEvents: List<Map<String, Any>> = emptyList(),
+    /**
+     * 本轮每一次模型调用的 Token 用量与实际模型（按调用顺序）。
+     *
+     * 上层用它把用量按模型聚合后随助手消息落库，供「消息详情」展示用了哪些模型；
+     * 单轮没有工具调用时为空列表。
+     */
+    val usageRecords: List<ModelCallUsage> = emptyList(),
     /**
      * 本轮所有模型调用的总耗时（毫秒），不含工具执行时间。
      *
@@ -1187,6 +1205,8 @@ suspend fun runToolCallLoop(
     var currentModelName = ""
     var currentModelActualName = ""
     val allFailoverEvents = mutableListOf<Map<String, Any>>()
+    // 逐轮用量：每完成一轮工具调用就落库一份，整轮结束时再按模型聚合
+    val usageRecords = mutableListOf<ModelCallUsage>()
     val loopGuard = AgentToolLoopGuard()
     // 本轮模型调用次数与累计耗时（毫秒）：与 usage 累计的输出 token 配对，用于 tok/s 统计
     var modelCallCount = 0
@@ -1232,6 +1252,7 @@ suspend fun runToolCallLoop(
         modelName = currentModelName,
         modelActualName = currentModelActualName,
         failoverEvents = allFailoverEvents.toList(),
+        usageRecords = usageRecords.toList(),
         modelCallDurationMs = modelCallDurationMs.takeIf { modelCallCount > 0 },
         budgetBreach = budgetBreach?.name
     )
@@ -1268,10 +1289,14 @@ suspend fun runToolCallLoop(
      *
      * [persist] 为 false 的消息（如排队注入的用户消息）已由上层单独落库，不重复写入工具轨迹。
      */
-    fun appendMessage(message: MutableMap<String, Any>, persist: Boolean = true) {
+    fun appendMessage(
+        message: MutableMap<String, Any>,
+        persist: Boolean = true,
+        usage: ModelCallUsage? = null
+    ) {
         toolMessages.add(message)
         if (persist) {
-            hooks?.onToolMessageAppended?.invoke(message)
+            hooks?.onToolMessageAppended?.invoke(message, usage)
         }
     }
 
@@ -1340,6 +1365,7 @@ suspend fun runToolCallLoop(
         }
 
         val callStartNanos = System.nanoTime()
+        var iterationDurationMs = 0.0
         val response = try {
             modelCall(toolMessages.map { it.toMap() }, shouldStop())
         } catch (e: ToolLoopExit) {
@@ -1351,7 +1377,8 @@ suspend fun runToolCallLoop(
             throw ToolLoopModelError(e, iteration)
         } finally {
             // 每次迭代都累计：循环结束后得到本轮全部模型调用的生成耗时，不含工具执行时间
-            modelCallDurationMs += (System.nanoTime() - callStartNanos) / 1_000_000.0
+            iterationDurationMs = (System.nanoTime() - callStartNanos) / 1_000_000.0
+            modelCallDurationMs += iterationDurationMs
             modelCallCount += 1
         }
         if (shouldStop()) {
@@ -1366,6 +1393,20 @@ suspend fun runToolCallLoop(
         (response["_failover_events"] as? List<Map<String, Any>>)?.let { allFailoverEvents.addAll(it) }
 
         mergeUsage(usageTotal, response["usage"])
+
+        // 本轮（这一次模型调用）的用量与模型：随下面的 assistant 消息一起落库，
+        // 之后按模型聚合写回助手消息，供消息详情展示用过哪些模型。
+        val callUsage = modelCallUsageOf(
+            iteration = iteration,
+            modelId = currentModelId,
+            modelName = currentModelName,
+            actualModel = currentModelActualName,
+            usage = (response["usage"] as? Map<String, Any>).orEmpty(),
+            durationMs = iterationDurationMs,
+            failovers = parseModelCallFailovers(response["_failover_events"])
+        )
+        usageRecords += callUsage
+        hooks?.onModelUsageRecorded?.invoke(callUsage)
 
         @Suppress("UNCHECKED_CAST")
         val toolCalls = (response["tool_calls"] as? List<Map<String, Any>>)
@@ -1411,7 +1452,7 @@ suspend fun runToolCallLoop(
                         ?.takeIf { it.isNotBlank() }
                         ?.let { put("reasoning_signature", it) }
                 }
-            }.toMutableMap())
+            }.toMutableMap(), usage = callUsage)
             // 带工具调用的正文属于中间回复：气泡会被下一轮替换，回调给进度卡片留档
             hooks?.onIntermediateContent?.invoke((response["content"] as? String).orEmpty())
             // 执行每个工具调用：连续的只读工具并行执行（结果顺序与副作用顺序保持不变）
@@ -1572,7 +1613,7 @@ suspend fun runToolCallLoop(
         }
 
         // 未停止，继续循环
-        appendMessage(mutableMapOf("role" to "assistant", "content" to finalContent))
+        appendMessage(mutableMapOf("role" to "assistant", "content" to finalContent), usage = callUsage)
         // 无工具调用但循环继续：该正文同样会被下一轮覆盖，回调给进度卡片留档
         hooks?.onIntermediateContent?.invoke(finalContent)
     }

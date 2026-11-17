@@ -270,8 +270,23 @@ open class PipelineCallbacks {
      *
      * 与 [saveAgentCheckpoint] 的区别：检查点只记录进度（不含正文），
      * 本方法在消息产生的当下就把正文落库，进程被回收/用户中断时不会丢工具结果。
+     *
+     * @param usage 生成该条 assistant 消息的那次模型调用的 Token 用量与模型；tool 行为 null。
+     *   实现方应与消息写在同一条记录里，这样每完成一轮工具调用就已经把用量落库。
      */
-    open fun persistAgentToolMessage(ctx: PipelineContext, message: Map<String, Any>) {}
+    open fun persistAgentToolMessage(
+        ctx: PipelineContext,
+        message: Map<String, Any>,
+        usage: ModelCallUsage? = null
+    ) {}
+
+    /**
+     * 逐轮记录 Agent 工具循环内单次模型调用的 Token 用量。
+     *
+     * 工具循环里每完成一轮工具调用就会回调一次：实现方应立刻写入用量明细，
+     * 而不是等整轮会话结束后再合并成一条记录。
+     */
+    open fun recordAgentModelUsage(ctx: PipelineContext, usage: ModelCallUsage) {}
 
     /** 循环裁剪后同步有效工具轨迹，防止上下文统计和中断恢复重新载入已移出的内容。 */
     open fun synchronizeAgentToolContext(ctx: PipelineContext, messages: List<Map<String, Any>>) {}

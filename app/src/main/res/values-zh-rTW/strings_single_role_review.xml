@@ -143,6 +143,12 @@
     <string name="single_role_generation_time">產生耗時</string>
     <string name="single_role_model_generation_only_excludes_tool_execution">僅統計模型產生，不含工具執行</string>
     <string name="single_role_the_data_profile_changed_reopen_this_page">資料庫已切換，請重新開啟</string>
+    <string name="message_details_models">模型用量</string>
+    <string name="message_details_model_usage">輸入 %1$s · 輸出 %2$s</string>
+    <string name="message_details_model_calls">%1$d 次呼叫</string>
+    <string name="message_details_model_fallback">回退</string>
+    <string name="message_details_model_failover">呼叫失敗，已回退</string>
+    <string name="message_details_model_failover_code">HTTP %1$d，已回退</string>
     <string name="single_role_could_not_load_characters_please_try_again">暫時無法讀取角色，請重試</string>
     <string name="single_role_moments_together">相處中的點滴</string>
     <string name="single_role_each_character_s_memories_are_stored_separately_choose_a_journal">每個角色的記憶分別儲存。選擇一本，看看留下了什麼。</string>

@@ -12,7 +12,7 @@ import java.sql.DriverManager
 /** SQL/storage coverage of the actual public Room schema; not a substitute for Android UI checks. */
 class PortableImportSchemaCoverageTest {
     @Test fun allPortableTablesRoundTripWithoutRecreatingRecords() {
-        val schemaRelative = "schemas/com.nekobot.app.data.local.db.NekobotDatabase/64.json"
+        val schemaRelative = "schemas/com.nekobot.app.data.local.db.NekobotDatabase/65.json"
         val schemaFile = listOf(File(schemaRelative), File("app/$schemaRelative"),
             File(System.getProperty("nekobot.import.repo", "."), "app/$schemaRelative")).first { it.isFile }
         val database = JsonParser.parseString(schemaFile.readText()).asJsonObject.getAsJsonObject("database")

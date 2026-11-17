@@ -54,8 +54,8 @@
     <string name="tokens_stat_total">전체 토큰</string>
     <string name="tokens_stat_custom">사용자 정의 범위 토큰</string>
     <string name="tokens_stat_token">토큰</string>
-    <string name="tokens_stat_messages">메시지</string>
-    <string name="tokens_stat_avg_per_msg">평균/메시지</string>
+    <string name="tokens_stat_messages">기록 수</string>
+    <string name="tokens_stat_avg_per_msg">평균/건</string>
     <string name="tokens_stat_estimated_cost">예상 비용</string>
     <string name="tokens_stat_active_sessions">활성 대화</string>
     <string name="tokens_stat_cache_hit_rate">평균 캐시 적중률</string>

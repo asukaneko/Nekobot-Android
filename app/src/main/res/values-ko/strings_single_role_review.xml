@@ -143,6 +143,12 @@
     <string name="single_role_generation_time">생성 소요 시간</string>
     <string name="single_role_model_generation_only_excludes_tool_execution">모델 생성 시간만 집계하며 도구 실행 시간은 제외합니다</string>
     <string name="single_role_the_data_profile_changed_reopen_this_page">데이터 프로필이 변경되었습니다. 페이지를 다시 여세요.</string>
+    <string name="message_details_models">모델 사용량</string>
+    <string name="message_details_model_usage">입력 %1$s · 출력 %2$s</string>
+    <string name="message_details_model_calls">%1$d회</string>
+    <string name="message_details_model_fallback">대체</string>
+    <string name="message_details_model_failover">실패 후 대체</string>
+    <string name="message_details_model_failover_code">HTTP %1$d, 대체</string>
     <string name="single_role_could_not_load_characters_please_try_again">캐릭터를 불러오지 못했습니다. 다시 시도하세요.</string>
     <string name="single_role_moments_together">함께한 순간들</string>
     <string name="single_role_each_character_s_memories_are_stored_separately_choose_a_journal">캐릭터마다 기억을 따로 저장합니다. 한 권을 골라 무엇을 기억하는지 살펴보세요.</string>

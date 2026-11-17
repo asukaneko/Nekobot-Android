@@ -152,6 +152,13 @@ data class LocalMessageEntity(
      */
     @ColumnInfo(name = "duration_ms") val durationMs: Double? = null,
     /**
+     * 本条回复用过的模型与 Token 用量（按模型聚合的 JSON）。
+     *
+     * Agent 工具循环一轮会调用多次模型，发生故障转移时还会切换到备用模型；
+     * 汇总后随消息一起保存，供「消息详情」展示用了哪些模型。普通消息为 null。
+     */
+    @ColumnInfo(name = "model_usage") val modelUsage: String? = null,
+    /**
      * 软删除标记：用户删除单条消息时只置位不清行。
      *
      * 直接物理删除会让上下文出现「用户没说话 AI 就回答了」的断点，也会让
@@ -337,6 +344,13 @@ data class LocalAgentToolMessageEntity(
     val role: String,
     /** 该条消息的 JSON 序列化结果，恢复时可直接反序列化为模型消息。 */
     val payload: String,
+    /**
+     * 生成这条 assistant 消息的那次模型调用的 Token 用量与模型（JSON）。
+     *
+     * 工具循环每完成一轮就随该行一起落库，中断后仍能看到已经产生的用量；
+     * tool 行与旧版本写入的行该字段为 null。
+     */
+    @ColumnInfo(name = "usage_json") val usageJson: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: String
 )
 

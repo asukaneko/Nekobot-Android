@@ -54,7 +54,7 @@
     <string name="tokens_stat_total">累計 Token</string>
     <string name="tokens_stat_custom">自訂範圍 Token</string>
     <string name="tokens_stat_token">Token</string>
-    <string name="tokens_stat_messages">訊息數</string>
+    <string name="tokens_stat_messages">記錄數</string>
     <string name="tokens_stat_avg_per_msg">平均/條</string>
     <string name="tokens_stat_estimated_cost">估算費用</string>
     <string name="tokens_stat_active_sessions">活躍會話</string>

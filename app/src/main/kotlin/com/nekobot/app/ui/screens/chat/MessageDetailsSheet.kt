@@ -68,6 +68,15 @@ internal fun MessageDetailsSheet(details: MessageDetails, subtitle: String, onDi
                 NekoDivider(startInset = 15.dp)
                 DetailRow(stringResource(R.string.tokens_total), details.totalTokens, emphasize = true)
             }
+            if (details.modelUsage.isNotEmpty()) {
+                NekoSectionHeader(title = stringResource(R.string.message_details_models))
+                NekoGroup {
+                    details.modelUsage.forEachIndexed { index, line ->
+                        if (index > 0) NekoDivider(startInset = 15.dp)
+                        DetailRow(line.label, line.usage)
+                    }
+                }
+            }
             Spacer(Modifier.height(12.dp))
             NekoGroup {
                 DetailRow(stringResource(R.string.single_role_generation_speed), details.speed)

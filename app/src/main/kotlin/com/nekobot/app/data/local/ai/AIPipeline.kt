@@ -908,9 +908,11 @@ class AIPipeline {
             },
             // 每条工具消息产生的当下就落库：一轮任务可能上百次调用，中断后只有
             // 即时写入的内容能恢复（检查点只保存进度，不含工具正文）。
-            onToolMessageAppended = { message ->
-                callbacks.persistAgentToolMessage(ctx, message)
+            onToolMessageAppended = { message, usage ->
+                callbacks.persistAgentToolMessage(ctx, message, usage)
             },
+            // 逐轮记账：Token 用量界面在任务进行中就能看到每次工具调用的用量。
+            onModelUsageRecorded = { usage -> callbacks.recordAgentModelUsage(ctx, usage) },
             onContextTrimmed = { messages ->
                 callbacks.synchronizeAgentToolContext(ctx, messages)
                 ctx.toolTrace = extractCurrentTurnToolCallHistory(messages, preparedMessages)
@@ -1004,6 +1006,8 @@ class AIPipeline {
             if (loopResult.modelName.isNotEmpty()) ctx.metadata["model_name"] = loopResult.modelName
             if (loopResult.modelActualName.isNotEmpty()) ctx.metadata["model_actual_name"] = loopResult.modelActualName
             if (loopResult.failoverEvents.isNotEmpty()) ctx.metadata["failover_events"] = loopResult.failoverEvents
+            // 本轮每一次模型调用的用量与模型：持久化时按模型聚合写入助手消息，供消息详情展示。
+            if (loopResult.usageRecords.isNotEmpty()) ctx.metadata["model_usage"] = loopResult.usageRecords
 
             // 只保存当前轮新增的 assistant/tool 消息。既有上下文已在数据库中，
             // 若再次写入会造成工具历史跨轮重复嵌套。

@@ -150,6 +150,7 @@ import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessagePage
+import com.nekobot.app.data.model.parseMessageModelUsage
 import com.nekobot.app.data.model.KnowledgeDocument
 import com.nekobot.app.data.model.KnowledgeDocumentRequest
 import com.nekobot.app.data.model.KnowledgeSearchRequest
@@ -11885,6 +11886,8 @@ ${AiOutputLanguage.directive()}
         inputTokens = inputTokens,
         outputTokens = outputTokens,
         durationMs = durationMs,
+        // 本条回复用过的模型与用量（Agent 工具循环才会写入），供「消息详情」展示。
+        modelUsage = parseMessageModelUsage(modelUsage),
         // 合并 input+output 作为总 token 数，供 UI 统计使用
         tokens = listOfNotNull(inputTokens, outputTokens).takeIf { it.size == 2 }?.sum(),
         source = source,

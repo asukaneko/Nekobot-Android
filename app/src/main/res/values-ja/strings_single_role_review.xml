@@ -143,6 +143,12 @@
     <string name="single_role_generation_time">生成時間</string>
     <string name="single_role_model_generation_only_excludes_tool_execution">モデルの生成のみ。ツールの実行時間は含みません</string>
     <string name="single_role_the_data_profile_changed_reopen_this_page">データプロファイルが切り替わりました。ページを開き直してください。</string>
+    <string name="message_details_models">モデル使用量</string>
+    <string name="message_details_model_usage">入力 %1$s · 出力 %2$s</string>
+    <string name="message_details_model_calls">%1$d 回</string>
+    <string name="message_details_model_fallback">フォールバック</string>
+    <string name="message_details_model_failover">失敗しフォールバック</string>
+    <string name="message_details_model_failover_code">HTTP %1$d、フォールバック</string>
     <string name="single_role_could_not_load_characters_please_try_again">キャラクターを読み込めません。もう一度お試しください。</string>
     <string name="single_role_moments_together">一緒に過ごした日々</string>
     <string name="single_role_each_character_s_memories_are_stored_separately_choose_a_journal">記憶はキャラクターごとに保存されます。一冊選んで、覚えていることを見てみましょう。</string>

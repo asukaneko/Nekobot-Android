@@ -389,6 +389,10 @@ interface MessageDao {
     @Query("UPDATE local_messages SET variant_index = :variantIndex, variant_count = :variantCount WHERE id = :id")
     suspend fun updateVariantIndex(id: String, variantIndex: Int, variantCount: Int)
 
+    /** 更新本条回复用过的模型与 Token 用量（swipes 重抽后同步成新候选的记录）。 */
+    @Query("UPDATE local_messages SET model_usage = :modelUsage WHERE id = :id")
+    suspend fun updateModelUsage(id: String, modelUsage: String?)
+
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt AND deleted = 0 ORDER BY created_at ASC")
     suspend fun listBefore(sessionId: String, createdAt: String): List<LocalMessageEntity>
 

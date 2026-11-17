@@ -56,6 +56,12 @@ data class LocalAiResult(
     val usedModelName: String? = null,
     /** 实际请求的模型标识（LocalAiModelEntity.model，如 gpt-4o），用于模型排行榜按模型聚合 */
     val usedModelActualName: String? = null,
+    /**
+     * 本次调用中被故障转移掉的模型（按尝试顺序）；为空表示首选模型直接成功。
+     *
+     * Agent 工具循环按轮落库这份记录，消息详情据此展示「用过哪些模型、哪些被回退过」。
+     */
+    val failoverFailures: List<FailoverFailure> = emptyList(),
     val toolCalls: List<Map<String, Any>> = emptyList(),
     val finishReason: String = "",
     val thinkingContent: String = "",
@@ -1291,6 +1297,7 @@ class LocalAiClient(
         if (shouldStop()) throw CancellationException("生成已停止")
         val failover = getFailoverState()
         val exclude = mutableSetOf<String>()
+        val failures = mutableListOf<FailoverFailure>()
         var lastError: LocalAiResult? = null
         val primaryModelId = models.firstOrNull()?.id
         for (attempt in models.indices) {
@@ -1309,13 +1316,20 @@ class LocalAiClient(
             try {
                 val result = chatOnce(model, messages, extra, requestTag, streamCallbacks)
                 failover.recordSuccess(model.id)
-                return result.copy(usedModelId = model.id, usedModelName = model.name, usedModelActualName = model.model)
+                return result.copy(
+                    usedModelId = model.id,
+                    usedModelName = model.name,
+                    usedModelActualName = model.model,
+                    failoverFailures = failures.toList()
+                )
             } catch (e: FailoverHttpException) {
                 failover.recordFailure(model.id, e.statusCode)
                 LocalLogger.w(TAG, R.string.log_laic_model_http_failover, model.name, e.statusCode, e.message?.take(120))
+                failures += FailoverFailure(model.id, e.statusCode, e.message.orEmpty())
                 lastError = LocalAiResult("", error = e.message, statusCode = e.statusCode)
             } catch (e: FailoverRejectedContentException) {
                 failover.recordFailure(model.id)
+                failures += FailoverFailure(model.id, 0, e.message.orEmpty())
                 lastError = LocalAiResult("", error = e.message)
             } catch (e: CancellationException) {
                 throw e
@@ -1324,10 +1338,12 @@ class LocalAiClient(
                 val code = extractStatusCode(e)
                 failover.recordFailure(model.id, code)
                 LocalLogger.w(TAG, R.string.log_laic_model_exception_failover, model.name, e.message?.take(120))
+                failures += FailoverFailure(model.id, code, e.message.orEmpty())
                 lastError = LocalAiResult("", error = e.message ?: "请求异常", statusCode = code)
             }
         }
-        return lastError ?: LocalAiResult("", error = "所有模型均不可用")
+        return (lastError ?: LocalAiResult("", error = "所有模型均不可用"))
+            .copy(failoverFailures = failures.toList())
     }
 
     /** 响应头返回后仍跟踪读取中的响应体，停止操作可以立即中断长流。 */

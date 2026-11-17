@@ -12,7 +12,11 @@ import java.sql.DriverManager
 @RunWith(Parameterized::class)
 class CompanionHistoryUpgradeTest(private val startVersion: Int) {
     companion object {
-        @JvmStatic @Parameterized.Parameters(name = "v{0} to v64")
+        /**
+         * 起点固定为 53..63：这些版本需要重新执行「重放历史证据」的迁移。
+         * 终点跟随最新导出的 schema，升版本后自动覆盖新迁移。
+         */
+        @JvmStatic @Parameterized.Parameters(name = "v{0} to latest")
         fun versions() = (53..63).map { arrayOf(it) }
     }
 
@@ -81,7 +85,7 @@ class CompanionHistoryUpgradeTest(private val startVersion: Int) {
             val vectors = fixture.scalar(c, "SELECT count(*) FROM companion_vectors")
             val path = RoomDatabase.MigrationContainer().apply {
                 addMigrations(*NekobotDatabase.ALL_MIGRATIONS)
-            }.findMigrationPath(startVersion, 64)
+            }.findMigrationPath(startVersion, latestExportedSchemaVersion())
             assertNotNull(path)
             c.autoCommit = false
             path!!.forEach { it.migrate(fixture.sqliteBridge(c)) }

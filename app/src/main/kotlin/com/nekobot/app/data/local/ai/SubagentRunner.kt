@@ -138,7 +138,7 @@ internal object SubagentRunner {
                 onProgress?.invoke(stepSink.header(), stepSink.complete, stepSink.steps())
                 null
             },
-            onToolMessageAppended = { message ->
+            onToolMessageAppended = { message, _ ->
                 SubagentTaskStore.appendConversationMessage(taskId, message)
             },
             // Agent Hook：子代理内部复用主会话的 agent.tool.* 事件，

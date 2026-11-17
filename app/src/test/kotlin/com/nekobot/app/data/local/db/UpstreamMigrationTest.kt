@@ -96,15 +96,7 @@ class UpstreamMigrationTest(private val version: Int) {
      * 期望结构跟随导出的最新 schema，不在测试里写死版本号。
      * 产品升版本并导出 schema 后，这里自动指向新结构；漏导出则会明确报错。
      */
-    private fun latestSchemaVersion(): Int {
-        val directory = listOf(File("schemas"), File("app/schemas")).firstOrNull { it.isDirectory }
-            ?: error("找不到 schemas 导出目录，当前工作目录=${File(".").absolutePath}")
-        val schemas = File(directory, "com.nekobot.app.data.local.db.NekobotDatabase")
-        return schemas.listFiles { file -> file.extension == "json" }
-            ?.mapNotNull { it.nameWithoutExtension.toIntOrNull() }
-            ?.maxOrNull()
-            ?: error("$schemas 下没有可用的 schema 导出文件")
-    }
+    internal fun latestSchemaVersion(): Int = latestExportedSchemaVersion()
 
     private fun connect(file: File): Connection = DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}").also {
         it.createStatement().use { statement -> statement.execute("PRAGMA foreign_keys=ON") }
@@ -201,4 +193,15 @@ class UpstreamMigrationTest(private val version: Int) {
             else -> error("Unsupported database call: ${method.name}")
         }
     } as SupportSQLiteDatabase
+}
+
+/** 最新导出的 schema 版本；其它迁移用例据此跟随产品版本，不在用例里写死数字。 */
+internal fun latestExportedSchemaVersion(): Int {
+    val directory = listOf(File("schemas"), File("app/schemas")).firstOrNull { it.isDirectory }
+        ?: error("找不到 schemas 导出目录，当前工作目录=${File(".").absolutePath}")
+    val schemas = File(directory, "com.nekobot.app.data.local.db.NekobotDatabase")
+    return schemas.listFiles { file -> file.extension == "json" }
+        ?.mapNotNull { it.nameWithoutExtension.toIntOrNull() }
+        ?.maxOrNull()
+        ?: error("$schemas 下没有可用的 schema 导出文件")
 }

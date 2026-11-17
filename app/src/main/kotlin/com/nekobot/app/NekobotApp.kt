@@ -166,6 +166,20 @@ object ServiceContainer {
     private val _dataSourceRevision = MutableStateFlow(0L)
     val dataSourceRevision: StateFlow<Long> = _dataSourceRevision.asStateFlow()
 
+    /**
+     * Token 用量代次：每写入一条用量明细（例如 Agent 每完成一轮工具调用）就递增。
+     *
+     * 只驱动「Token 用量」页刷新，不复用 [dataSourceRevision]——后者会让其它页面一起重载，
+     * 而用量记录在长任务里会频繁追加。
+     */
+    private val _tokenUsageRevision = MutableStateFlow(0L)
+    val tokenUsageRevision: StateFlow<Long> = _tokenUsageRevision.asStateFlow()
+
+    /** 通知已打开的用量页：又追加了一条用量记录。 */
+    fun bumpTokenUsageRevision() {
+        _tokenUsageRevision.value += 1L
+    }
+
     /** 全局登录态流：登录/登出/token 失效时自动刷新路由 */
     private val _loginStateFlow = MutableStateFlow(false)
     val loginStateFlow: StateFlow<Boolean> = _loginStateFlow.asStateFlow()

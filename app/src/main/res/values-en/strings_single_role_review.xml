@@ -143,6 +143,12 @@
     <string name="single_role_generation_time">Generation time</string>
     <string name="single_role_model_generation_only_excludes_tool_execution">Model generation only; excludes tool execution</string>
     <string name="single_role_the_data_profile_changed_reopen_this_page">The data profile changed. Reopen this page.</string>
+    <string name="message_details_models">Model usage</string>
+    <string name="message_details_model_usage">In %1$s · Out %2$s</string>
+    <string name="message_details_model_calls">%1$d calls</string>
+    <string name="message_details_model_fallback">Fell back</string>
+    <string name="message_details_model_failover">Failed, fell back</string>
+    <string name="message_details_model_failover_code">HTTP %1$d, fell back</string>
     <string name="single_role_could_not_load_characters_please_try_again">Could not load characters. Please try again.</string>
     <string name="single_role_moments_together">Moments together</string>
     <string name="single_role_each_character_s_memories_are_stored_separately_choose_a_journal">Each character’s memories are stored separately. Choose a journal to see what they remember.</string>

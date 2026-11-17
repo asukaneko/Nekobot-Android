@@ -21,7 +21,10 @@ class CompanionMemoryV2MigrationTest {
                 "status" to "retracted", "current" to 0, "updatedAt" to "2026-10-22T10:00:00"))
             fixture.insert(c, old, "companion_sources", mapOf("memoryId" to "current", "messageId" to "source", "quote" to "旧来源片段"))
             fixture.insert(c, old, "companion_clarifications", mapOf("scopeId" to "scope", "factKey" to "job", "memoryId" to "current", "question" to "旧待核对项"))
-            NekobotDatabase.MIGRATION_63_64.migrate(fixture.sqliteBridge(c))
+            val path = androidx.room.RoomDatabase.MigrationContainer().apply {
+                addMigrations(*NekobotDatabase.ALL_MIGRATIONS)
+            }.findMigrationPath(63, latestExportedSchemaVersion())
+            requireNotNull(path).forEach { it.migrate(fixture.sqliteBridge(c)) }
             block(c)
         }
     }

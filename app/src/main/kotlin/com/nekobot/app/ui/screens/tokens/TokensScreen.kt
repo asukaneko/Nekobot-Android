@@ -400,7 +400,9 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}, onBack: (() -> Unit)? = null
         endDate = endDate
     )
     val rankingIsCurrent = contentIsCurrent
-    LaunchedEffect(appMode, dataSourceRevision) { vm.load() }
+    // Agent 每完成一轮工具调用就追加一条用量记录：已打开本页时跟着刷新，不必等整轮结束。
+    val tokenUsageRevision by ServiceContainer.tokenUsageRevision.collectAsStateWithLifecycle()
+    LaunchedEffect(appMode, dataSourceRevision, tokenUsageRevision) { vm.load() }
 
     LaunchedEffect(toast) {
         if (toast != null) {

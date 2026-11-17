@@ -1,6 +1,9 @@
 package com.nekobot.app.ui.screens.chat
 
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.MessageModelFailoverEntry
+import com.nekobot.app.data.model.MessageModelUsage
+import com.nekobot.app.data.model.MessageModelUsageEntry
 import com.nekobot.app.testString
 import com.nekobot.app.R
 import java.time.Instant
@@ -77,6 +80,37 @@ class MessageDetailsFormatterTest {
             assertEquals("未记录", result.speed)
         }
     }
+    @Test fun modelUsageListsEveryModelAndThenTheFellBackOnes() {
+        val result = format(Message(modelUsage = MessageModelUsage(
+            models = listOf(
+                MessageModelUsageEntry(model = "主模型", actualModel = "model-a",
+                    inputTokens = 16_068, outputTokens = 664, calls = 3),
+                MessageModelUsageEntry(model = "备用模型", actualModel = "model-b",
+                    inputTokens = 900, outputTokens = 40, calls = 1, fallback = true)
+            ),
+            failovers = listOf(MessageModelFailoverEntry(model = "主模型", actualModel = "model-a", statusCode = 429))
+        )))
+        assertEquals(3, result.modelUsage.size)
+        assertEquals("主模型", result.modelUsage[0].label)
+        assertEquals("输入 16,068 · 输出 664 · 3 次调用", result.modelUsage[0].usage)
+        assertEquals("备用模型", result.modelUsage[1].label)
+        assertEquals("输入 900 · 输出 40 · 回退", result.modelUsage[1].usage)
+        assertEquals("主模型", result.modelUsage[2].label)
+        assertEquals("HTTP 429，已回退", result.modelUsage[2].usage)
+    }
+
+    @Test fun modelUsageWithoutReportedTokensStillShowsTheModel() {
+        val result = format(Message(modelUsage = MessageModelUsage(
+            models = listOf(MessageModelUsageEntry(actualModel = "model-a", calls = 1))
+        )))
+        assertEquals("model-a", result.modelUsage.single().label)
+        assertEquals("未记录", result.modelUsage.single().usage)
+    }
+
+    @Test fun oldMessagesHaveNoModelUsageSection() {
+        assertTrue(format(Message()).modelUsage.isEmpty())
+    }
+
     @Test fun smallPositiveDurationUsesActualDivision() {
         assertEquals("400.0 Token/秒", format(Message(outputTokens = 20, durationMs = 50.0)).speed)
         assertEquals("未记录", format(Message(outputTokens = 1, durationMs = Double.MIN_VALUE)).speed)

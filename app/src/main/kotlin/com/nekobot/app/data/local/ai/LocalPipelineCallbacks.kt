@@ -20,6 +20,7 @@ import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.model.ThinkingCard
+import com.nekobot.app.data.model.encodeMessageModelUsage
 import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.channels.Channel
@@ -979,6 +980,7 @@ internal class LocalPipelineCallbacks(
 
         // 保存到 Room（同步执行，因为已在 IO 线程）
         kotlinx.coroutines.runBlocking {
+            val modelUsageJson = resolveAgentModelUsageJson(ctx)
             if (variantTargetMessageId != null) {
                 // swipes：本轮回复作为同一条助手消息的新候选落库，消息本体同步切换过去。
                 // 旧回复被备份为候选 0，永不丢失（改造前这里是删除整段历史后新建消息）。
@@ -994,6 +996,8 @@ internal class LocalPipelineCallbacks(
                     outputTokens = outputTokens,
                     durationMs = durationMs
                 )
+                // 候选切换后本条消息的模型用量同步成新候选的记录。
+                messageDao.updateModelUsage(variantTargetMessageId, modelUsageJson)
                 com.nekobot.app.data.local.LocalLogger.i(TAG, R.string.log_pcb_swipes_persisted, variantTargetMessageId, variantTotal)
             } else {
                 messageDao.upsert(LocalMessageEntity(
@@ -1011,7 +1015,9 @@ internal class LocalPipelineCallbacks(
                     source = if (session.companionMode && (ctx.error != null || ctx.stoppedPrematurely)) "companion_incomplete" else assistantSource,
                     reasoningContent = reasoningContent.takeIf(String::isNotBlank),
                     // 生成耗时（毫秒）：气泡下方 tok/s 与 token 用量记录共用同一来源。
-                    durationMs = durationMs
+                    durationMs = durationMs,
+                    // 本轮用过的模型与 Token 用量：消息详情据此展示用过哪些模型。
+                    modelUsage = modelUsageJson
                 ))
                 if (session.usesCompanionMemory() && !session.usesFusedCompanionMemory() && ctx.error == null && !ctx.stoppedPrematurely) {
                     CompanionMemoryStore(db).recordLegacyClarificationQuestion(session, messageId)
@@ -1089,8 +1095,9 @@ internal class LocalPipelineCallbacks(
             model.model == actualModelName || model.name == modelName
         } ?: activeModel
 
-        // 记录 Token 用量到 TokenStatsManager（内存统计）
-        if (inputTokens != null || outputTokens != null) {
+        // 记录 Token 用量到 TokenStatsManager（内存统计）。
+        // Agent 工具循环已经在每轮调用完成时逐条记账，这里不再写合并记录，避免重复计数。
+        if (agentRoundUsageRecords == 0 && (inputTokens != null || outputTokens != null)) {
             try {
                 getGlobalTokenStatsManager().recordUsage(
                     promptTokens = inputTokens ?: 0,
@@ -1185,6 +1192,17 @@ internal class LocalPipelineCallbacks(
     /** 故障转移队列：activeModel 优先，附加 [failoverQueue] */
     private val modelQueue: List<LocalAiModelEntity> = listOf(activeModel) + failoverQueue.filter { it.id != activeModel.id }
 
+    /**
+     * 新建助手消息的 id：在生成开始前就确定。
+     *
+     * 工具循环逐轮记账时消息还没落库，先把 id 定下来写入每条用量明细，
+     * 结束落库时复用同一个 id，Token 用量与消息、消息详情才能保持一致。
+     */
+    private val newAssistantMessageId: String by lazy { java.util.UUID.randomUUID().toString() }
+
+    /** 本轮已经逐轮写过多少条 Token 用量记录；大于 0 时不再写合并记录，避免重复计数。 */
+    private var agentRoundUsageRecords = 0
+
     private fun modelQueueFor(ctx: PipelineContext): List<LocalAiModelEntity> =
         if (ctx.metadata["direct_image_input"] == true) {
             modelQueue.filter(LocalAiModelEntity::supportsVision).ifEmpty { modelQueue }
@@ -1263,14 +1281,15 @@ internal class LocalPipelineCallbacks(
                             ) { model ->
                                 chatOnceForGeneration(model, requestMessages, extra, streamCallbacks)
                             }
-                            // 保留工具调用等结构化响应，并补充实际使用的模型。
+                            // 保留工具调用等结构化响应，并补充实际使用的模型与被回退的模型。
                             exec.value.copy(
                                 usedModelId = exec.model.id,
                                 usedModelName = exec.model.name,
-                                usedModelActualName = exec.model.model
+                                usedModelActualName = exec.model.model,
+                                failoverFailures = exec.failures
                             )
                         } catch (e: FailoverAllFailedException) {
-                            LocalAiResult("", error = e.message ?: "所有模型均失败")
+                            LocalAiResult("", error = e.message ?: "所有模型均失败", failoverFailures = e.failures)
                         }
                     }
                 } else {
@@ -1343,6 +1362,10 @@ internal class LocalPipelineCallbacks(
                 put("_model_id", result.usedModelId ?: activeModel.id)
                 put("_model_name", result.usedModelName ?: activeModel.name)
                 put("_model_actual_name", result.usedModelActualName ?: activeModel.model)
+                // 本轮实际发生过的模型回退：工具循环按轮落库，消息详情据此展示回退记录。
+                failoverEventsOf(result.failoverFailures).takeIf { it.isNotEmpty() }?.let {
+                    put("_failover_events", it)
+                }
                 if (!forcedFinal && result.toolCalls.isNotEmpty()) put("tool_calls", result.toolCalls)
                 if (characterThinking) {
                     // 显示文本可能来自正文标签；工具续接只能回传服务商原生思考及其原签名。
@@ -1359,6 +1382,17 @@ internal class LocalPipelineCallbacks(
             }
         }
     }
+
+    /** 失败记录 → 响应里的回退事件（模型名按当前队列解析；状态码用于详情展示）。 */
+    private fun failoverEventsOf(failures: List<FailoverFailure>): List<Map<String, Any>> =
+        failures.map { failure ->
+            val failed = modelQueue.firstOrNull { it.id == failure.modelId }
+            mapOf(
+                "model" to (failed?.name ?: failure.modelId),
+                "actual_model" to (failed?.model ?: ""),
+                "status_code" to failure.statusCode
+            )
+        }
 
     override fun buildModelCallStreaming(ctx: PipelineContext, tools: List<Map<String, Any>>): StreamModelCall? {
         if (tools.isNotEmpty()) return null  // 工具调用不支持流式
@@ -1586,7 +1620,11 @@ internal class LocalPipelineCallbacks(
             outputTokens = outputTokens,
             tokens = totalTokens,
             durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble(),
-            model = (ctx.metadata["model_name"] as? String) ?: activeModel.model
+            model = (ctx.metadata["model_name"] as? String) ?: activeModel.model,
+            // 与落库同一份聚合结果：刚收到的回复也能在「消息详情」里看到用过哪些模型。
+            modelUsage = aggregateModelUsage(
+                (ctx.metadata["model_usage"] as? List<*>)?.filterIsInstance<ModelCallUsage>().orEmpty()
+            )
         )
         emitEvent(RealtimeEvent.AiResponse(msg))
     }
@@ -1617,7 +1655,73 @@ internal class LocalPipelineCallbacks(
         emitEvent(RealtimeEvent.StreamEnd(session.id))
     }
 
-    override fun resolveAssistantMessageId(ctx: PipelineContext): String? = variantTargetMessageId
+    override fun resolveAssistantMessageId(ctx: PipelineContext): String? =
+        variantTargetMessageId ?: newAssistantMessageId
+
+    /**
+     * 工具循环每完成一轮工具调用就记录该轮的 Token 用量。
+     *
+     * 与整轮结束时的合并记录不同，这里一条记录对应一次模型调用：模型、输入/输出 Token、
+     * 耗时与缓存明细都来自这一轮，Token 用量界面在任务进行中即可看到新记录。
+     * 服务商未上报用量（估算）时不单独记录，避免出现 0 Token 的噪声行。
+     */
+    override fun recordAgentModelUsage(ctx: PipelineContext, usage: ModelCallUsage) {
+        if (usage.estimated) return
+        if (usage.inputTokens <= 0 && usage.outputTokens <= 0) return
+        val priceModel = modelQueue.firstOrNull { it.id == usage.modelId }
+            ?: modelQueue.firstOrNull { it.model == usage.actualModel || it.name == usage.modelName }
+            ?: activeModel
+        val messageId = variantTargetMessageId ?: newAssistantMessageId
+        agentRoundUsageRecords += 1
+        try {
+            getGlobalTokenStatsManager().recordUsage(
+                promptTokens = usage.inputTokens,
+                completionTokens = usage.outputTokens,
+                model = usage.modelName,
+                actualModel = usage.actualModel,
+                sessionId = session.id,
+                userId = "local-user",
+                purpose = TokenStatsManager.PURPOSE_CHAT,
+                durationMs = usage.durationMs,
+                ttftMs = null,
+                provider = priceModel.provider,
+                inputPricePerMillion = priceModel.inputPrice,
+                outputPricePerMillion = priceModel.outputPrice,
+                cacheReadPricePerMillion = priceModel.cacheReadPrice,
+                cacheWritePricePerMillion = priceModel.cacheWritePrice,
+                cachedPromptTokens = usage.cachedInputTokens,
+                cacheWriteTokens = usage.cacheWriteTokens
+            )
+        } catch (e: Exception) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, R.string.log_pcb_token_stats_failed, e.message)
+        }
+        try {
+            onTokenRecorded?.invoke(
+                session.id,
+                messageId,
+                usage.modelName,
+                usage.actualModel,
+                usage.inputTokens,
+                usage.outputTokens,
+                com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+                TokenStatsManager.PURPOSE_CHAT,
+                false,
+                usage.durationMs,
+                null,
+                priceModel.provider,
+                priceModel.inputPrice,
+                priceModel.outputPrice,
+                usage.cachedInputTokens,
+                usage.cacheWriteTokens,
+                priceModel.cacheReadPrice,
+                priceModel.cacheWritePrice
+            )
+            // 让已经打开的「Token 用量」页立刻刷新出这条记录。
+            com.nekobot.app.ServiceContainer.bumpTokenUsageRevision()
+        } catch (e: Exception) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, R.string.log_pcb_token_record_persist_failed, e.message)
+        }
+    }
 
     // ---- 进度报告 ----
     // agent 模式启用进度卡片：上报 thinking/tool/iteration/done 等步骤到 UI
@@ -1670,11 +1774,17 @@ internal class LocalPipelineCallbacks(
      * 每条消息独立成行，因此一轮任务里的上百次工具调用不会等到结束才写入；
      * 用户中断或进程被回收后，恢复时可按行重建完整工具轨迹。
      */
-    override fun persistAgentToolMessage(ctx: PipelineContext, message: Map<String, Any>) {
+    override fun persistAgentToolMessage(
+        ctx: PipelineContext,
+        message: Map<String, Any>,
+        usage: ModelCallUsage?
+    ) {
         val runId = agentRunId ?: return
         val role = (message["role"] as? String).orEmpty()
         if (role != "assistant" && role != "tool") return
         val payload = encodeAgentToolMessageRow(message)
+        // 用量与消息同一行写入：每完成一轮工具调用，Token 用量与实际模型就已落库。
+        val usageJson = usage?.takeIf { role == "assistant" }?.let(::encodeModelCallUsage)
         kotlinx.coroutines.runBlocking {
             agentToolMessageDao.insert(
                 com.nekobot.app.data.local.db.LocalAgentToolMessageEntity(
@@ -1682,10 +1792,30 @@ internal class LocalPipelineCallbacks(
                     runId = runId,
                     role = role,
                     payload = payload,
+                    usageJson = usageJson,
                     createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
                 )
             )
         }
+    }
+
+    /**
+     * 本轮用过的模型与 Token 用量（按模型聚合后的 JSON）。
+     *
+     * 优先使用工具循环回传的逐轮记录；错误/中断路径没有回传时，退回读取本轮已经落库的
+     * 轨迹行，保证已产生的用量不会因为这一轮没有正常结束而丢失。
+     */
+    private suspend fun resolveAgentModelUsageJson(ctx: PipelineContext): String? {
+        val fromLoop = (ctx.metadata["model_usage"] as? List<*>)
+            ?.filterIsInstance<ModelCallUsage>()
+            .orEmpty()
+        val records = fromLoop.ifEmpty {
+            val runId = agentRunId ?: return null
+            agentToolMessageDao.listBySession(session.id)
+                .filter { it.runId == runId }
+                .mapNotNull { decodeModelCallUsage(it.usageJson) }
+        }
+        return encodeMessageModelUsage(aggregateModelUsage(records))
     }
 
     override fun synchronizeAgentToolContext(ctx: PipelineContext, messages: List<Map<String, Any>>) {
@@ -3253,6 +3383,10 @@ internal class LocalPipelineCallbacks(
                 put("_model_id", result.usedModelId ?: activeModel.id)
                 put("_model_name", result.usedModelName ?: activeModel.name)
                 put("_model_actual_name", result.usedModelActualName ?: activeModel.model)
+                // 本轮实际发生过的模型回退：工具循环按轮落库，消息详情据此展示回退记录。
+                failoverEventsOf(result.failoverFailures).takeIf { it.isNotEmpty() }?.let {
+                    put("_failover_events", it)
+                }
                 if (!forcedFinal && result.toolCalls.isNotEmpty()) put("tool_calls", result.toolCalls)
             }
         }

@@ -282,6 +282,13 @@ data class Message(
      */
     @SerializedName("duration_ms") val durationMs: Double? = null,
     val model: String? = null,
+    /**
+     * 本条回复用过的模型与 Token 用量（按模型聚合）。
+     *
+     * Agent 工具循环会在同一条回复里多次调用模型，甚至中途故障转移到备用模型；
+     * 该字段记录每个模型的用量与被回退的模型，供「消息详情」展示。旧消息为 null。
+     */
+    @SerializedName("model_usage") val modelUsage: MessageModelUsage? = null,
     val filtered: Boolean? = null,
     /** 本地持久化消息来源；Agent 上下文摘要使用它保存压缩边界。 */
     val source: String? = null,
