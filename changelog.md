@@ -2,6 +2,50 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.9.1 - 2026-11-17
+
+### 新增
+
+- 新增「跟随系统 / 浅色 / 深色」主题模式，样式设置页可即时切换，冷启动不再深浅闪烁。
+- 图片生成实验室新增历史记录：自动保存最近 100 条，支持预览、复用提示词、用作参考图、单条删除与清空。
+- 消息详情新增「模型用量」分区，逐轮展示实际调用模型与 Token 用量，回退模型及失败状态一并列出。
+- 聊天界面新增右下角悬浮按钮，离开底部时显示，点击逐帧滚动回真正底部。
+- 消息操作菜单恢复「生成图片」。
+- Agent 工作区改动摘要支持按仓库整体折叠，并按会话归属过滤共享工作区的改动。
+
+### 修复
+
+- 修复 Token 用量与超大消息处理可能导致的 OOM 崩溃，并收紧用量文件体积上限。
+- 修复长回复渲染时正则重复编译造成的卡顿与 ANR。
+- 修复删除单角色窗口后角色被永久隐藏的问题，删除时同事务释放归属关系。
+- 修复 WebDAV 备份读取不识别压缩格式、GB18030 编码备份无法恢复的问题。
+
+### 优化
+
+- 删除、清空等不可逆操作的确认按钮改用危险色，与「保存」区分。
+- 角色、会话、世界书空列表补充新建与导入入口。
+- 聊天多选批量删除新增二次确认，部分失败时提示失败条数。
+- 修正聊天滚动策略：阅读历史期间不再被新消息拉回底部。
+- 精简 Agent 设置项描述文案，过长说明自动省略。
+
+### English
+
+- Added Follow system / Light / Dark theme modes, switchable in style settings with no flash on cold start.
+- The image generation playground now keeps history of the last 100 entries with preview, reuse prompt, use as reference, per-item delete, and clear all.
+- Message details gained a model usage section listing the model and token usage per round, including fallback models and failures.
+- Chat shows a floating scroll-to-bottom button when the list leaves the bottom, scrolling back frame by frame.
+- Restored the Generate image action in the message menu.
+- The agent workspace change summary can now collapse per repository and filters shared-workspace changes by session ownership.
+- Fixed OOM crashes caused by token usage and oversized messages, with stricter size caps on usage files.
+- Fixed stutter and ANRs from repeated regex compilation when rendering long replies.
+- Fixed characters being permanently hidden after deleting a companion window; ownership is now released in the same transaction.
+- Fixed WebDAV backups not detecting compressed formats and GB18030-encoded backups failing to restore.
+- Destructive actions such as delete and clear now use a danger-colored confirm button, distinct from Save.
+- Empty character, session, and world book lists now offer create and import entries.
+- Multi-select batch delete in chat asks for confirmation and reports how many items failed.
+- Corrected chat scrolling so reading history is no longer interrupted by new messages.
+- Trimmed Agent settings descriptions, with long text ellipsized.
+
 ## v0.9.0 - 2026-11-09
 
 ### 新增
