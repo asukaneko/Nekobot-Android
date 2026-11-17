@@ -18,6 +18,7 @@ import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.ai.ThinkingSourceSettings
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.ImageGenerationHistoryStore
 import com.nekobot.app.data.local.plugin.PluginGrants
 import com.nekobot.app.data.local.plugin.PluginManager
 import com.nekobot.app.data.local.plugin.PluginMetaStore
@@ -122,6 +123,9 @@ object ServiceContainer {
         private set
     /** 插件兼容级别记录（移植来源与差异说明）。 */
     lateinit var pluginMetaStore: PluginMetaStore
+        private set
+    /** 图片生成实验室的历史记录（全局共享，不随数据库 Profile 切换）。 */
+    lateinit var imageHistoryStore: ImageGenerationHistoryStore
         private set
     internal lateinit var realtimeCredentialStore: RealtimeCredentialStore
         private set
@@ -327,6 +331,7 @@ object ServiceContainer {
         unified = UnifiedRepository(prefs, repository, localRepository, app)
         pluginGrants = PluginGrants(app)
         pluginMetaStore = PluginMetaStore(app)
+        imageHistoryStore = ImageGenerationHistoryStore(app)
         pluginManager = PluginManager(app, pluginGrants, pluginMetaStore)
         unified.migrateLocalSecurePreferences()
         socket = SocketManager(prefs)

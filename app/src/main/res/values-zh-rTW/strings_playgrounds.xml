@@ -58,4 +58,9 @@
     <string name="playground_save_image">儲存圖片</string>
     <string name="playground_image_key_required">伺服器已隱藏生圖金鑰，請編輯模型並重新填寫一次 API Key</string>
     <string name="playground_reference_unsupported">目前圖片產生介面不支援參考圖，請移除參考圖或選擇其他模型</string>
+    <string name="playground_history">歷史記錄</string>
+    <string name="playground_history_empty">尚無歷史記錄</string>
+    <string name="playground_history_count">共 %1$d 筆</string>
+    <string name="playground_history_clear">清空歷史</string>
+    <string name="playground_history_clear_confirm">將刪除全部歷史記錄，對應的圖片也會一併刪除。</string>
 </resources>

@@ -58,4 +58,9 @@
     <string name="playground_save_image">Save image</string>
     <string name="playground_image_key_required">The server hides image API keys. Edit the model and enter its API key once.</string>
     <string name="playground_reference_unsupported">This image endpoint does not support references. Remove the reference or choose another model.</string>
+    <string name="playground_history">History</string>
+    <string name="playground_history_empty">No history yet</string>
+    <string name="playground_history_count">%1$d items</string>
+    <string name="playground_history_clear">Clear history</string>
+    <string name="playground_history_clear_confirm">This deletes all history entries and their images.</string>
 </resources>

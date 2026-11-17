@@ -5,6 +5,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -132,6 +133,7 @@ internal fun PlaygroundScaffold(
     onGenerate: () -> Unit,
     onCancel: () -> Unit,
     onConfigureModels: () -> Unit,
+    onOpenHistory: (() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit
 ) {
     Scaffold(
@@ -145,6 +147,11 @@ internal fun PlaygroundScaffold(
                     }
                 },
                 actions = {
+                    if (onOpenHistory != null) {
+                        IconButton(onClick = onOpenHistory, enabled = !busy) {
+                            Icon(Icons.Default.History, stringResource(R.string.playground_history))
+                        }
+                    }
                     IconButton(onClick = onConfigureModels, enabled = !busy) {
                         Icon(Icons.Default.Tune, stringResource(R.string.playground_configure_models))
                     }

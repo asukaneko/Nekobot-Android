@@ -33,11 +33,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.ImageHistoryEntry
 import com.nekobot.app.data.local.LocalImageResult
 import com.nekobot.app.data.local.ai.ImageGenerationReference
 import com.nekobot.app.data.repository.Resource
@@ -47,6 +49,7 @@ import com.nekobot.app.ui.components.ErrorToast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal data class PlaygroundImageResult(val image: LocalImageResult, val prompt: String, val size: String)
@@ -56,11 +59,46 @@ class ImageGenerationPlaygroundViewModel : MediaPlaygroundViewModel("image_gener
     internal val results = _results.asStateFlow()
     private val _referenceUri = MutableStateFlow<String?>(null)
     val referenceUri = _referenceUri.asStateFlow()
+    private val _history = MutableStateFlow<List<ImageHistoryEntry>>(emptyList())
+    internal val history = _history.asStateFlow()
     private var reference: ImageGenerationReference? = null
+    private var historyJob: kotlinx.coroutines.Job? = null
+
+    init { refreshHistory() }
 
     override fun clearResult() { _results.value = emptyList(); removeReference() }
     fun clearImages() { if (!loading.value) _results.value = emptyList() }
     fun removeReference() { reference = null; _referenceUri.value = null }
+
+    /** 读取历史记录；历史图片在应用私有目录，重启后仍然可见。 */
+    fun refreshHistory() {
+        historyJob?.cancel()
+        historyJob = viewModelScope.launch {
+            try {
+                _history.value = ServiceContainer.imageHistoryStore.list()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showError(e.message ?: string(R.string.common_unknown_error))
+            }
+        }
+    }
+
+    fun historyUri(entry: ImageHistoryEntry): String = ServiceContainer.imageHistoryStore.uriOf(entry)
+
+    fun deleteHistory(entry: ImageHistoryEntry) {
+        viewModelScope.launch {
+            runCatching { ServiceContainer.imageHistoryStore.delete(entry.id) }
+            refreshHistory()
+        }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch {
+            runCatching { ServiceContainer.imageHistoryStore.clear() }
+            refreshHistory()
+        }
+    }
 
     fun selectReference(context: Context, uri: Uri) {
         runOperation {
@@ -85,7 +123,18 @@ class ImageGenerationPlaygroundViewModel : MediaPlaygroundViewModel("image_gener
             when (val result = unified.generateImages(prompt.trim(), size, n.coerceIn(1, 4), referenceSnapshot, modelId)) {
                 is Resource.Success -> {
                     if (result.data.isEmpty()) showError(string(R.string.playground_no_images))
-                    else _results.value = (result.data.map { PlaygroundImageResult(it, prompt.trim(), size) } + _results.value).take(20)
+                    else {
+                        _results.value = (result.data.map { PlaygroundImageResult(it, prompt.trim(), size) } + _results.value).take(20)
+                        // 生成成功即写入历史（图片复制到私有目录），失败不影响本次展示。
+                        result.data.forEach { image ->
+                            runCatching {
+                                ServiceContainer.imageHistoryStore.record(
+                                    image.cacheUri, prompt.trim(), size, image.mimeType, image.usedModelName
+                                )
+                            }
+                        }
+                        refreshHistory()
+                    }
                 }
                 is Resource.Error -> showError(result.message)
                 is Resource.Loading -> Unit
@@ -107,6 +156,7 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit, onConfigureModels: () ->
     val modelId by vm.selectedModelId.collectAsStateWithLifecycle()
     val referenceUri by vm.referenceUri.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
     val busy by vm.loading.collectAsStateWithLifecycle()
     val configLoading by vm.configLoading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
@@ -119,6 +169,7 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit, onConfigureModels: () ->
     var customSize by rememberSaveable { mutableStateOf("1024x1024") }
     var count by rememberSaveable { mutableIntStateOf(1) }
     var preview by remember { mutableStateOf<PlaygroundImageResult?>(null) }
+    var showHistory by remember { mutableStateOf(false) }
     val referencePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             runCatching { context.contentResolver.takePersistableUriPermission(it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -145,7 +196,8 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit, onConfigureModels: () ->
     PlaygroundScaffold(stringResource(R.string.imggen_title), stringResource(R.string.imggen_generate_button), busy,
         prompt.isNotBlank() && isValidImageSize(resolvedSize) && models.isNotEmpty() && !configLoading &&
             (referenceUri == null || supportsReference),
-        onBack, { vm.refresh() }, { vm.generate(prompt, resolvedSize, count) }, vm::cancel, onConfigureModels) { padding ->
+        onBack, { vm.refresh() }, { vm.generate(prompt, resolvedSize, count) }, vm::cancel, onConfigureModels,
+        onOpenHistory = { vm.refreshHistory(); showHistory = true }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)) {
             error?.let { message -> item { ErrorToast(message = message, onShown = { vm.clearError() }) } }
@@ -212,7 +264,29 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit, onConfigureModels: () ->
         }
     }
     preview?.let { ImagePreviewDialog(it, onDismiss = { preview = null }) }
+    if (showHistory) {
+        ImageHistoryDialog(
+            entries = history,
+            uriOf = vm::historyUri,
+            onDismiss = { showHistory = false },
+            onPreview = { entry -> showHistory = false; preview = entry.toPlaygroundImageResult(vm.historyUri(entry)) },
+            onReusePrompt = { prompt = it.prompt; showHistory = false },
+            onUseReference = { entry ->
+                showHistory = false
+                vm.selectReference(context.applicationContext, Uri.parse(vm.historyUri(entry)))
+            },
+            onDelete = vm::deleteHistory,
+            onClear = vm::clearHistory
+        )
+    }
 }
+
+/** 历史记录转成与本次生成结果一致的展示模型，复用预览/保存/分享逻辑。 */
+private fun ImageHistoryEntry.toPlaygroundImageResult(uri: String) = PlaygroundImageResult(
+    image = LocalImageResult(uri, mimeType, "", modelName),
+    prompt = prompt,
+    size = size
+)
 
 @Composable
 private fun GeneratedImageCard(result: PlaygroundImageResult, onPreview: () -> Unit, onReusePrompt: () -> Unit,

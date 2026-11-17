@@ -58,4 +58,9 @@
     <string name="playground_save_image">保存图片</string>
     <string name="playground_image_key_required">服务器已隐藏生图密钥，请编辑模型并重新填写一次 API Key</string>
     <string name="playground_reference_unsupported">当前图片生成接口不支持参考图，请移除参考图或选择其他模型</string>
+    <string name="playground_history">历史记录</string>
+    <string name="playground_history_empty">暂无历史记录</string>
+    <string name="playground_history_count">共 %1$d 条</string>
+    <string name="playground_history_clear">清空历史</string>
+    <string name="playground_history_clear_confirm">将删除全部历史记录，对应的图片也会一并删除。</string>
 </resources>

@@ -58,4 +58,9 @@
     <string name="playground_save_image">이미지 저장</string>
     <string name="playground_image_key_required">서버가 이미지 API 키를 숨깁니다. 모델을 편집하고 API 키를 한 번 입력하세요.</string>
     <string name="playground_reference_unsupported">이 이미지 API는 참조 이미지를 지원하지 않습니다. 참조를 제거하거나 다른 모델을 선택하세요.</string>
+    <string name="playground_history">기록</string>
+    <string name="playground_history_empty">아직 기록이 없습니다</string>
+    <string name="playground_history_count">총 %1$d개</string>
+    <string name="playground_history_clear">기록 지우기</string>
+    <string name="playground_history_clear_confirm">모든 기록과 이미지가 삭제됩니다.</string>
 </resources>

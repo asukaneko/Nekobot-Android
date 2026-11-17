@@ -58,4 +58,9 @@
     <string name="playground_save_image">画像を保存</string>
     <string name="playground_image_key_required">サーバーの画像用キーは非表示です。モデルを編集し、API キーを一度入力してください。</string>
     <string name="playground_reference_unsupported">この画像 API は参照画像に未対応です。参照画像を削除するか別のモデルを選んでください。</string>
+    <string name="playground_history">履歴</string>
+    <string name="playground_history_empty">履歴はまだありません</string>
+    <string name="playground_history_count">全 %1$d 件</string>
+    <string name="playground_history_clear">履歴を消去</string>
+    <string name="playground_history_clear_confirm">すべての履歴と画像を削除します。</string>
 </resources>
