@@ -312,12 +312,15 @@
     <string name="aimodel_editor_tts_model">TTS モデル名</string>
     <string name="aimodel_editor_tts_model_placeholder">空欄なら上記モデルを使用</string>
     <string name="aimodel_editor_tts_voice">音色</string>
+    <string name="aimodel_editor_tts_voice_stella">ステラ・女性</string>
+    <string name="aimodel_editor_tts_voice_tide">タイド・男性</string>
     <string name="aimodel_editor_tts_speed">速度</string>
     <string name="aimodel_editor_tts_pitch">ピッチ</string>
     <string name="aimodel_editor_tts_volume">音量</string>
     <string name="aimodel_editor_tts_format">出力形式</string>
     <string name="aimodel_editor_tts_style">スタイル指示 (任意)</string>
     <string name="aimodel_editor_tts_style_placeholder">例: 陽気な口調で話してください</string>
+    <string name="aimodel_editor_tts_deepseek_hint">DeepSeek 音声ツールはオープンプラットフォームの残高が必要で、wav のみ返します。速度・音程・音量は変更できません。</string>
     <string name="aimodel_editor_tts_ref_audio_not_loaded">参照音声未読み込み</string>
     <string name="aimodel_editor_tts_ref_audio_loaded">参照音声を読み込みました</string>
     <string name="aimodel_editor_tts_select_audio">音声を選択</string>
@@ -334,6 +337,7 @@
     <string name="aimodel_editor_stt_language_zh">中国語</string>
     <string name="aimodel_editor_stt_language_en">英語</string>
     <string name="aimodel_editor_stt_language_auto">自動検出</string>
+    <string name="aimodel_editor_stt_deepseek_hint">DeepSeek ASR は言語を自動判定します。1 回あたり 120 秒までで、長い音声は自動分割して結合します。</string>
 
     <string name="aimodel_editor_section_embedding">Embedding 設定</string>
     <string name="aimodel_editor_embedding_dimensions">ベクトル次元</string>

@@ -477,9 +477,11 @@ fun AiModelEditorScreen(
                         labelFor = { providerLabels[it] ?: it },
                         // 切换服务商仅更新服务商字段，不再套用预设覆盖已填写的配置内容；
                         // 需要一键填入默认参数请使用上方的“快速预设”。
+                        // DeepSeek 语音工具是例外：端点与音色固定，这里直接补齐默认值。
                         onSelect = { provider ->
                             allowAutomaticPricing = true
-                            state = state.copy(provider = provider)
+                            val next = state.copy(provider = provider)
+                            state = if (provider.equals("deepseek", true)) next.enableDeepSeekVoice() else next
                         }
                     )
 
@@ -493,6 +495,7 @@ fun AiModelEditorScreen(
                         "gemini" to stringResource(R.string.aimodel_editor_stt_provider_gemini),
                         "glm" to stringResource(R.string.aimodel_editor_stt_provider_glm),
                         "qwen" to stringResource(R.string.aimodel_editor_stt_provider_qwen),
+                        "deepseek" to stringResource(R.string.aimodel_editor_provider_deepseek),
                         "siliconflow" to stringResource(R.string.aimodel_editor_provider_siliconflow),
                         "groq" to stringResource(R.string.aimodel_editor_provider_groq),
                         "elevenlabs" to stringResource(R.string.aimodel_editor_provider_elevenlabs),
@@ -505,33 +508,40 @@ fun AiModelEditorScreen(
                         value = state.sttProvider,
                         options = sttProviderLabels.keys.toList(),
                         labelFor = { sttProviderLabels[it] ?: it },
-                        onSelect = { state = state.copy(sttProvider = it) }
+                        onSelect = {
+                            val next = state.copy(sttProvider = it)
+                            state = if (it.equals("deepseek", true)) next.enableDeepSeekVoice() else next
+                        }
                     )
                 }
+                // DeepSeek 语音工具的端点、模型与音色都固定，这里只保留 API Key。
+                val simplifiedVoice = state.usesDeepSeekVoiceTools()
                 if (!(state.purpose == "stt" && state.sttProvider == "local")) {
                     ModelEditorSection(stringResource(R.string.model_setup_connection)) {
-                        EditorDropdownField(
-                            label = stringResource(R.string.aimodel_editor_field_provider_type),
-                            value = state.protocol,
-                            options = protocolOptions.map { it.key },
-                            labelFor = { key -> protocolOptions.firstOrNull { it.key == key }?.displayName ?: key },
-                            onSelect = { state = state.copy(protocol = it) }
-                        )
-                        EditorTextField(
-                            label = if (state.purpose == "image_generation") stringResource(R.string.aimodel_editor_field_full_url)
-                            else stringResource(R.string.aimodel_editor_field_base_url),
-                            value = state.baseUrl,
-                            error = fieldError("baseUrl"),
-                            placeholder = if (state.purpose == "image_generation") {
-                                "https://api.openai.com/v1/images/generations"
-                            } else if (state.purpose == "live") {
-                                "https://api.openai.com/v1"
-                            } else {
-                                "https://api.example.com/v1"
+                        if (!simplifiedVoice) {
+                            EditorDropdownField(
+                                label = stringResource(R.string.aimodel_editor_field_provider_type),
+                                value = state.protocol,
+                                options = protocolOptions.map { it.key },
+                                labelFor = { key -> protocolOptions.firstOrNull { it.key == key }?.displayName ?: key },
+                                onSelect = { state = state.copy(protocol = it) }
+                            )
+                            EditorTextField(
+                                label = if (state.purpose == "image_generation") stringResource(R.string.aimodel_editor_field_full_url)
+                                else stringResource(R.string.aimodel_editor_field_base_url),
+                                value = state.baseUrl,
+                                error = fieldError("baseUrl"),
+                                placeholder = if (state.purpose == "image_generation") {
+                                    "https://api.openai.com/v1/images/generations"
+                                } else if (state.purpose == "live") {
+                                    "https://api.openai.com/v1"
+                                } else {
+                                    "https://api.example.com/v1"
+                                }
+                            ) { state = state.copy(baseUrl = it) }
+                            EditorSwitch(stringResource(R.string.aimodel_editor_field_append_base_url), state.appendBaseUrlPath) {
+                                state = state.copy(appendBaseUrlPath = it)
                             }
-                        ) { state = state.copy(baseUrl = it) }
-                        EditorSwitch(stringResource(R.string.aimodel_editor_field_append_base_url), state.appendBaseUrlPath) {
-                            state = state.copy(appendBaseUrlPath = it)
                         }
 
                         EditorTextField(
@@ -558,64 +568,66 @@ fun AiModelEditorScreen(
                             )
                         }
                     }
-                    ModelEditorSection(stringResource(R.string.aimodel_editor_field_model)) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            EditorTextField(
-                                label = stringResource(R.string.aimodel_editor_field_model),
-                                value = state.model,
-                                error = fieldError("model"),
+                    if (!simplifiedVoice) {
+                        ModelEditorSection(stringResource(R.string.aimodel_editor_field_model)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                EditorTextField(
+                                    label = stringResource(R.string.aimodel_editor_field_model),
+                                    value = state.model,
+                                    error = fieldError("model"),
 
-                                placeholder = stringResource(R.string.aimodel_editor_field_model_placeholder)
-                            ) {
-                                state = state.copy(
-                                    model = it,
-                                    inputPrice = if (allowAutomaticPricing) "" else state.inputPrice,
-                                    outputPrice = if (allowAutomaticPricing) "" else state.outputPrice,
-                                    cacheReadPrice = if (allowAutomaticPricing) "" else state.cacheReadPrice,
-                                    cacheWritePrice = if (allowAutomaticPricing) "" else state.cacheWritePrice
-                                )
-                            }
-                            FilledTonalButton(
-                                enabled = state.baseUrl.isNotBlank() && state.apiKey.isNotBlank(),
-                                onClick = {
-                                    fetchedConnection = currentConnection
-                                    onFetchModels(
-                                        state.baseUrl,
-                                        state.apiKey,
-                                        state.protocol,
-                                        state.appendBaseUrlPath,
-                                        state.proxyUrl
-                                    )
-                                }
-                            ) {
-                                Icon(
-                                    Icons.Filled.CloudDownload,
-                                    contentDescription = null, modifier = Modifier.size(18.dp)
-                                )
-                                Text(stringResource(R.string.aimodel_editor_field_fetch_models), Modifier.padding(start = 8.dp))
-                            }
-                        }
-                        if (availableModels.isNotEmpty() && fetchedConnection == currentConnection) {
-                            EditorDropdownField(
-                                label = stringResource(
-                                    R.string.aimodel_editor_field_select_from_fetched,
-                                    availableModels.size
-                                ),
-                                value = state.model,
-                                options = availableModels,
-                                onSelect = {
-                                    allowAutomaticPricing = true
+                                    placeholder = stringResource(R.string.aimodel_editor_field_model_placeholder)
+                                ) {
                                     state = state.copy(
                                         model = it,
-                                        inputPrice = "",
-                                        outputPrice = "",
-                                        cacheReadPrice = "",
-                                        cacheWritePrice = ""
+                                        inputPrice = if (allowAutomaticPricing) "" else state.inputPrice,
+                                        outputPrice = if (allowAutomaticPricing) "" else state.outputPrice,
+                                        cacheReadPrice = if (allowAutomaticPricing) "" else state.cacheReadPrice,
+                                        cacheWritePrice = if (allowAutomaticPricing) "" else state.cacheWritePrice
                                     )
                                 }
-                            )
-                        }
+                                FilledTonalButton(
+                                    enabled = state.baseUrl.isNotBlank() && state.apiKey.isNotBlank(),
+                                    onClick = {
+                                        fetchedConnection = currentConnection
+                                        onFetchModels(
+                                            state.baseUrl,
+                                            state.apiKey,
+                                            state.protocol,
+                                            state.appendBaseUrlPath,
+                                            state.proxyUrl
+                                        )
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Filled.CloudDownload,
+                                        contentDescription = null, modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(stringResource(R.string.aimodel_editor_field_fetch_models), Modifier.padding(start = 8.dp))
+                                }
+                            }
+                            if (availableModels.isNotEmpty() && fetchedConnection == currentConnection) {
+                                EditorDropdownField(
+                                    label = stringResource(
+                                        R.string.aimodel_editor_field_select_from_fetched,
+                                        availableModels.size
+                                    ),
+                                    value = state.model,
+                                    options = availableModels,
+                                    onSelect = {
+                                        allowAutomaticPricing = true
+                                        state = state.copy(
+                                            model = it,
+                                            inputPrice = "",
+                                            outputPrice = "",
+                                            cacheReadPrice = "",
+                                            cacheWritePrice = ""
+                                        )
+                                    }
+                                )
+                            }
 
+                        }
                     }
                     if (showProxyConfig) ModelEditorSection(stringResource(R.string.model_setup_network), expandable = true, forceExpanded = fieldError("proxyUrl") != null) {
                         if (showProxyConfig) {
@@ -739,6 +751,7 @@ fun AiModelEditorScreen(
                                     "glm" to stringResource(R.string.aimodel_editor_tts_provider_glm),
                                     "minimax" to stringResource(R.string.aimodel_editor_tts_provider_minimax),
                                     "qwen" to stringResource(R.string.aimodel_editor_tts_provider_qwen),
+                                    "deepseek" to stringResource(R.string.aimodel_editor_provider_deepseek),
                                     "siliconflow" to stringResource(R.string.aimodel_editor_provider_siliconflow),
                                     "elevenlabs" to stringResource(R.string.aimodel_editor_provider_elevenlabs),
                                     "deepgram" to stringResource(R.string.aimodel_editor_provider_deepgram)
@@ -754,7 +767,10 @@ fun AiModelEditorScreen(
                                     value = state.ttsProvider,
                                     options = ttsProviderLabels.keys.toList(),
                                     labelFor = { ttsProviderLabels[it] ?: it },
-                                    onSelect = { state = state.copy(ttsProvider = it) }
+                                    onSelect = {
+                                        val next = state.copy(ttsProvider = it)
+                                        state = if (it.equals("deepseek", true)) next.enableDeepSeekVoice() else next
+                                    }
                                 )
                                 if (state.ttsProvider == "doubao") {
                                     EditorDropdownField(
@@ -772,26 +788,54 @@ fun AiModelEditorScreen(
                                         onSelect = { state = state.copy(ttsResourceId = it) }
                                     )
                                 }
-                                EditorTextField(
-                                    stringResource(R.string.aimodel_editor_tts_model),
-                                    state.ttsModel,
-                                    placeholder = stringResource(R.string.aimodel_editor_tts_model_placeholder)
-                                ) { state = state.copy(ttsModel = it) }
-                                EditorTextField(
-                                    stringResource(R.string.aimodel_editor_tts_voice),
-                                    state.ttsVoice,
-                                    placeholder = "alloy"
-                                ) { state = state.copy(ttsVoice = it) }
-                                EditorTextField(stringResource(R.string.aimodel_editor_tts_speed), state.ttsSpeed) { state = state.copy(ttsSpeed = it) }
-                                EditorTextField(stringResource(R.string.aimodel_editor_tts_pitch), state.ttsPitch) { state = state.copy(ttsPitch = it) }
-                                EditorTextField(stringResource(R.string.aimodel_editor_tts_volume), state.ttsVolume) { state = state.copy(ttsVolume = it) }
-                                EditorDropdownField(
-                                    label = stringResource(R.string.aimodel_editor_tts_format),
-                                    value = state.ttsFormat,
-                                    options = if (state.ttsProvider in setOf("elevenlabs", "deepgram", "siliconflow"))
-                                    listOf("mp3", "wav", "opus") else listOf("mp3", "wav", "opus", "flac"),
-                                    onSelect = { state = state.copy(ttsFormat = it) }
-                                )
+                                // DeepSeek 语音工具没有模型/语速/音调/音量参数，只回 wav 或 pcm。
+                                val deepSeekTts = state.ttsProvider == "deepseek"
+                                if (!deepSeekTts) {
+                                    EditorTextField(
+                                        stringResource(R.string.aimodel_editor_tts_model),
+                                        state.ttsModel,
+                                        placeholder = stringResource(R.string.aimodel_editor_tts_model_placeholder)
+                                    ) { state = state.copy(ttsModel = it) }
+                                }
+                                if (deepSeekTts) {
+                                    val deepSeekVoiceLabels = mapOf(
+                                        "stella" to stringResource(R.string.aimodel_editor_tts_voice_stella),
+                                        "tide" to stringResource(R.string.aimodel_editor_tts_voice_tide)
+                                    )
+                                    EditorDropdownField(
+                                        label = stringResource(R.string.aimodel_editor_tts_voice),
+                                        value = state.ttsVoice,
+                                        options = com.nekobot.app.data.local.ai.DeepSeekVoiceTools.TTS_VOICES,
+                                        labelFor = { deepSeekVoiceLabels[it] ?: it },
+                                        onSelect = { state = state.copy(ttsVoice = it) }
+                                    )
+                                } else {
+                                    EditorTextField(
+                                        stringResource(R.string.aimodel_editor_tts_voice),
+                                        state.ttsVoice,
+                                        placeholder = "alloy"
+                                    ) { state = state.copy(ttsVoice = it) }
+                                    EditorTextField(stringResource(R.string.aimodel_editor_tts_speed), state.ttsSpeed) { state = state.copy(ttsSpeed = it) }
+                                    EditorTextField(stringResource(R.string.aimodel_editor_tts_pitch), state.ttsPitch) { state = state.copy(ttsPitch = it) }
+                                    EditorTextField(stringResource(R.string.aimodel_editor_tts_volume), state.ttsVolume) { state = state.copy(ttsVolume = it) }
+                                    EditorDropdownField(
+                                        label = stringResource(R.string.aimodel_editor_tts_format),
+                                        value = state.ttsFormat,
+                                        options = if (state.ttsProvider in setOf("elevenlabs", "deepgram", "siliconflow")) {
+                                            listOf("mp3", "wav", "opus")
+                                        } else {
+                                            listOf("mp3", "wav", "opus", "flac")
+                                        },
+                                        onSelect = { state = state.copy(ttsFormat = it) }
+                                    )
+                                }
+                                if (deepSeekTts) {
+                                    Text(
+                                        text = stringResource(R.string.aimodel_editor_tts_deepseek_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 if (state.ttsProvider == "xiaomi") {
                                     EditorTextField(
                                         label = stringResource(R.string.aimodel_editor_tts_style),
@@ -827,18 +871,27 @@ fun AiModelEditorScreen(
                                     "en" to stringResource(R.string.aimodel_editor_stt_language_en),
                                     "auto" to stringResource(R.string.aimodel_editor_stt_language_auto)
                                 )
-                                EditorTextField(
-                                    stringResource(R.string.aimodel_editor_stt_model),
-                                    state.sttModel,
-                                    placeholder = stringResource(R.string.aimodel_editor_tts_model_placeholder)
-                                ) { state = state.copy(sttModel = it) }
-                                EditorDropdownField(
-                                    label = stringResource(R.string.aimodel_editor_stt_language),
-                                    value = state.language,
-                                    options = listOf("zh", "en", "auto"),
-                                    labelFor = { sttLanguageLabels[it] ?: it },
-                                    onSelect = { state = state.copy(language = it) }
-                                )
+                                // DeepSeek ASR 无模型与语种参数，语言由服务端自动识别。
+                                if (state.sttProvider == "deepseek") {
+                                    Text(
+                                        text = stringResource(R.string.aimodel_editor_stt_deepseek_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    EditorTextField(
+                                        stringResource(R.string.aimodel_editor_stt_model),
+                                        state.sttModel,
+                                        placeholder = stringResource(R.string.aimodel_editor_tts_model_placeholder)
+                                    ) { state = state.copy(sttModel = it) }
+                                    EditorDropdownField(
+                                        label = stringResource(R.string.aimodel_editor_stt_language),
+                                        value = state.language,
+                                        options = listOf("zh", "en", "auto"),
+                                        labelFor = { sttLanguageLabels[it] ?: it },
+                                        onSelect = { state = state.copy(language = it) }
+                                    )
+                                }
                             }
 
                             "embedding" -> {
@@ -1262,7 +1315,7 @@ private fun AiModelEditorState.applyPreset(
         sttUrl = if (targetPurpose == "stt") "" else sttUrl,
         sttHeaders = if (targetPurpose == "stt") "" else sttHeaders,
         sttModel = liveDefaults?.transcriptionModel ?: if (targetPurpose == "stt") preset.model else sttModel
-    )
+    ).withDeepSeekVoiceDefaults()
 }
 
 private fun AiModelEditorState.applyPurpose(
@@ -1334,7 +1387,7 @@ private fun AiModelEditorState.applyPurpose(
             supportsStream = false,
             supportsVision = false,
             ttsVoice = ttsVoice.ifBlank { "default" }
-        )
+        ).let { next -> if (next.provider.equals("deepseek", true)) next.enableDeepSeekVoice() else next }
         "stt" -> copy(
             name = renamed,
             purpose = purpose,
@@ -1343,7 +1396,7 @@ private fun AiModelEditorState.applyPurpose(
             supportsStream = false,
             supportsVision = false,
             language = language.ifBlank { "zh" }
-        )
+        ).let { next -> if (next.provider.equals("deepseek", true)) next.enableDeepSeekVoice() else next }
         "embedding" -> copy(
             name = renamed,
             purpose = purpose,
@@ -1415,7 +1468,7 @@ fun AiModel?.toEditorState(protocols: List<ProtocolOption>): AiModelEditorState 
         dimensions = model.dimensions?.takeIf { it > 0 }?.toString().orEmpty(),
         size = model.size ?: "1024x1024",
         promptTemplate = model.promptTemplate.orEmpty()
-    ).ensureProtocol(protocols)
+    ).ensureProtocol(protocols).withDeepSeekVoiceDefaults()
 }
 
 fun LocalAiModelEntity?.toEditorState(protocols: List<ProtocolOption>): AiModelEditorState {
@@ -1470,7 +1523,7 @@ fun LocalAiModelEntity?.toEditorState(protocols: List<ProtocolOption>): AiModelE
         dimensions = model.dimensions.takeIf { it > 0 }?.toString().orEmpty(),
         size = model.size,
         promptTemplate = model.promptTemplate
-    ).ensureProtocol(protocols)
+    ).ensureProtocol(protocols).withDeepSeekVoiceDefaults()
 }
 
 fun AiModelEditorState.toRequest(): AiModelRequest = AiModelRequest(

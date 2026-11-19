@@ -317,12 +317,15 @@
     <string name="aimodel_editor_tts_model">TTS model name</string>
     <string name="aimodel_editor_tts_model_placeholder">Leave empty to use the model above</string>
     <string name="aimodel_editor_tts_voice">Voice</string>
+    <string name="aimodel_editor_tts_voice_stella">Stella · Female</string>
+    <string name="aimodel_editor_tts_voice_tide">Tide · Male</string>
     <string name="aimodel_editor_tts_speed">Speed</string>
     <string name="aimodel_editor_tts_pitch">Pitch</string>
     <string name="aimodel_editor_tts_volume">Volume</string>
     <string name="aimodel_editor_tts_format">Output format</string>
     <string name="aimodel_editor_tts_style">Style instruction (optional)</string>
     <string name="aimodel_editor_tts_style_placeholder">e.g. Speak in a cheerful tone</string>
+    <string name="aimodel_editor_tts_deepseek_hint">DeepSeek voice tools need an open-platform balance and only return wav; speed, pitch and volume can\'t be changed.</string>
     <string name="aimodel_editor_tts_ref_audio_not_loaded">Reference audio not loaded</string>
     <string name="aimodel_editor_tts_ref_audio_loaded">Reference audio loaded</string>
     <string name="aimodel_editor_tts_select_audio">Select audio</string>
@@ -342,6 +345,7 @@
     <string name="aimodel_editor_stt_language_zh">Chinese</string>
     <string name="aimodel_editor_stt_language_en">English</string>
     <string name="aimodel_editor_stt_language_auto">Auto detect</string>
+    <string name="aimodel_editor_stt_deepseek_hint">DeepSeek ASR detects the language automatically; each request is limited to 120 seconds, longer audio is split and merged.</string>
 
     <string name="aimodel_editor_section_embedding">Embedding</string>
     <string name="aimodel_editor_embedding_dimensions">Vector dimensions</string>

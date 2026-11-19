@@ -327,12 +327,15 @@
     <string name="aimodel_editor_tts_model">TTS 模型名</string>
     <string name="aimodel_editor_tts_model_placeholder">留空則使用上方模型</string>
     <string name="aimodel_editor_tts_voice">音色</string>
+    <string name="aimodel_editor_tts_voice_stella">海星·女聲</string>
+    <string name="aimodel_editor_tts_voice_tide">暗潮·男聲</string>
     <string name="aimodel_editor_tts_speed">語速</string>
     <string name="aimodel_editor_tts_pitch">音調</string>
     <string name="aimodel_editor_tts_volume">音量</string>
     <string name="aimodel_editor_tts_format">輸出格式</string>
     <string name="aimodel_editor_tts_style">風格控制指令（可選）</string>
     <string name="aimodel_editor_tts_style_placeholder">例如：請用歡快的語氣說話</string>
+    <string name="aimodel_editor_tts_deepseek_hint">DeepSeek 語音工具需開放平台餘額，僅回 wav，語速、音調、音量不可調。</string>
     <string name="aimodel_editor_tts_ref_audio_not_loaded">尚未載入參考音訊</string>
     <string name="aimodel_editor_tts_ref_audio_loaded">已載入參考音訊</string>
     <string name="aimodel_editor_tts_select_audio">選擇音訊</string>
@@ -353,6 +356,7 @@
     <string name="aimodel_editor_stt_language_zh">中文</string>
     <string name="aimodel_editor_stt_language_en">英文</string>
     <string name="aimodel_editor_stt_language_auto">自動檢測</string>
+    <string name="aimodel_editor_stt_deepseek_hint">DeepSeek ASR 自動辨識語種；單段上限 120 秒，過長音訊會自動切片後拼接。</string>
 
     <!-- Embedding 配置 -->
     <string name="aimodel_editor_section_embedding">Embedding 配置</string>

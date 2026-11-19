@@ -1122,6 +1122,20 @@ class LocalAiClient(
                 LocalAiResult("", error = e.message ?: "TTS 请求异常")
             }
         }
+        if (model.purpose == "stt") {
+            return try {
+                // 用 0.5 秒静音 WAV 探测识别端点，避免把语音模型名发给 chat/completions。
+                val sample = MultimodalProviderSupport.pcmToWav(ByteArray(16_000), 16_000, 1)
+                transcribeSpeech(model, sample, "connection-test.wav", "auto")
+                LocalAiResult("STT 连接成功")
+            } catch (e: FailoverHttpException) {
+                LocalAiResult("", error = e.message ?: "HTTP ${e.statusCode}", statusCode = e.statusCode)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                LocalAiResult("", error = e.message ?: "STT 请求异常")
+            }
+        }
         if (model.purpose == "image_generation") {
             return try {
                 val images = generateImage(
@@ -1875,6 +1889,7 @@ class LocalAiClient(
             "glm", "zhipu", "bigmodel" -> synthesizeSpeechGlm(model, text, voice, speed, volume)
             "minimax" -> synthesizeSpeechMiniMax(model, text, voice, speed, pitch, volume)
             "qwen", "dashscope", "tongyi" -> synthesizeSpeechQwen(model, text, voice)
+            "deepseek" -> synthesizeSpeechDeepseek(model, text, voice)
             else -> synthesizeSpeechOpenAi(model, text, voice, speed, pitch, volume)
         }
     }
@@ -2017,6 +2032,68 @@ class LocalAiClient(
             .header("Content-Type", "application/json")
             .build()
         return executeTtsRequest(model, request, "Qwen")
+    }
+
+    /**
+     * DeepSeek TTS：`POST /v1/tools/tts`（JSON 进、音频流回）。
+     *
+     * 与 OpenAI 兼容接口的差异：
+     * - 只回 `wav`（默认）或 `pcm`（24kHz/16bit/单声道裸流），没有语速/音调/音量；
+     * - 没有模型字段，音色只有 `stella`（女声）/ `tide`（男声）；
+     * - `text` 上限 10000 计费字符（汉字算 2 个），超长时按 PCM 分片合成后统一封装成 WAV。
+     */
+    private suspend fun synthesizeSpeechDeepseek(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?
+    ): ByteArray {
+        val chunks = DeepSeekVoiceTools.ttsChunks(text)
+        require(chunks.isNotEmpty()) { "TTS 文本为空" }
+        val url = DeepSeekVoiceTools.endpoint(model.baseUrl, model.ttsUrl, "tts")
+        val voice = DeepSeekVoiceTools.ttsVoice(voiceOverride ?: model.ttsVoice)
+        if (chunks.size == 1) return requestDeepSeekSpeech(model, url, voice, chunks.single(), "wav")
+        val pcm = ByteArrayOutputStream()
+        chunks.forEach { pcm.write(requestDeepSeekSpeech(model, url, voice, it, "pcm")) }
+        return MultimodalProviderSupport.pcmToWav(pcm.toByteArray())
+    }
+
+    private suspend fun requestDeepSeekSpeech(
+        model: LocalAiModelEntity,
+        url: String,
+        voice: String,
+        text: String,
+        format: String
+    ): ByteArray {
+        val payload = linkedMapOf<String, Any>(
+            "text" to text,
+            "voice_id" to voice,
+            "format" to format,
+            "filter_markdown" to true
+        )
+        val request = Request.Builder()
+            .url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return clientFor(model).newCall(request).awaitResponse().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(
+                    response.code,
+                    "DeepSeek TTS HTTP ${response.code}: ${bytes.toString(Charsets.UTF_8).take(500)}"
+                )
+            }
+            if (response.header("Content-Type").orEmpty().contains("json", true)) {
+                throw FailoverHttpException(
+                    response.code,
+                    "DeepSeek TTS 未返回音频: ${bytes.toString(Charsets.UTF_8).take(300)}"
+                )
+            }
+            if (bytes.isEmpty()) throw FailoverHttpException(response.code, "DeepSeek TTS 未返回音频数据")
+            // 文档保证 wav 可直接播放；部分网关会回裸 PCM，这里统一兜底封装。
+            if (format == "wav") MultimodalProviderSupport.pcmToWav(bytes) else bytes
+        }
     }
 
     private suspend fun synthesizeSpeechOpenAi(
@@ -2382,6 +2459,7 @@ class LocalAiClient(
             "xiaomi", "mimo" -> transcribeSpeechXiaomi(model, audioBytes, filename, language)
             "gemini", "google", "google_gemini" -> transcribeSpeechGemini(model, audioBytes, filename, language)
             "qwen", "dashscope", "tongyi" -> transcribeSpeechQwen(model, audioBytes, filename, language)
+            "deepseek" -> transcribeSpeechDeepseek(model, audioBytes)
             else -> transcribeSpeechOpenAI(model, audioBytes, filename, language)
         }
     }
@@ -2479,6 +2557,50 @@ class LocalAiClient(
                     ?.takeIf { !it.isJsonNull }?.asString
         }.getOrNull().orEmpty().ifBlank { raw.trim() }
         LocalAiResult(text, usedModelId = model.id, usedModelName = model.name, usedModelActualName = model.model)
+    }
+
+    /**
+     * DeepSeek ASR：`POST /v1/tools/asr`（multipart，字段名 `file`）。
+     *
+     * - 只接受 16bit PCM WAV / Ogg Opus，先把音频规整成 16kHz 单声道 WAV；
+     * - 单段 ≤120 秒，长音频按 110 秒切片后逐段识别再拼接；
+     * - 没有 model / language 参数，语种由服务端自动识别。
+     */
+    private suspend fun transcribeSpeechDeepseek(
+        model: LocalAiModelEntity,
+        audioBytes: ByteArray
+    ): LocalAiResult {
+        val chunks = DeepSeekVoiceTools.asrWavChunks(audioBytes)
+        val url = DeepSeekVoiceTools.endpoint(model.baseUrl, model.sttUrl, "asr")
+        val texts = chunks.map { wav ->
+            val form = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", "audio.wav", wav.toRequestBody("audio/wav".toMediaType()))
+                .build()
+            val request = Request.Builder()
+                .url(url)
+                .post(form)
+                .header("Authorization", "Bearer ${model.apiKey}")
+                .build()
+            clientFor(model).newCall(request).awaitResponse().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw FailoverHttpException(
+                        response.code,
+                        "DeepSeek ASR HTTP ${response.code}: ${raw.take(500)}"
+                    )
+                }
+                runCatching {
+                    JsonParser.parseString(raw).asJsonObject.get("text")?.takeIf { !it.isJsonNull }?.asString
+                }.getOrNull()?.trim().orEmpty()
+            }
+        }
+        return LocalAiResult(
+            texts.filter { it.isNotBlank() }.joinToString(" "),
+            usedModelId = model.id,
+            usedModelName = model.name,
+            usedModelActualName = model.sttModel.ifBlank { model.model }
+        )
     }
 
     /**

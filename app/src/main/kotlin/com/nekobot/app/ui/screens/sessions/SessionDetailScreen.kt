@@ -2836,6 +2836,7 @@ private fun TtsVoiceSelector(
 ) {
     val commonVoices = when (provider.lowercase()) {
         "xiaomi", "mimo" -> listOf("mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean")
+        "deepseek" -> listOf("stella", "tide")
         "doubao", "volcengine", "bytedance" -> listOf(
             "zh_female_shuangkuaisisi_moon_bigtts",
             "zh_male_bvlazysheep",

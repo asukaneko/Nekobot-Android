@@ -20,7 +20,8 @@ internal fun mediaModelPresets(purpose: String): List<MediaModelPreset> = when (
         MediaModelPreset("xiaomi", "mimo-v2.5-tts", "https://api.xiaomimimo.com/v1", "mimo_default"),
         MediaModelPreset("siliconflow", "FunAudioLLM/CosyVoice2-0.5B", "https://api.siliconflow.cn/v1", "alex"),
         MediaModelPreset("elevenlabs", "eleven_multilingual_v2", "https://api.elevenlabs.io/v1", "JBFqnCBsd6RMkjVDRZzb"),
-        MediaModelPreset("deepgram", "aura-2-thalia-en", "https://api.deepgram.com/v1", "aura-2-thalia-en")
+        MediaModelPreset("deepgram", "aura-2-thalia-en", "https://api.deepgram.com/v1", "aura-2-thalia-en"),
+        MediaModelPreset("deepseek", DeepSeekVoiceTools.TTS_MODEL_PLACEHOLDER, DeepSeekVoiceTools.DEFAULT_BASE_URL, DeepSeekVoiceTools.TTS_DEFAULT_VOICE, "wav")
     )
     "stt" -> listOf(
         MediaModelPreset("openai", "gpt-4o-mini-transcribe", "https://api.openai.com/v1"),
@@ -31,7 +32,8 @@ internal fun mediaModelPresets(purpose: String): List<MediaModelPreset> = when (
         MediaModelPreset("siliconflow", "FunAudioLLM/SenseVoiceSmall", "https://api.siliconflow.cn/v1"),
         MediaModelPreset("groq", "whisper-large-v3-turbo", "https://api.groq.com/openai/v1"),
         MediaModelPreset("elevenlabs", "scribe_v2", "https://api.elevenlabs.io/v1"),
-        MediaModelPreset("deepgram", "nova-3", "https://api.deepgram.com/v1")
+        MediaModelPreset("deepgram", "nova-3", "https://api.deepgram.com/v1"),
+        MediaModelPreset("deepseek", DeepSeekVoiceTools.ASR_MODEL_PLACEHOLDER, DeepSeekVoiceTools.DEFAULT_BASE_URL)
     )
     "image_generation" -> listOf(
         MediaModelPreset("openai", "gpt-image-1", "https://api.openai.com/v1"),

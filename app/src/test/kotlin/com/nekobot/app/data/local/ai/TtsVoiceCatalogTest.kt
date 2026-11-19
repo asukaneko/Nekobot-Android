@@ -17,6 +17,14 @@ class TtsVoiceCatalogTest {
     }
 
     @Test
+    fun deepSeekUsesOfficialVoiceIds() {
+        val voices = TtsVoiceCatalog.voices("deepseek")
+        assertEquals(listOf("stella", "tide"), voices.map { it.id })
+        assertEquals(setOf("deepseek"), voices.map { it.provider }.toSet())
+        assertEquals("stella", TtsVoiceCatalog.voices("deepseek", "default").first().id)
+    }
+
+    @Test
     fun configuredCustomVoiceKeepsCaseAndIsSelectable() {
         val voices = TtsVoiceCatalog.voices("gemini", "CustomVoiceID")
         assertEquals("CustomVoiceID", voices.first().id)

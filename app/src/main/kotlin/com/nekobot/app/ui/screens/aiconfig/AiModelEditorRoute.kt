@@ -60,7 +60,7 @@ internal fun ServerAiModelEditorRoute(modelId: String?, vm: AiModelsViewModel, o
         savedApiKeys = keys, busy = busy || saving, actionError = error,
         onResolveApiKey = vm::resolveApiKey,
         onFetchModels = { url, key, protocol, append, _ -> vm.fetchModels(url, key, protocol, append) },
-        onConfirm = { vm.saveEditor(modelId, it.toRequest(), onBack) }, onDismiss = onBack)
+        onConfirm = { vm.saveEditor(modelId, it.withDeepSeekVoiceDefaults().toRequest(), onBack) }, onDismiss = onBack)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

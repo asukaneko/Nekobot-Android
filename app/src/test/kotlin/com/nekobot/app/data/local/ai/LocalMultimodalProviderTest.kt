@@ -13,9 +13,90 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.Base64
 
 class LocalMultimodalProviderTest {
+
+    @Test
+    fun deepSeekSpeechPostsTextToToolsEndpoint() = runBlocking {
+        val audio = "RIFF....WAVEfmt ".toByteArray()
+        var capturedUrl = ""
+        var capturedBody = ""
+        var authorization = ""
+        val client = client { request ->
+            capturedUrl = request.url.toString()
+            authorization = request.header("Authorization").orEmpty()
+            capturedBody = request.body!!.let { body ->
+                val buffer = okio.Buffer()
+                body.writeTo(buffer)
+                buffer.readUtf8()
+            }
+            response(request, String(audio, Charsets.US_ASCII), "audio/wav")
+        }
+        val model = model(provider = "deepseek", baseUrl = "https://api.deepseek.com/v1", ttsProvider = "deepseek")
+
+        val bytes = LocalAiClient(client).synthesizeSpeech(model, "你好，我是 DeepSeek。", voice = "tide")
+
+        assertEquals("https://api.deepseek.com/v1/tools/tts", capturedUrl)
+        assertEquals("Bearer key", authorization)
+        val json = JsonParser.parseString(capturedBody).asJsonObject
+        assertEquals("你好，我是 DeepSeek。", json.get("text").asString)
+        assertEquals("tide", json.get("voice_id").asString)
+        assertEquals("wav", json.get("format").asString)
+        assertTrue(json.get("filter_markdown").asBoolean)
+        assertArrayEquals(audio, bytes)
+    }
+
+    @Test
+    fun deepSeekSpeechWrapsRawPcmAsWav() = runBlocking {
+        val client = client { request -> response(request, "pcm", "audio/pcm") }
+        val model = model(provider = "deepseek", baseUrl = "https://api.deepseek.com", ttsProvider = "deepseek")
+
+        val bytes = LocalAiClient(client).synthesizeSpeech(model, "你好")
+
+        assertEquals("RIFF", String(bytes, 0, 4, Charsets.US_ASCII))
+        assertEquals(24_000, ByteBuffer.wrap(bytes, 24, 4).order(ByteOrder.LITTLE_ENDIAN).int)
+    }
+
+    @Test
+    fun deepSeekSttUploadsFileFieldToToolsEndpoint() = runBlocking {
+        var capturedUrl = ""
+        var capturedBody = ""
+        val client = client { request ->
+            capturedUrl = request.url.toString()
+            capturedBody = request.body!!.let { body ->
+                val buffer = okio.Buffer()
+                body.writeTo(buffer)
+                buffer.readUtf8()
+            }
+            response(request, """{"request_id":"abc","text":"上海今天天气怎么样？","duration_ms":3200}""", "application/json")
+        }
+        val model = model(provider = "deepseek", baseUrl = "https://api.deepseek.com/v1", sttProvider = "deepseek")
+
+        val result = LocalAiClient(client).transcribeSpeech(model, silentWav(), "record.m4a", "zh")
+
+        assertEquals("上海今天天气怎么样？", result.content)
+        assertEquals("https://api.deepseek.com/v1/tools/asr", capturedUrl)
+        assertTrue(capturedBody.contains("name=\"file\""))
+        assertTrue(capturedBody.contains("filename=\"audio.wav\""))
+        assertTrue(!capturedBody.contains("name=\"model\""))
+        assertTrue(!capturedBody.contains("name=\"language\""))
+    }
+
+    @Test
+    fun deepSeekSttRejectsNonAudioPayloads() = runBlocking {
+        var calls = 0
+        val client = client { request -> calls++; response(request, """{"text":"x"}""", "application/json") }
+        val model = model(provider = "deepseek", baseUrl = "https://api.deepseek.com/v1", sttProvider = "deepseek")
+        try {
+            LocalAiClient(client).transcribeSpeech(model, byteArrayOf(1, 2, 3), "record.m4a", "zh")
+            org.junit.Assert.fail("Unsupported audio must fail before calling the service")
+        } catch (_: Exception) {
+        }
+        assertEquals(0, calls)
+    }
 
     @Test
     fun qwenTtsReadsNestedAudioResponse() = runBlocking {
@@ -174,6 +255,27 @@ class LocalMultimodalProviderTest {
             org.junit.Assert.fail("Unsupported references must be reported")
         } catch (_: IllegalArgumentException) { }
         assertEquals(0, calls)
+    }
+
+    /** 16kHz 单声道 16bit 静音 WAV：DeepSeek ASR 只接受该格式，避免触发解码器。 */
+    private fun silentWav(frames: Int = 1_600): ByteArray {
+        val pcm = ByteArray(frames * 2)
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply {
+            put("RIFF".toByteArray())
+            putInt(36 + pcm.size)
+            put("WAVE".toByteArray())
+            put("fmt ".toByteArray())
+            putInt(16)
+            putShort(1)
+            putShort(1)
+            putInt(16_000)
+            putInt(32_000)
+            putShort(2)
+            putShort(16)
+            put("data".toByteArray())
+            putInt(pcm.size)
+        }.array()
+        return header + pcm
     }
 
     private fun model(

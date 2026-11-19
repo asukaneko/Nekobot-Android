@@ -164,6 +164,12 @@ class NativeMediaProvidersTest {
     @Test fun mediaPresetsAndVoicesKeepNativeProviderIdentity() {
         assertTrue(mediaModelPresets("live").any { it.provider == "google" && it.model.contains("live") })
         assertEquals("scribe_v2", mediaModelPresets("stt").single { it.provider == "elevenlabs" }.model)
+        assertEquals("stella", mediaModelPresets("tts").single { it.provider == "deepseek" }.voice)
+        assertEquals("wav", mediaModelPresets("tts").single { it.provider == "deepseek" }.format)
+        assertEquals(
+            "https://api.deepseek.com/v1",
+            mediaModelPresets("stt").single { it.provider == "deepseek" }.baseUrl
+        )
         assertEquals("siliconflow", TtsVoiceCatalog.voices("siliconflow").first().provider)
         assertFalse(MultimodalProviderSupport.supportsImageReference("siliconflow", "Kwai-Kolors/Kolors"))
         assertFalse(MultimodalProviderSupport.supportsImageReference("stability", "core"))

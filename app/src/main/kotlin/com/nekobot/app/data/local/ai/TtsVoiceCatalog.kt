@@ -14,12 +14,16 @@ internal object TtsVoiceCatalog {
         "siliconflow", "silicon_flow" -> "siliconflow"
         "elevenlabs", "eleven_labs" -> "elevenlabs"
         "deepgram" -> "deepgram"
+        "deepseek" -> "deepseek"
         else -> "openai"
     }
 
     fun voices(provider: String, configuredVoice: String = ""): List<TtsVoice> {
         val normalized = normalize(provider)
         val builtins = when (normalized) {
+            "deepseek" -> DeepSeekVoiceTools.TTS_VOICES.map { id ->
+                TtsVoice(id = id, name = if (id == "stella") "海星·女声" else "暗潮·男声")
+            }
             "siliconflow" -> SILICONFLOW_VOICES.map { TtsVoice(id = it, name = it) }
             "elevenlabs" -> listOf(TtsVoice(id = "JBFqnCBsd6RMkjVDRZzb", name = "George"))
             "deepgram" -> listOf("thalia", "andromeda", "helena", "apollo", "arcas", "orion")
