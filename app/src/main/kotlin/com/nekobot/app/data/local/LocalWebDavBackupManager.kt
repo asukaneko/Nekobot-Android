@@ -401,8 +401,13 @@ class LocalWebDavBackupManager(
             val folder = ensureFolder(raw)
             if (!folder.ok) error(folder.message)
 
+            val sections = WebDavBackupSection.resolve(request.sections)
             try {
-                val archive = buildArchive(request.includePortraits == true)
+                val archive = buildArchive(
+                    includePortraits = request.includePortraits == true ||
+                        (request.sections != null && WebDavBackupSection.MEDIA in sections),
+                    sections = sections
+                )
                 try {
                     val payload = File.createTempFile(
                         "webdav-backup-",
@@ -493,7 +498,10 @@ class LocalWebDavBackupManager(
                     }
                     require(payload.length() > 0L) { "远程备份文件内容为空" }
                     LocalWebDavArchiveCodec.decryptFile(payload, encryptionPassword, archive)
-                    restoreArchive(archive, request.includePortraits == true)
+                    restoreArchive(
+                        archive = archive,
+                        sections = WebDavBackupSection.resolve(request.sections)
+                    )
 
                     val now = nowIso()
                     updateStatus(
@@ -3287,7 +3295,10 @@ class LocalWebDavBackupManager(
         }
     }
 
-    private suspend fun buildArchive(includePortraits: Boolean): File {
+    private suspend fun buildArchive(
+        includePortraits: Boolean,
+        sections: Set<WebDavBackupSection>
+    ): File {
         val profileName = prefs.activeDbName
         val dbName = "$profileName.db"
         val db = NekobotDatabase.get(appContext, profileName)
@@ -3316,17 +3327,23 @@ class LocalWebDavBackupManager(
                 BufferedOutputStream(SizeLimitedOutputStream(output.outputStream(), MAX_ARCHIVE_SIZE))
             ).use { zip ->
                 putZipEntry(zip, ENTRY_DATABASE, dbFile)
-                putZipEntry(
-                    zip,
-                    ENTRY_CREDENTIALS,
-                    gson.toJson(buildCredentialBundle(db)).toByteArray()
-                )
-                val portableArchiveManager = PortableDataArchiveManager(appContext)
-                putZipEntry(zip, ENTRY_APP_SETTINGS, portableArchiveManager.captureAppSettings())
-                val globalMemory = GlobalAgentMemoryStore.memoryFileFor(appContext, profileName)
-                if (globalMemory.isFile) putZipEntry(zip, ENTRY_GLOBAL_MEMORY, globalMemory)
+                if (WebDavBackupSection.CREDENTIALS in sections) {
+                    putZipEntry(
+                        zip,
+                        ENTRY_CREDENTIALS,
+                        gson.toJson(buildCredentialBundle(db)).toByteArray()
+                    )
+                }
+                if (WebDavBackupSection.APP_SETTINGS in sections) {
+                    val portableArchiveManager = PortableDataArchiveManager(appContext)
+                    putZipEntry(zip, ENTRY_APP_SETTINGS, portableArchiveManager.captureAppSettings())
+                }
+                if (WebDavBackupSection.GLOBAL_MEMORY in sections) {
+                    val globalMemory = GlobalAgentMemoryStore.memoryFileFor(appContext, profileName)
+                    if (globalMemory.isFile) putZipEntry(zip, ENTRY_GLOBAL_MEMORY, globalMemory)
+                }
                 val currentSessionIds = db.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
-                val catalogArchive = writeCatalogFiles(zip, profileName, currentSessionIds)
+                val catalogArchive = writeCatalogFiles(zip, profileName, currentSessionIds, sections)
 
                 val metadata = JsonObject().apply {
                     addProperty("version", 3)
@@ -3338,7 +3355,8 @@ class LocalWebDavBackupManager(
                     addProperty("database_version", db.openHelper.readableDatabase.version)
                     addProperty("created_at", nowIso())
                     addProperty("includes_portraits", includePortraits)
-                    addProperty("includes_message_audio", true)
+                    addProperty("includes_message_audio", WebDavBackupSection.AUDIO in sections)
+                    add("sections", JsonArray().apply { sections.map { it.id }.sorted().forEach(::add) })
                     add("catalog_roots", JsonArray().apply { catalogArchive.first.forEach(::add) })
                     add("catalog_files", catalogArchive.second)
                     add("categories", JsonArray().apply {
@@ -3355,38 +3373,42 @@ class LocalWebDavBackupManager(
                 }
                 putZipEntry(zip, ENTRY_METADATA, gson.toJson(metadata).toByteArray())
 
-                val tokenPrefs =
-                    appContext.getSharedPreferences("token_usage_$dbName", Context.MODE_PRIVATE)
-                putZipEntry(
-                    zip,
-                    ENTRY_TOKEN_USAGE,
-                    gson.toJson(serializePreferences(tokenPrefs)).toByteArray()
-                )
+                if (WebDavBackupSection.STATS in sections) {
+                    val tokenPrefs =
+                        appContext.getSharedPreferences("token_usage_$dbName", Context.MODE_PRIVATE)
+                    putZipEntry(
+                        zip,
+                        ENTRY_TOKEN_USAGE,
+                        gson.toJson(serializePreferences(tokenPrefs)).toByteArray()
+                    )
 
-                val achievementPrefs =
-                    appContext.getSharedPreferences(ACHIEVEMENT_PREF_NAME, Context.MODE_PRIVATE)
-                val achievement = JsonObject().apply {
-                    val key = AchievementManager.storageKeyForScope("local:$profileName")
-                    addProperty("storage_key", key)
-                    addProperty("value", achievementPrefs.getString(key, "").orEmpty())
-                }
-                putZipEntry(
-                    zip,
-                    ENTRY_ACHIEVEMENTS,
-                    gson.toJson(achievement).toByteArray()
-                )
-
-                val audioDir = File(appContext.filesDir, "tts")
-                audioDir.walkTopDown()
-                    .filter { it.isFile }
-                    .forEach { file ->
-                        require(file.length() <= MAX_MESSAGE_AUDIO_BYTES) { "聊天音频文件过大" }
-                        val relative = file.relativeTo(audioDir)
-                            .invariantSeparatorsPath
-                            .takeIf(::isSafeRelativePath)
-                            ?: return@forEach
-                        putZipEntry(zip, "$ENTRY_MESSAGE_AUDIO_PREFIX$relative", file)
+                    val achievementPrefs =
+                        appContext.getSharedPreferences(ACHIEVEMENT_PREF_NAME, Context.MODE_PRIVATE)
+                    val achievement = JsonObject().apply {
+                        val key = AchievementManager.storageKeyForScope("local:$profileName")
+                        addProperty("storage_key", key)
+                        addProperty("value", achievementPrefs.getString(key, "").orEmpty())
                     }
+                    putZipEntry(
+                        zip,
+                        ENTRY_ACHIEVEMENTS,
+                        gson.toJson(achievement).toByteArray()
+                    )
+                }
+
+                if (WebDavBackupSection.AUDIO in sections) {
+                    val audioDir = File(appContext.filesDir, "tts")
+                    audioDir.walkTopDown()
+                        .filter { it.isFile }
+                        .forEach { file ->
+                            require(file.length() <= MAX_MESSAGE_AUDIO_BYTES) { "聊天音频文件过大" }
+                            val relative = file.relativeTo(audioDir)
+                                .invariantSeparatorsPath
+                                .takeIf(::isSafeRelativePath)
+                                ?: return@forEach
+                            putZipEntry(zip, "$ENTRY_MESSAGE_AUDIO_PREFIX$relative", file)
+                        }
+                }
 
                 if (includePortraits) {
                     val portraitDir = File(appContext.cacheDir, "portraits/$profileName")
@@ -3452,11 +3474,15 @@ class LocalWebDavBackupManager(
     private fun writeCatalogFiles(
         zip: ZipOutputStream,
         profileName: String,
-        currentSessionIds: Set<String>
+        currentSessionIds: Set<String>,
+        sections: Set<WebDavBackupSection>
     ): Pair<List<String>, JsonArray> {
         var totalBytes = 0L
         val fileInventory = JsonArray()
-        CATALOG_BACKUP_ROOTS.forEach { (categoryId, rootId) ->
+        val roots = CATALOG_BACKUP_ROOTS.filter {
+            WebDavBackupSection.sectionOfCatalogRoot(it.first) in sections
+        }
+        roots.forEach { (categoryId, rootId) ->
             val category = PortableDataCategory.fromId(categoryId)
                 ?: error("未知数据目录类别：$categoryId")
             val root = LocalDataCatalog.fileRoots(appContext, category)
@@ -3509,7 +3535,7 @@ class LocalWebDavBackupManager(
                     }
                 }
         }
-        return CATALOG_BACKUP_ROOTS.map { "${it.first}/${it.second}" } to fileInventory
+        return roots.map { "${it.first}/${it.second}" } to fileInventory
     }
 
     private fun catalogFileEntry(path: String, size: Long, sha256: String): JsonObject = JsonObject().apply {
@@ -3537,9 +3563,12 @@ class LocalWebDavBackupManager(
     private fun restoreCatalogFiles(
         entries: Map<String, File>,
         profileName: String,
-        currentSessionIds: Set<String>
+        currentSessionIds: Set<String>,
+        sections: Set<WebDavBackupSection>
     ) {
-        val roots = CATALOG_BACKUP_ROOTS.associate { (categoryId, rootId) ->
+        val roots = CATALOG_BACKUP_ROOTS
+            .filter { WebDavBackupSection.sectionOfCatalogRoot(it.first) in sections }
+            .associate { (categoryId, rootId) ->
             val category = PortableDataCategory.fromId(categoryId)
                 ?: error("未知数据目录类别：$categoryId")
             val root = LocalDataCatalog.fileRoots(appContext, category)
@@ -3581,7 +3610,8 @@ class LocalWebDavBackupManager(
         }
     }
 
-    private suspend fun restoreArchive(archive: File, includePortraits: Boolean) {
+    private suspend fun restoreArchive(archive: File, sections: Set<WebDavBackupSection>) {
+        val includePortraits = WebDavBackupSection.MEDIA in sections
         val extractionDirectory = File(
             appContext.cacheDir,
             "webdav-extract-${UUID.randomUUID()}"
@@ -3637,7 +3667,7 @@ class LocalWebDavBackupManager(
                 ).edit().clear().commit()
                 AchievementManager.clearScope("local:$profileName")
 
-                entries[ENTRY_TOKEN_USAGE]?.let { rawFile ->
+                if (WebDavBackupSection.STATS in sections) entries[ENTRY_TOKEN_USAGE]?.let { rawFile ->
                     val tokenPrefs = appContext.getSharedPreferences(
                         "token_usage_$dbName",
                         Context.MODE_PRIVATE
@@ -3648,7 +3678,7 @@ class LocalWebDavBackupManager(
                     restorePreferences(tokenPrefs, tokenUsage)
                 }
 
-                entries[ENTRY_ACHIEVEMENTS]?.let { rawFile ->
+                if (WebDavBackupSection.STATS in sections) entries[ENTRY_ACHIEVEMENTS]?.let { rawFile ->
                     val obj = JsonParser.parseString(
                         String(readBounded(rawFile, MAX_SMALL_ENTRY_BYTES), Charsets.UTF_8)
                     ).asJsonObject
@@ -3662,7 +3692,11 @@ class LocalWebDavBackupManager(
                     }.commit()
                 }
 
-                val audioEntries = entries.filterKeys { it.startsWith(ENTRY_MESSAGE_AUDIO_PREFIX) }
+                val audioEntries = if (WebDavBackupSection.AUDIO in sections) {
+                    entries.filterKeys { it.startsWith(ENTRY_MESSAGE_AUDIO_PREFIX) }
+                } else {
+                    emptyMap()
+                }
                 audioEntries.forEach { (path, file) ->
                     val relative = path.removePrefix(ENTRY_MESSAGE_AUDIO_PREFIX)
                     if (isSafeRelativePath(relative)) {
@@ -3747,22 +3781,23 @@ class LocalWebDavBackupManager(
                 restoreCatalogFiles(
                     entries = entries,
                     profileName = profileName,
-                    currentSessionIds = restoredDb.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
+                    currentSessionIds = restoredDb.sessionDao().listAll().mapTo(linkedSetOf()) { it.id },
+                    sections = sections
                 )
-                entries[ENTRY_GLOBAL_MEMORY]?.let { source ->
+                if (WebDavBackupSection.GLOBAL_MEMORY in sections) entries[ENTRY_GLOBAL_MEMORY]?.let { source ->
                     val target = GlobalAgentMemoryStore.memoryFileFor(appContext, profileName)
                     require(source.length() <= MAX_SMALL_ENTRY_BYTES) { "Agent 长期记忆文件过大" }
                     target.parentFile?.mkdirs()
                     source.copyTo(target, overwrite = true)
                 }
-                entries[ENTRY_APP_SETTINGS]?.let { source ->
+                if (WebDavBackupSection.APP_SETTINGS in sections) entries[ENTRY_APP_SETTINGS]?.let { source ->
                     PortableDataArchiveManager(appContext).restoreAppSettings(
                         readBounded(source, MAX_SMALL_ENTRY_BYTES)
                     )
                 }
                 normalizeRestoredMessageAudioUrls(restoredDb)
                 normalizeRestoredStickerPaths(restoredDb)
-                entries[ENTRY_CREDENTIALS]?.let { rawFile ->
+                if (WebDavBackupSection.CREDENTIALS in sections) entries[ENTRY_CREDENTIALS]?.let { rawFile ->
                     restoreCredentialBundle(
                         restoredDb,
                         readBounded(rawFile, MAX_SMALL_ENTRY_BYTES)

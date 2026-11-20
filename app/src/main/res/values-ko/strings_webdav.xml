@@ -28,4 +28,16 @@
     <string name="webdav_transfer_processing">처리 중…</string>
     <string name="webdav_transfer_server">서버 처리 중…</string>
     <string name="webdav_transfer_percent">현재 파일 %1$d%%</string>
+    <string name="webdav_sections_backup_title">백업 내용</string>
+    <string name="webdav_sections_restore_title">복원 내용</string>
+    <string name="webdav_section_database">채팅 및 캐릭터</string>
+    <string name="webdav_section_credentials">자격 증명</string>
+    <string name="webdav_section_app_settings">앱 설정</string>
+    <string name="webdav_section_global_memory">전역 기억</string>
+    <string name="webdav_section_media">이미지 및 스티커</string>
+    <string name="webdav_section_extensions">확장 및 스킬</string>
+    <string name="webdav_section_workspace">워크스페이스 파일</string>
+    <string name="webdav_section_audio">채팅 음성</string>
+    <string name="webdav_section_stats">업적 및 사용량</string>
+    <string name="webdav_section_required">필수</string>
 </resources>

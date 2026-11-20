@@ -1724,7 +1724,9 @@ data class WebDavTestRequest(
 
 data class WebDavBackupRequest(
     val password: String? = null,
-    @SerializedName("include_portraits") val includePortraits: Boolean? = null
+    @SerializedName("include_portraits") val includePortraits: Boolean? = null,
+    /** 本地模式下勾选的备份/恢复内容分组；为空表示旧行为（全量）。 */
+    @SerializedName("sections") val sections: List<String>? = null
 )
 
 // ==================== 配置迁移 ====================

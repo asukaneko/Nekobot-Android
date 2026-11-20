@@ -28,4 +28,16 @@
     <string name="webdav_transfer_processing">Processing…</string>
     <string name="webdav_transfer_server">Server processing…</string>
     <string name="webdav_transfer_percent">Current file %1$d%%</string>
+    <string name="webdav_sections_backup_title">Backup contents</string>
+    <string name="webdav_sections_restore_title">Restore contents</string>
+    <string name="webdav_section_database">Chats and characters</string>
+    <string name="webdav_section_credentials">Credentials</string>
+    <string name="webdav_section_app_settings">App settings</string>
+    <string name="webdav_section_global_memory">Global memory</string>
+    <string name="webdav_section_media">Images and stickers</string>
+    <string name="webdav_section_extensions">Extensions and skills</string>
+    <string name="webdav_section_workspace">Workspace files</string>
+    <string name="webdav_section_audio">Chat audio</string>
+    <string name="webdav_section_stats">Achievements and usage</string>
+    <string name="webdav_section_required">Required</string>
 </resources>

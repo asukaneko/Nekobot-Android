@@ -28,4 +28,16 @@
     <string name="webdav_transfer_processing">处理中…</string>
     <string name="webdav_transfer_server">服务器处理中…</string>
     <string name="webdav_transfer_percent">当前文件 %1$d%%</string>
+    <string name="webdav_sections_backup_title">备份内容</string>
+    <string name="webdav_sections_restore_title">恢复内容</string>
+    <string name="webdav_section_database">聊天与角色数据</string>
+    <string name="webdav_section_credentials">凭据</string>
+    <string name="webdav_section_app_settings">应用设置</string>
+    <string name="webdav_section_global_memory">全局记忆</string>
+    <string name="webdav_section_media">图片与表情</string>
+    <string name="webdav_section_extensions">扩展与技能</string>
+    <string name="webdav_section_workspace">工作区文件</string>
+    <string name="webdav_section_audio">聊天语音</string>
+    <string name="webdav_section_stats">成就与用量</string>
+    <string name="webdav_section_required">必需</string>
 </resources>

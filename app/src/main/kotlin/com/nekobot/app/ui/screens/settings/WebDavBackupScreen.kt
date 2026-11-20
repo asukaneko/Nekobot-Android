@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.WifiFind
 import com.nekobot.app.ui.components.GlassAlertDialog as AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -90,6 +92,7 @@ import com.nekobot.app.data.model.WebDavBackupRequest
 import com.nekobot.app.data.model.WebDavTransferProgress
 import com.nekobot.app.data.model.WebDavTransferStage
 import com.nekobot.app.data.model.WebDavConfig
+import com.nekobot.app.data.local.WebDavBackupSection
 import com.nekobot.app.data.model.WebDavTestRequest
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
@@ -268,10 +271,11 @@ class WebDavBackupViewModel : BaseViewModel() {
     }
 
     /** 上传备份到 WebDAV */
-    fun backup(password: String, includePortraits: Boolean) {
+    fun backup(password: String, includePortraits: Boolean, sections: Set<String>? = null) {
         val req = WebDavBackupRequest(
             password = password.ifBlank { null },
-            includePortraits = includePortraits
+            includePortraits = includePortraits,
+            sections = sections?.toList()
         )
         launchWebDavTransfer(
             block = { progress -> unified.webDavBackup(req, onProgress = progress) },
@@ -289,10 +293,11 @@ class WebDavBackupViewModel : BaseViewModel() {
     }
 
     /** 从 WebDAV 拉取同步 */
-    fun sync(password: String, includePortraits: Boolean) {
+    fun sync(password: String, includePortraits: Boolean, sections: Set<String>? = null) {
         val req = WebDavBackupRequest(
             password = password.ifBlank { null },
-            includePortraits = includePortraits
+            includePortraits = includePortraits,
+            sections = sections?.toList()
         )
         launchWebDavTransfer(
             block = { progress -> unified.webDavSync(req, onProgress = progress) },
@@ -309,8 +314,11 @@ class WebDavBackupViewModel : BaseViewModel() {
         )
     }
 
-    fun previewSync(password: String) {
-        val req = WebDavBackupRequest(password = password.ifBlank { null })
+    fun previewSync(password: String, sections: Set<String>? = null) {
+        val req = WebDavBackupRequest(
+            password = password.ifBlank { null },
+            sections = sections?.toList()
+        )
         launchWebDavTransfer(
             block = { progress -> unified.webDavPreviewSync(req, onProgress = progress) },
             onSuccess = { elem -> _restorePreview.value = elem?.asJsonObject }
@@ -486,6 +494,9 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
     var backupIncludePortraits by remember { mutableStateOf(false) }
     var syncPassword by remember { mutableStateOf("") }
     var syncIncludePortraits by remember { mutableStateOf(false) }
+    // 本地模式：与数据导入导出中心一致的备份/恢复内容勾选（备份与恢复各自独立）
+    var backupSections by remember { mutableStateOf(WebDavBackupSection.defaultSelection()) }
+    var restoreSections by remember { mutableStateOf(WebDavBackupSection.defaultSelection()) }
     var showSyncConfirm by remember { mutableStateOf(false) }
     var restoreRevisionTarget by remember { mutableStateOf<Long?>(null) }
 
@@ -1050,12 +1061,25 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
             title = { Text(stringResource(if (restoring) R.string.webdav_restore else R.string.webdav_upload_backup)) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    if (isLocal) {
+                        WebDavContentSelector(
+                            title = stringResource(
+                                if (restoring) R.string.webdav_sections_restore_title
+                                else R.string.webdav_sections_backup_title
+                            ),
+                            selected = if (restoring) restoreSections else backupSections,
+                            onSelectionChange = { if (restoring) restoreSections = it else backupSections = it },
+                            enabled = !loading
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     WebDavOperationOptions(
                         password = if (restoring) syncPassword else backupPassword,
                         onPasswordChange = { if (restoring) syncPassword = it else backupPassword = it },
                         includeImages = if (restoring) syncIncludePortraits else backupIncludePortraits,
                         onIncludeImagesChange = { if (restoring) syncIncludePortraits = it else backupIncludePortraits = it },
                         hasSavedPassword = config?.hasEncryptionPassword == true,
+                        showImagesOption = !isLocal,
                         enabled = !loading
                     )
                 }
@@ -1068,9 +1092,15 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                         showBackupOptions = false
                         showRestoreOptions = false
                         if (restoring) {
-                            if (isLocal) vm.previewSync(syncPassword) else showSyncConfirm = true
+                            if (isLocal) vm.previewSync(syncPassword, restoreSections) else showSyncConfirm = true
                         } else {
-                            vm.backup(backupPassword, backupIncludePortraits)
+                            vm.backup(
+                                password = backupPassword,
+                                includePortraits = if (isLocal) {
+                                    WebDavBackupSection.MEDIA.id in backupSections
+                                } else backupIncludePortraits,
+                                sections = if (isLocal) backupSections else null
+                            )
                         }
                     }
                 ) {
@@ -1093,7 +1123,13 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                     enabled = !loading,
                     onClick = {
                         showSyncConfirm = false
-                        vm.sync(syncPassword, syncIncludePortraits)
+                        vm.sync(
+                            password = syncPassword,
+                            includePortraits = if (isLocal) {
+                                WebDavBackupSection.MEDIA.id in restoreSections
+                            } else syncIncludePortraits,
+                            sections = if (isLocal) restoreSections else null
+                        )
                     }
                 ) {
                     Text(
@@ -1130,7 +1166,13 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                 TextButton(
                     onClick = {
                         vm.clearRestorePreview()
-                        vm.sync(syncPassword, syncIncludePortraits)
+                        vm.sync(
+                            password = syncPassword,
+                            includePortraits = if (isLocal) {
+                                WebDavBackupSection.MEDIA.id in restoreSections
+                            } else syncIncludePortraits,
+                            sections = if (isLocal) restoreSections else null
+                        )
                     },
                     enabled = !loading
                 ) {
@@ -1201,6 +1243,92 @@ private fun WebDavPasswordField(value: String, onValueChange: (String) -> Unit, 
     )
 }
 
+/** 备份/恢复内容勾选：与数据导入导出中心一致的分组选择。 */
+@Composable
+private fun WebDavContentSelector(
+    title: String,
+    selected: Set<String>,
+    onSelectionChange: (Set<String>) -> Unit,
+    enabled: Boolean
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(
+                onClick = { onSelectionChange(WebDavBackupSection.entries.mapTo(linkedSetOf()) { it.id }) },
+                enabled = enabled
+            ) {
+                Text(stringResource(R.string.portability_select_all))
+            }
+            TextButton(
+                onClick = {
+                    onSelectionChange(
+                        WebDavBackupSection.entries.filter { it.required }.mapTo(linkedSetOf()) { it.id }
+                    )
+                },
+                enabled = enabled
+            ) {
+                Text(stringResource(R.string.portability_clear_selection))
+            }
+        }
+        WebDavBackupSection.entries.forEach { section ->
+            val checked = section.id in selected
+            val rowEnabled = enabled && !section.required
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = rowEnabled) {
+                        onSelectionChange(
+                            if (checked) selected - section.id else selected + section.id
+                        )
+                    }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(webDavSectionLabel(section)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (section.required) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                if (section.required) {
+                    Text(
+                        stringResource(R.string.webdav_section_required),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+                Checkbox(
+                    checked = checked,
+                    onCheckedChange = if (rowEnabled) ({ value ->
+                        onSelectionChange(if (value) selected + section.id else selected - section.id)
+                    }) else null,
+                    enabled = rowEnabled
+                )
+            }
+        }
+    }
+}
+
+private fun webDavSectionLabel(section: WebDavBackupSection): Int = when (section) {
+    WebDavBackupSection.DATABASE -> R.string.webdav_section_database
+    WebDavBackupSection.CREDENTIALS -> R.string.webdav_section_credentials
+    WebDavBackupSection.APP_SETTINGS -> R.string.webdav_section_app_settings
+    WebDavBackupSection.GLOBAL_MEMORY -> R.string.webdav_section_global_memory
+    WebDavBackupSection.MEDIA -> R.string.webdav_section_media
+    WebDavBackupSection.EXTENSIONS -> R.string.webdav_section_extensions
+    WebDavBackupSection.WORKSPACE -> R.string.webdav_section_workspace
+    WebDavBackupSection.AUDIO -> R.string.webdav_section_audio
+    WebDavBackupSection.STATS -> R.string.webdav_section_stats
+}
+
 @Composable
 private fun WebDavOperationOptions(
     password: String,
@@ -1208,15 +1336,18 @@ private fun WebDavOperationOptions(
     includeImages: Boolean,
     onIncludeImagesChange: (Boolean) -> Unit,
     hasSavedPassword: Boolean,
-    enabled: Boolean
+    enabled: Boolean,
+    showImagesOption: Boolean = true
 ) {
     var showPassword by remember(hasSavedPassword) { mutableStateOf(!hasSavedPassword || password.isNotBlank()) }
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.webdav_include_images_short), style = MaterialTheme.typography.bodyMedium)
-            Text(stringResource(R.string.webdav_images_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (showImagesOption) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.webdav_include_images_short), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.webdav_images_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = includeImages, onCheckedChange = onIncludeImagesChange, enabled = enabled)
         }
-        Switch(checked = includeImages, onCheckedChange = onIncludeImagesChange, enabled = enabled)
     }
     if (hasSavedPassword) {
         TextButton(onClick = {
