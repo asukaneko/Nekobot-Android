@@ -300,6 +300,11 @@
     <string name="dbprofile_import_file_failed">导入失败，请重试</string>
     <string name="dbprofile_import_file_failed_reason">导入失败：%1$s</string>
     <string name="dbprofile_selected_file">已选文件：%1$s</string>
+    <string name="dbprofile_count">共 %1$d 个</string>
+    <string name="dbprofile_import_file_short">本地文件</string>
+    <string name="dbprofile_room_version">Room 版本 v%1$d</string>
+    <string name="dbprofile_room_version_unknown">Room 版本 —</string>
+    <string name="dbprofile_updated_at">更新于 %1$s</string>
     <string name="webdav_auto_incremental_title">自动增量同步</string>
     <string name="webdav_auto_incremental_subtitle">按设置的间隔在有网络时同步当前本地数据库</string>
     <string name="webdav_auto_incremental_enabled">启用自动增量同步</string>

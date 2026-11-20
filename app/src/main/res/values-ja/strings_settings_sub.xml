@@ -278,6 +278,11 @@
     <string name="dbprofile_import_file_failed">インポート失敗、再試行してください</string>
     <string name="dbprofile_import_file_failed_reason">インポート失敗：%1$s</string>
     <string name="dbprofile_selected_file">選択されたファイル：%1$s</string>
+    <string name="dbprofile_count">全 %1$d 件</string>
+    <string name="dbprofile_import_file_short">ローカルファイル</string>
+    <string name="dbprofile_room_version">Room バージョン v%1$d</string>
+    <string name="dbprofile_room_version_unknown">Room バージョン —</string>
+    <string name="dbprofile_updated_at">%1$s 更新</string>
     <string name="webdav_auto_incremental_title">自動増分同期</string>
     <string name="webdav_auto_incremental_subtitle">指定した間隔で、ネットワーク接続時に現在のローカルデータベースを同期します</string>
     <string name="webdav_auto_incremental_enabled">自動増分同期を有効にする</string>

@@ -278,6 +278,11 @@
     <string name="dbprofile_import_file_failed">가져오기 실패, 다시 시도해 주세요</string>
     <string name="dbprofile_import_file_failed_reason">가져오기 실패: %1$s</string>
     <string name="dbprofile_selected_file">선택된 파일: %1$s</string>
+    <string name="dbprofile_count">총 %1$d개</string>
+    <string name="dbprofile_import_file_short">로컬 파일</string>
+    <string name="dbprofile_room_version">Room 버전 v%1$d</string>
+    <string name="dbprofile_room_version_unknown">Room 버전 —</string>
+    <string name="dbprofile_updated_at">%1$s 업데이트</string>
     <string name="webdav_auto_incremental_title">자동 증분 동기화</string>
     <string name="webdav_auto_incremental_subtitle">설정한 간격으로 네트워크 연결 시 현재 로컬 데이터베이스를 동기화합니다</string>
     <string name="webdav_auto_incremental_enabled">자동 증분 동기화 사용</string>

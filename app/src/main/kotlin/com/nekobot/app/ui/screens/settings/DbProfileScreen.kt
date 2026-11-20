@@ -16,6 +16,8 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -104,12 +106,20 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+/** 单个数据库的展示信息：Room schema 版本、文件大小与最后写入时间。 */
+data class DbProfileStats(
+    val roomVersion: Int? = null,
+    val sizeBytes: Long = 0L,
+    val updatedAt: Long = 0L
+)
+
 /**
  * 本地 DB Profile 管理 ViewModel：维护 profile 列表、激活态、远程导入与切换。
  *
  * - profiles：本地已记录的 db profile 列表（来自 PrefsManager.listDbProfiles）
  * - activeName：当前激活的 db 名
  * - loginRecords：已保存的远程服务器登录记录，供导入下拉选择
+ * - stats：各 profile 的 Room 版本与体积，用于列表展示
  */
 class DbProfileViewModel : ViewModel() {
 
@@ -126,6 +136,9 @@ class DbProfileViewModel : ViewModel() {
     private val _loginRecords = MutableStateFlow<List<LoginRecord>>(emptyList())
     val loginRecords: StateFlow<List<LoginRecord>> = _loginRecords.asStateFlow()
 
+    private val _stats = MutableStateFlow<Map<String, DbProfileStats>>(emptyMap())
+    val stats: StateFlow<Map<String, DbProfileStats>> = _stats.asStateFlow()
+
     private val _importing = MutableStateFlow(false)
     val importing: StateFlow<Boolean> = _importing.asStateFlow()
 
@@ -138,6 +151,41 @@ class DbProfileViewModel : ViewModel() {
         _profiles.value = prefs.listDbProfiles()
         _activeName.value = prefs.activeDbName
         _loginRecords.value = prefs.listLoginRecords()
+        loadStats(_profiles.value)
+    }
+
+    /** 只读读取每个 profile 的 Room 版本与体积，不触发迁移或打开 Room 连接。 */
+    private fun loadStats(profiles: List<PrefsManager.DbProfile>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val loaded = profiles.associate { it.name to readStats(it.name) }
+            withContext(Dispatchers.Main) { _stats.value = loaded }
+        }
+    }
+
+    private fun readStats(profileName: String): DbProfileStats {
+        val ctx = ServiceContainer.appContext ?: return DbProfileStats()
+        val fileName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+        val file = ctx.getDatabasePath(fileName)
+        if (!file.isFile) return DbProfileStats()
+        val roomVersion = runCatching {
+            android.database.sqlite.SQLiteDatabase.openDatabase(
+                file.absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+            ).use { it.version }
+        }.getOrNull() ?: runCatching {
+            // 活动库已由 Room 建立连接时直接复用，避免只读打开 WAL 库失败。
+            if (profileName == prefs.activeDbName) {
+                NekobotDatabase.get(ctx, profileName).openHelper.readableDatabase.version
+            } else {
+                null
+            }
+        }.getOrNull()
+        return DbProfileStats(
+            roomVersion = roomVersion?.takeIf { it > 0 },
+            sizeBytes = file.length(),
+            updatedAt = file.lastModified()
+        )
     }
 
     fun clearToast() { _toast.value = null }
@@ -1059,6 +1107,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
     val loginRecords by vm.loginRecords.collectAsStateWithLifecycle()
     val importing by vm.importing.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
+    val stats by vm.stats.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showImportDialog by remember { mutableStateOf(false) }
@@ -1137,101 +1186,109 @@ fun DbProfileScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+                .padding(padding),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 当前激活 db 提示卡片
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            item(key = "active") {
+                ActiveDbCard(
+                    displayName = profiles.firstOrNull { it.name == activeName }?.displayName ?: activeName,
+                    profileName = activeName,
+                    stats = stats[activeName]
+                )
+            }
+
+            item(key = "list-header") {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        stringResource(R.string.dbprofile_current_db),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        profiles.firstOrNull { it.name == activeName }?.displayName ?: activeName,
-                        style = MaterialTheme.typography.titleMedium,
+                        stringResource(R.string.dbprofile_saved_list),
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
-                        stringResource(R.string.dbprofile_internal_id, activeName),
-                        style = MaterialTheme.typography.bodySmall,
+                        stringResource(R.string.dbprofile_count, profiles.size),
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Text(
-                stringResource(R.string.dbprofile_saved_list),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 4.dp)
-            )
-
             if (profiles.isEmpty()) {
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        stringResource(R.string.dbprofile_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp)
-                    )
+                item(key = "empty") {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            stringResource(R.string.dbprofile_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(profiles, key = { it.name }) { profile ->
-                        DbProfileCard(
-                            profile = profile,
-                            isActive = profile.name == activeName,
-                            isDefault = profile.name == PrefsManager.DEFAULT_DB_NAME,
-                            onSwitch = { vm.switchTo(profile.name) },
-                            onDelete = { deleteTarget = profile },
-                            onExport = { exportTargetProfile = profile.name }
-                        )
+                items(profiles, key = { it.name }) { profile ->
+                    DbProfileCard(
+                        profile = profile,
+                        isActive = profile.name == activeName,
+                        isDefault = profile.name == PrefsManager.DEFAULT_DB_NAME,
+                        stats = stats[profile.name],
+                        onSwitch = { vm.switchTo(profile.name) },
+                        onDelete = { deleteTarget = profile },
+                        onExport = { exportTargetProfile = profile.name }
+                    )
+                }
+            }
+
+            item(key = "actions") {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        maxItemsInEachRow = 2
+                    ) {
+                        Button(
+                            onClick = { showImportDialog = true },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.dbprofile_import_remote), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                pickFileLauncher.launch(
+                                    arrayOf("application/zip", "application/octet-stream", "application/x-sqlite3", "*/*")
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.dbprofile_import_file_short), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = { showImportDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+            item(key = "tip") {
+                Text(
+                    stringResource(R.string.dbprofile_tip),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
-            ) {
-                Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.dbprofile_import_button))
             }
-
-            // 从本地文件导入
-            OutlinedButton(
-                onClick = { pickFileLauncher.launch(arrayOf("application/zip", "application/octet-stream", "application/x-sqlite3", "*/*")) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.dbprofile_import_file_button))
-            }
-
-            Text(
-                stringResource(R.string.dbprofile_tip),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
         }
 
         LoadingOverlay(visible = importing)
@@ -1430,11 +1487,116 @@ fun DbProfileScreen(onBack: () -> Unit) {
     }
 }
 
+/** 圆角小标签：展示 Room 版本、体积等数据库元信息。 */
+@Composable
+private fun DbMetaChip(text: String, highlighted: Boolean = false, modifier: Modifier = Modifier) {
+    val container = if (highlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+    val contentColor = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(container)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, color = contentColor, maxLines = 1)
+    }
+}
+
+/** 顶部当前数据库卡片：显示名、内部标识与 Room 版本/体积。 */
+@Composable
+private fun ActiveDbCard(displayName: String, profileName: String, stats: DbProfileStats?) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Storage,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.dbprofile_current_db),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    stringResource(R.string.dbprofile_internal_id, profileName),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            DbMetaChip(roomVersionLabel(stats), highlighted = true)
+            if ((stats?.sizeBytes ?: 0L) > 0L) DbMetaChip(formatDbSize(stats?.sizeBytes ?: 0L))
+            if ((stats?.updatedAt ?: 0L) > 0L) {
+                DbMetaChip(stringResource(R.string.dbprofile_updated_at, formatDbTimestamp(stats?.updatedAt ?: 0L)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun roomVersionLabel(stats: DbProfileStats?): String {
+    val version = stats?.roomVersion
+    return if (version != null) {
+        stringResource(R.string.dbprofile_room_version, version)
+    } else {
+        stringResource(R.string.dbprofile_room_version_unknown)
+    }
+}
+
+private fun formatDbSize(bytes: Long): String {
+    if (bytes <= 0L) return "0 B"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    return when {
+        mb >= 1 -> String.format("%.1f MB", mb)
+        kb >= 1 -> String.format("%.0f KB", kb)
+        else -> "$bytes B"
+    }
+}
+
+private fun formatDbTimestamp(millis: Long): String {
+    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    return sdf.format(Date(millis))
+}
+
 @Composable
 private fun DbProfileCard(
     profile: PrefsManager.DbProfile,
     isActive: Boolean,
     isDefault: Boolean,
+    stats: DbProfileStats? = null,
     onSwitch: () -> Unit,
     onDelete: () -> Unit,
     onExport: () -> Unit = {}
@@ -1510,6 +1672,15 @@ private fun DbProfileCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(Modifier.height(6.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    DbMetaChip(roomVersionLabel(stats), highlighted = isActive)
+                    if ((stats?.sizeBytes ?: 0L) > 0L) DbMetaChip(formatDbSize(stats?.sizeBytes ?: 0L))
+                }
             }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {

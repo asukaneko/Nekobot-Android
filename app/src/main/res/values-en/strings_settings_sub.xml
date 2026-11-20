@@ -285,6 +285,11 @@
     <string name="dbprofile_import_file_failed">Import failed, please try again</string>
     <string name="dbprofile_import_file_failed_reason">Import failed: %1$s</string>
     <string name="dbprofile_selected_file">Selected file: %1$s</string>
+    <string name="dbprofile_count">%1$d total</string>
+    <string name="dbprofile_import_file_short">Local file</string>
+    <string name="dbprofile_room_version">Room v%1$d</string>
+    <string name="dbprofile_room_version_unknown">Room version —</string>
+    <string name="dbprofile_updated_at">Updated %1$s</string>
     <string name="webdav_auto_incremental_title">Automatic incremental sync</string>
     <string name="webdav_auto_incremental_subtitle">Sync the current local database on a network at the interval you choose</string>
     <string name="webdav_auto_incremental_enabled">Enable automatic incremental sync</string>
