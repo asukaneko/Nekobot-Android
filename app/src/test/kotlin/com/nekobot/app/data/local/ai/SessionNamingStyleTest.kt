@@ -163,6 +163,47 @@ class SessionNamingStyleTest {
         assertTrue(prompt.endsWith("【输出语言】简体中文。"))
     }
 
+    // ==================== 名称清理与截断 ====================
+
+    @Test
+    fun agentTitleKeepsFullSentenceWithinLimit() {
+        // Agent 标题是任务索引，20 字以内的一句话应原样保留，不能再被砍成半句。
+        val title = "整理示例任务的配置说明与文档结构"
+        assertEquals(title, normalizeSessionName(title, SessionNamingStyle.AGENT.maxLength))
+        assertTrue(title.length <= SessionNamingStyle.AGENT.maxLength)
+    }
+
+    @Test
+    fun overlongTitleIsCutAtClauseBoundary() {
+        // 超长时优先在分句处收尾，且不留下悬空标点。
+        val cleaned = normalizeSessionName(
+            "整理示例任务：配置说明与文档目录结构梳理",
+            maxLength = 12
+        )
+        assertEquals("整理示例任务", cleaned)
+    }
+
+    @Test
+    fun overlongTitleWithoutClauseStillRespectsLimit() {
+        val cleaned = normalizeSessionName("整理示例任务的配置说明与文档结构", maxLength = 10)
+        assertEquals(10, cleaned?.length)
+        assertFalse(cleaned!!.endsWith("："))
+    }
+
+    @Test
+    fun namePrefixQuotesAndTrailingPunctuationAreStripped() {
+        assertEquals("示例任务概览", normalizeSessionName("标题：「示例任务概览」。"))
+        assertEquals(
+            "Example task summary",
+            normalizeSessionName("Title: 'Example task summary'", maxLength = 40)
+        )
+    }
+
+    @Test
+    fun blankAfterCleaningReturnsNull() {
+        assertEquals(null, normalizeSessionName("  「」  "))
+    }
+
     @Test
     fun updateHintsDifferPerStyle() {
         val roleplay = buildSessionNamingPrompt(

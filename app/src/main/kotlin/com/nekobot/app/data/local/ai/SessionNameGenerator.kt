@@ -26,7 +26,12 @@ internal enum class SessionNamingStyle(
     val maxLength: Int
 ) {
     ROLEPLAY(preferredLength = "4-10", maxLength = 12),
-    AGENT(preferredLength = "4-12", maxLength = 12);
+
+    /**
+     * Agent 标题是任务索引，一句话说清"这件事是什么"往往超过 12 字，
+     * 上限放宽到 20 字，避免一眼看上去就是被切掉半句的残句。
+     */
+    AGENT(preferredLength = "6-16", maxLength = 20);
 
     companion object {
         /** 仅 Agent 会话使用简明概括风格，其余（角色 / 群聊 / 未知）都按角色风格处理。 */
@@ -417,32 +422,53 @@ internal class SessionNameGenerator(
         }
         if (result.error != null || result.content.isBlank()) return null
 
-        return cleanName(result.content, style.maxLength)
+        return normalizeSessionName(result.content, style.maxLength)
     }
+}
 
-    /** 清理 LLM 返回的名称：去除引号/标点/前缀/换行，并按风格上限截断 */
-    private fun cleanName(raw: String, maxLength: Int = 15): String? {
-        var name = raw.trim().trim('"', '\'', '「', '」', '『', '』', '【', '】', '(', ')', '（', '）')
-        name = name.split("\n", "\r").firstOrNull()?.trim() ?: ""
-        // 去除常见前缀
-        for (prefix in listOf("标题:", "标题：", "会话标题:", "会话标题：", "Title:", "title:")) {
-            if (name.startsWith(prefix)) {
-                name = name.removePrefix(prefix).trim()
-                break
-            }
+/** 名称首尾需要剥掉的修饰字符（Markdown 标记、引号、各种中英文标点） */
+private const val NAME_TRIM_CHARS = "`*_# \t\r\n\"'[]()（）{}<>「」『』【】:：-—,，.。!！?？、；;/·~"
+
+/** 超长时优先在分句处收尾的断点字符（模型给 Agent 标题偶尔仍带标点） */
+private const val NAME_CLAUSE_BREAKS = "，,、；;：:。. 　/·—~"
+
+/**
+ * 清理 LLM 返回的会话名称：去除引号/标点/前缀/换行，并按风格上限截断。
+ *
+ * 截断时优先在分句处收尾，避免标题被硬切成半句话（Agent 任务标题尤其明显）；
+ * 没有可用断点时才按字数直接截断。
+ * 抽成纯函数便于单测，不依赖 Android 运行时。
+ *
+ * @param raw 模型原始输出
+ * @param maxLength 该命名风格的硬性字数上限
+ */
+internal fun normalizeSessionName(raw: String, maxLength: Int = 15): String? {
+    var name = raw.trim().trim('"', '\'', '「', '」', '『', '』', '【', '】', '(', ')', '（', '）')
+    name = name.split("\n", "\r").firstOrNull()?.trim() ?: ""
+    // 去除常见前缀
+    for (prefix in listOf("标题:", "标题：", "会话标题:", "会话标题：", "Title:", "title:")) {
+        if (name.startsWith(prefix)) {
+            name = name.removePrefix(prefix).trim()
+            break
         }
-        name = name.trim('`', '*', '_', '#', ' ', '\t', '\r', '\n', '"', '\'',
-            '[', ']', '(', ')', '{', '}', '<', '>', ':', '：', '-', '—',
-            ',', '，', '.', '。', '!', '！', '?', '？')
-        // 与原仓库 server.py 保持一致：模型偶尔无视字数提示，
-        // 仍应截断为可用标题，不能直接丢弃导致会话一直叫"新会话"。
-        if (name.length > maxLength) {
-            name = name.take(maxLength).trimEnd(
-                '`', '*', '_', '#', ' ', '\t', '\r', '\n', '"', '\'',
-                '[', ']', '(', ')', '{', '}', '<', '>', ':', '：', '-', '—',
-                ',', '，', '.', '。', '!', '！', '?', '？'
-            )
-        }
-        return name.ifBlank { null }
     }
+    name = name.trim(*NAME_TRIM_CHARS.toCharArray())
+    // 与原仓库 server.py 保持一致：模型偶尔无视字数提示，
+    // 仍应截断为可用标题，不能直接丢弃导致会话一直叫"新会话"。
+    if (name.length > maxLength) {
+        name = truncateSessionName(name, maxLength)
+    }
+    return name.trim(*NAME_TRIM_CHARS.toCharArray()).ifBlank { null }
+}
+
+/**
+ * 按字数上限裁剪标题：断点处收尾优先，没有断点时直接截断。
+ *
+ * 断点必须落在字数上限的前半段才值得采用，否则会为了一个逗号丢掉大半个标题。
+ */
+private fun truncateSessionName(name: String, maxLength: Int): String {
+    val head = name.take(maxLength)
+    val breakIndex = head.indexOfLast { it in NAME_CLAUSE_BREAKS }
+    val cut = if (breakIndex >= maxLength / 2) head.substring(0, breakIndex) else head
+    return cut.trimEnd(*NAME_TRIM_CHARS.toCharArray())
 }

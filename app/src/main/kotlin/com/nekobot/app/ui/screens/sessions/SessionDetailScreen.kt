@@ -876,7 +876,11 @@ fun SessionDetailScreen(
     var modelQueueOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
     var sharingExpanded by rememberSaveable(sessionId) { mutableStateOf(false) }
     var managementMenu by remember { mutableStateOf(false) }
-    val queueCharacterId = session?.characterId
+    // Agent 会话的模型由 Agent 设置统一管理，详情页不提供「聊天模型」入口；
+    // 空白 characterId（新建 Agent 会话即填空串）同样不能进模型队列页。
+    val isPlainAgentSession = session?.sessionMode.equals("agent", ignoreCase = true) &&
+        session?.companionMode != true
+    val queueCharacterId = session?.characterId?.takeIf { it.isNotBlank() && !isPlainAgentSession }
     if (ServiceContainer.prefs.isLocalMode && queueCharacterId != null && modelQueueOpen) {
         com.nekobot.app.ui.screens.characters.CharacterModelQueueScreen(queueCharacterId) { modelQueueOpen = false }
         return
