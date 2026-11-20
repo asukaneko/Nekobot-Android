@@ -16,14 +16,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -39,7 +37,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.GraphicEq
@@ -76,7 +73,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -87,11 +83,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
-import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.ui.BaseViewModel
-import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.ModelCardDivider
 import com.nekobot.app.ui.components.ModelCardFrame
@@ -378,8 +372,6 @@ fun LocalAiModelsScreen(onBack: () -> Unit, onEditModel: (String?) -> Unit) {
     LaunchedEffect(sourceRevision) { probeModelId = null; vm.cancelProbe() }
 
     var testResult by remember { mutableStateOf<String?>(null) }
-    var showLogs by remember { mutableStateOf(false) }
-    var logRecords by remember { mutableStateOf<List<LocalLogger.Record>>(emptyList()) }
     var selectedPurpose by rememberSaveable { mutableStateOf<String?>(null) }
     val purposeOptions = remember(models) {
         val customPurposes = models
@@ -426,12 +418,6 @@ fun LocalAiModelsScreen(onBack: () -> Unit, onEditModel: (String?) -> Unit) {
                 },
                 actions = {
                     ModelPricingCatalogRefreshAction()
-                    IconButton(onClick = {
-                        logRecords = LocalLogger.listLogs()
-                        showLogs = true
-                    }) {
-                        Icon(Icons.Filled.Description, contentDescription = stringResource(R.string.localai_local_logs), tint = MaterialTheme.colorScheme.onSurface)
-                    }
                     IconButton(onClick = {
                         vm.clearError()
                         onEditModel(null)
@@ -590,104 +576,6 @@ fun LocalAiModelsScreen(onBack: () -> Unit, onEditModel: (String?) -> Unit) {
         }
     }
 
-    // 本地日志查看
-    if (showLogs) {
-        NekoDialog(
-            onDismiss = { showLogs = false },
-            title = stringResource(R.string.localai_logs_title, logRecords.size),
-            confirmText = stringResource(R.string.common_close),
-            onConfirm = { showLogs = false },
-            cancelText = stringResource(R.string.common_clear),
-            onCancel = {
-                LocalLogger.clear()
-                logRecords = emptyList()
-            }
-        ) {
-            if (logRecords.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.localai_no_logs),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp)
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 450.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // 日志上限提升后同毫秒同内容的重复行会变多，key 里带上序号保证唯一
-                    itemsIndexed(logRecords, key = { index, _ -> index }) { _, record ->
-                        LocalLogCard(record)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 本地日志单条卡片：左侧等级色条 + 时间 + tag + 消息。 */
-@Composable
-private fun LocalLogCard(record: LocalLogger.Record) {
-    val levelColor = when (record.level.lowercase()) {
-        "error" -> MaterialTheme.colorScheme.error
-        "warning" -> Color(0xFFFFB347)
-        "debug" -> Color(0xFF6BAED6)
-        else -> MaterialTheme.colorScheme.primary
-    }
-    val levelLabel = when (record.level.lowercase()) {
-        "warning" -> "WARN"
-        else -> record.level.uppercase()
-    }
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = 10,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(levelColor)
-            )
-            Spacer(Modifier.width(8.dp))
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = levelLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = levelColor,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = record.time,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (record.tag.isNotBlank()) {
-                    Text(
-                        text = record.tag,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = record.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-    }
 }
 
 @Composable
