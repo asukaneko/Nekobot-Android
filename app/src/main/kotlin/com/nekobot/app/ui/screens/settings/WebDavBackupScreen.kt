@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -70,6 +73,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -468,6 +472,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
     var showRemoteDetails by rememberSaveable { mutableStateOf(false) }
     var showIncrementalPassword by rememberSaveable { mutableStateOf(false) }
     var showHistoryPassword by rememberSaveable { mutableStateOf(false) }
+    var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
     val backupScroll = rememberScrollState()
     val historyScroll = rememberScrollState()
     val settingsScroll = rememberScrollState()
@@ -655,35 +660,53 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                 }
                 when (page) {
                     WebDavPage.Settings -> {
-                        // 1. 配置卡片
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = stringResource(R.string.webdav_config_title))
-                            Spacer(Modifier.height(12.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
+                            SectionHeader(
+                                title = stringResource(R.string.webdav_connection_section),
+                                subtitle = stringResource(R.string.webdav_connection_hint),
+                                trailing = {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Cloud,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(10.dp).size(22.dp)
+                                        )
+                                    }
+                                }
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        stringResource(R.string.webdav_enabled),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        stringResource(R.string.webdav_enabled_desc),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            stringResource(R.string.webdav_enabled),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            stringResource(if (enabledInput) R.string.webdav_enabled_on else R.string.webdav_enabled_off),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        enabled = !loading,
+                                        checked = enabledInput,
+                                        onCheckedChange = { enabledInput = it }
                                     )
                                 }
-                                Switch(
-                                    enabled = !loading,
-                                    checked = enabledInput,
-                                    onCheckedChange = { enabledInput = it }
-                                )
                             }
-                            Spacer(Modifier.height(8.dp))
-
+                            Spacer(Modifier.height(16.dp))
                             OutlinedTextField(
                                 value = urlInput,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -694,8 +717,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                 enabled = !loading,
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            Spacer(Modifier.height(8.dp))
-
+                            Spacer(Modifier.height(10.dp))
                             OutlinedTextField(
                                 value = usernameInput,
                                 onValueChange = { usernameInput = it; vm.clearTestResult() },
@@ -704,8 +726,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                 enabled = !loading,
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            Spacer(Modifier.height(8.dp))
-
+                            Spacer(Modifier.height(10.dp))
                             OutlinedTextField(
                                 value = passwordInput,
                                 onValueChange = { passwordInput = it; vm.clearTestResult() },
@@ -716,96 +737,131 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                 visualTransformation = PasswordVisualTransformation(),
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            Spacer(Modifier.height(8.dp))
-
-                            OutlinedTextField(
-                                value = encryptionPasswordInput,
-                                onValueChange = { encryptionPasswordInput = it },
-                                label = { Text(stringResource(R.string.webdav_encryption_password)) },
-                                supportingText = { if (config?.hasEncryptionPassword == true) Text(stringResource(R.string.webdav_secret_saved)) },
-                                singleLine = true,
-                                enabled = !loading,
-                                visualTransformation = PasswordVisualTransformation(),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
                             testResult?.let { result ->
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = result,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (result == stringResource(R.string.webdav_connection_success)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-
-                        if (ServiceContainer.prefs.isLocalMode) {
-                            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                SectionHeader(
-                                    title = stringResource(R.string.webdav_auto_incremental_title),
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            stringResource(R.string.webdav_auto_incremental_enabled),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            stringResource(R.string.webdav_auto_short_desc),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                Spacer(Modifier.height(12.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (result == stringResource(R.string.webdav_connection_success)) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.errorContainer
                                     }
-                                    Switch(
-                                        enabled = !loading,
-                                        checked = autoIncrementalSyncEnabledInput,
-                                        onCheckedChange = { autoIncrementalSyncEnabledInput = it }
+                                ) {
+                                    Text(
+                                        text = result,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp)
                                     )
                                 }
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = autoIncrementalSyncIntervalHoursInput,
-                                    isError = !intervalValid,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    onValueChange = { value ->
-                                        autoIncrementalSyncIntervalHoursInput = value.filter(Char::isDigit)
-                                    },
-                                    label = { Text(stringResource(R.string.webdav_auto_incremental_interval_hours)) },
-                                    supportingText = {
-                                        Text(stringResource(R.string.webdav_interval_range))
-                                    },
-                                    singleLine = true,
-                                    enabled = !loading,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = incrementalSyncMaxVersionsInput,
-                                    isError = !versionsValid,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    onValueChange = { value ->
-                                        incrementalSyncMaxVersionsInput = value.filter(Char::isDigit)
-                                    },
-                                    label = { Text(stringResource(R.string.webdav_incremental_max_versions)) },
-                                    supportingText = {
-                                        Text(stringResource(R.string.webdav_versions_range))
-                                    },
-                                    singleLine = true,
-                                    enabled = !loading,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
                             }
                         }
 
+                        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 24, contentPadding = PaddingValues(0.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showAdvancedSettings = !showAdvancedSettings }
+                                    .padding(18.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        stringResource(R.string.webdav_advanced_settings),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        stringResource(R.string.webdav_advanced_settings_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(
+                                    if (showAdvancedSettings) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (showAdvancedSettings) {
+                                Column(modifier = Modifier.padding(horizontal = 18.dp).padding(bottom = 18.dp)) {
+                                    OutlinedTextField(
+                                        value = encryptionPasswordInput,
+                                        onValueChange = { encryptionPasswordInput = it },
+                                        label = { Text(stringResource(R.string.webdav_encryption_password)) },
+                                        supportingText = { if (config?.hasEncryptionPassword == true) Text(stringResource(R.string.webdav_secret_saved)) },
+                                        singleLine = true,
+                                        enabled = !loading,
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    if (isLocal) {
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            stringResource(R.string.webdav_auto_incremental_title),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    stringResource(R.string.webdav_auto_incremental_enabled),
+                                                    style = MaterialTheme.typography.bodyLarge
+                                                )
+                                                Text(
+                                                    stringResource(R.string.webdav_auto_short_desc),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Switch(
+                                                enabled = !loading,
+                                                checked = autoIncrementalSyncEnabledInput,
+                                                onCheckedChange = { autoIncrementalSyncEnabledInput = it }
+                                            )
+                                        }
+                                        Spacer(Modifier.height(10.dp))
+                                        OutlinedTextField(
+                                            value = autoIncrementalSyncIntervalHoursInput,
+                                            isError = !intervalValid,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            onValueChange = { value ->
+                                                autoIncrementalSyncIntervalHoursInput = value.filter(Char::isDigit)
+                                            },
+                                            label = { Text(stringResource(R.string.webdav_auto_incremental_interval_hours)) },
+                                            supportingText = { Text(stringResource(R.string.webdav_interval_range)) },
+                                            singleLine = true,
+                                            enabled = !loading && autoIncrementalSyncEnabledInput,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Spacer(Modifier.height(10.dp))
+                                        OutlinedTextField(
+                                            value = incrementalSyncMaxVersionsInput,
+                                            isError = !versionsValid,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            onValueChange = { value ->
+                                                incrementalSyncMaxVersionsInput = value.filter(Char::isDigit)
+                                            },
+                                            label = { Text(stringResource(R.string.webdav_incremental_max_versions)) },
+                                            supportingText = { Text(stringResource(R.string.webdav_versions_range)) },
+                                            singleLine = true,
+                                            enabled = !loading,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                     WebDavPage.History -> {
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = stringResource(R.string.webdav_revision_history))
+                            SectionHeader(
+                                title = stringResource(R.string.webdav_revision_history),
+                                subtitle = stringResource(R.string.webdav_history_desc)
+                            )
                             TextButton(onClick = { showHistoryPassword = !showHistoryPassword }) {
                                 Text(stringResource(R.string.webdav_password_override))
                                 Icon(if (showHistoryPassword) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
@@ -951,99 +1007,135 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                         }
                     }
                     WebDavPage.Backup -> {
-                        // 2. 远程文件信息
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(
-                                title = stringResource(R.string.webdav_overview),
-                                subtitle = config?.url?.takeIf { it.isNotBlank() },
-                                trailing = {
-                                    IconButton(onClick = { selectedPageName = WebDavPage.Settings.name }) {
-                                        Icon(Icons.Filled.Settings, stringResource(R.string.webdav_tab_settings))
-                                    }
-                                }
-                            )
-                            Spacer(Modifier.height(12.dp))
-
-                            val lastBackup = config?.lastBackupAt
-                            val lastSync = config?.lastSyncAt
-                            val lastError = config?.lastError
-                            val fileSize = remoteInfo?.get("file_size")
-                            ?.takeUnless { it.isJsonNull }
-                            ?.asLong
-                            ?: remoteInfo?.get("size")
-                            ?.takeUnless { it.isJsonNull }
-                            ?.asLong
+                        val lastBackup = config?.lastBackupAt
+                        val lastSync = config?.lastSyncAt
+                        val lastError = config?.lastError
+                        val fileSize = remoteInfo?.get("file_size")
+                            ?.takeUnless { it.isJsonNull }?.asLong
+                            ?: remoteInfo?.get("size")?.takeUnless { it.isJsonNull }?.asLong
                             ?: config?.lastFileSize
-                            val lastModified = remoteInfo?.get("last_modified")?.takeUnless { it.isJsonNull }?.asString ?: config?.lastModified
-                            val resolvedUrl = remoteInfo?.get("resolved_file_url")?.takeUnless { it.isJsonNull }?.asString ?: config?.resolvedFileUrl
+                        val lastModified = remoteInfo?.get("last_modified")?.takeUnless { it.isJsonNull }?.asString
+                            ?: config?.lastModified
+                        val resolvedUrl = remoteInfo?.get("resolved_file_url")?.takeUnless { it.isJsonNull }?.asString
+                            ?: config?.resolvedFileUrl
 
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                maxItemsInEachRow = 2
-                            ) {
-                                InfoRow(stringResource(R.string.webdav_last_backup), formatWebDavTimestamp(lastBackup, deviceZoneId) ?: stringResource(R.string.webdav_never_backup), Modifier.weight(1f).widthIn(min = 140.dp))
-                                InfoRow(stringResource(R.string.webdav_last_sync), formatWebDavTimestamp(lastSync, deviceZoneId) ?: stringResource(R.string.webdav_never_sync), Modifier.weight(1f).widthIn(min = 140.dp))
-                            }
-                            TextButton(onClick = { showRemoteDetails = !showRemoteDetails }) {
-                                Text(stringResource(R.string.webdav_remote_info_title))
-                                Icon(if (showRemoteDetails) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
-                            }
-                            if (showRemoteDetails) {
-                                InfoRow(stringResource(R.string.webdav_file_size), formatFileSize(fileSize))
-                                InfoRow(stringResource(R.string.webdav_last_modified), formatWebDavTimestamp(lastModified, deviceZoneId) ?: stringResource(R.string.common_unknown))
-                                if (!resolvedUrl.isNullOrBlank()) InfoRow(stringResource(R.string.webdav_file_url), resolvedUrl)
-                            }
-                            if (!lastError.isNullOrBlank()) {
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = stringResource(R.string.webdav_recent_error, lastError),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = { vm.loadInfo() },
-                                enabled = canOperate,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.webdav_refresh_info))
-                            }
-                        }
+                        WebDavStatusHero(
+                            url = config?.url.orEmpty(),
+                            lastBackup = formatWebDavTimestamp(lastBackup, deviceZoneId)
+                                ?: stringResource(R.string.webdav_never_backup),
+                            lastSync = formatWebDavTimestamp(lastSync, deviceZoneId)
+                                ?: stringResource(R.string.webdav_never_sync),
+                            lastError = lastError,
+                            autoSyncEnabled = isLocal && config?.autoIncrementalSyncEnabled == true,
+                            primaryActionIsSync = isLocal,
+                            primaryEnabled = canOperate && (!isLocal || config?.hasEncryptionPassword == true || incrementalPassword.isNotBlank()),
+                            onPrimaryAction = {
+                                if (isLocal) vm.incrementalSync(incrementalPassword) else showBackupOptions = true
+                            },
+                            onSettings = { selectedPageName = WebDavPage.Settings.name }
+                        )
 
                         if (isLocal) {
-                            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                SectionHeader(title = stringResource(R.string.webdav_incremental_title), subtitle = stringResource(R.string.webdav_incremental_short_desc))
-                                TextButton(onClick = { showIncrementalPassword = !showIncrementalPassword }) {
-                                    Text(stringResource(R.string.webdav_password_override))
-                                    Icon(if (showIncrementalPassword) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
+                            GlassCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                cornerRadius = 18,
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(onClick = { showIncrementalPassword = !showIncrementalPassword }) {
+                                        Text(stringResource(R.string.webdav_password_override))
+                                        Icon(
+                                            if (showIncrementalPassword) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                            contentDescription = null
+                                        )
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(onClick = { selectedPageName = WebDavPage.History.name }) {
+                                        Icon(Icons.Filled.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(stringResource(R.string.webdav_tab_history))
+                                    }
                                 }
                                 if (showIncrementalPassword || config?.hasEncryptionPassword != true) {
-                                    WebDavPasswordField(value = incrementalPassword, onValueChange = { incrementalPassword = it }, enabled = !loading)
-                                }
-                                Button(onClick = { vm.incrementalSync(incrementalPassword) }, enabled = canOperate && (config?.hasEncryptionPassword == true || incrementalPassword.isNotBlank()), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                                    Icon(Icons.Filled.CloudSync, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.webdav_incremental_button))
-                                }
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp), maxItemsInEachRow = 2) {
-                                    TextButton(onClick = { selectedPageName = WebDavPage.Settings.name }) {
-                                        Text(stringResource(if (config?.autoIncrementalSyncEnabled == true) R.string.webdav_auto_on else R.string.webdav_auto_off))
-                                    }
-                                    TextButton(onClick = { selectedPageName = WebDavPage.History.name }) {
-                                        Text(stringResource(R.string.webdav_revision_history))
-                                    }
+                                    WebDavPasswordField(
+                                        value = incrementalPassword,
+                                        onValueChange = { incrementalPassword = it },
+                                        enabled = !loading
+                                    )
                                 }
                             }
                         }
-                        SectionHeader(title = stringResource(R.string.webdav_full_backup))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), maxItemsInEachRow = 2) {
-                            WebDavActionCard(stringResource(R.string.webdav_upload_backup), stringResource(R.string.webdav_upload_short_desc), Icons.Filled.Backup, canOperate, { showBackupOptions = true }, Modifier.weight(1f).widthIn(min = 140.dp))
-                            WebDavActionCard(stringResource(R.string.webdav_restore), stringResource(R.string.webdav_restore_short_desc), Icons.Filled.Restore, canOperate, { showRestoreOptions = true }, Modifier.weight(1f).widthIn(min = 140.dp))
+
+                        SectionHeader(
+                            title = stringResource(R.string.webdav_full_backup),
+                            subtitle = stringResource(R.string.webdav_full_backup_hint),
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            maxItemsInEachRow = 2
+                        ) {
+                            WebDavActionCard(
+                                stringResource(R.string.webdav_upload_backup),
+                                stringResource(R.string.webdav_upload_short_desc),
+                                Icons.Filled.Backup,
+                                canOperate,
+                                { showBackupOptions = true },
+                                Modifier.weight(1f).widthIn(min = 140.dp)
+                            )
+                            WebDavActionCard(
+                                stringResource(R.string.webdav_restore),
+                                stringResource(R.string.webdav_restore_short_desc),
+                                Icons.Filled.Restore,
+                                canOperate,
+                                { showRestoreOptions = true },
+                                Modifier.weight(1f).widthIn(min = 140.dp)
+                            )
+                        }
+
+                        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 20) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showRemoteDetails = !showRemoteDetails },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        stringResource(R.string.webdav_remote_info_title),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        stringResource(R.string.webdav_remote_info_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { vm.loadInfo() }, enabled = canOperate) {
+                                    Icon(Icons.Filled.Info, stringResource(R.string.webdav_refresh_info))
+                                }
+                                Icon(
+                                    if (showRemoteDetails) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (showRemoteDetails) {
+                                Spacer(Modifier.height(8.dp))
+                                InfoRow(stringResource(R.string.webdav_file_size), formatFileSize(fileSize))
+                                InfoRow(
+                                    stringResource(R.string.webdav_last_modified),
+                                    formatWebDavTimestamp(lastModified, deviceZoneId) ?: stringResource(R.string.common_unknown)
+                                )
+                                if (!resolvedUrl.isNullOrBlank()) {
+                                    InfoRow(stringResource(R.string.webdav_file_url), resolvedUrl)
+                                }
+                            }
                         }
                     }
                 }
@@ -1209,6 +1301,186 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                 TextButton(onClick = { restoreRevisionTarget = null }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
+    }
+}
+
+/** 云端状态与主操作：把最常用的同步放在首屏视觉中心。 */
+@Composable
+private fun WebDavStatusHero(
+    url: String,
+    lastBackup: String,
+    lastSync: String,
+    lastError: String?,
+    autoSyncEnabled: Boolean,
+    primaryActionIsSync: Boolean,
+    primaryEnabled: Boolean,
+    onPrimaryAction: () -> Unit,
+    onSettings: () -> Unit
+) {
+    val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.primaryContainer
+    ) {
+        Box(
+            modifier = Modifier.background(
+                Brush.linearGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.82f)
+                    )
+                )
+            )
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = contentColor.copy(alpha = 0.08f)
+                    ) {
+                        Icon(
+                            if (lastError.isNullOrBlank()) Icons.Filled.CloudDone else Icons.Filled.Cloud,
+                            contentDescription = null,
+                            tint = contentColor,
+                            modifier = Modifier.padding(12.dp).size(28.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.webdav_hero_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = contentColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            stringResource(
+                                if (lastError.isNullOrBlank()) R.string.webdav_status_ready
+                                else R.string.webdav_status_attention
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.75f)
+                        )
+                    }
+                    IconButton(onClick = onSettings) {
+                        Icon(
+                            Icons.Filled.Settings,
+                            stringResource(R.string.webdav_tab_settings),
+                            tint = contentColor
+                        )
+                    }
+                }
+                if (url.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        url,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor.copy(alpha = 0.65f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.webdav_last_backup),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = contentColor.copy(alpha = 0.65f)
+                        )
+                        Text(
+                            lastBackup,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = contentColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.webdav_last_sync),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = contentColor.copy(alpha = 0.65f)
+                        )
+                        Text(
+                            lastSync,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = contentColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onPrimaryAction,
+                    enabled = primaryEnabled,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(
+                        if (primaryActionIsSync) Icons.Filled.CloudSync else Icons.Filled.Backup,
+                        contentDescription = null
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(
+                            if (primaryActionIsSync) R.string.webdav_incremental_button
+                            else R.string.webdav_upload_backup
+                        ),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                }
+                Text(
+                    stringResource(
+                        if (primaryActionIsSync) R.string.webdav_primary_sync_desc
+                        else R.string.webdav_upload_short_desc
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 8.dp).align(Alignment.CenterHorizontally)
+                )
+                if (autoSyncEnabled) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = contentColor.copy(alpha = 0.08f),
+                        modifier = Modifier.padding(top = 12.dp).align(Alignment.CenterHorizontally)
+                    ) {
+                        Text(
+                            stringResource(R.string.webdav_auto_on),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = contentColor,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                if (!lastError.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                Icons.Filled.WarningAmber,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.webdav_recent_error, lastError),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

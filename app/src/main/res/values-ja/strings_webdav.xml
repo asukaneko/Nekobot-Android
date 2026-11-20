@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="webdav_hero_title">クラウドバックアップと同期</string>
+    <string name="webdav_status_ready">設定完了</string>
+    <string name="webdav_status_attention">確認が必要です</string>
+    <string name="webdav_primary_sync_desc">端末とクラウドの変更を同期</string>
+    <string name="webdav_full_backup_hint">移行やデータの全置換用</string>
+    <string name="webdav_connection_section">サーバー接続</string>
+    <string name="webdav_connection_hint">URL とアカウント情報を入力</string>
+    <string name="webdav_enabled_on">バックアップは有効です</string>
+    <string name="webdav_enabled_off">バックアップは無効です</string>
+    <string name="webdav_advanced_settings">詳細設定</string>
+    <string name="webdav_advanced_settings_desc">暗号化と自動同期</string>
+    <string name="webdav_history_desc">履歴の確認と同期競合の解決</string>
     <string name="webdav_tab_backup">バックアップ</string>
     <string name="webdav_tab_history">履歴</string>
     <string name="webdav_tab_settings">設定</string>

@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="webdav_hero_title">Cloud backup &amp; sync</string>
+    <string name="webdav_status_ready">Configuration ready</string>
+    <string name="webdav_status_attention">Needs attention</string>
+    <string name="webdav_primary_sync_desc">Sync the latest changes with the cloud</string>
+    <string name="webdav_full_backup_hint">For migration or full data replacement</string>
+    <string name="webdav_connection_section">Server connection</string>
+    <string name="webdav_connection_hint">Enter your server and account details</string>
+    <string name="webdav_enabled_on">Backup enabled</string>
+    <string name="webdav_enabled_off">Backup disabled</string>
+    <string name="webdav_advanced_settings">Advanced settings</string>
+    <string name="webdav_advanced_settings_desc">Encryption and automatic sync</string>
+    <string name="webdav_history_desc">View versions and resolve sync conflicts</string>
     <string name="webdav_tab_backup">Backup</string>
     <string name="webdav_tab_history">Versions</string>
     <string name="webdav_tab_settings">Settings</string>

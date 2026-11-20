@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="webdav_hero_title">雲端備份與同步</string>
+    <string name="webdav_status_ready">設定已就緒</string>
+    <string name="webdav_status_attention">需要檢查</string>
+    <string name="webdav_primary_sync_desc">同步本機與雲端的最新變更</string>
+    <string name="webdav_full_backup_hint">用於遷移或整體取代資料</string>
+    <string name="webdav_connection_section">伺服器連線</string>
+    <string name="webdav_connection_hint">填寫位址與帳號資訊</string>
+    <string name="webdav_enabled_on">備份已啟用</string>
+    <string name="webdav_enabled_off">備份已停用</string>
+    <string name="webdav_advanced_settings">進階設定</string>
+    <string name="webdav_advanced_settings_desc">加密與自動同步</string>
+    <string name="webdav_history_desc">查看版本並處理同步衝突</string>
     <string name="webdav_tab_backup">備份</string>
     <string name="webdav_tab_history">版本</string>
     <string name="webdav_tab_settings">設定</string>
@@ -7,7 +19,7 @@
     <string name="webdav_full_backup">完整備份</string>
     <string name="webdav_incremental_short_desc">合併各裝置的變更</string>
     <string name="webdav_upload_short_desc">打包上傳本機資料</string>
-    <string name="webdav_restore_short_desc">用雲端備份還原本機</string>
+    <string name="webdav_restore_short_desc">用雲端備份還原</string>
     <string name="webdav_password_override">臨時加密密碼</string>
     <string name="webdav_include_images_short">包含圖片</string>
     <string name="webdav_images_desc">立繪、表情與世界書封面</string>
