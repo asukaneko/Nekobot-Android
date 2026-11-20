@@ -70,6 +70,9 @@ object Routes {
     const val AGENT_MEMORY = "agent_memory"
     const val STATE_HISTORY = "state_history"
     const val MEMORY = "memory"
+    /** 从全局搜索直达某条记忆：本地为记忆 id，远程 MemoryFS 文件为文件路径。 */
+    const val MEMORY_ENTRY = "memory_entry?focus={focus}"
+    fun memoryEntry(memoryId: String) = "memory_entry?focus=${android.net.Uri.encode(memoryId)}"
     const val AGENT_CHARACTER_MEMORY = "agent_character_memory"
     const val COMPANION_CREATE = "companion_create"
     const val AGENT_CHARACTER_MEMORY_DETAIL = "agent_character_memory/{sessionId}"
@@ -89,6 +92,11 @@ object Routes {
 
     const val WORKSPACE = "workspace/{sessionId}"
     fun workspace(sessionId: String) = "workspace/$sessionId"
+    /** 从全局搜索直达工作区中的文件 / 文件夹。 */
+    const val WORKSPACE_ENTRY = "workspace_entry/{sessionId}?path={path}&dir={dir}"
+    fun workspaceEntry(sessionId: String, path: String, isDirectory: Boolean): String =
+        "workspace_entry/${android.net.Uri.encode(sessionId)}" +
+            "?path=${android.net.Uri.encode(path)}&dir=$isDirectory"
 
     const val STORY_GRAPH = "story_graph/{sessionId}"
     fun storyGraph(sessionId: String) = "story_graph/$sessionId"

@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.memory
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -13,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +52,7 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.SectionHeader
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,6 +95,55 @@ private fun categoryAccent(category: String): Color = when (category) {
     "life_sim" -> MaterialTheme.colorScheme.secondary
     "recent_digest" -> MaterialTheme.colorScheme.primary
     else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+/**
+ * 记忆列表的一行：标题 / MemoryFS 文件 / 单条记忆 / 空提示统一建模。
+ *
+ * 全局搜索跳转时按 [focusId] 找到对应行，滚动并在展开后短暂高亮，
+ * 因此列表渲染与定位共用同一份行数据，避免下标与真实列表错位。
+ */
+private sealed class MemoryRow {
+    abstract val key: String
+
+    /** 与全局搜索的 memory id 对齐：MemoryFS 文件用 path，单条记忆用 id。 */
+    open val focusId: String? get() = null
+
+    /** 定位后需要自动展开的 expandedPaths key。 */
+    open val expandKey: String? get() = null
+
+    class Header(
+        override val key: String,
+        @StringRes val titleRes: Int?,
+        val fallbackTitle: String,
+        val count: Int
+    ) : MemoryRow()
+
+    class FileRow(val file: MemoryFile) : MemoryRow() {
+        override val key get() = "fs_${file.path}"
+        override val focusId get() = file.path
+        override val expandKey get() = file.path
+    }
+
+    class EntryRow(
+        val memory: LegacyMemory,
+        override val key: String,
+        override val expandKey: String,
+        /** 本地模式的单条记忆可编辑标签；远程旧版记忆只读展示。 */
+        val editableTags: Boolean
+    ) : MemoryRow() {
+        // 与全局搜索的 SearchableMemory 保持一致：服务端没给 id 时用角色/标题/内容哈希合成
+        override val focusId get() = memory.id
+            ?: "legacy:${memory.characterName}:${memory.title}:${memory.content.hashCode()}"
+    }
+
+    object EmptyRow : MemoryRow() {
+        override val key get() = "empty"
+    }
+
+    object ErrorRow : MemoryRow() {
+        override val key get() = "error"
+    }
 }
 
 /**
@@ -289,6 +341,12 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
         }
     }
 
+    /** 展开指定条目（全局搜索跳转定位时使用，已展开则不变）。 */
+    fun expand(path: String) {
+        if (_expandedPaths.value.contains(path)) return
+        _expandedPaths.value = _expandedPaths.value + path
+    }
+
     /** 删除 MemoryFS 文件 */
     fun deleteMemoryFile(path: String) {
         if (isLocalMode) {
@@ -448,6 +506,8 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
 @Composable
 fun MemoryScreen(
     onBack: () -> Unit,
+    /** 全局搜索跳转时携带的记忆 id（本地为记忆 id，远程 MemoryFS 文件为路径）。 */
+    focusId: String? = null,
     viewModel: MemoryViewModel = viewModel()
 ) {
     val files by viewModel.files.collectAsStateWithLifecycle()
@@ -544,6 +604,118 @@ fun MemoryScreen(
     val shortTermLegacy = if (isLocalMode) emptyList() else
         filteredLegacy.filter { it.type == "short" && isLegacyCategory(it.category) }
 
+    // 列表行：渲染与搜索定位共用，保证滚动下标和真实内容一致
+    val rows: List<MemoryRow> = buildList {
+        if (error != null) add(MemoryRow.ErrorRow)
+        groupedFiles.forEach { (category, list) ->
+            add(
+                MemoryRow.Header(
+                    key = "header:$category",
+                    titleRes = CATEGORY_LABELS[category],
+                    fallbackTitle = category,
+                    count = list.size
+                )
+            )
+            list.forEach { add(MemoryRow.FileRow(it)) }
+        }
+        if (isLocalMode && filteredLegacy.isNotEmpty()) {
+            add(
+                MemoryRow.Header(
+                    key = "header:entries",
+                    titleRes = R.string.memory_entries_and_tags,
+                    fallbackTitle = "",
+                    count = filteredLegacy.size
+                )
+            )
+            filteredLegacy.forEach { mem ->
+                val suffix = mem.id ?: mem.hashCode().toString()
+                add(
+                    MemoryRow.EntryRow(
+                        memory = mem,
+                        key = "entry_$suffix",
+                        expandKey = "entry://$suffix",
+                        editableTags = true
+                    )
+                )
+            }
+        }
+        if (longTermLegacy.isNotEmpty()) {
+            add(
+                MemoryRow.Header(
+                    key = "header:long",
+                    titleRes = R.string.memory_long_term_legacy,
+                    fallbackTitle = "",
+                    count = longTermLegacy.size
+                )
+            )
+            longTermLegacy.forEach { mem ->
+                val suffix = mem.id ?: mem.hashCode().toString()
+                add(
+                    MemoryRow.EntryRow(
+                        memory = mem,
+                        key = "lt_$suffix",
+                        expandKey = "legacy://$suffix",
+                        editableTags = false
+                    )
+                )
+            }
+        }
+        if (shortTermLegacy.isNotEmpty()) {
+            add(
+                MemoryRow.Header(
+                    key = "header:short",
+                    titleRes = R.string.memory_short_term_legacy,
+                    fallbackTitle = "",
+                    count = shortTermLegacy.size
+                )
+            )
+            shortTermLegacy.forEach { mem ->
+                val suffix = mem.id ?: mem.hashCode().toString()
+                add(
+                    MemoryRow.EntryRow(
+                        memory = mem,
+                        key = "st_$suffix",
+                        expandKey = "legacy://$suffix",
+                        editableTags = false
+                    )
+                )
+            }
+        }
+        if (groupedFiles.isEmpty() &&
+            (if (isLocalMode) filteredLegacy.isEmpty()
+             else longTermLegacy.isEmpty() && shortTermLegacy.isEmpty())
+        ) {
+            add(MemoryRow.EmptyRow)
+        }
+    }
+
+    // 从全局搜索进入：滚动到命中条目、自动展开并短暂高亮
+    val listState = rememberLazyListState()
+    var highlightKey by remember(focusId) { mutableStateOf<String?>(null) }
+    var focusHandled by remember(focusId) { mutableStateOf(false) }
+    // 命中行的下标（-1 = 尚未出现）；作为定位协程的 key，避免无关重组打断滚动动画
+    val focusIndex = focusId?.let { target ->
+        rows.indexOfFirst { it.focusId != null && it.focusId == target }
+    } ?: -1
+    LaunchedEffect(focusId, focusIndex, loading) {
+        if (focusId.isNullOrBlank() || focusHandled) return@LaunchedEffect
+        if (focusIndex < 0) {
+            // 加载完成后仍找不到（条目已被删除等）：放弃定位，避免反复尝试
+            if (!loading) focusHandled = true
+            return@LaunchedEffect
+        }
+        focusHandled = true
+        val row = rows[focusIndex]
+        row.expandKey?.let(viewModel::expand)
+        highlightKey = row.key
+        listState.animateScrollToItem(focusIndex)
+    }
+    LaunchedEffect(highlightKey) {
+        val key = highlightKey ?: return@LaunchedEffect
+        delay(2600)
+        if (highlightKey == key) highlightKey = null
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -631,98 +803,47 @@ fun MemoryScreen(
                     )
                 } else {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (error != null) {
-                            item {
-                                ErrorToast(message = error!!, onShown = { viewModel.clearError() })
-                            }
-                        }
+                        items(rows, key = { it.key }) { row ->
+                            when (row) {
+                                MemoryRow.ErrorRow -> ErrorToast(
+                                    message = error.orEmpty(),
+                                    onShown = { viewModel.clearError() }
+                                )
 
-                        // MemoryFS 分组
-                        groupedFiles.forEach { (category, list) ->
-                            item {
-                                val labelRes = CATEGORY_LABELS[category]
-                                val label = if (labelRes != null) stringResource(labelRes) else category
-                                SectionHeader(
-                                    title = label,
-                                    subtitle = stringResource(R.string.memory_count_format, list.size)
+                                is MemoryRow.Header -> SectionHeader(
+                                    title = row.titleRes?.let { stringResource(it) } ?: row.fallbackTitle,
+                                    subtitle = stringResource(R.string.memory_count_format, row.count)
                                 )
-                            }
-                            items(list, key = { "fs_${it.path}" }) { file ->
-                                MemoryFileItem(
-                                    file = file,
-                                    expanded = expandedPaths.contains(file.path),
-                                    onToggle = { viewModel.toggleExpand(file.path) },
-                                    onDelete = { deleteFile = file }
-                                )
-                            }
-                        }
 
-                        // 本地角色记忆的单条视图：可查看与修改每条记忆的标签。
-                        if (isLocalMode && filteredLegacy.isNotEmpty()) {
-                            item {
-                                SectionHeader(
-                                    title = stringResource(R.string.memory_entries_and_tags),
-                                    subtitle = stringResource(R.string.memory_count_format, filteredLegacy.size)
+                                is MemoryRow.FileRow -> MemoryFileItem(
+                                    file = row.file,
+                                    expanded = expandedPaths.contains(row.file.path),
+                                    highlighted = highlightKey == row.key,
+                                    onToggle = { viewModel.toggleExpand(row.file.path) },
+                                    onDelete = { deleteFile = row.file }
                                 )
-                            }
-                            items(filteredLegacy, key = { "entry_${it.id ?: it.hashCode()}" }) { mem ->
-                                val expandKey = "entry://${mem.id ?: mem.hashCode()}"
-                                LegacyMemoryItem(
-                                    memory = mem,
-                                    expanded = expandedPaths.contains(expandKey),
-                                    onToggle = { viewModel.toggleExpand(expandKey) },
-                                    onEdit = { viewModel.startEditLegacy(mem) },
-                                    onDelete = { deleteLegacyItem = mem },
-                                    onTagClick = { viewModel.selectTag(it) },
-                                    onEditTags = { viewModel.startEditTags(mem) }
-                                )
-                            }
-                        }
 
-                        // 旧版记忆 - 长期
-                        if (longTermLegacy.isNotEmpty()) {
-                            item {
-                                SectionHeader(title = stringResource(R.string.memory_long_term_legacy), subtitle = stringResource(R.string.memory_count_format, longTermLegacy.size))
-                            }
-                            items(longTermLegacy, key = { "lt_${it.id ?: it.hashCode()}" }) { mem ->
-                                val expandKey = "legacy://${mem.id ?: mem.hashCode()}"
-                                LegacyMemoryItem(
-                                    memory = mem,
-                                    expanded = expandedPaths.contains(expandKey),
-                                    onToggle = { viewModel.toggleExpand(expandKey) },
-                                    onEdit = { viewModel.startEditLegacy(mem) },
-                                    onDelete = { deleteLegacyItem = mem }
+                                is MemoryRow.EntryRow -> LegacyMemoryItem(
+                                    memory = row.memory,
+                                    expanded = expandedPaths.contains(row.expandKey),
+                                    highlighted = highlightKey == row.key,
+                                    onToggle = { viewModel.toggleExpand(row.expandKey) },
+                                    onEdit = { viewModel.startEditLegacy(row.memory) },
+                                    onDelete = { deleteLegacyItem = row.memory },
+                                    onTagClick = { if (row.editableTags) viewModel.selectTag(it) },
+                                    onEditTags = if (row.editableTags) {
+                                        ({ viewModel.startEditTags(row.memory) })
+                                    } else {
+                                        null
+                                    }
                                 )
-                            }
-                        }
 
-                        // 旧版记忆 - 短期
-                        if (shortTermLegacy.isNotEmpty()) {
-                            item {
-                                SectionHeader(title = stringResource(R.string.memory_short_term_legacy), subtitle = stringResource(R.string.memory_count_format, shortTermLegacy.size))
-                            }
-                            items(shortTermLegacy, key = { "st_${it.id ?: it.hashCode()}" }) { mem ->
-                                val expandKey = "legacy://${mem.id ?: mem.hashCode()}"
-                                LegacyMemoryItem(
-                                    memory = mem,
-                                    expanded = expandedPaths.contains(expandKey),
-                                    onToggle = { viewModel.toggleExpand(expandKey) },
-                                    onEdit = { viewModel.startEditLegacy(mem) },
-                                    onDelete = { deleteLegacyItem = mem }
-                                )
-                            }
-                        }
-
-                        if (groupedFiles.isEmpty() &&
-                            (if (isLocalMode) filteredLegacy.isEmpty()
-                             else longTermLegacy.isEmpty() && shortTermLegacy.isEmpty())
-                        ) {
-                            item {
-                                Text(
+                                MemoryRow.EmptyRow -> Text(
                                     stringResource(R.string.memory_no_match),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -908,14 +1029,22 @@ private fun MemoryFileItem(
     file: MemoryFile,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    highlighted: Boolean = false
 ) {
     val accent = categoryAccent(file.category)
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onToggle() },
-        cornerRadius = 16
+        cornerRadius = 16,
+        containerColor = if (highlighted) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        },
+        borderWidth = if (highlighted) 1 else 0,
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // 类别图标盒：按类别着色，便于快速识别
@@ -1050,14 +1179,22 @@ private fun LegacyMemoryItem(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onTagClick: (String) -> Unit = {},
-    onEditTags: (() -> Unit)? = null
+    onEditTags: (() -> Unit)? = null,
+    highlighted: Boolean = false
 ) {
     val highPriority = memory.priority == "high"
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onToggle() },
-        cornerRadius = 16
+        cornerRadius = 16,
+        containerColor = if (highlighted) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        },
+        borderWidth = if (highlighted) 1 else 0,
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(

@@ -294,7 +294,7 @@ class GlobalSearchViewModel : BaseViewModel() {
                     kind = GlobalSearchKind.WORKSPACE,
                     title = name,
                     subtitle = path,
-                    route = Routes.workspace(sessionId),
+                    route = Routes.workspaceEntry(sessionId, path, item.isDirectory),
                     score = score
                 )
         }
@@ -307,7 +307,8 @@ class GlobalSearchViewModel : BaseViewModel() {
             kind = GlobalSearchKind.MEMORY,
             title = title.ifBlank { string(R.string.global_search_memory_fallback) },
             subtitle = listOf(characterName, summary.ifBlank { content.oneLine() }).filter(String::isNotBlank).joinToString(" · ").take(180),
-            route = Routes.MEMORY,
+            // 带上记忆 id，记忆页据此展开并滚动到对应条目
+            route = id.takeIf(String::isNotBlank)?.let(Routes::memoryEntry) ?: Routes.MEMORY,
             score = score
         )
     }

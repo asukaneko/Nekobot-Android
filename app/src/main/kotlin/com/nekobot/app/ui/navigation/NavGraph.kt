@@ -788,6 +788,17 @@ fun NekobotNavGraph() {
             composable(Routes.MEMORY) {
                 MemoryScreen(onBack = { navController.popBackStack() })
             }
+            composable(
+                route = Routes.MEMORY_ENTRY,
+                arguments = listOf(
+                    navArgument("focus") { type = NavType.StringType; nullable = true; defaultValue = null }
+                )
+            ) { entry ->
+                MemoryScreen(
+                    onBack = { navController.popBackStack() },
+                    focusId = entry.arguments?.getString("focus")
+                )
+            }
             composable(Routes.AGENT_CHARACTER_MEMORY) {
                 com.nekobot.app.ui.screens.memory.AgentCharacterMemoryDirectoryScreen(
                     onBack = { navController.popBackStack() },
@@ -876,6 +887,21 @@ fun NekobotNavGraph() {
             ) { entry ->
                 WorkspaceScreen(
                     sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Routes.WORKSPACE_ENTRY,
+                arguments = listOf(
+                    navArgument("sessionId") { type = NavType.StringType },
+                    navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    navArgument("dir") { type = NavType.BoolType; defaultValue = false }
+                )
+            ) { entry ->
+                WorkspaceScreen(
+                    sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+                    focusPath = entry.arguments?.getString("path"),
+                    focusIsDirectory = entry.arguments?.getBoolean("dir") == true,
                     onBack = { navController.popBackStack() }
                 )
             }

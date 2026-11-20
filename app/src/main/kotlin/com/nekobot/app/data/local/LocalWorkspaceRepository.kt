@@ -37,7 +37,7 @@ internal class LocalWorkspaceRepository(
                         val canonical = runCatching { file.canonicalFile }.getOrNull() ?: continue
                         if (!canonical.path.startsWith(root.path + File.separator) || file.name == ".git") continue
                         val path = file.relativeTo(root).invariantSeparatorsPath
-                        add(WorkspaceSearchEntry(sessionId, path, file.name))
+                        add(WorkspaceSearchEntry(sessionId, path, file.name, file.isDirectory))
                         if (file.isDirectory) pending.add(canonical)
                     }
                 }

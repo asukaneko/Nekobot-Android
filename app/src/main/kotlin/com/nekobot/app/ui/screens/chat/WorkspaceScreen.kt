@@ -19,6 +19,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -70,6 +71,7 @@ import com.nekobot.app.ui.components.nekoRowTitleStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -793,7 +795,10 @@ internal fun parentWorkspaceBrowserPath(path: String): String =
 @Composable
 fun WorkspaceScreen(
     sessionId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /** 全局搜索跳转时携带的工作区相对路径。 */
+    focusPath: String? = null,
+    focusIsDirectory: Boolean = false
 ) {
     val viewModel: WorkspaceViewModel = viewModel()
     val files by viewModel.files.collectAsStateWithLifecycle()
@@ -830,6 +835,11 @@ fun WorkspaceScreen(
     var terminalDir by remember { mutableStateOf("") }
     val snackbarHost = remember { SnackbarHostState() }
 
+    // 全局搜索定位：列表滚动状态 + 命中行高亮
+    val listState = rememberLazyListState()
+    var highlightPath by remember(sessionId, focusPath) { mutableStateOf<String?>(null) }
+    var focusHandled by remember(sessionId, focusPath) { mutableStateOf(false) }
+
     val isSharedTab = tabIndex == 1
     val activePath = if (isSharedTab) sharedPath else currentPath
     val displayFiles = if (isSharedTab) sharedFiles else files
@@ -857,6 +867,37 @@ fun WorkspaceScreen(
     }
 
     LaunchedEffect(sessionId) { viewModel.init(sessionId) }
+    // 从全局搜索进入：目录直接打开；文件先进入其所在目录，再滚动并高亮该行
+    LaunchedEffect(sessionId, focusPath, focusIsDirectory) {
+        val target = focusPath
+            ?.let(::normalizeWorkspaceBrowserPath)
+            ?.takeIf { it.isNotBlank() }
+            ?: return@LaunchedEffect
+        tabIndex = 0
+        if (focusIsDirectory) {
+            focusHandled = true
+            viewModel.openDirectory(target)
+        } else {
+            viewModel.load(parentWorkspaceBrowserPath(target))
+        }
+    }
+    LaunchedEffect(files, currentPath, focusPath, focusIsDirectory) {
+        val target = focusPath
+            ?.let(::normalizeWorkspaceBrowserPath)
+            ?.takeIf { it.isNotBlank() }
+            ?: return@LaunchedEffect
+        if (focusHandled || focusIsDirectory) return@LaunchedEffect
+        val index = files.indexOfFirst { it.path == target }
+        if (index < 0) return@LaunchedEffect
+        focusHandled = true
+        highlightPath = target
+        listState.animateScrollToItem(index)
+    }
+    LaunchedEffect(highlightPath) {
+        val path = highlightPath ?: return@LaunchedEffect
+        delay(2600)
+        if (highlightPath == path) highlightPath = null
+    }
     LaunchedEffect(tabIndex) {
         if (tabIndex == 1 && sharedFiles.isEmpty()) viewModel.loadShared()
     }
@@ -1205,6 +1246,7 @@ fun WorkspaceScreen(
                     }
                     else -> {
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1218,6 +1260,7 @@ fun WorkspaceScreen(
                                     terminalAvailable = terminalAvailable,
                                     selectionMode = selectionMode,
                                     selected = f.path in selectedPaths,
+                                    highlighted = highlightPath == f.path,
                                     onClick = { openFile(f) },
                                     onLongClick = {
                                         if (selectionMode) {
@@ -1361,6 +1404,7 @@ private fun WorkspaceFileItem(
     terminalAvailable: Boolean = false,
     selectionMode: Boolean = false,
     selected: Boolean = false,
+    highlighted: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onDelete: () -> Unit,
@@ -1373,12 +1417,12 @@ private fun WorkspaceFileItem(
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 14,
-        containerColor = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        containerColor = when {
+            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            highlighted -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         },
-        borderWidth = if (selected) 1 else 0,
+        borderWidth = if (selected || highlighted) 1 else 0,
         borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
         contentPadding = PaddingValues(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
     ) {
