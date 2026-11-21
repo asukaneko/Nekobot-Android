@@ -477,8 +477,32 @@ fun SessionsScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
+            viewModel.dismissSessionImport()
             viewModel.importSessions(uri, context)
         }
+    }
+    // DeepSeek 官方导出 ZIP：本地勾选后先解析归档，再在弹窗里勾选会话
+    val deepSeekArchiveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.inspectDeepSeekArchive(uri, context)
+        }
+    }
+    val sessionImportState by viewModel.sessionImport.collectAsStateWithLifecycle()
+    if (sessionImportState.visible) {
+        SessionImportDialog(
+            state = sessionImportState,
+            onDismiss = { viewModel.dismissSessionImport() },
+            onChooseFormat = { viewModel.chooseSessionImportFormat(it) },
+            onPickNekobotFile = { importFileLauncher.launch("*/*") },
+            onPickDeepSeekZip = { deepSeekArchiveLauncher.launch("*/*") },
+            onLoadDeepSeekFromUrl = { viewModel.inspectDeepSeekArchiveFromUrl(it, context) },
+            onToggleConversation = { viewModel.toggleSessionImportSelection(it) },
+            onToggleSelectAll = { viewModel.toggleSessionImportSelectAll() },
+            onBack = { viewModel.backToSessionImportFormat() },
+            onConfirmImport = { viewModel.confirmDeepSeekSessionImport() }
+        )
     }
 
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
@@ -628,7 +652,7 @@ fun SessionsScreen(
                             onNavigate(Routes.GLOBAL_SEARCH)
                         }
                         NekoIconAction(Icons.Filled.FileUpload, importDesc) {
-                            importFileLauncher.launch("*/*")
+                            viewModel.openSessionImport()
                         }
                         Box {
                             NekoIconAction(
@@ -919,7 +943,7 @@ fun SessionsScreen(
                                                 ) {
                                                     Text(newSessionDesc, color = MaterialTheme.colorScheme.onPrimary)
                                                 }
-                                                OutlinedButton(onClick = { importFileLauncher.launch("*/*") }) {
+                                                OutlinedButton(onClick = { viewModel.openSessionImport() }) {
                                                     Text(importDesc)
                                                 }
                                             }

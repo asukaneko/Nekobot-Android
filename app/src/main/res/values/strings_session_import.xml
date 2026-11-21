@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="session_import_title">导入会话</string>
+    <string name="session_import_format_hint">选择要导入的格式</string>
+    <string name="session_import_format_nekobot">nekobot 格式</string>
+    <string name="session_import_format_nekobot_desc">会话 JSON 导出文件</string>
+    <string name="session_import_format_deepseek">DeepSeek 官方格式</string>
+    <string name="session_import_format_deepseek_desc">官方数据导出 ZIP，可用链接或本地文件</string>
+    <string name="session_import_note">只新增会话，不覆盖已有数据</string>
+    <string name="session_import_deepseek_hint">粘贴下载链接，或选择本地 ZIP</string>
+    <string name="session_import_url_label">下载链接</string>
+    <string name="session_import_from_url">从链接导入</string>
+    <string name="session_import_pick_zip">选择本地 ZIP</string>
+    <string name="session_import_downloading">下载中 %1$d%%</string>
+    <string name="session_import_reading">正在处理归档…</string>
+    <string name="session_import_archive_summary">%1$s · 共 %2$d 个会话</string>
+    <string name="session_import_selected">已选 %1$d / %2$d</string>
+    <string name="session_import_select_all">全选</string>
+    <string name="session_import_message_count">%1$d 条消息 · %2$s</string>
+    <string name="session_import_confirm">导入 %1$d 个会话</string>
+    <string name="session_import_back">上一步</string>
+    <string name="session_import_invalid_archive">不是有效的 DeepSeek 数据导出包</string>
+    <string name="session_import_url_invalid">链接无效，只支持公网 HTTPS 地址</string>
+    <string name="session_import_download_failed">下载失败：%1$s</string>
+    <string name="session_import_too_large">文件过大，已停止导入</string>
+    <string name="session_import_importing">正在导入 %1$d / %2$d</string>
+    <string name="session_import_none_selected">请至少选择一个会话</string>
+</resources>

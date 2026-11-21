@@ -2100,7 +2100,9 @@ class LocalRepository(
                 if (msgEntities.isNotEmpty()) {
                     messageDao.upsertAll(msgEntities)
                     val lastContent = msgEntities.last().content
-                    sessionDao.touch(newId, lastContent.take(200), msgEntities.size, now)
+                    // 保留导出时的最后更新时间：历史会话导入后仍按原时间排序，
+                    // 而不是把数百条旧会话都挤成「刚刚」。
+                    sessionDao.touch(newId, lastContent.take(200), msgEntities.size, entity.updatedAt)
                 }
                 imported++
             } catch (e: Exception) {
@@ -2207,7 +2209,7 @@ class LocalRepository(
             pinned = sessionObj.boolVal("pinned") ?: false,
             archived = sessionObj.boolVal("archived") ?: false,
             createdAt = sessionObj.str("created_at", "createdAt") ?: now,
-            updatedAt = now,
+            updatedAt = sessionObj.str("updated_at", "updatedAt") ?: now,
             plotMode = sessionObj.boolVal("plot_mode", "plotMode") ?: false,
             plotRealTimeSync = sessionObj.boolVal("plot_realtime_sync", "plot_real_time_sync") ?: false,
             plotChoiceStyle = sessionObj.str("plot_choice_style", "plotChoiceStyle"),

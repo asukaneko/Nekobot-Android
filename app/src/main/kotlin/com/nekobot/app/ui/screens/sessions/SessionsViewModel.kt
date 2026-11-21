@@ -34,11 +34,20 @@ import kotlinx.coroutines.flow.mapLatest
 import com.nekobot.app.data.model.SessionListQuery
 import com.nekobot.app.data.model.WorldBook
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.content.Context
 import android.net.Uri
 import com.google.gson.JsonParser
+import com.nekobot.app.data.local.sessionimport.DeepSeekArchiveReader
+import com.nekobot.app.data.local.sessionimport.SessionArchiveDownloader
+import com.nekobot.app.data.local.sessionimport.SessionArchiveStaging
+import com.nekobot.app.data.local.sessionimport.SessionImportException
+import com.nekobot.app.data.local.sessionimport.SessionImportFormat
+import com.nekobot.app.data.local.sessionimport.SessionImportPayload
+import kotlinx.coroutines.Job
+import java.io.File
 
 private data class DashboardMetricsLoadResults(
     val stats: Resource<TokenStats>,
@@ -621,6 +630,225 @@ class SessionsViewModel : BaseViewModel() {
         }
     }
 
+    // ---------------------------------------------------------------- 会话导入弹窗
+
+    private val _sessionImport = MutableStateFlow(SessionImportUiState())
+    val sessionImport: StateFlow<SessionImportUiState> = _sessionImport.asStateFlow()
+
+    /** 已落盘的导入归档（本地 ZIP 或下载结果），关闭弹窗时删除。 */
+    private var sessionImportArchive: File? = null
+    private var sessionImportJob: Job? = null
+
+    /** 打开导入弹窗：第一步选择导入格式。 */
+    fun openSessionImport() {
+        sessionImportJob?.cancel()
+        sessionImportJob = null
+        discardSessionImportArchive()
+        _sessionImport.value = SessionImportUiState(visible = true)
+    }
+
+    /** 关闭弹窗并清理临时文件。 */
+    fun dismissSessionImport() {
+        sessionImportJob?.cancel()
+        sessionImportJob = null
+        discardSessionImportArchive()
+        _sessionImport.value = SessionImportUiState()
+    }
+
+    /**
+     * 选定导入格式。
+     *
+     * 需要先载入归档的格式（如 DeepSeek）进入来源选择步骤；nekobot JSON 直接由外部选择文件。
+     */
+    fun chooseSessionImportFormat(format: SessionImportFormat) {
+        _sessionImport.value = _sessionImport.value.copy(
+            format = format,
+            step = if (format.needsArchiveSelection) SessionImportStep.SOURCE else SessionImportStep.FORMAT,
+            error = null
+        )
+    }
+
+    /** 返回格式选择步骤，丢弃已载入的归档。 */
+    fun backToSessionImportFormat() {
+        sessionImportJob?.cancel()
+        sessionImportJob = null
+        discardSessionImportArchive()
+        _sessionImport.value = SessionImportUiState(
+            visible = true,
+            format = _sessionImport.value.format
+        )
+    }
+
+    /** 读取本地 ZIP（DeepSeek 官方导出包）。 */
+    fun inspectDeepSeekArchive(uri: Uri, context: Context) {
+        inspectSessionArchive {
+            SessionArchiveStaging.fromUri(context, uri) to SessionArchiveStaging.displayName(context, uri)
+        }
+    }
+
+    /** 从下载链接获取 ZIP（DeepSeek 官方导出的签名链接）。 */
+    fun inspectDeepSeekArchiveFromUrl(url: String, context: Context) {
+        inspectSessionArchive {
+            val archive = SessionArchiveDownloader().download(url, context.cacheDir) { downloaded, total ->
+                _sessionImport.update {
+                    it.copy(downloadedBytes = downloaded, totalBytes = total ?: it.totalBytes)
+                }
+            }
+            archive to url.substringAfterLast('/').substringBefore('?').ifBlank { null }
+        }
+    }
+
+    /** 下载/读取归档并列出可导入的会话；勾选列表默认全选。 */
+    private fun inspectSessionArchive(load: suspend () -> Pair<File, String?>) {
+        sessionImportJob?.cancel()
+        sessionImportJob = viewModelScope.launch {
+            _sessionImport.update {
+                it.copy(reading = true, error = null, downloadedBytes = 0L, totalBytes = null)
+            }
+            try {
+                discardSessionImportArchive()
+                val (file, displayName) = withContext(Dispatchers.IO) { load() }
+                sessionImportArchive = file
+                val conversations = withContext(Dispatchers.IO) {
+                    DeepSeekArchiveReader.open(file).use { it.listConversations() }
+                }
+                if (conversations.isEmpty()) {
+                    discardSessionImportArchive()
+                    _sessionImport.update {
+                        it.copy(reading = false, error = string(R.string.sessions_import_empty))
+                    }
+                    return@launch
+                }
+                _sessionImport.update {
+                    it.copy(
+                        reading = false,
+                        step = SessionImportStep.CONVERSATIONS,
+                        archiveName = displayName ?: file.name,
+                        conversations = conversations,
+                        selectedIds = conversations.mapTo(mutableSetOf()) { conversation -> conversation.id },
+                        error = null
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                discardSessionImportArchive()
+                _sessionImport.update { it.copy(reading = false, error = sessionImportErrorMessage(error)) }
+            }
+        }
+    }
+
+    fun toggleSessionImportSelection(id: String) {
+        _sessionImport.update { state ->
+            val selected = if (id in state.selectedIds) state.selectedIds - id else state.selectedIds + id
+            state.copy(selectedIds = selected)
+        }
+    }
+
+    fun toggleSessionImportSelectAll() {
+        _sessionImport.update { state ->
+            if (state.allSelected) {
+                state.copy(selectedIds = emptySet())
+            } else {
+                state.copy(selectedIds = state.conversations.mapTo(mutableSetOf()) { it.id })
+            }
+        }
+    }
+
+    /** 把勾选的会话分批转换为 nekobot 导出载荷并写入。 */
+    fun confirmDeepSeekSessionImport() {
+        val state = _sessionImport.value
+        val archive = sessionImportArchive ?: return
+        val selected = state.conversations.map { it.id }.filter { it in state.selectedIds }
+        if (selected.isEmpty()) {
+            showToast(string(R.string.session_import_none_selected))
+            return
+        }
+        sessionImportJob?.cancel()
+        sessionImportJob = viewModelScope.launch {
+            _sessionImport.update {
+                it.copy(importing = true, error = null, processedSessions = 0, totalSessions = selected.size)
+            }
+            var imported = 0
+            var failed = 0
+            val errors = mutableListOf<String>()
+            try {
+                withContext(Dispatchers.IO) {
+                    DeepSeekArchiveReader.open(archive).use { reader ->
+                        selected.chunked(SESSION_IMPORT_BATCH).forEach { batch ->
+                            val sessions = batch.mapNotNull { reader.buildSession(it) }
+                            failed += batch.size - sessions.size
+                            if (sessions.isNotEmpty()) {
+                                when (val result = unified.importSessions(SessionImportPayload.build(sessions))) {
+                                    is Resource.Success -> {
+                                        imported += result.data.imported
+                                        failed += result.data.failed
+                                        errors += result.data.errors
+                                    }
+                                    is Resource.Error -> {
+                                        failed += sessions.size
+                                        errors += result.message.orEmpty()
+                                    }
+                                    is Resource.Loading -> {}
+                                }
+                            }
+                            _sessionImport.update {
+                                it.copy(processedSessions = (it.processedSessions + batch.size).coerceAtMost(it.totalSessions))
+                            }
+                        }
+                    }
+                }
+                resetSessionImportState()
+                reportSessionImportResult(imported, failed, errors)
+                if (imported > 0) loadSessions()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _sessionImport.update { it.copy(importing = false, error = sessionImportErrorMessage(error)) }
+            }
+        }
+    }
+
+    private fun resetSessionImportState() {
+        discardSessionImportArchive()
+        _sessionImport.value = SessionImportUiState()
+    }
+
+    private fun discardSessionImportArchive() {
+        sessionImportArchive?.delete()
+        sessionImportArchive = null
+    }
+
+    private fun reportSessionImportResult(imported: Int, failed: Int, errors: List<String>) {
+        when {
+            imported > 0 && failed == 0 -> showToast(string(R.string.sessions_import_success, imported))
+            imported > 0 -> showToast(string(R.string.sessions_import_partial, imported, failed))
+            failed > 0 -> {
+                val detail = errors.firstOrNull().orEmpty()
+                showToast(
+                    if (detail.isBlank()) string(R.string.sessions_import_failed, "")
+                    else string(R.string.sessions_import_failed, detail)
+                )
+            }
+            else -> showToast(string(R.string.sessions_import_empty))
+        }
+    }
+
+    private fun sessionImportErrorMessage(error: Throwable): String = when (error) {
+        is SessionImportException.InvalidUrl -> string(R.string.session_import_url_invalid)
+        is SessionImportException.TooLarge -> string(R.string.session_import_too_large)
+        is SessionImportException.UnsupportedArchive -> string(R.string.session_import_invalid_archive)
+        is SessionImportException.DownloadFailed ->
+            string(R.string.session_import_download_failed, error.reason)
+        else -> string(R.string.sessions_import_failed, error.message ?: "")
+    }
+
+    override fun onCleared() {
+        sessionImportJob?.cancel()
+        discardSessionImportArchive()
+        super.onCleared()
+    }
+
     /** 加载完整角色列表，供筛选和统计使用。 */
     fun loadCharacters(expectedDataSourceVersion: Long? = null) {
         val version = expectedDataSourceVersion ?: dataSourceVersion
@@ -1007,5 +1235,10 @@ class SessionsViewModel : BaseViewModel() {
                 (s.characterName?.contains(q, ignoreCase = true) == true) ||
                 (s.lastMessage?.contains(q, ignoreCase = true) == true)
         }
+    }
+
+    private companion object {
+        /** 每批导入的会话数：控制单次载荷体积，并让进度条真实推进。 */
+        const val SESSION_IMPORT_BATCH = 20
     }
 }

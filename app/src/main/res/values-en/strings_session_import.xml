@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="session_import_title">Import sessions</string>
+    <string name="session_import_format_hint">Choose an import format</string>
+    <string name="session_import_format_nekobot">nekobot format</string>
+    <string name="session_import_format_nekobot_desc">Session JSON export file</string>
+    <string name="session_import_format_deepseek">DeepSeek official format</string>
+    <string name="session_import_format_deepseek_desc">Official data export ZIP, from a link or local file</string>
+    <string name="session_import_note">Adds sessions only; existing data is kept</string>
+    <string name="session_import_deepseek_hint">Paste a download link or pick a local ZIP</string>
+    <string name="session_import_url_label">Download link</string>
+    <string name="session_import_from_url">Import from link</string>
+    <string name="session_import_pick_zip">Choose local ZIP</string>
+    <string name="session_import_downloading">Downloading %1$d%%</string>
+    <string name="session_import_reading">Processing archive…</string>
+    <string name="session_import_archive_summary">%1$s · %2$d sessions</string>
+    <string name="session_import_selected">%1$d of %2$d selected</string>
+    <string name="session_import_select_all">Select all</string>
+    <string name="session_import_message_count">%1$d messages · %2$s</string>
+    <string name="session_import_confirm">Import %1$d sessions</string>
+    <string name="session_import_back">Back</string>
+    <string name="session_import_invalid_archive">Not a valid DeepSeek data export</string>
+    <string name="session_import_url_invalid">Invalid link; only public HTTPS addresses are supported</string>
+    <string name="session_import_download_failed">Download failed: %1$s</string>
+    <string name="session_import_too_large">File is too large; import stopped</string>
+    <string name="session_import_importing">Importing %1$d / %2$d</string>
+    <string name="session_import_none_selected">Select at least one session</string>
+</resources>
