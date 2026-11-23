@@ -149,6 +149,10 @@
     <string name="workspace_manager_tag_orphan">已删除会话</string>
     <string name="workspace_manager_tag_legacy">旧版目录</string>
     <string name="workspace_manager_meta">%1$d 个文件 · %2$s</string>
+    <string name="workspace_manager_sort_time">会话时间</string>
+    <string name="workspace_manager_sort_size">占用大小</string>
+    <string name="workspace_manager_sort_desc">降序，点击切换</string>
+    <string name="workspace_manager_sort_asc">升序，点击切换</string>
     <string name="workspace_manager_profile">档案：%1$s</string>
     <string name="workspace_manager_root">根目录</string>
     <string name="workspace_manager_empty">没有可清理的工作区文件</string>

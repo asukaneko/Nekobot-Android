@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,11 +25,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -61,7 +66,11 @@ import com.nekobot.app.data.local.SessionWorkspaceEntry
 import com.nekobot.app.data.local.SessionWorkspaceMaintenance
 import com.nekobot.app.data.local.WORKSPACE_ENTRY_LIMIT
 import com.nekobot.app.data.local.WorkspaceItemEntry
+import com.nekobot.app.data.local.WorkspaceSortKey
+import com.nekobot.app.data.local.WorkspaceSortOrder
+import com.nekobot.app.data.local.sortWorkspaceEntries
 import com.nekobot.app.ui.BaseViewModel
+import com.nekobot.app.ui.components.BorderlessFilterChip
 import com.nekobot.app.ui.components.BorderlessOutlinedButton as OutlinedButton
 import com.nekobot.app.ui.components.ErrorToast
 import com.nekobot.app.ui.components.GlassCard
@@ -73,6 +82,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** 工作区占用大小的可读格式（与数据维护页的缓存大小格式保持一致）。 */
 private fun formatWorkspaceSize(bytes: Long): String = when {
@@ -81,6 +93,13 @@ private fun formatWorkspaceSize(bytes: Long): String = when {
     bytes >= 1024 -> String.format("%.1f KB", bytes / 1024.0)
     else -> "$bytes B"
 }
+
+/** 工作区时间（epoch 毫秒 → yyyy-MM-dd HH:mm）；时间无效时返回 null。 */
+private fun formatWorkspaceTime(epochMillis: Long): String? =
+    if (epochMillis <= 0L) null
+    else runCatching {
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(epochMillis))
+    }.getOrNull()
 
 /**
  * 会话工作区管理 ViewModel：列出磁盘上所有含文件的会话工作区，
@@ -94,11 +113,20 @@ internal class WorkspaceManagerViewModel : BaseViewModel() {
     private val _items = MutableStateFlow<List<WorkspaceItemEntry>>(emptyList())
     val items: StateFlow<List<WorkspaceItemEntry>> = _items.asStateFlow()
 
+    /** 工作区列表排序（默认按会话时间从新到旧）。 */
+    private val _sortOrder = MutableStateFlow(WorkspaceSortOrder())
+    val sortOrder: StateFlow<WorkspaceSortOrder> = _sortOrder.asStateFlow()
+
     private var maintenance: SessionWorkspaceMaintenance? = null
 
     private fun maintenance(context: Context): SessionWorkspaceMaintenance =
         maintenance ?: SessionWorkspaceMaintenance(context.applicationContext, ServiceContainer.prefs)
             .also { maintenance = it }
+
+    /** 点击排序字段：同一字段切换升降序，另一字段则按其默认方向排序。 */
+    fun selectSortKey(key: WorkspaceSortKey) {
+        _sortOrder.value = _sortOrder.value.selecting(key)
+    }
 
     /** 重新扫描全部工作区。 */
     fun refresh(context: Context) {
@@ -221,6 +249,7 @@ fun WorkspaceManagerScreen(onBack: () -> Unit) {
     val vm: WorkspaceManagerViewModel = viewModel()
     val entries by vm.entries.collectAsStateWithLifecycle()
     val items by vm.items.collectAsStateWithLifecycle()
+    val sortOrder by vm.sortOrder.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
@@ -310,6 +339,8 @@ fun WorkspaceManagerScreen(onBack: () -> Unit) {
                 if (target == null) {
                     WorkspaceListPane(
                         entries = entries,
+                        sortOrder = sortOrder,
+                        onSelectSort = vm::selectSortKey,
                         listState = listState,
                         onBrowse = { entry ->
                             browsing = entry
@@ -394,10 +425,12 @@ fun WorkspaceManagerScreen(onBack: () -> Unit) {
     }
 }
 
-/** 工作区列表：会话存在的与已删除的分组展示。 */
+/** 工作区列表：排序条 + 会话存在的与已删除的分组展示。 */
 @Composable
 private fun WorkspaceListPane(
     entries: List<SessionWorkspaceEntry>,
+    sortOrder: WorkspaceSortOrder,
+    onSelectSort: (WorkspaceSortKey) -> Unit,
     listState: LazyListState,
     onBrowse: (SessionWorkspaceEntry) -> Unit,
     onDeleteOrphans: () -> Unit,
@@ -407,72 +440,129 @@ private fun WorkspaceListPane(
         EmptyHint(text = stringResource(R.string.workspace_manager_empty))
         return
     }
-    val alive = entries.filter { it.sessionExists }
-    val orphans = entries.filterNot { it.sessionExists }
+    val ordered = remember(entries, sortOrder) { sortWorkspaceEntries(entries, sortOrder) }
+    val alive = ordered.filter { it.sessionExists }
+    val orphans = ordered.filterNot { it.sessionExists }
     val totalBytes = entries.sumOf { it.sizeBytes }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        state = listState,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            Text(
-                text = stringResource(
-                    R.string.workspace_manager_summary,
-                    entries.size,
-                    formatWorkspaceSize(totalBytes)
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-        }
-        if (alive.isNotEmpty()) {
-            item { SectionHeader(title = stringResource(R.string.workspace_manager_group_alive)) }
-            items(alive, key = { "alive:${it.sessionId}:${it.legacy}" }) { entry ->
-                WorkspaceRow(entry = entry, onBrowse = onBrowse, onDelete = onDeleteWorkspace)
-            }
-        }
-        if (orphans.isNotEmpty()) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        WorkspaceSortBar(sortOrder = sortOrder, onSelectSort = onSelectSort)
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(R.string.workspace_manager_group_orphan),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    // 一键删除全部残留工作区
-                    OutlinedButton(onClick = onDeleteOrphans, modifier = Modifier.fillMaxWidth()) {
-                        Icon(
-                            Icons.Filled.DeleteSweep,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.workspace_manager_delete_orphans),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
+                Text(
+                    text = stringResource(
+                        R.string.workspace_manager_summary,
+                        entries.size,
+                        formatWorkspaceSize(totalBytes)
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            if (alive.isNotEmpty()) {
+                item { SectionHeader(title = stringResource(R.string.workspace_manager_group_alive)) }
+                items(alive, key = { "alive:${it.sessionId}:${it.legacy}" }) { entry ->
+                    WorkspaceRow(entry = entry, onBrowse = onBrowse, onDelete = onDeleteWorkspace)
                 }
             }
-            items(orphans, key = { "orphan:${it.sessionId}:${it.legacy}" }) { entry ->
-                WorkspaceRow(entry = entry, onBrowse = onBrowse, onDelete = onDeleteWorkspace)
+            if (orphans.isNotEmpty()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.workspace_manager_group_orphan),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        // 一键删除全部残留工作区
+                        OutlinedButton(onClick = onDeleteOrphans, modifier = Modifier.fillMaxWidth()) {
+                            Icon(
+                                Icons.Filled.DeleteSweep,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.workspace_manager_delete_orphans),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+                items(orphans, key = { "orphan:${it.sessionId}:${it.legacy}" }) { entry ->
+                    WorkspaceRow(entry = entry, onBrowse = onBrowse, onDelete = onDeleteWorkspace)
+                }
             }
         }
     }
+}
+
+/** 排序条：会话时间 / 占用大小，点击已选字段切换升降序。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WorkspaceSortBar(
+    sortOrder: WorkspaceSortOrder,
+    onSelectSort: (WorkspaceSortKey) -> Unit
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        WorkspaceSortChip(
+            label = stringResource(R.string.workspace_manager_sort_time),
+            selected = sortOrder.key == WorkspaceSortKey.SESSION_TIME,
+            descending = sortOrder.descending,
+            onClick = { onSelectSort(WorkspaceSortKey.SESSION_TIME) }
+        )
+        WorkspaceSortChip(
+            label = stringResource(R.string.workspace_manager_sort_size),
+            selected = sortOrder.key == WorkspaceSortKey.SIZE,
+            descending = sortOrder.descending,
+            onClick = { onSelectSort(WorkspaceSortKey.SIZE) }
+        )
+    }
+}
+
+@Composable
+private fun WorkspaceSortChip(
+    label: String,
+    selected: Boolean,
+    descending: Boolean,
+    onClick: () -> Unit
+) {
+    BorderlessFilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = if (!selected) null else {
+            {
+                Icon(
+                    imageVector = if (descending) Icons.Filled.ArrowDownward else Icons.Filled.ArrowUpward,
+                    contentDescription = stringResource(
+                        if (descending) R.string.workspace_manager_sort_desc
+                        else R.string.workspace_manager_sort_asc
+                    ),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    )
 }
 
 @Composable
@@ -504,8 +594,31 @@ private fun WorkspaceRow(
                         formatWorkspaceSize(entry.sizeBytes)
                     ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                // 工作区时间单独一行，避免挤压上面的文件数量与占用大小
+                val timeText = remember(entry.lastModified) { formatWorkspaceTime(entry.lastModified) }
+                if (timeText != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            text = timeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 if (entry.sessionExists && !entry.profileLabel.isNullOrBlank()) {
                     Spacer(Modifier.height(6.dp))
                     WorkspaceTag(

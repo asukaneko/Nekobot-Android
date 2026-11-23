@@ -140,6 +140,10 @@
     <string name="workspace_manager_tag_orphan">已刪除會話</string>
     <string name="workspace_manager_tag_legacy">舊版目錄</string>
     <string name="workspace_manager_meta">%1$d 個檔案 · %2$s</string>
+    <string name="workspace_manager_sort_time">會話時間</string>
+    <string name="workspace_manager_sort_size">佔用大小</string>
+    <string name="workspace_manager_sort_desc">降序，點擊切換</string>
+    <string name="workspace_manager_sort_asc">升序，點擊切換</string>
     <string name="workspace_manager_profile">檔案：%1$s</string>
     <string name="workspace_manager_root">根目錄</string>
     <string name="workspace_manager_empty">沒有可清理的工作區檔案</string>

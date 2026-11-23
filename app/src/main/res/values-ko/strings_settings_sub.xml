@@ -140,6 +140,10 @@
     <string name="workspace_manager_tag_orphan">삭제된 세션</string>
     <string name="workspace_manager_tag_legacy">구버전 폴더</string>
     <string name="workspace_manager_meta">파일 %1$d개 · %2$s</string>
+    <string name="workspace_manager_sort_time">세션 시간</string>
+    <string name="workspace_manager_sort_size">용량</string>
+    <string name="workspace_manager_sort_desc">내림차순(탭하여 전환)</string>
+    <string name="workspace_manager_sort_asc">오름차순(탭하여 전환)</string>
     <string name="workspace_manager_profile">프로필: %1$s</string>
     <string name="workspace_manager_root">루트</string>
     <string name="workspace_manager_empty">정리할 작업 공간 파일이 없어요</string>

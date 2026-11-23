@@ -140,6 +140,10 @@
     <string name="workspace_manager_tag_orphan">Deleted chat</string>
     <string name="workspace_manager_tag_legacy">Legacy folder</string>
     <string name="workspace_manager_meta">%1$d files · %2$s</string>
+    <string name="workspace_manager_sort_time">Chat time</string>
+    <string name="workspace_manager_sort_size">Size</string>
+    <string name="workspace_manager_sort_desc">Descending, tap to switch</string>
+    <string name="workspace_manager_sort_asc">Ascending, tap to switch</string>
     <string name="workspace_manager_profile">Profile: %1$s</string>
     <string name="workspace_manager_root">Root</string>
     <string name="workspace_manager_empty">No workspace files to clean</string>

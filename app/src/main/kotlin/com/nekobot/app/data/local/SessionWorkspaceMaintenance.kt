@@ -24,6 +24,47 @@ internal data class SessionWorkspaceEntry(
     val sessionExists: Boolean get() = sessionName != null
 }
 
+/** 工作区列表的排序字段。 */
+internal enum class WorkspaceSortKey {
+    /** 按会话时间（工作区最后修改时间）。 */
+    SESSION_TIME,
+
+    /** 按会话占用大小。 */
+    SIZE
+}
+
+/**
+ * 工作区列表排序：字段 + 方向。
+ *
+ * 默认时间从新到旧、大小从大到小；再次选中同一字段时翻转方向，
+ * 切换到另一字段时回到该字段的默认方向。
+ */
+internal data class WorkspaceSortOrder(
+    val key: WorkspaceSortKey = WorkspaceSortKey.SESSION_TIME,
+    val descending: Boolean = true
+) {
+    /** 点击某个排序字段后得到的新排序。 */
+    fun selecting(key: WorkspaceSortKey): WorkspaceSortOrder =
+        if (this.key == key) WorkspaceSortOrder(key, descending = !descending)
+        else WorkspaceSortOrder(key, descending = true)
+}
+
+/** 按 [order] 排序工作区；取值相同时按会话 id / 旧版标记兜底，保证顺序稳定。 */
+internal fun sortWorkspaceEntries(
+    entries: List<SessionWorkspaceEntry>,
+    order: WorkspaceSortOrder
+): List<SessionWorkspaceEntry> {
+    val byField = when (order.key) {
+        WorkspaceSortKey.SESSION_TIME -> compareBy<SessionWorkspaceEntry> { it.lastModified }
+        WorkspaceSortKey.SIZE -> compareBy<SessionWorkspaceEntry> { it.sizeBytes }
+    }
+    // 只翻转主字段方向，同值时仍按会话 id 升序，避免切换方向后同大小项来回跳动
+    val comparator = if (order.descending) byField.reversed() else byField
+    return entries.sortedWith(
+        comparator.thenBy { it.sessionId }.thenBy { it.legacy }
+    )
+}
+
 /** 工作区内的一个文件或文件夹。 */
 internal data class WorkspaceItemEntry(
     val relativePath: String,
@@ -202,10 +243,10 @@ internal class SessionWorkspaceMaintenance(
                 sizeBytes = workspace.sizeBytes,
                 lastModified = workspace.lastModified
             )
-        }.sortedWith(
-            compareByDescending<SessionWorkspaceEntry> { it.sessionExists }
-                .thenByDescending { it.lastModified }
-        )
+        }.let { entries ->
+            // 会话仍存在的排在前面；组内按默认排序（时间从新到旧）
+            sortWorkspaceEntries(entries.sortedByDescending { it.sessionExists }, WorkspaceSortOrder())
+        }
     }
 
     suspend fun listItems(entry: SessionWorkspaceEntry): List<WorkspaceItemEntry> = withContext(Dispatchers.IO) {

@@ -140,6 +140,10 @@
     <string name="workspace_manager_tag_orphan">削除済みセッション</string>
     <string name="workspace_manager_tag_legacy">旧版フォルダ</string>
     <string name="workspace_manager_meta">%1$d ファイル · %2$s</string>
+    <string name="workspace_manager_sort_time">セッション時刻</string>
+    <string name="workspace_manager_sort_size">サイズ</string>
+    <string name="workspace_manager_sort_desc">降順（タップで切替）</string>
+    <string name="workspace_manager_sort_asc">昇順（タップで切替）</string>
     <string name="workspace_manager_profile">プロファイル: %1$s</string>
     <string name="workspace_manager_root">ルート</string>
     <string name="workspace_manager_empty">整理できる作業スペースのファイルはありません</string>
