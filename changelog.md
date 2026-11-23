@@ -2,6 +2,40 @@
 
 本文件记录 Nekobot Android 应用的版本变更。
 
+## v0.9.2 - 2026-11-23
+
+### 新增
+
+- 会话导入支持 DeepSeek 官方数据导出包：可选择本地归档或下载链接，勾选会话后分批导入，并保留原始会话时间。
+- 全局搜索可直接跳转到工作区文件/文件夹与记忆条目，进入后自动定位并短暂高亮。
+- WebDAV 备份与恢复支持按内容分组勾选（凭据、应用设置、全局记忆、媒体、扩展、工作区、语音、统计等），备份与恢复各自记忆选择。
+- 支持 DeepSeek 官方语音工具 ASR/TTS，新增对应语音模型预设与「stella / tide」音色，模型编辑器提供仅需 API Key 的精简配置。
+
+### 修复
+
+- 修复导入会话后消息时间戳乱序（助手回复早于提问）与旧会话排序全部变成「刚刚」的问题。
+- 修复 Agent 会话标题被截成半句残句的问题，超长时优先在分句处收尾。
+
+### 优化
+
+- 重构 WebDAV 备份页面：云端状态卡片置于首屏，连接配置与备份操作改为卡片分区，高级设置可折叠。
+- 数据库管理页改为整页列表，当前库卡片展示 Room 版本、体积与更新时间。
+- 移除本地模型页顶部的本地日志入口，日志仍可在设置或诊断中心查看。
+- Agent 会话的模型统一由 Agent 设置管理，会话详情页不再提供「聊天模型」入口。
+
+### English
+
+- Session import now supports DeepSeek official data export archives: pick a local archive or paste a download link, select sessions, and import in batches while keeping original timestamps.
+- Global search can jump straight to workspace files/folders and memory entries, auto-locating and briefly highlighting the target.
+- WebDAV backup and restore can select content groups (credentials, app settings, global memory, media, extensions, workspace, voice, stats), each remembering its own selection.
+- Added DeepSeek official voice tools ASR/TTS with matching model presets, new stella / tide voices, and an API-key-only simplified setup in the model editor.
+- Fixed message timestamps being out of order after importing (assistant replies dated before the question) and old sessions all sorting as just now.
+- Fixed Agent session titles being cut mid-sentence; overlong titles now break at clause boundaries.
+- Reworked the WebDAV backup page with a cloud status hero card, card-based connection and backup sections, and collapsible advanced settings.
+- The database management page is now a full-page list whose current-database card shows the Room version, size, and update time.
+- Removed the local log entry from the local model page; logs remain available in settings or the diagnostic center.
+- Agent session models are now managed centrally in Agent settings, so the session detail page no longer offers a chat model entry.
+
 ## v0.9.1 - 2026-11-17
 
 ### 新增
