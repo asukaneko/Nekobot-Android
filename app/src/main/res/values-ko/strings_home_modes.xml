@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 홈: 모드 카드 3장과 Agent / 캐릭터 / 단일 캐릭터 페이지. -->
+<resources>
+    <string name="home_mode_title">홈</string>
+    <string name="home_mode_swipe">좌우로 넘겨 전환</string>
+    <string name="home_mode_all_sessions">전체</string>
+    <string name="home_mode_card_tap">탭하여 열기</string>
+
+    <!-- 모드 카드 -->
+    <string name="home_mode_card_action_all">전체</string>
+    <string name="home_mode_card_count">세션 %1$d개</string>
+    <string name="home_mode_card_character">캐릭터 대화 · 선술집</string>
+    <string name="home_mode_card_character_empty">캐릭터 대화가 아직 없습니다</string>
+    <string name="home_mode_card_character_hint">선술집에서 캐릭터와 연기하기</string>
+    <string name="home_mode_card_agent">Agent</string>
+    <string name="home_mode_card_agent_title">새 Agent 세션</string>
+    <string name="home_mode_card_agent_hint">목표를 맡기고 실행시키기</string>
+    <string name="home_mode_card_agent_idle">첫 지시를 기다리는 중</string>
+    <string name="home_mode_card_agent_running">세션 %1$d개 대기 중</string>
+    <string name="home_mode_card_agent_ready">도구 준비 완료</string>
+    <string name="home_mode_card_companion">단일 캐릭터 · 관계</string>
+    <string name="home_mode_card_companion_empty">단일 캐릭터 대화가 아직 없습니다</string>
+    <string name="home_mode_card_companion_hint">한 사람만, 관계를 기억합니다</string>
+
+    <!-- Agent 페이지 -->
+    <string name="home_agent_bar_title">Agent</string>
+    <string name="home_agent_menu">세션과 모드</string>
+    <string name="home_agent_title">새 Agent 세션</string>
+    <string name="home_agent_hint">먼저 할 일을 적어 주세요. 보낼 때 세션이 만들어집니다.</string>
+    <string name="home_agent_try">이렇게 해보세요</string>
+    <string name="home_agent_try_1">이번 주 일정 정리</string>
+    <string name="home_agent_try_2">스크립트 작성</string>
+    <string name="home_agent_try_3">이 파일 요약</string>
+    <string name="home_agent_console_placeholder">무언가 말해 보세요…</string>
+    <string name="home_agent_console_ready">세션은 아직 없음</string>
+    <string name="home_agent_console_creating">세션 만드는 중…</string>
+    <string name="home_agent_console_next">보내면 대화 화면으로 이동</string>
+    <string name="home_agent_placeholder">목표를 말하거나 질문하기…</string>
+    <string name="home_agent_send">보내기</string>
+    <string name="home_agent_drawer_title">세션과 모드</string>
+    <string name="home_agent_drawer_home">홈으로</string>
+    <string name="home_agent_drawer_modes">모드 전환</string>
+    <string name="home_agent_drawer_sessions">Agent 세션</string>
+    <string name="home_agent_drawer_empty">Agent 세션이 아직 없습니다</string>
+
+    <!-- 캐릭터 대화 페이지 -->
+    <string name="home_character_title">캐릭터 대화</string>
+    <string name="home_character_pick">캐릭터 선택</string>
+    <string name="home_character_count">캐릭터 %1$d명</string>
+    <string name="home_character_session_count">대화 %1$d개</string>
+    <string name="home_character_no_session">대화가 아직 없습니다</string>
+    <string name="home_character_empty">라이브러리에 캐릭터가 없습니다</string>
+    <string name="home_character_empty_hint">먼저 라이브러리에서 캐릭터를 만드세요</string>
+    <string name="home_character_sheet_desc">기존 대화에 들어가거나 새로 시작</string>
+    <string name="home_character_new">새 대화</string>
+    <string name="home_character_new_desc">캐릭터의 첫 인사로 시작</string>
+    <string name="home_character_new_creating">만드는 중…</string>
+    <string name="home_character_sessions">이 캐릭터와의 대화</string>
+
+    <!-- 단일 캐릭터 페이지 -->
+    <string name="home_companion_title">단일 캐릭터</string>
+    <string name="home_companion_hint">한 캐릭터, 하나의 관계. 기억은 계속 쌓입니다.</string>
+    <string name="home_companion_new">단일 캐릭터 대화 만들기</string>
+    <string name="home_companion_empty">단일 캐릭터 대화가 아직 없습니다</string>
+    <string name="home_companion_empty_hint">캐릭터를 골라 장기 관계 시작</string>
+    <string name="home_companion_yours">내 단일 캐릭터</string>
+</resources>

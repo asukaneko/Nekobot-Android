@@ -23,6 +23,20 @@ object Routes {
     /** 我的：外观偏好、数据、设置、关于。 */
     const val PROFILE = "profile"
 
+    /**
+     * 模式首页：每个模式一个全新页面，`mode` 取 [HomeModeRoutes] 中的值。
+     *
+     * 用一条带参数的平行路由承载，新增模式只需补一个取值与一个分支，
+     * 不必再往 NavGraph 里追加一条 composable。
+     */
+    const val MODE = "mode/{mode}"
+    fun mode(mode: String): String = "mode/$mode"
+
+    /** 会话列表；`mode` 为空表示全部会话，否则按模式预筛选。 */
+    const val SESSIONS_LIST = "sessions_list?mode={mode}"
+    fun sessionsList(mode: String? = null): String =
+        if (mode.isNullOrBlank()) "sessions_list" else "sessions_list?mode=$mode"
+
     // 兼容旧入口（全局搜索、桌面快捷方式等仍可能指向原来的单页路由）
     const val CHARACTERS = "characters"
     const val WORLD_BOOKS = "world_books"
@@ -196,6 +210,18 @@ object Routes {
     /** 运行诊断中心 */
     const val DIAGNOSTIC_CENTER = "diagnostic_center"
     const val PROBLEM_DIAGNOSTIC = "problem_diagnostic"
+}
+
+/**
+ * 模式首页的 `mode` 取值。
+ *
+ * 新增一个平行模式页：这里补常量 → [com.nekobot.app.ui.screens.home.ModeHomeScreen] 补分支，
+ * 路由与返回栈行为都复用现有一套。
+ */
+object HomeModeRoutes {
+    const val CHARACTER = "character"
+    const val AGENT = "agent"
+    const val COMPANION = "companion"
 }
 
 data class BottomItem(

@@ -134,6 +134,7 @@ import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.NekoCheckMark
 import com.nekobot.app.ui.components.NekoCountBadge
+import com.nekobot.app.ui.components.NekoDetailTopBar
 import com.nekobot.app.ui.components.NekoDivider
 import com.nekobot.app.ui.components.NekoEmpty
 import com.nekobot.app.ui.components.NekoGroup
@@ -152,6 +153,7 @@ import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
 import com.nekobot.app.ui.theme.nekoAccentSoft
 import com.nekobot.app.ui.navigation.Routes
+import com.nekobot.app.ui.navigation.HomeModeRoutes
 import com.nekobot.app.ui.navigation.rememberBottomBarClearance
 import com.nekobot.app.ui.components.ErrorToast
 import com.nekobot.app.ui.components.NekoDialog
@@ -412,7 +414,16 @@ fun SessionsScreen(
     /** 双栏模式下聊天全屏状态变化（用于隐藏底部导航栏）。 */
     onTwoPaneChatMaximizedChange: (Boolean) -> Unit = {},
     /** 多选模式变化：用于隐藏底部导航栏，交给页面自己的批量操作栏。 */
-    onSelectionModeChange: (Boolean) -> Unit = {}
+    onSelectionModeChange: (Boolean) -> Unit = {},
+    /**
+     * true = 模式导航首页（欢迎 banner + 三张模式卡 + 快捷入口）；
+     * false = 完整会话列表（独立路由 `sessions_list`）。
+     */
+    asHome: Boolean = true,
+    /** 从首页点进来时的返回入口；为空表示这是一级页面。 */
+    onBack: (() -> Unit)? = null,
+    /** 独立会话列表按模式预筛选。 */
+    initialFilter: SessionFilter? = null
 ) {
     val viewModel: SessionsViewModel = viewModel()
     // 首页轻聊：独立轻量 VM，只负责绑定会话与发送，不接管完整会话页的后台事件
@@ -558,6 +569,11 @@ fun SessionsScreen(
         }
     }
 
+    // 独立会话列表按模式预筛选（从首页某张卡的「全部」进来）
+    LaunchedEffect(initialFilter) {
+        if (initialFilter != null) viewModel.setFilter(initialFilter)
+    }
+
     // 会话改名等资料保存后立即刷新列表，避免列表显示旧名称
     LaunchedEffect(Unit) {
         ServiceContainer.sessionChanged.collect {
@@ -629,14 +645,8 @@ fun SessionsScreen(
                     onCancel = exitSelection
                 )
             } else {
-            NekoPageTopBar(
-                title = if (dashboardVisible) dashboardTitle else titleText,
-                badge = if (dashboardVisible) {
-                    { NekoTag(stringResource(R.string.stats_dashboard_badge)) }
-                } else {
-                    { NekoCountBadge(matchingSessionCount) }
-                },
-                actions = {
+            // 同一套动作在「模式首页 / 独立会话列表 / 统计面板」之间复用
+            val listActions: @Composable RowScope.() -> Unit = {
                     if (dashboardVisible) {
                         NekoIconAction(Icons.Filled.Refresh, dashboardRefreshDesc) {
                             viewModel.loadAll()
@@ -742,7 +752,38 @@ fun SessionsScreen(
                         }
                     }
                 }
-            )
+            when {
+                // 模式首页：大标题 + 全部会话 + 搜索，把注意力交给下面三张卡
+                asHome && !dashboardVisible -> NekoPageTopBar(
+                    title = stringResource(R.string.home_mode_title),
+                    actions = {
+                        NekoIconAction(
+                            Icons.AutoMirrored.Outlined.Chat,
+                            stringResource(R.string.shell_your_chats)
+                        ) {
+                            onNavigate(Routes.sessionsList())
+                        }
+                        NekoIconAction(Icons.Filled.Search, stringResource(R.string.global_search_title)) {
+                            onNavigate(Routes.GLOBAL_SEARCH)
+                        }
+                    }
+                )
+                // 独立会话列表：补一个返回，其余动作与一级页面一致
+                onBack != null && !dashboardVisible -> NekoDetailTopBar(
+                    title = titleText,
+                    onBack = onBack,
+                    actions = listActions
+                )
+                else -> NekoPageTopBar(
+                    title = if (dashboardVisible) dashboardTitle else titleText,
+                    badge = if (dashboardVisible) {
+                        { NekoTag(stringResource(R.string.stats_dashboard_badge)) }
+                    } else {
+                        { NekoCountBadge(matchingSessionCount) }
+                    },
+                    actions = listActions
+                )
+            }
             }
         },
         bottomBar = {
@@ -855,7 +896,12 @@ fun SessionsScreen(
                     filter = filter,
                     homeRows = homeRows,
                     onOpenSession = handleOpenChat,
-                    onNewChat = { showCreateModeMenu = true },
+                    // 首页没有顶栏「+」菜单：新对话直接进角色聊天模式页
+                    onNewChat = if (asHome) {
+                        { onNavigate(Routes.mode(HomeModeRoutes.CHARACTER)) }
+                    } else {
+                        { showCreateModeMenu = true }
+                    },
                     onOpenFilter = { showFilterSheet = true },
                     onSelectFilter = viewModel::setFilter,
                     onCreateSessionForCharacter = { characterId ->
@@ -870,9 +916,36 @@ fun SessionsScreen(
                     },
                     onQuickChatGreetingChanged = { characterId, line ->
                         quickChatViewModel.updateOpeningLine(characterId, line)
-                    }
+                    },
+                    // 首页保留欢迎区；独立会话列表不展示 banner，直接从筛选开始
+                    showWelcome = asHome,
+                    // 首页导航形态只留欢迎卡：筛选与分段控件交给独立会话列表
+                    showListControls = !asHome
                 )
             }
+            if (asHome) {
+                // 首页整屏不滚动：欢迎区按内容高，模式卡吃掉剩余高度
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            start = NekoPageHorizontalPadding,
+                            end = NekoPageHorizontalPadding,
+                            top = 4.dp,
+                            bottom = bottomBarClearance + 8.dp
+                        )
+                ) {
+                    homeHeader()
+                    com.nekobot.app.ui.screens.home.HomeModeNavigation(
+                        rows = homeRows,
+                        characters = characters,
+                        onOpenSession = handleOpenChat,
+                        onNavigate = onNavigate,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ErrorToast(message = error, onShown = { viewModel.clearError() })
+                }
+            } else {
             Box(modifier = Modifier.fillMaxSize()) {
                 PullToRefreshBox(
                     isRefreshing = refreshing,
@@ -1043,6 +1116,7 @@ fun SessionsScreen(
 
                 // 错误提示统一走系统 Toast（屏幕下方横条）
                 ErrorToast(message = error, onShown = { viewModel.clearError() })
+            }
             }
 
             // 首页轻聊面板：浮在列表上方，展开后进入同一条会话

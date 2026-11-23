@@ -58,7 +58,7 @@
     <string name="language_changed">Language changed</string>
 
     <!-- ==================== Bottom navigation ==================== -->
-    <string name="nav_sessions">Chats</string>
+    <string name="nav_sessions">Home</string>
     <string name="nav_characters">Character</string>
     <string name="nav_world_books">Lorebook</string>
     <string name="nav_tokens">Usage</string>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 首頁：三張模式卡 + Agent / 角色 / 單角色三個模式頁。 -->
+<resources>
+    <string name="home_mode_title">首頁</string>
+    <string name="home_mode_swipe">左右滑動切換</string>
+    <string name="home_mode_all_sessions">全部</string>
+    <string name="home_mode_card_tap">點擊卡片進入</string>
+
+    <!-- 模式卡 -->
+    <string name="home_mode_card_action_all">全部</string>
+    <string name="home_mode_card_count">%1$d 個會話</string>
+    <string name="home_mode_card_character">角色聊天 · 酒館</string>
+    <string name="home_mode_card_character_empty">還沒有角色會話</string>
+    <string name="home_mode_card_character_hint">在酒館裡，和角色演下去</string>
+    <string name="home_mode_card_agent">Agent</string>
+    <string name="home_mode_card_agent_title">新的 Agent 會話</string>
+    <string name="home_mode_card_agent_hint">交代目標，讓它自己跑</string>
+    <string name="home_mode_card_agent_idle">等你的第一條指令</string>
+    <string name="home_mode_card_agent_running">%1$d 個會話在等你</string>
+    <string name="home_mode_card_agent_ready">工具已就緒</string>
+    <string name="home_mode_card_companion">單角色 · 關係</string>
+    <string name="home_mode_card_companion_empty">還沒有單角色會話</string>
+    <string name="home_mode_card_companion_hint">只聊一個人，記得住關係</string>
+
+    <!-- Agent 模式頁 -->
+    <string name="home_agent_bar_title">Agent</string>
+    <string name="home_agent_menu">會話與模式</string>
+    <string name="home_agent_title">新的 Agent 會話</string>
+    <string name="home_agent_hint">先說說要做什麼，發送後才會建立會話。</string>
+    <string name="home_agent_try">可以試試</string>
+    <string name="home_agent_try_1">整理這週的行程</string>
+    <string name="home_agent_try_2">幫我寫一段腳本</string>
+    <string name="home_agent_try_3">讀一下這份檔案，告訴我重點</string>
+    <string name="home_agent_console_placeholder">想說點什麼…</string>
+    <string name="home_agent_console_ready">會話還沒建立</string>
+    <string name="home_agent_console_creating">正在建立會話…</string>
+    <string name="home_agent_console_next">發送後進入會話頁</string>
+    <string name="home_agent_placeholder">交代目標，或直接提問…</string>
+    <string name="home_agent_send">發送</string>
+    <string name="home_agent_drawer_title">會話與模式</string>
+    <string name="home_agent_drawer_home">返回主頁</string>
+    <string name="home_agent_drawer_modes">切換模式</string>
+    <string name="home_agent_drawer_sessions">Agent 會話</string>
+    <string name="home_agent_drawer_empty">還沒有 Agent 會話</string>
+
+    <!-- 角色聊天模式頁 -->
+    <string name="home_character_title">角色聊天</string>
+    <string name="home_character_pick">選一個角色</string>
+    <string name="home_character_count">%1$d 個角色</string>
+    <string name="home_character_session_count">%1$d 段會話</string>
+    <string name="home_character_no_session">還沒有會話</string>
+    <string name="home_character_empty">內容庫裡還沒有角色</string>
+    <string name="home_character_empty_hint">先去內容庫建立一個角色</string>
+    <string name="home_character_sheet_desc">進入已有會話，或新建一段</string>
+    <string name="home_character_new">新建會話</string>
+    <string name="home_character_new_desc">從角色卡的開場白開始</string>
+    <string name="home_character_new_creating">正在建立…</string>
+    <string name="home_character_sessions">這個角色的會話</string>
+
+    <!-- 單角色模式頁 -->
+    <string name="home_companion_title">單角色</string>
+    <string name="home_companion_hint">一個角色、一條關係，記憶會一直累積。</string>
+    <string name="home_companion_new">新建單角色會話</string>
+    <string name="home_companion_empty">還沒有單角色會話</string>
+    <string name="home_companion_empty_hint">先選一個角色，開始一段長期關係</string>
+    <string name="home_companion_yours">你的單角色</string>
+</resources>

@@ -76,6 +76,9 @@ import com.nekobot.app.ui.screens.library.LibraryScreen
 import com.nekobot.app.ui.screens.search.GlobalSearchScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
 import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
+import com.nekobot.app.ui.screens.sessions.SessionFilter
+import com.nekobot.app.ui.screens.home.HomeMode
+import com.nekobot.app.ui.screens.home.ModeHomeScreen
 import com.nekobot.app.ui.screens.plot.StoryGraphScreen
 import com.nekobot.app.ui.screens.settings.ConfigTransferScreen
 import com.nekobot.app.ui.screens.settings.DataMaintenanceScreen
@@ -145,6 +148,13 @@ private val mainRoutes = setOf(
 
 // 底栏 Tab 的显示顺序，用于判断横向滑动方向。
 private val tabOrder = bottomRoutes
+
+/** 模式首页 → 会话列表的预筛选：各模式只看自己的那类会话。 */
+private fun homeModeSessionFilter(mode: HomeMode): SessionFilter = when (mode) {
+    HomeMode.CHARACTER -> SessionFilter.CHARACTER_SESSIONS
+    HomeMode.AGENT -> SessionFilter.AGENT_SESSIONS
+    HomeMode.COMPANION -> SessionFilter.AGENT_CHARACTERS
+}
 
 // 入场淡入刻意比滑动更长，滑动到位后透明度还留有一段"余韵"，
 // 这段缓慢收尾正是阻尼感的来源。离场淡出更短，让旧页面快速让位。
@@ -549,6 +559,65 @@ fun NekobotNavGraph() {
                             .background(veilColor)
                     )
                 }
+            }
+            /**
+             * 模式首页：`mode` 取 HomeModeRoutes 里的值。
+             *
+             * 一条带参数的平行路由承载所有模式页，新增模式只需补一个分支，
+             * 不必再往这里追加 composable。
+             */
+            composable(
+                route = Routes.MODE,
+                arguments = listOf(navArgument("mode") { type = NavType.StringType })
+            ) { entry ->
+                ModeHomeScreen(
+                    modeValue = entry.arguments?.getString("mode").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onHome = {
+                        navController.navigate(Routes.SESSIONS) {
+                            popUpTo(Routes.SESSIONS) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
+                    onOpenChat = { id -> navController.navigate(Routes.chat(id)) },
+                    onOpenNewChat = { id ->
+                        navController.navigate(Routes.chat(id)) {
+                            // 欢迎页完成使命：退掉它，聊天返回时直接回首页
+                            popUpTo(Routes.MODE) { inclusive = true }
+                        }
+                    },
+                    onOpenSessions = { mode ->
+                        navController.navigate(Routes.sessionsList(mode.routeValue))
+                    },
+                    onSwitchMode = { mode ->
+                        navController.navigate(Routes.mode(mode.routeValue)) {
+                            // 模式之间是平行页面：切模式替换当前页，不叠返回栈
+                            popUpTo(navController.currentDestination?.route ?: Routes.MODE) {
+                                inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                    },
+                    onCreateCompanion = { navController.navigate(Routes.COMPANION_CREATE) }
+                )
+            }
+            // 完整会话列表：首页「会话」入口与各模式卡「全部」都落在这里
+            composable(
+                route = Routes.SESSIONS_LIST,
+                arguments = listOf(
+                    navArgument("mode") { type = NavType.StringType; defaultValue = "" }
+                )
+            ) { entry ->
+                val modeValue = entry.arguments?.getString("mode").orEmpty()
+                SessionsScreen(
+                    asHome = false,
+                    onBack = { navController.popBackStack() },
+                    initialFilter = HomeMode.fromRoute(modeValue)?.let(::homeModeSessionFilter),
+                    onOpenChat = { id -> navController.navigate(Routes.chat(id)) },
+                    onOpenDetail = { id -> navController.navigate(Routes.sessionDetail(id)) },
+                    onOpenStoryGraph = { id -> navController.navigate(Routes.storyGraph(id)) },
+                    onNavigate = { route -> navController.navigate(route) }
+                )
             }
             composable(
                 route = Routes.SESSION_DETAIL,

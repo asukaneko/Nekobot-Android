@@ -58,7 +58,7 @@
     <string name="language_changed">언어가 변경되었어요</string>
 
     <!-- ==================== 하단 내비게이션 ==================== -->
-    <string name="nav_sessions">대화</string>
+    <string name="nav_sessions">홈</string>
     <string name="nav_characters">캐릭터</string>
     <string name="nav_world_books">세계관 설정</string>
     <string name="nav_tokens">사용량</string>

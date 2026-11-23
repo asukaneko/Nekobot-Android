@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home: three mode cards plus the Agent / character / single-character pages. -->
+<resources>
+    <string name="home_mode_title">Home</string>
+    <string name="home_mode_swipe">Swipe to switch</string>
+    <string name="home_mode_all_sessions">All</string>
+    <string name="home_mode_card_tap">Tap to open</string>
+
+    <!-- Mode cards -->
+    <string name="home_mode_card_action_all">All</string>
+    <string name="home_mode_card_count">%1$d sessions</string>
+    <string name="home_mode_card_character">Character chat · Tavern</string>
+    <string name="home_mode_card_character_empty">No character chats yet</string>
+    <string name="home_mode_card_character_hint">Step into the tavern and play a scene</string>
+    <string name="home_mode_card_agent">Agent</string>
+    <string name="home_mode_card_agent_title">New Agent session</string>
+    <string name="home_mode_card_agent_hint">Give it a goal and let it run</string>
+    <string name="home_mode_card_agent_idle">Waiting for your first instruction</string>
+    <string name="home_mode_card_agent_running">%1$d sessions waiting</string>
+    <string name="home_mode_card_agent_ready">Tools ready</string>
+    <string name="home_mode_card_companion">Single character · Bond</string>
+    <string name="home_mode_card_companion_empty">No single-character chats yet</string>
+    <string name="home_mode_card_companion_hint">One character, one bond, remembered</string>
+
+    <!-- Agent page -->
+    <string name="home_agent_bar_title">Agent</string>
+    <string name="home_agent_menu">Sessions and modes</string>
+    <string name="home_agent_title">New Agent session</string>
+    <string name="home_agent_hint">Say what you need first. The session is created when you send.</string>
+    <string name="home_agent_try">Try one</string>
+    <string name="home_agent_try_1">Plan my week</string>
+    <string name="home_agent_try_2">Write me a script</string>
+    <string name="home_agent_try_3">Summarize this file for me</string>
+    <string name="home_agent_console_placeholder">Say something…</string>
+    <string name="home_agent_console_ready">Session not created yet</string>
+    <string name="home_agent_console_creating">Creating session…</string>
+    <string name="home_agent_console_next">Sending opens the chat</string>
+    <string name="home_agent_placeholder">Give a goal or ask a question…</string>
+    <string name="home_agent_send">Send</string>
+    <string name="home_agent_drawer_title">Sessions and modes</string>
+    <string name="home_agent_drawer_home">Back to home</string>
+    <string name="home_agent_drawer_modes">Switch mode</string>
+    <string name="home_agent_drawer_sessions">Agent sessions</string>
+    <string name="home_agent_drawer_empty">No Agent sessions yet</string>
+
+    <!-- Character mode page -->
+    <string name="home_character_title">Character chat</string>
+    <string name="home_character_pick">Pick a character</string>
+    <string name="home_character_count">%1$d characters</string>
+    <string name="home_character_session_count">%1$d chats</string>
+    <string name="home_character_no_session">No chats yet</string>
+    <string name="home_character_empty">No characters in the library</string>
+    <string name="home_character_empty_hint">Create a character in the library first</string>
+    <string name="home_character_sheet_desc">Open an existing chat or start a new one</string>
+    <string name="home_character_new">New chat</string>
+    <string name="home_character_new_desc">Starts from the character greeting</string>
+    <string name="home_character_new_creating">Creating…</string>
+    <string name="home_character_sessions">Chats with this character</string>
+
+    <!-- Single character mode page -->
+    <string name="home_companion_title">Single character</string>
+    <string name="home_companion_hint">One character, one bond. Memory keeps growing.</string>
+    <string name="home_companion_new">New single-character chat</string>
+    <string name="home_companion_empty">No single-character chats yet</string>
+    <string name="home_companion_empty_hint">Pick a character to start a long-term bond</string>
+    <string name="home_companion_yours">Your single characters</string>
+</resources>

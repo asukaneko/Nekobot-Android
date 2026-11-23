@@ -828,6 +828,12 @@ fun ChatScreen(
         }
         viewModel.init(sessionId)
     }
+    // 新建会话页带过来的第一句话：等首屏数据就绪再发，避免被 init 的清空重置刷掉
+    LaunchedEffect(sessionId, initialDataReady) {
+        if (!initialDataReady) return@LaunchedEffect
+        val pending = ChatPendingPrompt.take(sessionId) ?: return@LaunchedEffect
+        viewModel.sendMessage(pending, allowDelay = false)
+    }
     // 角色卡立绘/头像变更后刷新当前会话，使顶栏头像和消息头像跟随更新
     LaunchedEffect(Unit) {
         ServiceContainer.characterChanged.collect {

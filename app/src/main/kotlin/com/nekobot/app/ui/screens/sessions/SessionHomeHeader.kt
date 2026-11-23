@@ -134,7 +134,11 @@ fun SessionHomeHeaderContent(
     /** 打开首页轻聊面板；服务器模式不传，入口只保留「继续会话」。 */
     onQuickChat: ((HomeQuickChatRequest) -> Unit)? = null,
     /** 问候语更新时同步给轻聊面板（角色 ID + 当前问候）。 */
-    onQuickChatGreetingChanged: (String, String) -> Unit = { _, _ -> }
+    onQuickChatGreetingChanged: (String, String) -> Unit = { _, _ -> },
+    /** false = 不展示欢迎区（独立会话列表页）。 */
+    showWelcome: Boolean = true,
+    /** false = 首页导航形态：只保留欢迎卡，不要筛选胶囊与分段控件。 */
+    showListControls: Boolean = true
 ) {
     val prefs = ServiceContainer.prefs
     // prefs 不是可观察状态：这里另存一份局部状态，选择后 banner 立刻刷新
@@ -224,6 +228,7 @@ fun SessionHomeHeaderContent(
     val hasTarget = shownRow != null || scenePinned
 
     Column(modifier.fillMaxWidth()) {
+        if (showWelcome) {
         HomeSceneCard(
             characters = characters,
             character = sceneCharacter,
@@ -347,9 +352,14 @@ fun SessionHomeHeaderContent(
                 )
             }
         }
-        // 卡片与列表之间先留一段空白再落线，卡片不会像被压在分隔线上
-        Spacer(Modifier.height(14.dp))
-        NekoDivider()
+        }
+        if (showListControls) {
+        // 欢迎卡与列表之间先留一段空白再落线，卡片不会像被压在分隔线上；
+        // 不展示欢迎区时（独立会话列表）直接从分段筛选开始，不要这条线
+        if (showWelcome) {
+            Spacer(Modifier.height(14.dp))
+            NekoDivider()
+        }
         // 分段控件覆盖三类会话；其它筛选（收藏 / 归档 / 频道 / 按角色）由「筛选」抽屉承担。
         // 右侧胶囊：左段是归档快捷开关，右段打开筛选抽屉，抽屉里选中非分段项时直接显示该筛选项。
         val filterLabel = if (filter in sessionSegmentFilters) {
@@ -461,6 +471,7 @@ fun SessionHomeHeaderContent(
             onSelect = { index -> onSelectFilter(sessionSegmentFilters[index]) }
         )
         Spacer(Modifier.size(12.dp))
+        }
     }
 
     if (showSourceSheet) {

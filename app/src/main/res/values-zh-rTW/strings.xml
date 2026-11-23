@@ -61,7 +61,7 @@
     <string name="language_changed">語言已切換</string>
 
     <!-- ==================== 底部导航 ==================== -->
-    <string name="nav_sessions">會話</string>
+    <string name="nav_sessions">首頁</string>
     <string name="nav_characters">角色</string>
     <string name="nav_world_books">世界書</string>
     <string name="nav_tokens">用量</string>

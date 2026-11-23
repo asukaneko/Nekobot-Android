@@ -67,7 +67,7 @@ class SessionRenameScreenTest {
                 LocalActivityResultRegistryOwner provides compose.activity, LocalOnBackPressedDispatcherOwner provides compose.activity) {
                 NekobotTheme(darkTheme = false) {
                     if (page.value == "detail") SessionDetailScreen(id, onBack = { page.value = "list" })
-                    else SessionsScreen(onOpenChat = {})
+                    else SessionsScreen(onOpenChat = {}, asHome = false)
                 }
             }
         }

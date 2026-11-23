@@ -58,7 +58,7 @@
     <string name="language_changed">言語を変更しました</string>
 
     <!-- ==================== ボトムナビゲーション ==================== -->
-    <string name="nav_sessions">チャット</string>
+    <string name="nav_sessions">ホーム</string>
     <string name="nav_characters">キャラ</string>
     <string name="nav_world_books">世界観帳</string>
     <string name="nav_tokens">使用量</string>
