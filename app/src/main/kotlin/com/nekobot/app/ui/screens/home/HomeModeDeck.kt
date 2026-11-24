@@ -3,7 +3,7 @@ package com.nekobot.app.ui.screens.home
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,12 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -52,6 +47,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -574,19 +570,14 @@ private fun SingleChatCard(card: ModeCardUi, onEnter: () -> Unit, modifier: Modi
         modifier.clip(shape).background(Color(0xFFF4EEE4)).border(1.dp, edge, shape)
             .padding(if (compact) 12.dp else 18.dp)
     ) {
-        Canvas(Modifier.align(Alignment.TopEnd).fillMaxWidth(.78f).fillMaxHeight(.47f)) {
-            val ring = Color(0xFFBBAB92)
-            val stroke = Stroke(1.dp.toPx())
-            rotate(-22f) {
-                drawOval(ring, Offset(size.width * .08f, size.height * .23f),
-                    Size(size.width * .86f, size.height * .52f), style = stroke)
-                drawOval(ring, Offset(size.width * .21f, size.height * .33f),
-                    Size(size.width * .75f, size.height * .44f), style = stroke)
-            }
-        }
         Column(Modifier.fillMaxSize()) {
             Text("03 ${card.badge}", color = ink, style = nekoCaptionStyle())
-            Spacer(Modifier.weight(1f))
+            Image(
+                painter = painterResource(R.drawable.lianxu_card_companion_mark),
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentScale = ContentScale.Fit
+            )
             Text(card.title, style = nekoRowTitleStyle().copy(fontSize = nekoTextSize(if (compact) 22f else 25f)),
                 fontFamily = FontFamily.Serif,
                 fontWeight = FontWeight.SemiBold, color = ink)

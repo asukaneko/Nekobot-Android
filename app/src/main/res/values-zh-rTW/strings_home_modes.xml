@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">等你的第一條指令</string>
     <string name="home_mode_card_agent_running">%1$d 個會話在等你</string>
     <string name="home_mode_card_agent_ready">工具已就緒</string>
-    <string name="home_mode_card_companion">單會話</string>
+    <string name="home_mode_card_companion">日常陪伴</string>
     <string name="home_mode_card_enter">進入 →</string>
-    <string name="home_mode_card_companion_hint">一對一長期相處，記住關係</string>
+    <string name="home_mode_card_companion_hint">不演劇本，只和她認真過日子</string>
 
     <!-- Agent 模式頁 -->
     <string name="home_agent_bar_title">Agent</string>
@@ -64,6 +64,6 @@
     <string name="home_companion_empty">還沒有單角色會話</string>
     <string name="home_companion_empty_hint">先選一個角色，開始一段長期關係</string>
     <string name="home_companion_yours">你的單角色</string>
-    <string name="character_delete_single_warning">刪除這個角色也會永久刪除「單會話」中該角色的聊天、記憶及相處記錄，無法復原。</string>
+    <string name="character_delete_single_warning">刪除這個角色也會永久刪除「日常陪伴」中該角色的聊天、記憶及相處記錄，無法復原。</string>
     <string name="character_link_check_failed">無法確認角色關聯，請重新開啟後再試。</string>
 </resources>

@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">Waiting for your first instruction</string>
     <string name="home_mode_card_agent_running">%1$d sessions waiting</string>
     <string name="home_mode_card_agent_ready">Tools ready</string>
-    <string name="home_mode_card_companion">One-on-one chat</string>
+    <string name="home_mode_card_companion">Daily Companion</string>
     <string name="home_mode_card_enter">Enter →</string>
-    <string name="home_mode_card_companion_hint">An ongoing conversation that remembers your bond</string>
+    <string name="home_mode_card_companion_hint">No script. Just you and her sharing everyday life.</string>
 
     <!-- Agent page -->
     <string name="home_agent_bar_title">Agent</string>
@@ -64,6 +64,6 @@
     <string name="home_companion_empty">No single-character chats yet</string>
     <string name="home_companion_empty_hint">Pick a character to start a long-term bond</string>
     <string name="home_companion_yours">Your single characters</string>
-    <string name="character_delete_single_warning">This also permanently deletes this character’s chats, memories and shared history in One-on-one chat. This cannot be undone.</string>
+    <string name="character_delete_single_warning">This also permanently deletes this character’s chats, memories and shared history in Daily Companion. This cannot be undone.</string>
     <string name="character_link_check_failed">Could not verify the linked character. Reopen and try again.</string>
 </resources>

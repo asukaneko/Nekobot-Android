@@ -54,7 +54,7 @@ private val SettingsLine:androidx.compose.ui.graphics.Color @Composable get()=Li
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(UiSpace.radius)).background(Paper)) {
             DirectoryRow("info","更新说明","随安装包保存，可随时回看","settings-updates",showChevron=false){vm.open("settings-updates")}
             HorizontalDivider(Modifier.padding(start=68.dp,end=18.dp),color=SettingsLine)
-            DirectoryRow("info","关于单会话","作者、版本、许可与致谢","settings-info",showChevron=false){vm.open("settings-info")}
+            DirectoryRow("info","关于日常陪伴","作者、版本、许可与致谢","settings-info",showChevron=false){vm.open("settings-info")}
         }
     }
 }
@@ -81,7 +81,7 @@ private val SettingsLine:androidx.compose.ui.graphics.Color @Composable get()=Li
     val context=LocalContext.current
     val build=remember(context){runCatching{InstalledBuild.read(context)}.getOrNull()}
     val version=build?.let{"${it.versionName}（${it.versionCode}）"}?:"暂时无法读取"
-    SettingsPage("关于单会话",onBack) {
+    SettingsPage("关于日常陪伴",onBack) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Paper).testTag("settings-info-page")) {
             InformationRow("info","作者",AppInformation.AUTHOR)
             InformationRow("storage","本地数据","角色、消息与配置保存在本机。API 密钥加密保存；全部导出时可明确选择包含密钥，包含时需要备份密码。请妥善保管备份和密码。卸载应用会清除本地数据。")

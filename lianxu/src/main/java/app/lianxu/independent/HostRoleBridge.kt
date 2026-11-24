@@ -189,7 +189,7 @@ class HostRoleSync internal constructor(private val context: Context, private va
         mutex.withLock {
             val m=maps().firstOrNull { it.link.scope==profile && it.link.host==id }
             check(m?.link == ack) {
-                if (ack == null) "该角色已关联单会话，请前往内容库手动确认删除聊天与记忆"
+                if (ack == null) "该角色已关联日常陪伴，请前往内容库手动确认删除聊天与记忆"
                 else "角色关联已变化，请前往内容库重新确认删除"
             }
             if(m==null) unlinked() else {

@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">첫 지시를 기다리는 중</string>
     <string name="home_mode_card_agent_running">세션 %1$d개 대기 중</string>
     <string name="home_mode_card_agent_ready">도구 준비 완료</string>
-    <string name="home_mode_card_companion">일대일 대화</string>
+    <string name="home_mode_card_companion">일상 동반</string>
     <string name="home_mode_card_enter">입장 →</string>
-    <string name="home_mode_card_companion_hint">오래 나눈 대화와 둘 사이의 관계를 기억해요</string>
+    <string name="home_mode_card_companion_hint">대본 없이, 그녀와 하루하루를 소중하게 보내요</string>
 
     <!-- Agent 페이지 -->
     <string name="home_agent_bar_title">Agent</string>
@@ -64,6 +64,6 @@
     <string name="home_companion_empty">단일 캐릭터 대화가 아직 없습니다</string>
     <string name="home_companion_empty_hint">캐릭터를 골라 장기 관계 시작</string>
     <string name="home_companion_yours">내 단일 캐릭터</string>
-    <string name="character_delete_single_warning">일대일 대화의 채팅 기록, 기억 및 함께한 기록도 영구 삭제됩니다. 되돌릴 수 없습니다.</string>
+    <string name="character_delete_single_warning">일상 동반의 채팅 기록, 기억 및 함께한 기록도 영구 삭제됩니다. 되돌릴 수 없습니다.</string>
     <string name="character_link_check_failed">캐릭터 연결을 확인할 수 없습니다. 다시 열어 주세요.</string>
 </resources>
