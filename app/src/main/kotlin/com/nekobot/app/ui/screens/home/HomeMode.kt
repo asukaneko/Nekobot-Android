@@ -35,8 +35,6 @@ data class ModeCardUi(
     val coverUrl: String? = null,
     /** 没有立绘时封面里的首字。 */
     val coverInitial: String? = null,
-    /** 单角色卡封面里的首字。 */
-    val companionInitial: String? = null,
     /** Agent 卡的终端两行：一行状态、一行提示。 */
     val agentLines: List<String> = emptyList()
 )

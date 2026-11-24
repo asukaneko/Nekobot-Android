@@ -21,8 +21,7 @@ fun ModeHomeScreen(
     /** 新建会话后进入聊天：模式欢迎页从返回栈里退掉，返回时直接回到首页。 */
     onOpenNewChat: (String) -> Unit,
     onOpenSessions: (HomeMode) -> Unit,
-    onSwitchMode: (HomeMode) -> Unit,
-    onCreateCompanion: () -> Unit
+    onSwitchMode: (HomeMode) -> Unit
 ) {
     val mode = HomeMode.fromRoute(modeValue)
     if (mode == null) {
@@ -68,12 +67,10 @@ fun ModeHomeScreen(
 
         HomeMode.COMPANION -> CompanionModeScreen(
             sessions = rows.filter { it.modeLabel == HomeMode.COMPANION.modeLabel },
-            canCreate = com.nekobot.app.ServiceContainer.prefs.isLocalMode,
             error = error,
             onErrorShown = viewModel::clearError,
             onBack = onBack,
-            onOpenChat = onOpenChat,
-            onCreateCompanion = onCreateCompanion
+            onOpenChat = onOpenChat
         )
     }
 }

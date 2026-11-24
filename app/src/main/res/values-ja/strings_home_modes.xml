@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">最初の指示を待っています</string>
     <string name="home_mode_card_agent_running">%1$d 件のセッションが待機中</string>
     <string name="home_mode_card_agent_ready">ツールの準備完了</string>
-    <string name="home_mode_card_companion">単一キャラ · 関係</string>
-    <string name="home_mode_card_companion_empty">単一キャラの会話はまだありません</string>
-    <string name="home_mode_card_companion_hint">一人だけと話す、関係を覚えている</string>
+    <string name="home_mode_card_companion">個別チャット</string>
+    <string name="home_mode_card_enter">入る →</string>
+    <string name="home_mode_card_companion_hint">一対一で長く話せて、関係を覚えてくれる</string>
 
     <!-- Agent ページ -->
     <string name="home_agent_bar_title">Agent</string>

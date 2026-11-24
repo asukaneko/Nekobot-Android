@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -27,24 +26,21 @@ import com.nekobot.app.R
 import com.nekobot.app.ui.components.ErrorToast
 import com.nekobot.app.ui.components.NekoDetailTopBar
 import com.nekobot.app.ui.components.NekoEmpty
-import com.nekobot.app.ui.components.NekoPrimaryAction
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoSectionLabelStyle
 import com.nekobot.app.ui.screens.sessions.SessionListRow
 
 /**
- * 单角色模式首页：只有一条关系的会话，外加新建入口。
+ * 单角色模式首页：展示已有会话。
  */
 @Composable
 internal fun CompanionModeScreen(
     sessions: List<SessionListRow>,
     /** 单角色会话只在本地模式可新建；服务器模式隐藏入口。 */
-    canCreate: Boolean,
     error: String?,
     onErrorShown: () -> Unit,
     onBack: () -> Unit,
-    onOpenChat: (String) -> Unit,
-    onCreateCompanion: () -> Unit
+    onOpenChat: (String) -> Unit
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -72,15 +68,6 @@ internal fun CompanionModeScreen(
                             style = nekoCaptionStyle(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(12.dp))
-                        if (canCreate) {
-                            NekoPrimaryAction(
-                                text = stringResource(R.string.home_companion_new),
-                                leadingIcon = Icons.Filled.Add,
-                                trailingChevron = false,
-                                onClick = onCreateCompanion
-                            )
-                        }
                         Spacer(Modifier.height(18.dp))
                     }
                 }
@@ -88,7 +75,6 @@ internal fun CompanionModeScreen(
                     item(key = "empty") {
                         NekoEmpty(
                             title = stringResource(R.string.home_companion_empty),
-                            hint = stringResource(R.string.home_companion_empty_hint),
                             icon = Icons.Outlined.PersonOutline
                         )
                     }

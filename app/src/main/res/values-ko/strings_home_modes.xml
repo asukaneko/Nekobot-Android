@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">첫 지시를 기다리는 중</string>
     <string name="home_mode_card_agent_running">세션 %1$d개 대기 중</string>
     <string name="home_mode_card_agent_ready">도구 준비 완료</string>
-    <string name="home_mode_card_companion">단일 캐릭터 · 관계</string>
-    <string name="home_mode_card_companion_empty">단일 캐릭터 대화가 아직 없습니다</string>
-    <string name="home_mode_card_companion_hint">한 사람만, 관계를 기억합니다</string>
+    <string name="home_mode_card_companion">일대일 대화</string>
+    <string name="home_mode_card_enter">입장 →</string>
+    <string name="home_mode_card_companion_hint">오래 나눈 대화와 둘 사이의 관계를 기억해요</string>
 
     <!-- Agent 페이지 -->
     <string name="home_agent_bar_title">Agent</string>

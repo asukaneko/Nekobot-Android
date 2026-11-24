@@ -6,25 +6,26 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import app.lianxu.independent.LianxuActivity
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.ui.screens.sessions.SessionListRow
-import com.nekobot.app.ui.screens.sessions.SessionModeLabel
 
 /**
  * 首页导航区：三张模式卡。
  *
- * 卡身点击进入该模式的页面；右下角胶囊进入该模式的全部会话列表。
+ * 单会话卡和胶囊均进入独立界面，其余胶囊打开对应会话列表。
  * 高度由外层按剩余空间给出，卡片据此缩放，保证首页整屏不滚动。
  */
 @Composable
 fun HomeModeNavigation(
     rows: List<SessionListRow>,
     characters: List<CharacterPreset>,
-    onOpenSession: (String) -> Unit,
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val cards = homeModeCards(rows, characters)
     var activeIndex by rememberSaveable { mutableIntStateOf(0) }
 
@@ -34,11 +35,7 @@ fun HomeModeNavigation(
         onActiveIndexChange = { activeIndex = it },
         onOpenMode = { mode ->
             when (mode) {
-                // 单角色只有一个会话：有就直接进，没有才去模式页新建
-                HomeMode.COMPANION -> {
-                    val latest = rows.firstOrNull { it.modeLabel == SessionModeLabel.COMPANION }?.id
-                    if (latest != null) onOpenSession(latest) else onNavigate(Routes.mode(mode.routeValue))
-                }
+                HomeMode.COMPANION -> context.startActivity(LianxuActivity.createIntent(context))
                 else -> onNavigate(Routes.mode(mode.routeValue))
             }
         },

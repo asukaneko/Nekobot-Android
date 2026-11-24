@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">等你的第一条指令</string>
     <string name="home_mode_card_agent_running">%1$d 个会话在等你</string>
     <string name="home_mode_card_agent_ready">工具已就绪</string>
-    <string name="home_mode_card_companion">单角色 · 关系</string>
-    <string name="home_mode_card_companion_empty">还没有单角色会话</string>
-    <string name="home_mode_card_companion_hint">只聊一个人，记得住关系</string>
+    <string name="home_mode_card_companion">单会话</string>
+    <string name="home_mode_card_enter">进入 →</string>
+    <string name="home_mode_card_companion_hint">一对一长期相处，记住关系</string>
 
     <!-- Agent 模式页 -->
     <string name="home_agent_bar_title">Agent</string>

@@ -34,4 +34,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Nekobot"
-include(":app")
+include(":app", ":lianxu")

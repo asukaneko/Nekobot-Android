@@ -20,7 +20,6 @@ fun homeModeCards(
 ): List<ModeCardUi> {
     val characterRow = rows.firstOrNull { it.modeLabel == SessionModeLabel.CHARACTER }
     val agentRows = rows.filter { it.modeLabel == SessionModeLabel.AGENT }
-    val companionRow = rows.firstOrNull { it.modeLabel == SessionModeLabel.COMPANION }
     val listAction = stringResource(R.string.home_mode_card_action_all)
     val latestCharacter = characterRow?.characterId
         ?.let { id -> characters.firstOrNull { it.id == id } }
@@ -70,13 +69,10 @@ fun homeModeCards(
             mode = HomeMode.COMPANION,
             order = 3,
             badge = stringResource(R.string.home_mode_card_companion),
-            title = companionRow?.listTitle ?: stringResource(R.string.home_mode_card_companion_empty),
-            subtitle = companionRow?.lastMessage ?: stringResource(R.string.home_mode_card_companion_hint),
-            meta = companionRow?.listDate.orEmpty(),
-            action = listAction,
-            companionInitial = companionRow?.listTitle
-                ?.takeIf { it.isNotBlank() }
-                ?.let { it.substring(0, it.offsetByCodePoints(0, 1)) }
+            title = stringResource(R.string.home_mode_card_companion),
+            subtitle = stringResource(R.string.home_mode_card_companion_hint),
+            meta = null,
+            action = stringResource(R.string.home_mode_card_enter)
         )
     )
 }

@@ -103,6 +103,7 @@ ksp {
 }
 
 dependencies {
+    implementation(project(":lianxu"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

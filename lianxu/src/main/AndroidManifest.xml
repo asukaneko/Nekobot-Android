@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent><action android:name="android.settings.CHANNEL_NOTIFICATION_SETTINGS" /></intent>
+        <intent><action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" /></intent>
+        <intent><action android:name="android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS" /></intent>
+    </queries>
+    <application>
+        <activity
+            android:name=".LianxuActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Lianxu"
+            android:windowSoftInputMode="adjustResize" />
+        <service
+            android:name=".ChatRequestService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+    </application>
+</manifest>

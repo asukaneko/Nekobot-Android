@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">Waiting for your first instruction</string>
     <string name="home_mode_card_agent_running">%1$d sessions waiting</string>
     <string name="home_mode_card_agent_ready">Tools ready</string>
-    <string name="home_mode_card_companion">Single character · Bond</string>
-    <string name="home_mode_card_companion_empty">No single-character chats yet</string>
-    <string name="home_mode_card_companion_hint">One character, one bond, remembered</string>
+    <string name="home_mode_card_companion">One-on-one chat</string>
+    <string name="home_mode_card_enter">Enter →</string>
+    <string name="home_mode_card_companion_hint">An ongoing conversation that remembers your bond</string>
 
     <!-- Agent page -->
     <string name="home_agent_bar_title">Agent</string>

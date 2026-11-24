@@ -5,6 +5,6 @@
     <string name="agent_character_details_body">在同一個視窗持續聊天，使用獨立的 Agent 角色記憶。</string>
     <string name="agent_character_memories">開啟 Agent 角色記憶</string>
     <string name="agent_legacy_title">舊對話相容</string>
-    <string name="agent_legacy_body">此對話保留原有設定和資料。新的角色陪伴功能已集中到 Agent 角色，可在建立頁選擇此角色並轉換舊對話。</string>
+    <string name="agent_legacy_body">此對話保留原有設定和資料。</string>
     <string name="agent_character_entry">前往 Agent 角色</string>
 </resources>

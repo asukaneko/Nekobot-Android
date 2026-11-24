@@ -815,8 +815,7 @@ fun SessionDetailScreen(
     sessionId: String,
     onBack: () -> Unit,
     onDeleted: () -> Unit = onBack,
-    onOpenExperienceArchive: (String) -> Unit = {},
-    onCreateAgentCharacter: () -> Unit = {}
+    onOpenExperienceArchive: (String) -> Unit = {}
 ) {
     val textResources = LocalResources.current
     val vm: SessionDetailViewModel = viewModel(key = "session_detail_$sessionId")
@@ -1297,7 +1296,7 @@ fun SessionDetailScreen(
                                 Text(textResources.getString(R.string.single_role_chat_with_this_character_in_one_fixed_conversation_memories_apply),
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 AgentModeDetailsCard(companion = true, legacy = false,
-                                    onOpenMemories = { onOpenExperienceArchive(sessionId) }, onCreateAgentCharacter = onCreateAgentCharacter)
+                                    onOpenMemories = { onOpenExperienceArchive(sessionId) })
                             }
 
                             // === 2. 编辑基本信息 ===
@@ -1522,8 +1521,7 @@ fun SessionDetailScreen(
                                 legacy = com.nekobot.app.ServiceContainer.prefs.isLocalMode &&
                                     s.sessionMode.equals("agent", ignoreCase = true) &&
                                     (inheritCharacter || longConversationEnabled),
-                                onOpenMemories = { onOpenExperienceArchive(sessionId) },
-                                onCreateAgentCharacter = onCreateAgentCharacter
+                                onOpenMemories = { onOpenExperienceArchive(sessionId) }
                             )
 
                         }
