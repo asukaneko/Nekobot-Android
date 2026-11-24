@@ -44,7 +44,10 @@ private data class RoleBaseline(val link: RoleLink, val hostHash:String="", val 
     val hostAvatar:String="", val localAvatar:String="", val deleting:Boolean=false,
     val localNameHash: String? = "", val localBioHash: String? = "",
     val localDefinitionHash: String? = "", val localOpeningHash: String? = "",
-    val restoredFrom: Set<String>? = null) {
+    val restoredFrom: Set<String>? = null, val detached: Boolean = false) {
+    val key: String get() = if (detached) ROLE_MAP + "detached:" + link.friend
+        else ROLE_MAP + stableDigest(link.scope) + ":" + link.host
+
     fun edits(friend: RoleBasics, host: RoleBasics?): RoleTextEdits {
         val projection = host?.local()
         fun changed(value: String, hash: String?, legacy: String?) =
@@ -56,13 +59,14 @@ private data class RoleBaseline(val link: RoleLink, val hostHash:String="", val 
     }
 }
 
-internal fun remapRestoredRole(value: String, restored: Map<String, String>): String? {
+internal fun remapRestoredRole(value: String, restored: Map<String, String>): Pair<String, String>? {
     val gson = Gson()
     val baseline = gson.fromJson(value, RoleBaseline::class.java)
-    if (baseline.deleting) return value
+    if (baseline.deleting) return baseline.key to value
     val ids = baseline.restoredFrom.orEmpty() + baseline.link.friend
     val target = restored[baseline.link.friend] ?: ids.firstNotNullOfOrNull { restored[it] } ?: return null
-    return gson.toJson(baseline.copy(link = baseline.link.copy(friend = target), restoredFrom = ids))
+    val remapped = baseline.copy(link = baseline.link.copy(friend = target), restoredFrom = ids)
+    return remapped.key to gson.toJson(remapped)
 }
 internal class ForeignRoleProfile : IllegalStateException("请切回角色所属的本地资料库再删除")
 
@@ -79,14 +83,13 @@ class HostRoleSync internal constructor(private val context: Context, private va
     private val mutex = Mutex()
     internal suspend fun <T> duringRestore(restore: suspend () -> T): T = mutex.withLock { restore() }
     private val gson = Gson()
-    private fun scopePrefix(scope: String) = ROLE_MAP + stableDigest(scope) + ":"
-    private fun key(link:RoleLink) = scopePrefix(link.scope) + link.host
+
     private fun maps() = store.readableDatabase.rawQuery("SELECT value FROM preferences WHERE key GLOB ?",arrayOf(ROLE_MAP+"*")).use { c ->
         buildList { while(c.moveToNext()) add(gson.fromJson(c.getString(0), RoleBaseline::class.java)) }
     }
     private fun persist(m:RoleBaseline) = store.writableDatabase.execSQL(
-        "INSERT OR REPLACE INTO preferences(key,value) VALUES(?,?)",arrayOf(key(m.link),gson.toJson(m)))
-    private fun forget(m:RoleBaseline) = store.writableDatabase.delete("preferences","key=?",arrayOf(key(m.link)))
+        "INSERT OR REPLACE INTO preferences(key,value) VALUES(?,?)",arrayOf(m.key,gson.toJson(m)))
+    private fun forget(m:RoleBaseline) = store.writableDatabase.delete("preferences","key=?",arrayOf(m.key))
     private fun local(db:SQLiteDatabase,id:String): RoleBasics? {
         val role=db.rawQuery("SELECT name,bio FROM friends WHERE id=?",arrayOf(id)).use { if(it.moveToFirst()) it.getString(0) to it.getString(1) else null } ?: return null
         val prompts=prompts(db,id)
@@ -150,10 +153,15 @@ class HostRoleSync internal constructor(private val context: Context, private va
             if (expectedProfile != null && expectedProfile != scope.name) return@withLock
             val unlinkedHosts = scope.ids().toMutableSet()
             val unlinkedFriends = store.friends().mapTo(mutableSetOf()) { it.id }
-            for (baseline in maps()) {
+            val baselines = maps()
+            val foreign = baselines.filter { !it.detached && it.link.scope != scope.name }.groupBy { it.link.scope }
+            for ((name, links) in foreign) {
+                if (!bridge.profileExists(name)) detach(links)
+            }
+            for (baseline in baselines) {
                 val link = baseline.link
                 unlinkedFriends.remove(link.friend)
-                if (link.scope != scope.name) continue
+                if (baseline.detached || link.scope != scope.name) continue
                 unlinkedHosts.remove(link.host)
                 if (baseline.deleting) completeDelete(scope, baseline, null)
                 else reconcile(scope, baseline, hostActionId == link.host)
@@ -209,20 +217,32 @@ class HostRoleSync internal constructor(private val context: Context, private va
         }
     }
     suspend fun hostLink(profile:String,id:String):RoleLink? = withContext(Dispatchers.IO) {
-        mutex.withLock { maps().firstOrNull { it.link.scope==profile && it.link.host==id }?.link }
+        mutex.withLock { maps().firstOrNull { !it.detached && it.link.scope==profile && it.link.host==id }?.link }
     }
     suspend fun detachProfile(scopeName: String) {
         withContext(Dispatchers.IO) {
-            mutex.withLock {
-                store.writableDatabase.delete("preferences", "key GLOB ?", arrayOf(scopePrefix(scopeName) + "*"))
-            }
+            mutex.withLock { detach(maps().filter { it.link.scope == scopeName && !it.detached }) }
         }
+    }
+
+    private fun detach(links: List<RoleBaseline>) {
+        val db = store.writableDatabase
+        db.beginTransaction()
+        try {
+            for (baseline in links) {
+                forget(baseline)
+                if (!baseline.deleting) persist(baseline.copy(detached = true))
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 
     internal suspend fun friendLink(id:String):RoleLink? = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val link = maps().firstOrNull { it.link.friend == id }?.link
-            if (link != null && bridge.current()?.name != link.scope) {
+            val baseline = maps().firstOrNull { it.link.friend == id } ?: return@withLock null
+            if (baseline.detached) return@withLock null
+            val link = baseline.link
+            if (bridge.current()?.name != link.scope) {
                 if (!bridge.profileExists(link.scope)) return@withLock null
                 throw ForeignRoleProfile()
             }
@@ -231,7 +251,7 @@ class HostRoleSync internal constructor(private val context: Context, private va
     }
     suspend fun deleteHost(profile:String,id:String,ack:RoleLink?,unlinked:suspend ()->Unit) = withContext(Dispatchers.IO+NonCancellable) {
         mutex.withLock {
-            val m=maps().firstOrNull { it.link.scope==profile && it.link.host==id }
+            val m=maps().firstOrNull { !it.detached && it.link.scope==profile && it.link.host==id }
             check(m?.link == ack) {
                 if (ack == null) "该角色已关联日常陪伴，请前往内容库手动确认删除聊天与记忆"
                 else "角色关联已变化，请前往内容库重新确认删除"
@@ -245,7 +265,7 @@ class HostRoleSync internal constructor(private val context: Context, private va
     internal suspend fun deleteFriend(plan:BackupRepository.RoleDeletion) = withContext(Dispatchers.IO+NonCancellable) {
         mutex.withLock {
             val m=maps().firstOrNull { it.link.friend==plan.friendId }
-            if (m != null && bridge.current()?.name != m.link.scope && !bridge.profileExists(m.link.scope)) {
+            if (m != null && (m.detached || (bridge.current()?.name != m.link.scope && !bridge.profileExists(m.link.scope)))) {
                 check(plan.link == null || plan.link == m.link) { "角色关联已变化，请重新确认删除" }
                 clearLocal(plan)
                 forget(m)

@@ -151,7 +151,7 @@ class HttpsTextChatClient(
                             override fun read():Int{val n=`in`.read(one,0,1);if(n>0){guard.read(one,0,1)?.let{throw StreamRejected(it)};return one[0].toInt() and 0xff};return -1}
                             override fun read(b:ByteArray,off:Int,len:Int):Int{val n=`in`.read(b,off,len);if(n>0)guard.read(b,off,n)?.let{throw StreamRejected(it)};return n}
                         }
-                        val streamed=readSse(limited.bufferedReader(),onEvent,key,request.tools.map(::toolNameOf).toSet(),StructuredResponsePolicy.supportsJsonObject(config),legacyContentResult,guard,observeVoice={sawVoiceCall=true},
+                        val streamed=readSse(limited.bufferedReader(),onEvent,key,request.tools.map(::toolNameOf).toSet(),StructuredResponsePolicy.supportsReasoningContinuation(config),legacyContentResult,guard,observeVoice={sawVoiceCall=true},
                             beforeRead={
                                 noteBackground()
                                 if(!continuation.isActive)throw StreamRejected("interrupted",reason=ChatFailure.INTERRUPTED)
@@ -182,7 +182,7 @@ class HttpsTextChatClient(
                             val counts=listOf("prompt_tokens","completion_tokens","total_tokens").map{usage.optLong(it,-1)}
                             if(counts.all{it>=0})Diagnostics.event("http.usage",mapOf("input_count" to counts[0],"output_count" to counts[1],"total_count" to counts[2]),trace=diagnosticTrace)
                         }
-                        parse(raw,key,request.tools.map(::toolNameOf).toSet(),StructuredResponsePolicy.supportsJsonObject(config),outputLimit=request.outputLimit){sawVoiceCall=true}.let{parsed->
+                        parse(raw,key,request.tools.map(::toolNameOf).toSet(),StructuredResponsePolicy.supportsReasoningContinuation(config),outputLimit=request.outputLimit){sawVoiceCall=true}.let{parsed->
                             if(parsed is TextChatResult.Failure&&parsed.meta==null)parsed.copy(httpStatus=status,meta=failureMeta("read_response_body",sawBackground||requestDiagnostics?.experiencedBackground==true)) else parsed
                         }.also{result->
                             if(result is TextChatResult.Success&&onEvent!=null){

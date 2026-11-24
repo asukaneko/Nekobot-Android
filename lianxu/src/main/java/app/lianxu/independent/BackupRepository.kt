@@ -268,14 +268,14 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
             LocalStep.CHECK_SPACE.observe { ImageDisk.space(store.applicationContext.filesDir,needed,availableSpace(store.applicationContext.filesDir)) };valid()
             val restoredAvatar=if(plan.mode=="REPLACE"&&pack.all)pack.root["preferences"].asJsonObject[UserAvatarData.KEY]?.asString?.let(UserAvatarData::forRestore)else null
             val fullReplace = plan.mode == "REPLACE" && pack.all
-            val localLinks = if (fullReplace) db.rawQuery("SELECT key,value FROM preferences WHERE key GLOB ?", arrayOf(ROLE_MAP + "*")).use { rows ->
-                buildMap { while (rows.moveToNext()) put(rows.getString(0), rows.getString(1)) }
-            } else emptyMap()
+            val localLinks = if (fullReplace) db.rawQuery("SELECT value FROM preferences WHERE key GLOB ?", arrayOf(ROLE_MAP + "*")).use { rows ->
+                buildList { while (rows.moveToNext()) add(rows.getString(0)) }
+            } else emptyList()
             if(fullReplace){staged=LocalStep.STAGE_MODELS.observe { vault.prepareRestore(models(keysRoot),pack.root["selections"].asJsonObject.entrySet().associate{(k,v)->ModelPurpose.entries.first{it.key==k} to v.asString},pack.includesKeys) };clearAll(db);checkpoint()}
             val imported=LocalStep.RESTORE_ROWS.observe { pack.roles.map{v->val old=v.asJsonObject;val target=if(plan.mode=="REPLACE"&&!pack.all)plan.target!! else UUID.randomUUID().toString();if(plan.mode=="REPLACE"&&!pack.all)clearRole(db,target);restore(db,old,target,pack.files,valid,plan.assetDigests);target} }
             if(fullReplace){
                 val restored = pack.roles.map { it.asJsonObject["character"].asJsonObject["id"].asString }.zip(imported).toMap()
-                localLinks.forEach { (key, value) -> remapRestoredRole(value, restored)?.let { pref(db, key, it) } }
+                localLinks.forEach { value -> remapRestoredRole(value, restored)?.let { (key, json) -> pref(db, key, json) } }
                 pack.root["preferences"].asJsonObject.entrySet().forEach{(k,v)->if(k==UserAvatarData.KEY){restoredAvatar?.let{pref(db,k,it)}}else pref(db,k,v.asString)};pref(db,vault.generationKey,staged!!.generation)
                 // This database already has the current schema; an older backup without the marker must not reopen proactive recall later.
                 pref(db,MemoryForgetting.RECALL_DEFAULT_MIGRATED,"true")}

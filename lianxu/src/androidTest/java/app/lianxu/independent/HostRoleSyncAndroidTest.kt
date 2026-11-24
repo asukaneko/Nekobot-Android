@@ -185,7 +185,21 @@ class HostRoleSyncAndroidTest {
         }
     }
 
-    @Test fun deletedProfileAllowsLocalDeleteEvenIfItsMapSurvived() = runBlocking {
+    @Test fun staleMapAllowsLocalDeletionBeforeAnotherSync() = runBlocking {
+        val f = Fixture()
+        try {
+            val link = f.addHost()
+            f.active = Host("default.db")
+            f.existingProfiles.remove(link.scope)
+            assertNull(f.sync.friendLink(link.friend))
+            f.sync.deleteFriend(f.backup.previewRoleDeletion(link.friend))
+            assertTrue(f.store.friends().isEmpty())
+            assertNull(f.sync.hostLink(link.scope, link.host))
+            assertTrue(f.active!!.rows.isEmpty())
+        } finally { f.close() }
+    }
+
+    @Test fun detachedAndOrphanedRolesStayLocalThroughSyncRestoreAndProfileReuse() = runBlocking {
         for (detach in listOf(true, false)) {
             val f = Fixture()
             try {
@@ -195,13 +209,30 @@ class HostRoleSyncAndroidTest {
                 f.existingProfiles.remove(link.scope)
                 if (detach) f.sync.detachProfile(link.scope)
                 assertEquals(if (detach) null else link, f.sync.hostLink(link.scope, link.host))
-                val approval = f.sync.friendLink(link.friend)
-                assertNull(approval)
-                f.sync.deleteFriend(f.backup.previewRoleDeletion(link.friend).copy(link = approval))
-                assertTrue(f.store.friends().isEmpty())
-                assertNull(f.sync.hostLink(link.scope, link.host))
-                assertTrue(link.host in f.host.rows)
+                f.sync.sync()
                 assertTrue(f.active!!.rows.isEmpty())
+                f.backup.export().use { export ->
+                    assertFalse(export.root.toString().contains(ROLE_MAP))
+                    val pack = BackupArchive.Package(export.root, export.files, "")
+                    val restore = f.backup.preview(pack, "REPLACE")
+                    f.sync.duringRestore { f.backup.commit(restore, true) }
+                }
+                f.sync.sync()
+                assertTrue(f.active!!.rows.isEmpty())
+                val restored = f.store.friends().single().id
+                assertNotEquals(link.friend, restored)
+                // A newly created profile may reuse both the database name and the host ID.
+                f.existingProfiles.add(link.scope)
+                f.active = f.host
+                f.sync.sync()
+                assertEquals(2, f.store.friends().size)
+                assertNotEquals(restored, f.sync.hostLink(link.scope, link.host)?.friend)
+                val approval = f.sync.friendLink(restored)
+                assertNull(approval)
+                f.sync.deleteFriend(f.backup.previewRoleDeletion(restored).copy(link = approval))
+                f.sync.sync()
+                assertEquals(1, f.store.friends().size)
+                assertEquals(listOf(link.host), f.host.ids())
             } finally { f.close() }
         }
     }

@@ -46,6 +46,7 @@ import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.NekobotRoleScope
+import com.nekobot.app.syncCompanionRoles
 import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.repository.Resource
@@ -92,7 +93,7 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
         _sessionModes.value = null
         launchResult(
             block = {
-                LianxuModule.roles.sync()
+                syncCompanionRoles { LianxuModule.roles.sync() }
                 when (val result = unified.listCharacters()) {
                     is Resource.Success -> {
                         val modes = when (val sessions = unified.listSessions()) {

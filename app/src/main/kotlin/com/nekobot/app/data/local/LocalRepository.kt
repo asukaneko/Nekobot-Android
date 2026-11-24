@@ -2,6 +2,7 @@ package com.nekobot.app.data.local
 
 import app.lianxu.independent.RoleLink
 import app.lianxu.independent.LianxuModule
+import com.nekobot.app.syncCompanionRoles
 import com.nekobot.app.data.repository.Resource
 
 import android.os.StatFs
@@ -10085,7 +10086,7 @@ class LocalRepository(
                 AchievementManager.Target.Metric.CHARACTERS,
                 characterDao.count().toLong()
             )
-            LianxuModule.roles.sync(entity.id,db.openHelper.databaseName)
+            syncCompanionRoles { LianxuModule.roles.sync(entity.id, db.openHelper.databaseName) }
             entity.toCharacterPreset()
         }
 

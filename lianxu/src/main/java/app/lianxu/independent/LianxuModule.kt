@@ -2,9 +2,19 @@ package app.lianxu.independent
 
 import android.app.Application
 import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.fragment.app.FragmentActivity
 import java.io.File
 
+interface HostPrivacyGate {
+    @Composable
+    fun Content(content: @Composable () -> Unit)
+    fun returningToHost()
+}
+
 object LianxuModule {
+    internal lateinit var privacyGate: (FragmentActivity) -> HostPrivacyGate
+        private set
     internal lateinit var onReturnToHost: (Context) -> Unit
         private set
 
@@ -14,7 +24,9 @@ object LianxuModule {
     lateinit var roles: HostRoleSync
         private set
 
-    fun initialize(application: Application, hostModels: HostModelBridge, hostRoles: HostRoleBridge, onReturnToHost: (Context) -> Unit) {
+    fun initialize(application: Application, hostModels: HostModelBridge, hostRoles: HostRoleBridge,
+        privacyGate: (FragmentActivity) -> HostPrivacyGate, onReturnToHost: (Context) -> Unit) {
+        this.privacyGate = privacyGate
         roles = HostRoleSync(application,hostRoles)
         this.hostModels = hostModels
         this.onReturnToHost = onReturnToHost

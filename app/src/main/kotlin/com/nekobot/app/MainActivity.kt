@@ -4,13 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -27,9 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,11 +49,7 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
 
-    private var appUnlocked by mutableStateOf(true)
-    private var appLockError by mutableStateOf<String?>(null)
-    private var biometricPromptShowing = false
-    private var activityStarted = false
-    private lateinit var biometricPrompt: BiometricPrompt
+    private lateinit var privacy: NekobotPrivacyGate
 
     /** Android 13+ 通知权限：Agent 等待提醒依赖它，启动后请求一次。 */
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -73,32 +63,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        appUnlocked = !ServiceContainer.prefs.appLockEnabled
-        // 隐私锁开启期间 FLAG_SECURE 常驻：系统任务快照（最近任务页预览）在切后台的
-        // 过渡动画开始时就已截取，onPause/onStop 里再设置来不及，必须提前生效
-        applySecureFlag(ServiceContainer.prefs.appLockEnabled)
-        biometricPrompt = BiometricPrompt(
-            this,
-            ContextCompat.getMainExecutor(this),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    biometricPromptShowing = false
-                    appLockError = null
-                    if (activityStarted) {
-                        appUnlocked = true
-                    }
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    biometricPromptShowing = false
-                    appLockError = errString.toString()
-                }
-
-                override fun onAuthenticationFailed() {
-                    appLockError = getString(R.string.app_lock_not_recognized)
-                }
-            }
-        )
+        privacy = NekobotPrivacyGate(this)
         handleExternalIntent(intent)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.Transparent.value.toInt(), Color.Transparent.value.toInt()),
@@ -109,17 +74,12 @@ class MainActivity : FragmentActivity() {
                 addView(
                     ComposeView(this@MainActivity).apply {
                         setContent {
-                            NekobotTheme {
-                                Surface(
-                                    modifier = Modifier.fillMaxSize(),
-                                    color = MaterialTheme.colorScheme.background
-                                ) {
-                                    if (ServiceContainer.prefs.appLockEnabled && !appUnlocked) {
-                                        AppLockedScreen(
-                                            error = appLockError,
-                                            onUnlock = ::requestAppUnlock
-                                        )
-                                    } else {
+                            privacy.Content {
+                                NekobotTheme {
+                                    Surface(
+                                        modifier = Modifier.fillMaxSize(),
+                                        color = MaterialTheme.colorScheme.background
+                                    ) {
                                         LiquidGlassMenuHost {
                                             NekobotNavGraph()
                                             // 记忆迁移询问与业务页面无关，且可能在任意 Profile 切换时出现，挂在这里最稳妥。
@@ -157,38 +117,14 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        // 开关可能在运行中被修改，回到前台时校正 FLAG_SECURE 状态
-        applySecureFlag(ServiceContainer.prefs.appLockEnabled)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        if (ServiceContainer.prefs.appLockEnabled && !isChangingConfigurations) {
-            // 切到后台立即切换到锁定页，保证退出动画期间内容也不可见；
-            // FLAG_SECURE 已常驻，最近任务页快照始终为空白
-            appUnlocked = false
-        }
-    }
-
     override fun onStart() {
         super.onStart()
-        activityStarted = true
+
         ServiceContainer.applicationScope.launch {
             NekobotShortcutManager.refresh(this@MainActivity)
             NekobotWidgetProvider.refreshAll(this@MainActivity)
         }
-        if (!ServiceContainer.prefs.appLockEnabled) {
-            appUnlocked = true
-            requestNotificationPermissionIfNeeded()
-            return
-        }
-        if (!appUnlocked) {
-            window.decorView.post(::requestAppUnlock)
-            return
-        }
-        requestNotificationPermissionIfNeeded()
+        if (!ServiceContainer.prefs.appLockEnabled) requestNotificationPermissionIfNeeded()
     }
 
     /** 首次进入应用时请求通知权限（Android 13+），只请求一次。 */
@@ -203,14 +139,6 @@ class MainActivity : FragmentActivity() {
         ServiceContainer.prefs.notificationPermissionAsked = true
         runCatching {
             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
-
-    override fun onStop() {
-        activityStarted = false
-        super.onStop()
-        if (ServiceContainer.prefs.appLockEnabled && !isChangingConfigurations) {
-            appUnlocked = false
         }
     }
 
@@ -253,47 +181,10 @@ class MainActivity : FragmentActivity() {
             ).show()
         }
     }
-
-    /** 隐私锁开启期间保持 FLAG_SECURE：最近任务页预览空白，同时禁止截屏/录屏。 */
-    private fun applySecureFlag(enabled: Boolean) {
-        if (enabled) {
-            window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            )
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
-    }
-
-    private fun requestAppUnlock() {
-        if (!ServiceContainer.prefs.appLockEnabled) {
-            appUnlocked = true
-            return
-        }
-        if (appUnlocked || biometricPromptShowing) return
-
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
-        if (BiometricManager.from(this).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
-            appLockError = getString(R.string.app_lock_unavailable)
-            return
-        }
-
-        appLockError = null
-        biometricPromptShowing = true
-        biometricPrompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(getString(R.string.app_lock_prompt_title))
-                .setSubtitle(getString(R.string.app_lock_prompt_subtitle))
-                .setAllowedAuthenticators(authenticators)
-                .setNegativeButtonText(getString(R.string.common_cancel))
-                .build()
-        )
-    }
 }
 
 @Composable
-private fun AppLockedScreen(
+internal fun AppLockedScreen(
     error: String?,
     onUnlock: () -> Unit
 ) {

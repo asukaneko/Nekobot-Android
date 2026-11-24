@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -45,7 +45,8 @@ internal tailrec fun Context.hostActivity(): Activity? = when (this) {
     else -> null
 }
 
-class LianxuActivity : ComponentActivity() {
+class LianxuActivity : FragmentActivity() {
+    private lateinit var privacy: HostPrivacyGate
     companion object {
         fun createIntent(context: android.content.Context) = android.content.Intent(context, LianxuActivity::class.java)
     }
@@ -57,13 +58,34 @@ class LianxuActivity : ComponentActivity() {
         if(value.data?.scheme=="lianxu")value.data=null
         return request.takeIf{!it.getStringExtra(CompanionNotifications.ROLE).isNullOrBlank()&&it.getLongExtra(CompanionNotifications.MESSAGE,0)>0}
     }
-    override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);DiagnosticEnvironment.attach(this);notificationIntent=consumeNotification(intent);enableEdgeToEdge();setContent{LianxuTheme{
-        val vm:AppState=viewModel()
-        LaunchedEffect(vm.ready,notificationIntent){if(vm.ready){notificationIntent?.let{i->val role=i.getStringExtra(CompanionNotifications.ROLE);val id=i.getLongExtra(CompanionNotifications.MESSAGE,0);if(role!=null&&id>0)vm.notificationOpen(role,id)};notificationIntent=null}}
-        Lianxu(vm, ::returnToHost)
-    }}}
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        privacy = LianxuModule.privacyGate(this)
+        DiagnosticEnvironment.attach(this)
+        notificationIntent = consumeNotification(intent)
+        enableEdgeToEdge()
+        setContent {
+            privacy.Content {
+                LianxuTheme {
+                    val vm: AppState = viewModel()
+                    LaunchedEffect(vm.ready, notificationIntent) {
+                        if (vm.ready) {
+                            notificationIntent?.let {
+                                val role = it.getStringExtra(CompanionNotifications.ROLE)
+                                val id = it.getLongExtra(CompanionNotifications.MESSAGE, 0)
+                                if (role != null && id > 0) vm.notificationOpen(role, id)
+                            }
+                            notificationIntent = null
+                        }
+                    }
+                    Lianxu(vm, ::returnToHost)
+                }
+            }
+        }
+    }
     private fun returnToHost() {
         if (isTaskRoot) LianxuModule.onReturnToHost(this)
+        privacy.returningToHost()
         finish()
     }
     override fun onDestroy(){DiagnosticEnvironment.detach(this);super.onDestroy()}

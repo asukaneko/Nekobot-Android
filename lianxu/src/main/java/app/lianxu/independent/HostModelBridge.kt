@@ -20,7 +20,7 @@ class HostModelSnapshot(
         val limits = ModelTokenPolicy.capability(provider, baseUrl, model)
         val defaults = ModelTokenPolicy.defaults(provider, baseUrl, model)
         val context = (contextTokens?.takeIf { it > 0 } ?: defaults.context).coerceIn(4096, limits?.context ?: 2000000)
-        val output = (outputTokens?.takeIf { it > 0 } ?: defaults.chat)
+        val output = (outputTokens?.takeIf { it > 0 } ?: minOf(defaults.chat, context / 4))
             .coerceIn(1, minOf(context - 1, limits?.maxOutput ?: ModelTokenPolicy.MAX_OUTPUT))
         return ModelConfig("host-" + stableDigest(hostId).take(24), name, provider, baseUrl, model, context, output, streamReplies = supportsStream)
     }

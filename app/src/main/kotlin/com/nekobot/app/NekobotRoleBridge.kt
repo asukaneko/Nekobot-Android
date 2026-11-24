@@ -8,13 +8,22 @@ import app.lianxu.independent.HostRoleBridge
 import app.lianxu.independent.HostRoleScope
 import app.lianxu.independent.RoleTextEdits
 import app.lianxu.independent.RoleBasics
+import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+
+internal inline fun syncCompanionRoles(sync: () -> Unit) {
+    runCatching(sync).onFailure { e ->
+        if (e is CancellationException) throw e
+        LocalLogger.w("HostRoleSync", "日常陪伴角色同步失败", e)
+    }
+}
 
 internal class NekobotRoleBridge(private val context: Context) : HostRoleBridge {
     override fun profileExists(scope: String): Boolean {

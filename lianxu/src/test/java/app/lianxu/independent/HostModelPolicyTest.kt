@@ -22,6 +22,17 @@ class HostModelPolicyTest {
         assertNotEquals(config.id,model("other",false).config().id)
     }
 
+    @Test fun mirroredOutputLeavesPromptRoomAndHonorsExplicitLimits() {
+        fun output(context: Int, configured: Int?) =
+            HostModelSnapshot("id", "name", "https://example.test/v1", "sample", "fixture",
+                "chat", true, context, configured).config().outputTokens
+        assertEquals(8192, output(32768, null))
+        assertEquals(1024, output(4096, 0))
+        assertEquals(65536, output(1048576, null))
+        assertEquals(16000, output(32768, 16000))
+        assertEquals(4095, output(4096, 12000))
+    }
+
     @Test fun streamToggleChangesOnlyOnce() {
         val enabled = model("a", true).config()
         val disabled = HostModelSnapshot("a","a","https://example.test/v1","sample","synthetic",

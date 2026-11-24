@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import app.lianxu.independent.LianxuActivity
+import com.nekobot.app.NekobotPrivacyGate
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.ui.screens.sessions.SessionListRow
@@ -35,7 +36,10 @@ fun HomeModeNavigation(
         onActiveIndexChange = { activeIndex = it },
         onOpenMode = { mode ->
             when (mode) {
-                HomeMode.COMPANION -> context.startActivity(LianxuActivity.createIntent(context))
+                HomeMode.COMPANION -> {
+                    context.startActivity(LianxuActivity.createIntent(context))
+                    NekobotPrivacyGate.enteringCompanion()
+                }
                 else -> onNavigate(Routes.mode(mode.routeValue))
             }
         },

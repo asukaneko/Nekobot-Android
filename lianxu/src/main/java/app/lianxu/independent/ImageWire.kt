@@ -26,7 +26,7 @@ internal object ImageWire {
     fun body(config:ModelConfig,request:TextChatRequest,stream:Boolean):JSONObject {
         val messages=JSONArray();request.messages.forEach{m->messages.put(JSONObject().put("role",m.role).put("content",content(m,true)).apply{
             if(m.toolCalls.isNotEmpty())put("tool_calls",JSONArray().apply{m.toolCalls.forEach{call->put(JSONObject().put("id",call.id).put("type","function").put("function",JSONObject().put("name",call.name).put("arguments",call.arguments)))}})
-            if(m.role=="assistant"&&m.toolCalls.isNotEmpty()&&StructuredResponsePolicy.supportsJsonObject(config))m.continuation?.let{put("reasoning_content",it.wireValue())}
+            if(m.role=="assistant"&&m.toolCalls.isNotEmpty()&&StructuredResponsePolicy.supportsReasoningContinuation(config))m.continuation?.let{put("reasoning_content",it.wireValue())}
             if(m.role=="tool"){put("tool_call_id",m.toolCallId);put("name",m.name)}
         })}
         return JSONObject().put("model",config.modelId).put("messages",messages).put("stream",stream).apply{
