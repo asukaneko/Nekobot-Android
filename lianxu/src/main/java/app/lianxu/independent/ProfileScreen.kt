@@ -52,8 +52,8 @@ import androidx.compose.ui.unit.dp
         }
         Spacer(Modifier.height(if(compact) 16.dp else 26.dp))
         Text("聊天中的你",style=MaterialTheme.typography.labelLarge)
-        ProfileInput("我的名字","填写名字","nickname",name,{name=it.take(80)},compact)
-        ProfileInput("希望被怎样称呼","填写称呼","persona-address",address,{address=it.take(80)},compact)
+        ProfileInput("我的名字","","nickname",name,{name=it.take(80)},compact)
+        ProfileInput("希望被怎样称呼","","persona-address",address,{address=it.take(80)},compact)
         Spacer(Modifier.height(16.dp))
         ProfileInput("自我介绍","写一点关于你的事，让角色更了解你。","persona-introduction",intro,
             {intro=it.take(4000)}, compact, multiline=true)
@@ -81,7 +81,7 @@ import androidx.compose.ui.unit.dp
                 Text(label,style=MaterialTheme.typography.bodyMedium,color=GreenText)
                 Spacer(Modifier.height(10.dp))
                 Box(Modifier.fillMaxWidth().heightIn(min=if(compact) 68.dp else 96.dp)) {
-                    if(value.isEmpty()) Text(hint,style=style,color=Muted)
+                    if(value.isEmpty() && hint.isNotEmpty()) Text(hint,style=style,color=Muted)
                     inner()
                 }
                 Text("${value.length} / 4000",Modifier.align(Alignment.End).padding(vertical=8.dp),
@@ -90,7 +90,7 @@ import androidx.compose.ui.unit.dp
                 Text(label,style=MaterialTheme.typography.bodyMedium,color=GreenText)
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f),contentAlignment=Alignment.CenterEnd) {
-                    if(value.isEmpty()) Text(hint,style=style,color=Muted)
+                    if(value.isEmpty() && hint.isNotEmpty()) Text(hint,style=style,color=Muted)
                     inner()
                 }
             }
