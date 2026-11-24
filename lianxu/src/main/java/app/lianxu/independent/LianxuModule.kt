@@ -23,6 +23,7 @@ object LianxuModule {
 
     lateinit var roles: HostRoleSync
         private set
+    val rolesIfInitialized: HostRoleSync? get() = if (::roles.isInitialized) roles else null
 
     fun initialize(application: Application, hostModels: HostModelBridge, hostRoles: HostRoleBridge,
         privacyGate: (FragmentActivity) -> HostPrivacyGate, onReturnToHost: (Context) -> Unit) {

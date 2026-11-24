@@ -6,6 +6,12 @@ import java.util.Base64
 import java.io.OutputStream
 
 internal object ImageWire {
+    fun tokenLimitField(config: ModelConfig): String {
+        val model = config.modelId.substringAfterLast('/').lowercase()
+        val completionLimit = config.providerId in setOf("openai", "mimo") ||
+            model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4") || model.startsWith("gpt-5")
+        return if (completionLimit) "max_completion_tokens" else "max_tokens"
+    }
     fun content(message:WireMessage,diagnostic:Boolean=false):Any {
         require(message.imageRefs.isEmpty()){"图片尚未建立发送快照"}
         if(message.images.isEmpty()&&message.videos.isEmpty())return message.content
@@ -33,7 +39,7 @@ internal object ImageWire {
             if(StructuredResponsePolicy.jsonMode(config,request))put("response_format",JSONObject().put("type","json_object"))
             if(request.tools.isNotEmpty())put("tools",JSONArray(request.tools)).put("tool_choice","auto")
             ThinkingFields.apply(this,config)
-            put(if(config.providerId in setOf("openai","mimo"))"max_completion_tokens" else "max_tokens",request.outputLimit)
+            put(tokenLimitField(config), request.outputLimit)
         }
     }
     private class Counter:OutputStream(){var size=0L;override fun write(b:Int){size++};override fun write(b:ByteArray,off:Int,len:Int){size+=len}}

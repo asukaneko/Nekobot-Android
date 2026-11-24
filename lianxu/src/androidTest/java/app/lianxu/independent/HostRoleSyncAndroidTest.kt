@@ -3,7 +3,12 @@ package app.lianxu.independent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayOutputStream
@@ -55,15 +60,102 @@ class HostRoleSyncAndroidTest {
         }
     }
 
+    private fun pngAvatar(): ByteArray {
+        val bitmap = Bitmap.createBitmap(720, 360, Bitmap.Config.ARGB_8888)
+        try {
+            return ByteArrayOutputStream().use { out ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out))
+                out.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun unsupportedAvatarDoesNotBlockTextOrRetryUntilItChanges() = runBlocking {
+        val f = Fixture()
+        try {
+            val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>""".toByteArray()
+            val link = f.addHost(svg)
+            val role = f.store.friends().single()
+            assertEquals("小雨", role.name)
+            assertEquals("介绍", role.bio)
+            val assets = RoleAssets(ProcessingRepository(f.store))
+            assertNull(assets.avatar(link.friend))
+            val key = ROLE_MAP + stableDigest(link.scope) + ":" + link.host
+            val baseline = org.json.JSONObject(f.store.preference(key, ""))
+            assertEquals(f.host.rows.getValue(link.host).avatarDigest, baseline.getString("hostAvatar"))
+            assertEquals("", baseline.getString("localAvatar"))
+            val db = f.store.writableDatabase
+            db.execSQL("CREATE TRIGGER reject_retry BEFORE INSERT ON preferences BEGIN SELECT RAISE(ABORT,'unexpected baseline write'); END")
+            f.sync.sync()
+            assertEquals(0, f.host.writes)
+            db.execSQL("DROP TRIGGER reject_retry")
+
+            val png = pngAvatar()
+            f.host.rows[link.host] = f.host.rows.getValue(link.host).copy(avatar = png)
+            f.sync.sync()
+            assertEquals("image/jpeg", requireNotNull(assets.avatar(link.friend)).mime)
+            // A bad imported local image must not erase the host's existing portrait.
+            assets.put(link.friend, RoleAssets.Asset("avatar.jpg", "avatar", "image/svg+xml", svg))
+            f.store.saveConfigured(link.friend, "新名字") { it }
+            f.sync.sync()
+            assertEquals("新名字", f.host.rows.getValue(link.host).name)
+            assertArrayEquals(png, f.host.rows.getValue(link.host).avatar)
+            val writes = f.host.writes
+            f.sync.sync()
+            assertEquals(writes, f.host.writes)
+        } finally { f.close() }
+    }
+
+    @Test fun webDavTombstoneDetachesOnlyCommittedHostIdsAndKeepsLocalHistory() = runBlocking {
+        val f = Fixture()
+        try {
+            val link = f.addHost()
+            f.host.rows["other"] = RoleBasics("其他", "简介", "设定", "", null)
+            f.sync.sync()
+            val other = requireNotNull(f.sync.hostLink(link.scope, "other"))
+            val db = f.store.writableDatabase
+            val memory = """{"text":"fixture memory"}"""
+            db.execSQL("INSERT INTO memory_current(id,friend_id,json,version,valid) VALUES(?,?,?,1,1)",
+                arrayOf("memory", link.friend, memory))
+            val failure = runCatching {
+                f.sync.applyHostTombstones(listOf(link.host)) { error("transaction failed") }
+            }.exceptionOrNull()
+            assertEquals("transaction failed", failure?.message)
+            assertEquals(link, f.sync.hostLink(link.scope, link.host))
+
+            withContext(Dispatchers.IO) {
+                lateinit var refresh: Deferred<Unit>
+                f.sync.applyHostTombstones(listOf(link.host)) { detach ->
+                    f.host.rows.remove(link.host)
+                    refresh = async(start = CoroutineStart.UNDISPATCHED) { f.sync.sync() }
+                    assertFalse(refresh.isCompleted)
+                    detach(link.scope)
+                }
+                refresh.await()
+            }
+            f.sync.detachHost(link.scope, listOf(link.host))
+            f.sync.sync()
+            assertNull(f.sync.friendLink(link.friend))
+            assertEquals(other, f.sync.hostLink(link.scope, other.host))
+            assertEquals(listOf(other.host), f.host.ids())
+            assertEquals(listOf("你好"), f.store.messagesFor(link.friend).map { it.text })
+            db.rawQuery("SELECT json FROM memory_current WHERE friend_id=?", arrayOf(link.friend)).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(memory, it.getString(0))
+            }
+            f.sync.deleteFriend(f.backup.previewRoleDeletion(link.friend))
+            f.sync.sync()
+            assertEquals(other.friend, f.store.friends().single().id)
+            assertEquals(listOf(other.host), f.host.ids())
+        } finally { f.close() }
+    }
+
     @Test fun bothSidesCreateAndEditOnlySharedFieldsAndSkipUnchangedWrites() = runBlocking {
         val f = Fixture()
         try {
-            val bitmap = Bitmap.createBitmap(720, 360, Bitmap.Config.ARGB_8888)
-            val png = ByteArrayOutputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                out.toByteArray()
-            }
-            bitmap.recycle()
+            val png = pngAvatar()
             f.store.addConfigured(Friend("native", "本地", "介绍", tone = 7),
                 RolePrompts(characterDefinition = "本地设定", expression = "轻声", extra = "独有"))
             val link = f.addHost(png)

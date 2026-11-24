@@ -4,6 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class StructuredResponsePolicyTest {
+    @Test fun tokenLimitFieldUsesTheUpstreamModelOnCustomRelays() {
+        val custom = ModelConfig("id", "relay", "custom", "https://relay.test/v1", "ordinary")
+        for (model in listOf("o1", "o3-mini", "O4-mini", "gpt-5-mini", "openai/gpt-5", "gpt-5.1")) {
+            assertEquals(model, "max_completion_tokens", ImageWire.tokenLimitField(custom.copy(modelId = model)))
+        }
+        assertEquals("max_tokens", ImageWire.tokenLimitField(custom))
+        for (provider in listOf("openai", "mimo")) {
+            assertEquals("max_completion_tokens", ImageWire.tokenLimitField(custom.copy(providerId = provider)))
+        }
+    }
+
     @Test fun reasoningContinuationIsEndpointScopedAndIndependentOfJsonMode() {
         val request = TextChatRequest(listOf(WireMessage("user", "hello")), jsonObject = true)
         val base = ModelConfig("id", "model", "custom", "https://api.deepseek.com/v1", "deepseek-flash")

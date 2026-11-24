@@ -100,12 +100,14 @@ class HostRoleSync internal constructor(private val context: Context, private va
     }
     private fun prompts(db:SQLiteDatabase,id:String) = RolePromptStore.decode(db.rawQuery(
         "SELECT value FROM preferences WHERE key=?",arrayOf(RolePromptStore.key(id))).use { if(it.moveToFirst()) it.getString(0) else "" })
+    private fun prepareBridgeAvatar(bytes: ByteArray) = runCatching { prepareRoleAvatar(bytes) }.getOrNull()
+
     // Publish the new local baseline in the same transaction as the role and its (possibly
     // recompressed) avatar. An interrupted copy must never send truncated text back to the host.
     private fun writeLocal(baseline: RoleBaseline, host: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean) {
         val id = baseline.link.friend
         val data = host.local()
-        val avatar = if (avatarChanged) data.avatar?.let(::prepareRoleAvatar) else null
+        val avatar = if (avatarChanged) data.avatar?.let(::prepareBridgeAvatar) else null
         AppMutationGate.read {
             val db = store.writableDatabase
             db.beginTransaction()
@@ -208,8 +210,9 @@ class HostRoleSync internal constructor(private val context: Context, private va
                     bio = if (host == null || edits.bio) friend.bio else host.bio,
                     definition = if (host == null || edits.definition) friend.definition else host.definition,
                     opening = if (host == null || edits.opening) friend.opening else host.opening,
-                    avatar = if (avatarChanged && friend.avatar != null && host?.avatarDigest != friend.avatarDigest)
-                        prepareRoleAvatar(friend.avatar).second else friend.avatar
+                    avatar = if (avatarChanged && friend.avatar != null && host?.avatarDigest != friend.avatarDigest) {
+                        prepareBridgeAvatar(friend.avatar)?.second ?: host?.avatar
+                    } else friend.avatar
                 )
                 val saved = scope.write(link.host, outgoing, host, avatarChanged, edits)
                 saveBaseline(baseline, saved, friend)
@@ -218,6 +221,21 @@ class HostRoleSync internal constructor(private val context: Context, private va
     }
     suspend fun hostLink(profile:String,id:String):RoleLink? = withContext(Dispatchers.IO) {
         mutex.withLock { maps().firstOrNull { !it.detached && it.link.scope==profile && it.link.host==id }?.link }
+    }
+    suspend fun detachHost(scopeName: String, hostIds: Collection<String>) =
+        applyHostTombstones(hostIds) { detach -> detach(scopeName) }
+
+    /** Keep sync out until the host transaction commits and its links are detached. */
+    suspend fun applyHostTombstones(
+        hostIds: Collection<String>,
+        commitThenDetach: suspend (detach: (scopeName: String) -> Unit) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            commitThenDetach { scopeName ->
+                val ids = hostIds.toSet()
+                detach(maps().filter { !it.detached && it.link.scope == scopeName && it.link.host in ids })
+            }
+        }
     }
     suspend fun detachProfile(scopeName: String) {
         withContext(Dispatchers.IO) {

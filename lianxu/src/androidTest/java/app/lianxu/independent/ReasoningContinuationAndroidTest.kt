@@ -9,6 +9,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReasoningContinuationAndroidTest {
+    @Test fun relayRequestWritesOnlyTheSupportedTokenLimit() {
+        val request = TextChatRequest(listOf(WireMessage("user", "hello")), outputLimit = 512)
+        val relay = ModelConfig("id", "relay", "custom", "https://relay.test/v1", "ordinary")
+        for (model in listOf("o3-mini", "gpt-5-mini", "openai/gpt-5", "ordinary")) {
+            val body = ImageWire.body(relay.copy(modelId = model), request, false)
+            val completion = model != "ordinary"
+            assertEquals(512, body.getInt(if (completion) "max_completion_tokens" else "max_tokens"))
+            assertFalse(body.has(if (completion) "max_tokens" else "max_completion_tokens"))
+        }
+    }
+
     @Test fun jsonAndEventStreamToolResponsesKeepNativeReasoningOnTheWire() = runBlocking {
         val config = ModelConfig("id", "model", "deepseek", "https://api.deepseek.com", "deepseek-reasoner")
         val message = """{"reasoning_content":"native part","tool_calls":[{"index":0,"id":"call","type":"function","function":{"name":"lookup","arguments":"{}"}}]}"""
