@@ -267,9 +267,16 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
             val needed=Math.addExact(Math.multiplyExact(resources,2),Math.addExact(metadata*4,if(plan.mode=="REPLACE")Math.multiplyExact(pages,pageSize)else 0))
             LocalStep.CHECK_SPACE.observe { ImageDisk.space(store.applicationContext.filesDir,needed,availableSpace(store.applicationContext.filesDir)) };valid()
             val restoredAvatar=if(plan.mode=="REPLACE"&&pack.all)pack.root["preferences"].asJsonObject[UserAvatarData.KEY]?.asString?.let(UserAvatarData::forRestore)else null
-            if(plan.mode=="REPLACE"&&pack.all){staged=LocalStep.STAGE_MODELS.observe { vault.prepareRestore(models(keysRoot),pack.root["selections"].asJsonObject.entrySet().associate{(k,v)->ModelPurpose.entries.first{it.key==k} to v.asString},pack.includesKeys) };clearAll(db);checkpoint()}
+            val fullReplace = plan.mode == "REPLACE" && pack.all
+            val localLinks = if (fullReplace) db.rawQuery("SELECT key,value FROM preferences WHERE key GLOB ?", arrayOf(ROLE_MAP + "*")).use { rows ->
+                buildMap { while (rows.moveToNext()) put(rows.getString(0), rows.getString(1)) }
+            } else emptyMap()
+            if(fullReplace){staged=LocalStep.STAGE_MODELS.observe { vault.prepareRestore(models(keysRoot),pack.root["selections"].asJsonObject.entrySet().associate{(k,v)->ModelPurpose.entries.first{it.key==k} to v.asString},pack.includesKeys) };clearAll(db);checkpoint()}
             val imported=LocalStep.RESTORE_ROWS.observe { pack.roles.map{v->val old=v.asJsonObject;val target=if(plan.mode=="REPLACE"&&!pack.all)plan.target!! else UUID.randomUUID().toString();if(plan.mode=="REPLACE"&&!pack.all)clearRole(db,target);restore(db,old,target,pack.files,valid,plan.assetDigests);target} }
-            if(plan.mode=="REPLACE"&&pack.all){pack.root["preferences"].asJsonObject.entrySet().forEach{(k,v)->if(k==UserAvatarData.KEY){restoredAvatar?.let{pref(db,k,it)}}else pref(db,k,v.asString)};pref(db,vault.generationKey,staged!!.generation)
+            if(fullReplace){
+                val restored = pack.roles.map { it.asJsonObject["character"].asJsonObject["id"].asString }.zip(imported).toMap()
+                localLinks.forEach { (key, value) -> remapRestoredRole(value, restored)?.let { pref(db, key, it) } }
+                pack.root["preferences"].asJsonObject.entrySet().forEach{(k,v)->if(k==UserAvatarData.KEY){restoredAvatar?.let{pref(db,k,it)}}else pref(db,k,v.asString)};pref(db,vault.generationKey,staged!!.generation)
                 // This database already has the current schema; an older backup without the marker must not reopen proactive recall later.
                 pref(db,MemoryForgetting.RECALL_DEFAULT_MIGRATED,"true")}
             checkpoint();LocalStep.COMMIT.observe { check(lease.commit{db.setTransactionSuccessful();true}){ "导入已取消" };db.endTransaction() };committed=true
@@ -315,14 +322,9 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
         db.delete("friends","id=?",arrayOf(id))
     }
     private fun clearAll(db:SQLiteDatabase){
-        // Keep this device's unfinished, confirmed deletes even when restoring under another profile.
-        val pending = db.rawQuery("SELECT key,value FROM preferences WHERE key GLOB ?", arrayOf(ROLE_MAP + "*")).use { rows ->
-            buildMap { while (rows.moveToNext()) if (pendingRoleDeletion(rows.getString(1))) put(rows.getString(0), rows.getString(1)) }
-        }
         ImageDisk.clearReadCache()
         // Foreign key order also removes in-flight rows; none are imported or restarted.
         (companionTables.reversed()+listOf("image_observations","chat_images","memory_recall_state","memory_operations","memory_batch_reviews","candidate_injections","message_reasoning","message_state","message_history","memory_history","memory_current","memory_candidates","memory_retired","memory_progress","memory_batches","processing_policies","chat_memory_pills","role_assets","chat_turns","messages","friends","preferences")).forEach{db.delete(it,null,null)}
-        pending.forEach { (key,value) -> pref(db,key,value) }
     }
     private fun restore(db:SQLiteDatabase,role:JsonObject,id:String,files:Map<String,ByteArray>,checkpoint:()->Unit,hashes:Map<String,String>){
         val oldId=role["character"].asJsonObject["id"].asString;val tables=role["tables"].asJsonObject

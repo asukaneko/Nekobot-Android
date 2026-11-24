@@ -1,5 +1,6 @@
 package com.nekobot.app
 
+import app.lianxu.independent.RoleTextEdits
 import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.net.Uri
@@ -39,6 +40,12 @@ class NekobotRoleScopeAndroidTest {
             assertEquals("安静", initial.bio)
             assertEquals("安静", initial.definition)
             assertEquals("你好", initial.opening)
+            scope.write("c", initial.copy(name = "改名"), initial, false, RoleTextEdits(true, false, false, false))
+            val renamed = requireNotNull(dao.getById("c"))
+            assertNull(renamed.description)
+            assertNull(renamed.systemPrompt)
+            assertNull(renamed.firstMessage)
+            val afterRename = requireNotNull(scope.get("c"))
             val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
             val image = ByteArrayOutputStream().use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
@@ -46,7 +53,7 @@ class NekobotRoleScopeAndroidTest {
             }
             bitmap.recycle()
             val new = initial.copy(name = "新名字", bio = "新简介", definition = "新设定", opening = "新招呼", avatar = image)
-            val saved = scope.write("c", new, initial, avatarChanged = true)
+            val saved = scope.write("c", new, afterRename, true, RoleTextEdits(true, true, true, true))
             val entity = requireNotNull(dao.getById("c"))
             assertEquals(original.copy(name = new.name, description = new.bio, systemPrompt = new.definition,
                 firstMessage = new.opening, avatar = entity.avatar, updatedAt = entity.updatedAt), entity)
@@ -55,7 +62,7 @@ class NekobotRoleScopeAndroidTest {
             assertArrayEquals(image, photo.readBytes())
             assertTrue(photo.setLastModified(1500000000000L))
             val modified = photo.lastModified()
-            scope.write("c", saved.copy(name = "再改名"), saved, avatarChanged = false)
+            scope.write("c", saved.copy(name = "再改名"), saved, false, RoleTextEdits(true, false, false, false))
             assertEquals(modified, photo.lastModified())
             active = false
             assertTrue(runCatching { scope.delete("c") }.isFailure)

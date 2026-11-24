@@ -28,6 +28,14 @@ class HostModelBackupAndroidTest {
             HostModelSync.refresh(store,vault,bridge)
             assertEquals(stamp,vault.recordStamp(id))
             assertEquals(selection,vault.selectionStamp(ModelPurpose.CHAT))
+            rows = listOf(HostModelSnapshot("host-source","Fixture","https://example.test/v1","sample",
+                key,"chat",true,16384,2048,supportsStream = false))
+            HostModelSync.refresh(store,vault,bridge)
+            assertFalse(vault.list().single { it.id == id }.streamReplies)
+            assertNotEquals(stamp, vault.recordStamp(id))
+            val streamStamp = vault.recordStamp(id)
+            HostModelSync.refresh(store,vault,bridge)
+            assertEquals(streamStamp, vault.recordStamp(id))
             for (withKeys in listOf(false,true)) {
                 val (models, selections) = vault.backup(withKeys)
                 assertEquals(listOf(local.id), models.map { it.config.id })

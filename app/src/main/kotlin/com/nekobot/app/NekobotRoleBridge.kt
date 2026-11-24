@@ -6,6 +6,7 @@ import android.util.AtomicFile
 import androidx.room.withTransaction
 import app.lianxu.independent.HostRoleBridge
 import app.lianxu.independent.HostRoleScope
+import app.lianxu.independent.RoleTextEdits
 import app.lianxu.independent.RoleBasics
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.db.LocalCharacterEntity
@@ -16,6 +17,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 internal class NekobotRoleBridge(private val context: Context) : HostRoleBridge {
+    override fun profileExists(scope: String): Boolean {
+        val profile = scope.removeSuffix(".db")
+        return profile == com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME ||
+            ServiceContainer.prefs.listDbProfiles().any { it.name.removeSuffix(".db") == profile } ||
+            context.getDatabasePath(scope).isFile
+    }
+
     override fun current(): HostRoleScope? {
         val prefs = ServiceContainer.prefs
         if (!prefs.isLocalMode) return null
@@ -93,7 +101,7 @@ internal class NekobotRoleScope(
         return Uri.fromFile(file).toString()
     }
 
-    override suspend fun write(id: String, data: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean): RoleBasics =
+    override suspend fun write(id: String, data: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean, edits: RoleTextEdits): RoleBasics =
         db.withTransaction {
             verify()
             val old = dao.getById(id)
@@ -107,7 +115,10 @@ internal class NekobotRoleScope(
                 dao.upsert(LocalCharacterEntity(id = id, name = data.name, description = data.bio,
                     systemPrompt = data.definition, firstMessage = data.opening, avatar = avatar, createdAt = now, updatedAt = now))
             } else {
-                dao.updateRoleBasics(id, data.name, data.bio, data.definition, data.opening, avatar, now)
+                dao.updateRoleBasics(id, if (edits.name) data.name else old.name,
+                    if (edits.bio) data.bio else old.description,
+                    if (edits.definition) data.definition else old.systemPrompt,
+                    if (edits.opening) data.opening else old.firstMessage, avatar, now)
             }
             if (avatar != old?.avatar) db.sessionDao().updatePortraitsByCharacterId(id, old?.portrait, avatar)
             basics(requireNotNull(dao.getById(id)))

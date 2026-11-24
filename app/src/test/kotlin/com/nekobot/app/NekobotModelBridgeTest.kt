@@ -9,6 +9,12 @@ class NekobotModelBridgeTest {
     private val row = LocalAiModelEntity(id="one", name="", protocol="openai_chat", apiKey="synthetic",
         baseUrl="https://example.test/v1///", model="sample", createdAt="")
 
+    @Test fun excludesDedicatedProxyAndPreservesStreamingFlag() {
+        assertNull(row.copy(proxyUrl = "https://fixture.test/proxy").hostSnapshot())
+        assertFalse(requireNotNull(row.copy(supportsStream = false).hostSnapshot()).supportsStream)
+        assertTrue(requireNotNull(row.hostSnapshot()).supportsStream)
+    }
+
     @Test fun filtersWithoutReadingModelsOutsideLocalMode() = runBlocking {
         assertTrue(localModelSnapshots(false) { error("unexpected DAO read") }.isEmpty())
         val excluded = listOf(row.copy(enabled=false), row.copy(oauthAccountId="synthetic"),

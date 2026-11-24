@@ -220,6 +220,10 @@ class DbProfileViewModel : ViewModel() {
                 }
             }
             prefs.removeDbProfile(profileName)
+            val scopeName = profileName.removeSuffix(".db") + ".db"
+            if (ctx != null && !ctx.getDatabasePath(scopeName).exists()) {
+                app.lianxu.independent.LianxuModule.roles.detachProfile(scopeName)
+            }
             if (wasActive) {
                 ServiceContainer.switchLocalDb(PrefsManager.DEFAULT_DB_NAME)
             }

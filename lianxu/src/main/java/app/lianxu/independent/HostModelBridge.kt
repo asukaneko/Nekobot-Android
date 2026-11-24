@@ -13,7 +13,7 @@ fun interface HostModelBridge {
 class HostModelSnapshot(
     val hostId: String, val name: String, val baseUrl: String, val model: String,
     val apiKey: String, val purpose: String, val active: Boolean,
-    val contextTokens: Int?, val outputTokens: Int?
+    val contextTokens: Int?, val outputTokens: Int?, val supportsStream: Boolean = true
 ) {
     internal fun config(): ModelConfig {
         val provider = ProviderPresets.all.firstOrNull { it.id != "custom" && it.base == baseUrl }?.id ?: "custom"
@@ -22,7 +22,7 @@ class HostModelSnapshot(
         val context = (contextTokens?.takeIf { it > 0 } ?: defaults.context).coerceIn(4096, limits?.context ?: 2000000)
         val output = (outputTokens?.takeIf { it > 0 } ?: defaults.chat)
             .coerceIn(1, minOf(context - 1, limits?.maxOutput ?: ModelTokenPolicy.MAX_OUTPUT))
-        return ModelConfig("host-" + stableDigest(hostId).take(24), name, provider, baseUrl, model, context, output)
+        return ModelConfig("host-" + stableDigest(hostId).take(24), name, provider, baseUrl, model, context, output, streamReplies = supportsStream)
     }
 }
 

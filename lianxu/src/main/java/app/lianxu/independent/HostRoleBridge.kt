@@ -23,22 +23,47 @@ data class RoleBasics(val name: String, val bio: String, val definition: String,
     }
 }
 
+data class RoleTextEdits(val name: Boolean, val bio: Boolean, val definition: Boolean, val opening: Boolean)
+
 interface HostRoleScope {
     val name: String
     suspend fun ids(): List<String>
     suspend fun get(id: String): RoleBasics?
-    suspend fun write(id: String, data: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean): RoleBasics
+    suspend fun write(id: String, data: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean, edits: RoleTextEdits): RoleBasics
     suspend fun delete(id: String)
 }
 
-fun interface HostRoleBridge { fun current(): HostRoleScope? }
+fun interface HostRoleBridge {
+    fun current(): HostRoleScope?
+    fun profileExists(scope: String): Boolean = true
+}
 @androidx.annotation.Keep
 data class RoleLink(val scope: String, val host: String, val friend: String)
 @androidx.annotation.Keep
 private data class RoleBaseline(val link: RoleLink, val hostHash:String="", val localHash:String="",
-    val hostAvatar:String="", val localAvatar:String="", val deleting:Boolean=false)
+    val hostAvatar:String="", val localAvatar:String="", val deleting:Boolean=false,
+    val localNameHash: String? = "", val localBioHash: String? = "",
+    val localDefinitionHash: String? = "", val localOpeningHash: String? = "",
+    val restoredFrom: Set<String>? = null) {
+    fun edits(friend: RoleBasics, host: RoleBasics?): RoleTextEdits {
+        val projection = host?.local()
+        fun changed(value: String, hash: String?, legacy: String?) =
+            host == null || if (hash.isNullOrEmpty()) value != legacy else stableDigest(value) != hash
+        return RoleTextEdits(changed(friend.name, localNameHash, projection?.name),
+            changed(friend.bio, localBioHash, projection?.bio),
+            changed(friend.definition, localDefinitionHash, projection?.definition),
+            changed(friend.opening, localOpeningHash, projection?.opening))
+    }
+}
 
-internal fun pendingRoleDeletion(value: String) = Gson().fromJson(value, RoleBaseline::class.java).deleting
+internal fun remapRestoredRole(value: String, restored: Map<String, String>): String? {
+    val gson = Gson()
+    val baseline = gson.fromJson(value, RoleBaseline::class.java)
+    if (baseline.deleting) return value
+    val ids = baseline.restoredFrom.orEmpty() + baseline.link.friend
+    val target = restored[baseline.link.friend] ?: ids.firstNotNullOfOrNull { restored[it] } ?: return null
+    return gson.toJson(baseline.copy(link = baseline.link.copy(friend = target), restoredFrom = ids))
+}
 internal class ForeignRoleProfile : IllegalStateException("请切回角色所属的本地资料库再删除")
 
 internal const val ROLE_MAP = "host-char-map:"
@@ -54,7 +79,8 @@ class HostRoleSync internal constructor(private val context: Context, private va
     private val mutex = Mutex()
     internal suspend fun <T> duringRestore(restore: suspend () -> T): T = mutex.withLock { restore() }
     private val gson = Gson()
-    private fun key(link:RoleLink) = ROLE_MAP + stableDigest(link.scope) + ":" + link.host
+    private fun scopePrefix(scope: String) = ROLE_MAP + stableDigest(scope) + ":"
+    private fun key(link:RoleLink) = scopePrefix(link.scope) + link.host
     private fun maps() = store.readableDatabase.rawQuery("SELECT value FROM preferences WHERE key GLOB ?",arrayOf(ROLE_MAP+"*")).use { c ->
         buildList { while(c.moveToNext()) add(gson.fromJson(c.getString(0), RoleBaseline::class.java)) }
     }
@@ -73,8 +99,8 @@ class HostRoleSync internal constructor(private val context: Context, private va
         "SELECT value FROM preferences WHERE key=?",arrayOf(RolePromptStore.key(id))).use { if(it.moveToFirst()) it.getString(0) else "" })
     // Publish the new local baseline in the same transaction as the role and its (possibly
     // recompressed) avatar. An interrupted copy must never send truncated text back to the host.
-    private fun writeLocal(link: RoleLink, host: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean) {
-        val id = link.friend
+    private fun writeLocal(baseline: RoleBaseline, host: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean) {
+        val id = baseline.link.friend
         val data = host.local()
         val avatar = if (avatarChanged) data.avatar?.let(::prepareRoleAvatar) else null
         AppMutationGate.read {
@@ -104,7 +130,7 @@ class HostRoleSync internal constructor(private val context: Context, private va
                         "INSERT INTO role_assets(friend_id,path,kind,mime,data) VALUES(?,'avatar.jpg','avatar',?,?)",
                         arrayOf(id, avatar.first, avatar.second))
                 }
-                saveBaseline(link, host, requireNotNull(local(db, id)))
+                saveBaseline(baseline, host, requireNotNull(local(db, id)))
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()
@@ -112,8 +138,11 @@ class HostRoleSync internal constructor(private val context: Context, private va
         }
     }
 
-    private fun saveBaseline(link: RoleLink, host: RoleBasics, friend: RoleBasics) =
-        persist(RoleBaseline(link, host.digest, friend.digest, host.avatarDigest, friend.avatarDigest))
+    private fun saveBaseline(baseline: RoleBaseline, host: RoleBasics, friend: RoleBasics) =
+        persist(baseline.copy(hostHash = host.digest, localHash = friend.digest,
+            hostAvatar = host.avatarDigest, localAvatar = friend.avatarDigest,
+            localNameHash = stableDigest(friend.name), localBioHash = stableDigest(friend.bio),
+            localDefinitionHash = stableDigest(friend.definition), localOpeningHash = stableDigest(friend.opening)))
 
     suspend fun sync(hostActionId: String? = null, expectedProfile: String? = null) = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -131,7 +160,7 @@ class HostRoleSync internal constructor(private val context: Context, private va
             }
             for (host in unlinkedHosts) {
                 val link = RoleLink(scope.name, host, UUID.randomUUID().toString())
-                scope.get(host)?.let { writeLocal(link, it, null, it.avatar != null) }
+                scope.get(host)?.let { writeLocal(RoleBaseline(link), it, null, it.avatar != null) }
             }
             for (friend in unlinkedFriends) {
                 val link = RoleLink(scope.name, UUID.randomUUID().toString(), friend)
@@ -159,29 +188,44 @@ class HostRoleSync internal constructor(private val context: Context, private va
                 requireNotNull(host)
                 val avatarChanged = friend == null || host.avatarDigest != baseline.hostAvatar ||
                     friend.avatarDigest != baseline.localAvatar
-                writeLocal(link, host, friend, avatarChanged)
+                writeLocal(baseline, host, friend, avatarChanged)
             }
             RoleSource.LOCAL -> {
                 requireNotNull(friend)
                 val avatarChanged = host == null || friend.avatarDigest != baseline.localAvatar ||
                     host.avatarDigest != baseline.hostAvatar
-                val saved = if (host?.digest == friend.digest) host else {
-                    val outgoing = if (avatarChanged && friend.avatar != null && host?.avatarDigest != friend.avatarDigest)
-                        friend.copy(avatar = prepareRoleAvatar(friend.avatar).second)
-                    else friend
-                    scope.write(link.host, outgoing, host, avatarChanged)
-                }
-                saveBaseline(link, saved, friend)
+                val edits = baseline.edits(friend, host)
+                val outgoing = friend.copy(
+                    name = if (host == null || edits.name) friend.name else host.name,
+                    bio = if (host == null || edits.bio) friend.bio else host.bio,
+                    definition = if (host == null || edits.definition) friend.definition else host.definition,
+                    opening = if (host == null || edits.opening) friend.opening else host.opening,
+                    avatar = if (avatarChanged && friend.avatar != null && host?.avatarDigest != friend.avatarDigest)
+                        prepareRoleAvatar(friend.avatar).second else friend.avatar
+                )
+                val saved = scope.write(link.host, outgoing, host, avatarChanged, edits)
+                saveBaseline(baseline, saved, friend)
             }
         }
     }
     suspend fun hostLink(profile:String,id:String):RoleLink? = withContext(Dispatchers.IO) {
         mutex.withLock { maps().firstOrNull { it.link.scope==profile && it.link.host==id }?.link }
     }
+    suspend fun detachProfile(scopeName: String) {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                store.writableDatabase.delete("preferences", "key GLOB ?", arrayOf(scopePrefix(scopeName) + "*"))
+            }
+        }
+    }
+
     internal suspend fun friendLink(id:String):RoleLink? = withContext(Dispatchers.IO) {
         mutex.withLock {
             val link = maps().firstOrNull { it.link.friend == id }?.link
-            if (link != null && bridge.current()?.name != link.scope) throw ForeignRoleProfile()
+            if (link != null && bridge.current()?.name != link.scope) {
+                if (!bridge.profileExists(link.scope)) return@withLock null
+                throw ForeignRoleProfile()
+            }
             link
         }
     }
@@ -201,10 +245,16 @@ class HostRoleSync internal constructor(private val context: Context, private va
     internal suspend fun deleteFriend(plan:BackupRepository.RoleDeletion) = withContext(Dispatchers.IO+NonCancellable) {
         mutex.withLock {
             val m=maps().firstOrNull { it.link.friend==plan.friendId }
+            if (m != null && bridge.current()?.name != m.link.scope && !bridge.profileExists(m.link.scope)) {
+                check(plan.link == null || plan.link == m.link) { "角色关联已变化，请重新确认删除" }
+                clearLocal(plan)
+                forget(m)
+                return@withLock
+            }
             check(m?.link==plan.link) { "角色关联已变化，请重新确认删除" }
             if(m==null) clearLocal(plan) else {
                 val scope=bridge.current()
-                check(scope!=null && scope.name==m.link.scope) { "请切回角色所属的本地资料库再删除" }
+                if (scope == null || scope.name != m.link.scope) throw ForeignRoleProfile()
                 completeDelete(scope,m,plan)
             }
         }

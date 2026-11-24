@@ -21,7 +21,7 @@ internal suspend fun localModelSnapshots(local: Boolean, rows: suspend () -> Lis
 
 internal fun LocalAiModelEntity.hostSnapshot(): HostModelSnapshot? {
     val base = baseUrl.trimEnd('/')
-    if (!enabled || !oauthAccountId.isNullOrBlank() || !appendBaseUrlPath ||
+    if (!enabled || proxyUrl.isNotBlank() || !oauthAccountId.isNullOrBlank() || !appendBaseUrlPath ||
         apiKey.isBlank() || apiKey.any { it.isWhitespace() || it.isISOControl() } ||
         protocol != "openai_chat" || purpose !in listOf("chat", "embedding") ||
         model.isBlank() || ConfigRules.urlError(base) != null) return null
@@ -29,5 +29,5 @@ internal fun LocalAiModelEntity.hostSnapshot(): HostModelSnapshot? {
         else OpenAIChatProtocol.resolveUrl(base, model, appendBaseUrlPath, false, apiKey)
     val path = if (purpose == "embedding") "/embeddings" else "/chat/completions"
     if (endpoint != base + path) return null
-    return HostModelSnapshot(id, name.ifBlank { model }, base, model, apiKey, purpose, active, maxContextLength, maxTokens)
+    return HostModelSnapshot(id, name.ifBlank { model }, base, model, apiKey, purpose, active, maxContextLength, maxTokens, supportsStream)
 }

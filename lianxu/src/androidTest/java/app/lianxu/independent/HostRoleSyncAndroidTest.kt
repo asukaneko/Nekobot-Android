@@ -16,7 +16,7 @@ class HostRoleSyncAndroidTest {
         var failDelete = false
         override suspend fun ids() = rows.keys.toList()
         override suspend fun get(id: String) = rows[id]
-        override suspend fun write(id: String, data: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean): RoleBasics {
+        override suspend fun write(id: String, data: RoleBasics, expected: RoleBasics?, avatarChanged: Boolean, edits: RoleTextEdits): RoleBasics {
             check(rows[id]?.digest == expected?.digest)
             val saved = data.copy(avatar = if (avatarChanged) data.avatar else expected?.avatar)
             rows[id] = saved
@@ -37,7 +37,11 @@ class HostRoleSyncAndroidTest {
         val backup = BackupRepository(store, vault)
         val host = Host("A.db")
         var active: Host? = host
-        val sync = HostRoleSync(context, HostRoleBridge { active }, store)
+        val existingProfiles = mutableSetOf(host.name)
+        val sync = HostRoleSync(context, object : HostRoleBridge {
+            override fun current() = active
+            override fun profileExists(scope: String) = scope in existingProfiles
+        }, store)
         val hostId = "original-host"
         suspend fun addHost(avatar: ByteArray? = null): RoleLink {
             host.rows[hostId] = RoleBasics("小雨", "介绍", "设定", "你好", avatar)
@@ -151,6 +155,81 @@ class HostRoleSyncAndroidTest {
             assertTrue(f.host.rows.isEmpty())
             assertTrue(f.store.friends().isEmpty())
             assertNull(f.sync.hostLink(second.scope, second.host))
+        } finally { f.close() }
+    }
+
+    @Test fun editsKeepLongHostFieldsWithNewAndLegacyBaselines() = runBlocking {
+        for (legacy in listOf(false, true)) {
+            val f = Fixture()
+            try {
+                val original = RoleBasics("角".repeat(40), "介".repeat(700), "设".repeat(9000), "好".repeat(9000), null)
+                f.host.rows[f.hostId] = original
+                f.sync.sync()
+                val link = requireNotNull(f.sync.hostLink(f.host.name, f.hostId))
+                if (legacy) {
+                    val key = ROLE_MAP + stableDigest(link.scope) + ":" + link.host
+                    val old = org.json.JSONObject(f.store.preference(key, ""))
+                    listOf("localNameHash", "localBioHash", "localDefinitionHash", "localOpeningHash").forEach { old.remove(it) }
+                    f.store.savePreference(key, old.toString())
+                }
+                f.store.saveConfigured(link.friend, "新名") { it }
+                f.sync.sync()
+                assertEquals(original.copy(name = "新名"), f.host.rows[link.host])
+                val writes = f.host.writes
+                f.sync.sync()
+                assertEquals(writes, f.host.writes)
+                f.store.saveConfigured(link.friend, "新名") { it.copy(characterDefinition = "新设定") }
+                f.sync.sync()
+                assertEquals(original.copy(name = "新名", definition = "新设定"), f.host.rows[link.host])
+            } finally { f.close() }
+        }
+    }
+
+    @Test fun deletedProfileAllowsLocalDeleteEvenIfItsMapSurvived() = runBlocking {
+        for (detach in listOf(true, false)) {
+            val f = Fixture()
+            try {
+                val link = f.addHost()
+                f.active = Host("B.db")
+                assertTrue(runCatching { f.sync.friendLink(link.friend) }.exceptionOrNull() is ForeignRoleProfile)
+                f.existingProfiles.remove(link.scope)
+                if (detach) f.sync.detachProfile(link.scope)
+                assertEquals(if (detach) null else link, f.sync.hostLink(link.scope, link.host))
+                val approval = f.sync.friendLink(link.friend)
+                assertNull(approval)
+                f.sync.deleteFriend(f.backup.previewRoleDeletion(link.friend).copy(link = approval))
+                assertTrue(f.store.friends().isEmpty())
+                assertNull(f.sync.hostLink(link.scope, link.host))
+                assertTrue(link.host in f.host.rows)
+                assertTrue(f.active!!.rows.isEmpty())
+            } finally { f.close() }
+        }
+    }
+
+    @Test fun repeatedFullReplacePreservesOneLinkAcrossSyncAndEdits() = runBlocking {
+        val f = Fixture()
+        try {
+            val original = f.addHost()
+            f.backup.export().use { export ->
+                val pack = BackupArchive.Package(export.root, export.files, "")
+                var previous = original.friend
+                repeat(2) {
+                    val plan = f.backup.preview(pack, "REPLACE")
+                    f.sync.duringRestore { f.backup.commit(plan, true) }
+                    f.sync.sync()
+                    val restored = f.store.friends().single()
+                    assertNotEquals(previous, restored.id)
+                    assertEquals("小雨", restored.name)
+                    assertEquals(original.host, f.host.ids().single())
+                    assertEquals(restored.name, f.host.rows.getValue(original.host).name)
+                    assertEquals(restored.id, f.sync.hostLink(original.scope, original.host)?.friend)
+                    assertEquals(listOf("你好"), f.store.messagesFor(restored.id).map { it.text })
+                    f.store.saveConfigured(restored.id, "修改角色") { it }
+                    f.sync.sync()
+                    assertEquals("修改角色", f.host.rows.getValue(original.host).name)
+                    previous = restored.id
+                }
+            }
         } finally { f.close() }
     }
 

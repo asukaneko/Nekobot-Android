@@ -22,6 +22,16 @@ class HostModelPolicyTest {
         assertNotEquals(config.id,model("other",false).config().id)
     }
 
+    @Test fun streamToggleChangesOnlyOnce() {
+        val enabled = model("a", true).config()
+        val disabled = HostModelSnapshot("a","a","https://example.test/v1","sample","synthetic",
+            "chat",true,16384,2048,supportsStream = false)
+        assertTrue(enabled.streamReplies)
+        assertFalse(disabled.config().streamReplies)
+        assertEquals(setOf(disabled.config()), HostModelChanges(listOf(disabled), listOf(enabled)) { "synthetic" }.writes.keys)
+        assertTrue(HostModelChanges(listOf(disabled), listOf(disabled.config())) { "synthetic" }.writes.isEmpty())
+    }
+
     @Test fun followsActiveChatOrFirstChatAndRespectsOverride() {
         val first=model("a",false)
         val active=model("b",true)
