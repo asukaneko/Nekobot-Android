@@ -16,45 +16,56 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import app.lianxu.independent.HostPrivacyGate
 import app.lianxu.independent.LianxuActivity
 import com.nekobot.app.ui.theme.NekobotTheme
 
-/** One in-process grant for an explicit transition, consumed by the destination before the source stops. */
+/** Retained only by this Activity's configuration successor. Process death drops the grant. */
+internal class PrivacyRecreationGrant : ViewModel() {
+    var target: Class<*>? = null
+}
+
 internal class AppPrivacySession {
-    private var foreground: Any? = null
+    private var startedOwner: Any? = null
     private var unlocked = false
     private var source: Any? = null
     private var destination: Class<*>? = null
 
-    fun resume(owner: Any, enabled: Boolean): Boolean {
-        unlocked = !enabled || destination == owner.javaClass
-        foreground = owner
+    fun start(owner: Any, enabled: Boolean, recreation: PrivacyRecreationGrant? = null): Boolean {
+        unlocked = !enabled || destination == owner.javaClass || recreation?.target == owner.javaClass
+        recreation?.target = null
+        startedOwner = owner
         clearTransfer()
         return unlocked
     }
 
     fun authenticated(owner: Any): Boolean {
-        if (foreground !== owner) return false
+        if (startedOwner !== owner) return false
         unlocked = true
         return true
     }
 
     fun transferTo(target: Class<*>) {
-        if (unlocked && foreground != null) {
-            source = foreground
+        if (unlocked && startedOwner != null) {
+            source = startedOwner
             destination = target
         }
     }
 
-    fun pause(owner: Any) {
-        if (foreground === owner) {
-            foreground = null
-            unlocked = false
-        }
+    fun pause(owner: Any, promptPending: Boolean = false, recreating: PrivacyRecreationGrant? = null): Boolean {
+        if (startedOwner !== owner) return false
+        if (recreating != null && unlocked) recreating.target = owner.javaClass
+        else if (!promptPending) unlocked = false
+        return unlocked
     }
 
     fun stop(owner: Any) {
+        if (startedOwner === owner) {
+            startedOwner = null
+            unlocked = false
+        }
         if (source === owner) clearTransfer()
     }
 
@@ -75,7 +86,8 @@ internal class NekobotPrivacyGate(private val host: FragmentActivity) : HostPriv
     private val enabled get() = ServiceContainer.prefs.appLockEnabled
     private var unlocked by mutableStateOf(!enabled)
     private var error by mutableStateOf<String?>(null)
-    private var resumed = false
+    private val recreation = ViewModelProvider(host)[PrivacyRecreationGrant::class.java]
+    private var started = false
     private var pending: BiometricPrompt? = null
 
     init {
@@ -88,27 +100,33 @@ internal class NekobotPrivacyGate(private val host: FragmentActivity) : HostPriv
         else host.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
-    override fun onResume(owner: LifecycleOwner) {
-        applySecureFlag()
-        resumed = true
-        unlocked = session.resume(host, enabled)
+    override fun onStart(owner: LifecycleOwner) {
+        started = true
+        unlocked = session.start(host, enabled, recreation)
         if (!unlocked) host.window.decorView.post(::requestUnlock)
     }
 
+    override fun onResume(owner: LifecycleOwner) = applySecureFlag()
+
     override fun onPause(owner: LifecycleOwner) {
-        resumed = false
-        session.pause(host)
-        if (enabled) unlocked = false
+        val keepUnlocked = session.pause(host, pending != null, recreation.takeIf { host.isChangingConfigurations })
+        if (enabled) unlocked = keepUnlocked
     }
 
     override fun onStop(owner: LifecycleOwner) {
+        started = false
         session.stop(host)
-        pending?.cancelAuthentication()
+        if (!host.isChangingConfigurations) {
+            recreation.target = null
+            if (enabled) unlocked = false
+        }
+        val prompt = pending
         pending = null
+        prompt?.cancelAuthentication()
     }
 
     private fun requestUnlock() {
-        if (!resumed || unlocked || pending != null || !enabled) return
+        if (!started || unlocked || pending != null || !enabled) return
         val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
         if (BiometricManager.from(host).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
             error = host.getString(R.string.app_lock_unavailable)
