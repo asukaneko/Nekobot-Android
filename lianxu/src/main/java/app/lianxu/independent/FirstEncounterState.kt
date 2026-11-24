@@ -12,13 +12,16 @@ internal enum class FirstEncounterDestination(val page:String) {
  */
 internal data class FirstEncounterState(
     val phase:FirstEncounterPhase=FirstEncounterPhase.CLOSED,
-    val destination:FirstEncounterDestination?=null
+    val destination:FirstEncounterDestination?=null,
+    val dismissed:Boolean=false
 ){
     init{require(destination==null||phase==FirstEncounterPhase.READY)}
 
     val canChoose get()=phase==FirstEncounterPhase.READY&&destination==null
 
-    fun shouldShow(loaded:Boolean,hasRoles:Boolean,page:String)=loaded&&!hasRoles&&page=="home"
+    fun shouldShow(loaded:Boolean,hasRoles:Boolean,page:String)=loaded&&!hasRoles&&page=="home"&&!dismissed
+
+    fun dismiss()=copy(dismissed=true)
 
     fun start():FirstEncounterState=if(phase==FirstEncounterPhase.CLOSED)copy(phase=FirstEncounterPhase.OPENING)else this
     fun doorOpened():FirstEncounterState=if(phase==FirstEncounterPhase.OPENING)copy(phase=FirstEncounterPhase.ENTERING)else this

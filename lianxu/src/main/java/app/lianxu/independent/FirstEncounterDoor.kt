@@ -11,6 +11,9 @@ import android.graphics.Shader
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,18 +33,21 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 
 internal val FirstEncounterPaper=Color(0xFFFFEED6)
 internal val FirstEncounterSaver=listSaver<FirstEncounterState,String>(
-    save={listOf(it.phase.name,it.destination?.name.orEmpty())},
-    restore={values->runCatching{FirstEncounterState(FirstEncounterPhase.valueOf(values[0]),values[1].takeIf{it.isNotEmpty()}?.let(FirstEncounterDestination::valueOf)).restored()}.getOrNull()}
+    save={listOf(it.phase.name,it.destination?.name.orEmpty(),it.dismissed.toString())},
+    restore={values->runCatching{FirstEncounterState(FirstEncounterPhase.valueOf(values[0]),values[1].takeIf{it.isNotEmpty()}?.let(FirstEncounterDestination::valueOf),dismissed=values.getOrNull(2)=="true").restored()}.getOrNull()}
 )
 
 /** Uses the two approved paintings unchanged; only their drawing transforms are animated. */
 @Composable internal fun FirstEncounterDoor(
     state:FirstEncounterState,
     onState:(FirstEncounterState)->Unit,
+    notice: @Composable () -> Unit,
     onReturnToHost: () -> Unit,
     onChoose:(FirstEncounterDestination)->Unit
 ){
@@ -75,27 +81,57 @@ internal val FirstEncounterSaver=listSaver<FirstEncounterState,String>(
         Canvas(Modifier.fillMaxSize()){
             drawIntoCanvas{renderer.draw(it.nativeCanvas,size.width,size.height,if(reduced)1f else open.value,if(reduced)1f else push.value)}
         }
-        if(state.phase==FirstEncounterPhase.READY){
-            val actionsEnabled=state.canChoose&&(reduced||revealComplete)
-            Column(Modifier.align(Alignment.Center).widthIn(max=360.dp).fillMaxWidth(.70f).graphicsLayer{alpha=if(reduced)1f else reveal.value}.testTag("first-encounter-actions"),horizontalAlignment=Alignment.CenterHorizontally){
-                Button({onChoose(FirstEncounterDestination.CREATE)},enabled=actionsEnabled,
-                    shape=RoundedCornerShape(28.dp),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFF0CD99),contentColor=Color(0xFF835323),disabledContainerColor=Color(0xFFF0CD99),disabledContentColor=Color(0xFF835323)),
-                    modifier=Modifier.fillMaxWidth().heightIn(min=56.dp).testTag("first-encounter-create")){
-                    Text("创建角色",style=MaterialTheme.typography.titleMedium)
+        Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+            notice()
+            ReturnHomeButton(
+                onReturnToHost, Modifier.padding(start = 12.dp, top = 4.dp),
+                background = FirstEncounterPaper.copy(alpha = 0.78f),
+                textColor = Color(0xFF6B5847), borderColor = Color(0xFFD4C8B9)
+            )
+            if (state.phase == FirstEncounterPhase.READY) {
+                val enabled = state.canChoose && (reduced || revealComplete)
+                val ink = Color(0xFF6B5847)
+                val white = Color(0xFFFFFDF9)
+                val fade = Modifier.graphicsLayer { alpha = if (reduced) 1f else reveal.value }
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Column(
+                        Modifier.widthIn(max = 420.dp).fillMaxWidth().verticalScroll(rememberScrollState())
+                            .padding(horizontal = 24.dp).then(fade).testTag("first-encounter-actions"),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        HorizontalDivider(Modifier.width(46.dp), thickness = 1.dp, color = Color(0xFFB79B79))
+                        Spacer(Modifier.height(20.dp))
+                        Text("初次相遇", style = BrandStyle.copy(fontSize = 36.sp, letterSpacing = 3.sp),
+                            color = Color(0xFF584535), textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(14.dp))
+                        Text("写下她的性格与你们的关系，\n之后的每一次相处都会慢慢留下来。",
+                            color = Color(0xFF786654), fontSize = 14.sp, lineHeight = 25.sp, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(32.dp))
+                        Button(onClick = { onChoose(FirstEncounterDestination.CREATE) }, enabled = enabled,
+                            modifier = Modifier.fillMaxWidth(.90f).height(56.dp).testTag("first-encounter-create"),
+                            shape = RoundedCornerShape(28.dp), colors = ButtonDefaults.buttonColors(
+                                containerColor = ink, contentColor = white, disabledContainerColor = ink, disabledContentColor = white)) {
+                            Text("创建角色", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        val milk = white.copy(alpha = 0.62f)
+                        val secondaryInk = Color(0xFF514235)
+                        OutlinedButton(onClick = { onChoose(FirstEncounterDestination.RESTORE) }, enabled = enabled,
+                            modifier = Modifier.fillMaxWidth(.90f).height(52.dp).testTag("first-encounter-restore"),
+                            shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, Color(0xFFD4C4B2)),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = milk, contentColor = secondaryInk,
+                                disabledContainerColor = milk, disabledContentColor = secondaryInk)) {
+                            Text("恢复已有数据")
+                        }
+                    }
                 }
-                Spacer(Modifier.height(20.dp))
-                TextButton({onChoose(FirstEncounterDestination.RESTORE)},enabled=actionsEnabled,
-                    colors=ButtonDefaults.textButtonColors(contentColor=Color(0xFF956B3C),disabledContentColor=Color(0xFF956B3C)),
-                    modifier=Modifier.fillMaxWidth().heightIn(min=UiSpace.action).testTag("first-encounter-restore")){
-                    Text("恢复已有数据",style=MaterialTheme.typography.bodyLarge)
+                TextButton(onClick = { onState(state.dismiss()) }, enabled = enabled,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 16.dp)
+                        .then(fade).testTag("first-encounter-enter-home")) {
+                    Text("先进入主页", color = Color(0xFF786654))
                 }
             }
         }
-        ReturnHomeButton(
-            onReturnToHost, Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 4.dp),
-            background = FirstEncounterPaper.copy(alpha = 0.78f),
-            textColor = Color(0xFF6B5847), borderColor = Color(0xFFD4C8B9)
-        )
     }
 }
 

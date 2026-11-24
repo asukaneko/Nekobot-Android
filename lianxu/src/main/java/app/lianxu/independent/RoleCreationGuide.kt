@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.first
 
 @Composable internal fun RoleCreationGuide(
     draft:RoleCreationDraft,onDraft:(RoleCreationDraft)->Unit,busy:Boolean,saved:Boolean=false,
+    notice: @Composable () -> Unit,
     polisher:RoleCreationPolish?=null,onConfigure:()->Unit={},
     onExit:()->Unit,onCreate:(RoleCreationDraft)->Unit
 ){
@@ -136,7 +137,8 @@ import kotlinx.coroutines.flow.first
         } else {
             EncounterWarmLight(Modifier.fillMaxSize())
         }
-        Column(Modifier.fillMaxSize()){
+        Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()){
+            notice()
             Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(horizontal=UiSpace.small),verticalAlignment=Alignment.CenterVertically){
                 IconButton(onClick={previous()},enabled=enabled&&!saved,modifier=Modifier.size(UiSpace.action).testTag("create-back").semantics{contentDescription="返回"}){ControlIcon("back",Ink)}
                 Text("创建角色",Modifier.weight(1f).padding(horizontal=UiSpace.small),style=MaterialTheme.typography.titleMedium)

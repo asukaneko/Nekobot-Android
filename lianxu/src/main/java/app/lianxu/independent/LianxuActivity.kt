@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -68,7 +69,7 @@ class LianxuActivity : ComponentActivity() {
     override fun onDestroy(){DiagnosticEnvironment.detach(this);super.onDestroy()}
     override fun onNewIntent(intent:android.content.Intent){super.onNewIntent(intent);notificationIntent=consumeNotification(intent)}
 }
-@Composable private fun Lianxu(vm: AppState, onReturnToHost: () -> Unit) {
+@Composable private fun LianxuActivity.Lianxu(vm: AppState, onReturnToHost: () -> Unit) {
     var encounter by rememberSaveable(stateSaver=FirstEncounterSaver){mutableStateOf(FirstEncounterState())}
     var creationDraft by rememberSaveable(stateSaver=RoleCreationDraftSaver){mutableStateOf(RoleCreationDraft())}
     var creationConfigOpen by rememberSaveable{mutableStateOf(false)}
@@ -84,6 +85,13 @@ class LianxuActivity : ComponentActivity() {
     }
     val encounterHome=encounter.shouldShow(vm.ready,vm.friends.isNotEmpty(),vm.page)
     val guidedCreate=vm.page=="create"&&encounter.destination==FirstEncounterDestination.CREATE
+    val warmPage = encounterHome || guidedCreate
+    if (warmPage) DisposableEffect(window) {
+        val clear = android.graphics.Color.TRANSPARENT
+        val paperBars = SystemBarStyle.light(clear, clear)
+        enableEdgeToEdge(statusBarStyle = paperBars, navigationBarStyle = paperBars)
+        onDispose { enableEdgeToEdge() }
+    }
     LaunchedEffect(vm.page){if(vm.page=="home"){encounter=encounter.returned();creationConfigOpen=false}}
     LaunchedEffect(vm.page,vm.friends.isNotEmpty()){
         if(vm.page=="chat"&&vm.friends.isNotEmpty()&&encounter.destination==FirstEncounterDestination.CREATE){creationDraft=RoleCreationDraft();encounter=encounter.returned()}
@@ -110,10 +118,13 @@ class LianxuActivity : ComponentActivity() {
     }
     BackHandler(enabled = vm.page == "home", onBack = onReturnToHost)
     BackHandler(vm.page!="home"&&!guidedCreate){vm.back()}
-    CompositionLocalProvider(LocalRoleAvatars provides vm.roleAvatars){Surface(Modifier.fillMaxSize(),color=if(encounterHome||guidedCreate)FirstEncounterPaper else Chrome){Column(Modifier.safeDrawingPadding().imePadding()){
+    val notice: @Composable () -> Unit = {
         if(vm.error.isNotEmpty())Text(vm.error,Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(12.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onErrorContainer)
+    }
+    CompositionLocalProvider(LocalRoleAvatars provides vm.roleAvatars){Surface(Modifier.fillMaxSize(),color=if(warmPage)FirstEncounterPaper else Chrome){Column(if(warmPage) Modifier else Modifier.safeDrawingPadding().imePadding()){
+        if (!warmPage) notice()
         if(!vm.ready)Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){CircularProgressIndicator()}
-        else if(encounterHome)FirstEncounterDoor(encounter,{encounter=it},onReturnToHost=onReturnToHost,onChoose={target->
+        else if(encounterHome)FirstEncounterDoor(encounter,{encounter=it},notice=notice,onReturnToHost=onReturnToHost,onChoose={target->
             val choice=encounter.choose(target);encounter=choice.state
             choice.navigateTo?.let{vm.open(it.page)}
         })
@@ -131,7 +142,7 @@ class LianxuActivity : ComponentActivity() {
             "toolbox-video"->ToolboxVideoScreen(vm)
             "toolbox-memory"->ToolboxMemoryScreen(vm)
             "toolbox-contact"->ToolboxContactScreen(vm)
-            "create"->if(guidedCreate)RoleCreationGuide(creationDraft,{updateCreation(it)},vm.busy,saved=vm.savedCreationId==creationDraft.creationId,
+            "create"->if(guidedCreate)RoleCreationGuide(creationDraft,{updateCreation(it)},vm.busy,notice=notice,saved=vm.savedCreationId==creationDraft.creationId,
                 polisher=vm.creationPolisher,onConfigure={vm.creationPolisher.cancel();creationConfigOpen=true;vm.open("models")},
                 onExit={vm.back()},onCreate={draft->vm.createCompanion(draft.name,draft.definition,draft.expression,draft.opening,draft.extra,draft.relationship,draft.creationId)})else Create(vm)
             "role-archive"->RoleArchiveScreen(vm)
@@ -194,7 +205,7 @@ internal fun ReturnHomeButton(
         if(removalError.isNotEmpty())Text(removalError,Modifier.padding(UiSpace.page).testTag("role-delete-error"),color=MaterialTheme.colorScheme.error)
         Row(Modifier.fillMaxWidth().heightIn(min=if(vm.tab==3)64.dp else 80.dp).background(if(vm.tab==3)Paper else Chrome).padding(start=24.dp,end=12.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically){
             Row(Modifier.weight(1f),verticalAlignment=Alignment.CenterVertically){
-                Text(if (vm.tab == 0) "单会话" else labels[vm.tab],Modifier.testTag("home-title"),style=BrandStyle)
+                Text(if (vm.tab == 0) "恋叙" else labels[vm.tab],Modifier.testTag("home-title"),style=BrandStyle)
                 if(vm.tab==0){Spacer(Modifier.width(2.dp));CompanionBirds(Modifier.weight(1f,fill=false).widthIn(max=104.dp))}
             }
             ReturnHomeButton(onReturnToHost)
