@@ -1,5 +1,7 @@
 package com.nekobot.app.data.local
 
+import app.lianxu.independent.RoleLink
+import app.lianxu.independent.LianxuModule
 import com.nekobot.app.data.repository.Resource
 
 import android.os.StatFs
@@ -10083,11 +10085,13 @@ class LocalRepository(
                 AchievementManager.Target.Metric.CHARACTERS,
                 characterDao.count().toLong()
             )
+            LianxuModule.roles.sync(entity.id,db.openHelper.databaseName)
             entity.toCharacterPreset()
         }
 
-    suspend fun deleteCharacter(id: String) = withContext(Dispatchers.IO) {
-        characterDao.deleteById(id)
+    suspend fun deleteCharacter(id: String, link:RoleLink?=null, profile:String?=db.openHelper.databaseName) = withContext(Dispatchers.IO) {
+        check(profile==db.openHelper.databaseName){"资料库已切换，请重新确认"}
+        LianxuModule.roles.deleteHost(requireNotNull(db.openHelper.databaseName),id,link) { characterDao.deleteById(id) }
     }
 
     // ==================== 世界书 ====================

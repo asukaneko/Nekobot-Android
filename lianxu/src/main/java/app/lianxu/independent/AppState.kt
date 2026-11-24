@@ -25,7 +25,7 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     internal val chatDrafts=mutableMapOf<String,ChatDraftState>()
     override fun onCleared(){chatBinding.detach(this);chatDrafts.values.forEach{it.image.value?.close()};super.onCleared()}
     internal var imagePickerRole:String?=null
-    private val store = Store(application,AppServices.databaseName)
+    private val store = LianxuModule.roles.store
     private val ledger=ChatLedger(store)
     private val modelVault=ModelVault(application,vaultNamespace,store)
     private val diagnosticClient=LoggedTextChatClient(client)
@@ -101,21 +101,21 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     internal fun notificationShown(){notificationTarget=null}
     internal val roleArchive=RoleArchiveRepository(store)
     internal suspend fun importRoleArchive(preview:RoleArchiveRepository.Preview,confirmed:Boolean,lease:ChatAttemptLease=ChatAttemptLease()):String {
-        return withContext(NonCancellable){val id=Diagnostics.span("backup.legacy.import"){roleArchive.commit(preview,confirmed,lease)};avatarCache.reset();messagePrints=emptyMap();reload();id}
+        return withContext(NonCancellable){val id=Diagnostics.span("backup.legacy.import"){roleArchive.commit(preview,confirmed,lease)};LianxuModule.roles.sync();avatarCache.reset();messagePrints=emptyMap();reload();id}
     }
     internal suspend fun exportBackup(id:String?,includeKeys:Boolean,password:CharArray?=null)=Diagnostics.span("backup.export",mapOf("scope" to if(id==null)"all" else "role","include_keys" to includeKeys)) {backup.export(id,includeKeys,password)}
     internal suspend fun importBackup(plan:BackupRepository.Preview,confirmed:Boolean,lease:ChatAttemptLease,password:CharArray?=null):List<String> = withContext(NonCancellable){Diagnostics.span("backup.import",mapOf("mode" to plan.mode,"scope" to if(plan.pack.all)"all" else "role")) {
-        val ids=if(plan.mode=="REPLACE"&&plan.pack.all)diagnosticSave.withLock{
+        val ids=LianxuModule.roles.duringRestore { if(plan.mode=="REPLACE"&&plan.pack.all)diagnosticSave.withLock{
             val detailed=plan.pack.root["preferences"].asJsonObject[EXPORT_DETAIL_PREF]?.asString!="0"
             val restored=backup.commit(plan,confirmed,lease,password=password)
             diagnosticChoice++;selectDetailedExport(detailed);savedDiagnosticDetailed=detailed
             restored
-        }else backup.commit(plan,confirmed,lease,password=password)
+        }else backup.commit(plan,confirmed,lease,password=password) }
         if(plan.mode=="REPLACE"){
             val replaced=if(plan.pack.all)friends.map{it.id}else listOf(requireNotNull(plan.target))
             replaced.forEach{runner.cancel(it,"backup_replacement");memory.cancel(it)}
         }
-        avatarCache.reset();messagePrints=emptyMap();reload();markFailureGuidesSeen(turns);persona=store.persona();refreshUserAvatar();ids
+        LianxuModule.roles.sync();avatarCache.reset();messagePrints=emptyMap();reload();markFailureGuidesSeen(turns);persona=store.persona();refreshUserAvatar();ids
     }}
     internal val memory:MemoryEngine get()=chatBinding.memory
     private val manualMemoryJobs=mutableMapOf<String,Job>()
@@ -205,6 +205,7 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     }
     init { viewModelScope.launch { runCatching { val savedDetailed=withContext(Dispatchers.IO){
         Diagnostics.startLocalRecording(application, vaultNamespace)
+        LianxuModule.roles.sync()
         HostModelSync.refresh(store,modelVault)
         modelVault.list() // Register persisted model credentials before accepting user input.
         store.preference(EXPORT_DETAIL_PREF,"1")=="1"
@@ -234,7 +235,7 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     }
     internal suspend fun refreshProcessing(){reload()}
     private suspend fun recoverProcessing(){memory.recover();ReplyAccountingScheduler.recover(store)}
-    fun foreground(){if(ready)viewModelScope.launch{runCatching{HostModelSync.refresh(store,modelVault);companion.checkContinuity(CompanionRuntime.owner);settleCompanion();reload(syncModels=false);recoverProcessing()}}}
+    fun foreground(){if(ready)viewModelScope.launch{runCatching{LianxuModule.roles.sync();avatarCache.reset();HostModelSync.refresh(store,modelVault);companion.checkContinuity(CompanionRuntime.owner);settleCompanion();reload(syncModels=false);recoverProcessing()}}}
     internal var modelsReturnChatId by mutableStateOf<String?>(null); private set
     internal var modelsTargetConfigId by mutableStateOf<String?>(null); private set
     internal var modelsTargetPurpose by mutableStateOf<ModelPurpose?>(null); private set
@@ -292,13 +293,13 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
         if(busy)return
         val role=generatedRoles.firstOrNull{it.friend.id==candidateId}?:return
         if(friends.any{it.id==role.friend.id})return
-        save{store.addConfigured(role.friend,RolePrompts(characterDefinition=role.definition,expression=role.expression,opening=role.opening));reload()}
+        save{store.addConfigured(role.friend,RolePrompts(characterDefinition=role.definition,expression=role.expression,opening=role.opening));LianxuModule.roles.sync();reload()}
     }
     fun create(name: String,bio: String,prompt: String) {
         if(busy) return
         if(name.isBlank() || bio.isBlank()) { error="请填写名字和角色介绍。"; return }
         val f=Friend(UUID.randomUUID().toString(),name.trim(),bio.trim(),prompt.trim())
-        save { store.add(listOf(f),demoGreeting=false); reload(); open("chat",f.id) }
+        save { store.add(listOf(f),demoGreeting=false); LianxuModule.roles.sync();reload(); open("chat",f.id) }
     }
     fun send(text:String,onPersisted:()->Unit={}):Boolean=sendImage(text,null,onPersisted)
     fun sendImage(text:String,image:PendingChatImage?,onPersisted:()->Unit={}):Boolean {
@@ -313,14 +314,14 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
         val job=viewModelScope.launch(start=CoroutineStart.LAZY){try{val result=memory.ensureRoom(id,forceOne=true,manualRetry=true);if(!result.success)error=processingMessage(result.code);reload()}finally{if(manualMemoryJobs[id]===currentCoroutineContext().job)manualMemoryJobs.remove(id)}}
         manualMemoryJobs[id]=job;job.start()
     }
-    internal suspend fun previewRoleDeletion(id:String)=backup.previewRoleDeletion(id)
+    internal fun stopRoleJobs(id:String){manualMemoryJobs[id]?.cancel()}
+    internal suspend fun previewRoleDeletion(id:String)=backup.previewRoleDeletion(id).copy(link=LianxuModule.roles.friendLink(id))
     internal suspend fun deleteRole(plan:BackupRepository.RoleDeletion,confirmed:Boolean){
         require(confirmed){"删除角色需要再次确认"}
         withContext(NonCancellable){
             val id=plan.friendId
             store.memorySummary.requireEditable(id)
-            backup.deleteRole(plan,true)
-            runner.cancel(id,"role_deleted");memory.cancel(id);manualMemoryJobs[id]?.cancel()
+            LianxuModule.roles.deleteFriend(plan)
             if(activeId==id){activeId="";page="home"}
             reload()
         }
@@ -348,19 +349,20 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
         }
     }
     private suspend fun openSavedCompanion(id:String){
-        try{reload();check(friends.any{it.id==id});open("chat",id);savedCreationId=null}
+        try{LianxuModule.roles.sync();reload();check(friends.any{it.id==id});open("chat",id);savedCreationId=null}
         catch(e:CancellationException){throw e}
         catch(e:Exception){error="角色已保存，打开未完成，请重试。"}
     }
     fun saveCharacter(id:String,name:String,definition:String,expression:String,opening:String,extra:String,initialRelationship:String,thinkingPrompt:String){
         if(name.isBlank()||definition.isBlank()){error="请填写名字和角色设定。";return}
-        save{store.saveConfigured(id,name){old->old.copy(characterDefinition=definition,expression=expression,opening=opening,extra=extra,initialRelationship=initialRelationship,thinkingPrompt=thinkingPrompt.ifBlank{""})};reload();back()}
+        save{store.saveConfigured(id,name){old->old.copy(characterDefinition=definition,expression=expression,opening=opening,extra=extra,initialRelationship=initialRelationship,thinkingPrompt=thinkingPrompt.ifBlank{""})};LianxuModule.roles.sync();reload();back()}
     }
     fun setRoleAvatar(id:String,mime:String,bytes:ByteArray){
         if(friends.none{it.id==id})return
         save{
             val prepared=prepareRoleAvatar(bytes)
             roleAssets.put(id,RoleAssets.Asset("avatar.jpg","avatar",prepared.first,prepared.second))
+            LianxuModule.roles.sync()
             avatarCache.put(id,prepared.second)
             roleAvatars=roleAvatars+(id to prepared.second)
         }

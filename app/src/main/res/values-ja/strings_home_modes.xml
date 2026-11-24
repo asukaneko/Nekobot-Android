@@ -64,4 +64,6 @@
     <string name="home_companion_empty">単一キャラの会話はまだありません</string>
     <string name="home_companion_empty_hint">キャラクターを選んで長期の関係を始める</string>
     <string name="home_companion_yours">あなたの単一キャラ</string>
+    <string name="character_delete_single_warning">個別チャットの会話履歴、記憶、交流記録も完全に削除されます。元に戻せません。</string>
+    <string name="character_link_check_failed">キャラクターの連携を確認できません。開き直してください。</string>
 </resources>

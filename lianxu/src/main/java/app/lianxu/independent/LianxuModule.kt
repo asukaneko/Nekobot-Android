@@ -11,7 +11,11 @@ object LianxuModule {
     internal lateinit var hostModels: HostModelBridge
         private set
 
-    fun initialize(application: Application, hostModels: HostModelBridge, onReturnToHost: (Context) -> Unit) {
+    lateinit var roles: HostRoleSync
+        private set
+
+    fun initialize(application: Application, hostModels: HostModelBridge, hostRoles: HostRoleBridge, onReturnToHost: (Context) -> Unit) {
+        roles = HostRoleSync(application,hostRoles)
         this.hostModels = hostModels
         this.onReturnToHost = onReturnToHost
         val journal = File(application.filesDir, "diagnostics/${AppServices.vaultNamespace}")

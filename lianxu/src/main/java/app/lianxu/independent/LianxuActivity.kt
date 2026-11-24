@@ -180,11 +180,11 @@ internal fun ReturnHomeButton(
     var removing by remember{mutableStateOf(false)}
     var removalError by remember{mutableStateOf("")}
     val scope=rememberCoroutineScope()
-    fun askDelete(friend:Friend){if(!removing){removing=true;removalError="";scope.launch{try{removal=vm.previewRoleDeletion(friend.id)}catch(_:Exception){removalError="角色资料读取失败，请重试。"}finally{removing=false}}}}
+    fun askDelete(friend:Friend){if(!removing){removing=true;removalError="";scope.launch{try{removal=vm.previewRoleDeletion(friend.id)}catch(e:ForeignRoleProfile){removalError=e.message.orEmpty()}catch(_:Exception){removalError="角色资料读取失败，请重试。"}finally{removing=false}}}}
     removal?.let{plan->AlertDialog(
         onDismissRequest={if(!removing)removal=null},
         title={Text("删除「${plan.name}」？")},
-        text={Text("将从聊天和通讯录同时移除这个角色，并永久删除其聊天、记忆（含历史与候选）、关系记录、提示词和已保存资源。进行中的回复和后台任务会停止。\n\n无法在应用内撤销，建议先导出备份。其他角色和全局模型配置保留。",Modifier.verticalScroll(rememberScrollState()))},
+        text={Text("将从聊天和通讯录同时移除这个角色，并永久删除其聊天、记忆（含历史与候选）、关系记录、提示词和已保存资源。进行中的回复和后台任务会停止。\n\n无法在应用内撤销，建议先导出备份。其他角色和全局模型配置保留。"+(if(plan.link!=null)" 同时也会从 NekoBot 内容库中删除该角色。" else ""),Modifier.verticalScroll(rememberScrollState()))},
         confirmButton={TextButton(onClick={if(!removing){removing=true;scope.launch{try{vm.deleteRole(plan,true);removal=null}catch(_:Exception){removal=null;removalError="角色删除未完成，请重新选择后重试。"}finally{removing=false}}}},enabled=!removing,modifier=Modifier.testTag("role-delete-confirm")){Text(if(removing)"正在删除…"else"删除角色",color=MaterialTheme.colorScheme.error)}},
         dismissButton={TextButton(onClick={removal=null},enabled=!removing,modifier=Modifier.testTag("role-delete-cancel")){Text("取消")}}
     )}

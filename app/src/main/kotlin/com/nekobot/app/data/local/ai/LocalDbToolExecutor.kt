@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local.ai
 
+import app.lianxu.independent.LianxuModule
 import com.google.gson.Gson
 import com.nekobot.app.data.local.LocalSkillStorage
 import com.nekobot.app.data.local.validateSkillNameValue
@@ -1017,7 +1018,9 @@ internal class LocalDbToolExecutor(
 
     private suspend fun deleteCharacter(args: Map<String, Any>): Map<String, Any> {
         val id = args.string("character_id").ifBlank { return failure("character_id 不能为空") }
-        db.characterDao().deleteById(id)
+        LianxuModule.roles.deleteHost(requireNotNull(db.openHelper.databaseName), id, null) {
+            db.characterDao().deleteById(id)
+        }
         return success("deleted" to true, "character_id" to id)
     }
 

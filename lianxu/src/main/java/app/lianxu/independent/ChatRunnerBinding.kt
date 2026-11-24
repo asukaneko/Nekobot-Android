@@ -9,6 +9,11 @@ import kotlinx.coroutines.cancel
 internal class ChatRunnerBinding private constructor(private val key:Pair<String,String>){
     companion object {
         private val bindings=mutableMapOf<Pair<String,String>,ChatRunnerBinding>()
+        fun stopRole(database:String,id:String) {
+            bindings.filterKeys { it.first==database }.values.toList().forEach {
+                it.runner.cancel(id,"role_deleted");it.memory.cancel(id);it.host?.stopRoleJobs(id)
+            }
+        }
         fun acquire(store:Store,vault:ModelVault,client:TextChatClient,processing:ProcessingRepository,host:AppState):ChatRunnerBinding {
             val key=store.databaseName to vault.statusNamespace
             val binding=bindings.getOrPut(key){ChatRunnerBinding(key)}

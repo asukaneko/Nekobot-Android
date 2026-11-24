@@ -14,7 +14,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
     data class Preview(val pack:BackupArchive.Package,val mode:String,val target:String?,val fingerprint:String,val contentDigest:String,val impact:String,val relationReport:RelationRestoreReport=RelationRestoreReport(0),val assetDigests:Map<String,String> = emptyMap()){override fun toString()="BackupPreview(redacted)"}
     data class RestoreResult(val roles:List<String>,val relationReport:RelationRestoreReport)
     suspend fun commitWithReport(plan:Preview,confirmed:Boolean=false)=RestoreResult(commit(plan,confirmed),plan.relationReport)
-    data class RoleDeletion(val friendId:String,val name:String,val characterStamp:String)
+    data class RoleDeletion(val friendId:String,val name:String,val characterStamp:String,val link:RoleLink?=null)
     private val base=RoleArchive.tables.keys.toList()
     private val extra=listOf("processing_policies","memory_batches","memory_operations","memory_batch_reviews","candidate_injections","message_reasoning","memory_recall_state","chat_memory_pills","chat_images","image_observations")
     private val companionTables=listOf("companion_state","companion_sources","companion_blocks","companion_uses","companion_opportunities","companion_receipts","companion_action_learning")
@@ -48,7 +48,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
      * recomputed, so they travel with their role; only receipts whose turn belongs to no role are skipped.
      */
     private val derivedPrefixes=listOf("relationship-cache:","memory-core-set:")
-    private fun ignored(key:String)=key.startsWith(FOLLOW_PREFIX)||derivedPrefixes.any{key.startsWith(it)}||key.startsWith(ChatToolJournal.PREFIX)||key.startsWith(OrderedChatReply.PREFIX)||key.startsWith("memory-tools:")||key.startsWith(ChatLedger.ERROR_PREFIX)||key.startsWith(ContactFailures.ERROR_PREFIX)||key.startsWith(ModelStatusStore.PREFIX)||key.startsWith("memory-batch-failure:")||key.startsWith("memory-vectors-v1:")||key.startsWith("model-vault-generation:")
+    private fun ignored(key:String)=key.startsWith(ROLE_MAP)||key.startsWith(FOLLOW_PREFIX)||derivedPrefixes.any{key.startsWith(it)}||key.startsWith(ChatToolJournal.PREFIX)||key.startsWith(OrderedChatReply.PREFIX)||key.startsWith("memory-tools:")||key.startsWith(ChatLedger.ERROR_PREFIX)||key.startsWith(ContactFailures.ERROR_PREFIX)||key.startsWith(ModelStatusStore.PREFIX)||key.startsWith("memory-batch-failure:")||key.startsWith("memory-vectors-v1:")||key.startsWith("model-vault-generation:")
     private fun snapshot(db:SQLiteDatabase,id:String,files:MutableMap<String,BackupAssetSource>,budget:Budget=Budget(),valid:()->Unit={}):JsonObject {
         val friend=db.rawQuery("SELECT * FROM friends WHERE id=?",arrayOf(id)).use{check(it.moveToFirst()){ "角色已不存在" };row(it).also(budget::json)}
         val tables=JsonObject();order.forEach{table->tables.add(table,rows(db,table,id,budget))}
@@ -315,9 +315,14 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
         db.delete("friends","id=?",arrayOf(id))
     }
     private fun clearAll(db:SQLiteDatabase){
+        // Keep this device's unfinished, confirmed deletes even when restoring under another profile.
+        val pending = db.rawQuery("SELECT key,value FROM preferences WHERE key GLOB ?", arrayOf(ROLE_MAP + "*")).use { rows ->
+            buildMap { while (rows.moveToNext()) if (pendingRoleDeletion(rows.getString(1))) put(rows.getString(0), rows.getString(1)) }
+        }
         ImageDisk.clearReadCache()
         // Foreign key order also removes in-flight rows; none are imported or restarted.
         (companionTables.reversed()+listOf("image_observations","chat_images","memory_recall_state","memory_operations","memory_batch_reviews","candidate_injections","message_reasoning","message_state","message_history","memory_history","memory_current","memory_candidates","memory_retired","memory_progress","memory_batches","processing_policies","chat_memory_pills","role_assets","chat_turns","messages","friends","preferences")).forEach{db.delete(it,null,null)}
+        pending.forEach { (key,value) -> pref(db,key,value) }
     }
     private fun restore(db:SQLiteDatabase,role:JsonObject,id:String,files:Map<String,ByteArray>,checkpoint:()->Unit,hashes:Map<String,String>){
         val oldId=role["character"].asJsonObject["id"].asString;val tables=role["tables"].asJsonObject

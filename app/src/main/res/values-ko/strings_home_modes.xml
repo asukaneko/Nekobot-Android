@@ -64,4 +64,6 @@
     <string name="home_companion_empty">단일 캐릭터 대화가 아직 없습니다</string>
     <string name="home_companion_empty_hint">캐릭터를 골라 장기 관계 시작</string>
     <string name="home_companion_yours">내 단일 캐릭터</string>
+    <string name="character_delete_single_warning">일대일 대화의 채팅 기록, 기억 및 함께한 기록도 영구 삭제됩니다. 되돌릴 수 없습니다.</string>
+    <string name="character_link_check_failed">캐릭터 연결을 확인할 수 없습니다. 다시 열어 주세요.</string>
 </resources>

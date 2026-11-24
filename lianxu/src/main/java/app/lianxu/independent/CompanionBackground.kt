@@ -35,7 +35,7 @@ internal object CompanionScheduler {
             WorkManager.getInstance(context).enqueueUniqueWork("lianxu_companion:${o.id}:${o.attempt}:${o.notBefore}",ExistingWorkPolicy.KEEP,request)
         }
     }
-    fun cancel(context:Context,role:String){WorkManager.getInstance(context).cancelAllWorkByTag("lianxu_companion:$role")}
+    fun cancel(context:Context,role:String) = WorkManager.getInstance(context).cancelAllWorkByTag("lianxu_companion:$role")
 }
 
 class CompanionWorker(context:Context,params:WorkerParameters):CoroutineWorker(context,params){

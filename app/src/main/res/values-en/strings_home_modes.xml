@@ -64,4 +64,6 @@
     <string name="home_companion_empty">No single-character chats yet</string>
     <string name="home_companion_empty_hint">Pick a character to start a long-term bond</string>
     <string name="home_companion_yours">Your single characters</string>
+    <string name="character_delete_single_warning">This also permanently deletes this character’s chats, memories and shared history in One-on-one chat. This cannot be undone.</string>
+    <string name="character_link_check_failed">Could not verify the linked character. Reopen and try again.</string>
 </resources>

@@ -721,6 +721,9 @@ interface AgentToolMessageDao {
 
 @Dao
 interface CharacterDao {
+    @Query("UPDATE local_characters SET name=:name, description=:bio, system_prompt=:definition, first_message=:opening, avatar=:avatar, updated_at=:time WHERE id=:id")
+    suspend fun updateRoleBasics(id:String,name:String,bio:String,definition:String,opening:String,avatar:String?,time:String)
+
     @Query("UPDATE local_characters SET avatar = :avatar, updated_at = :updatedAt WHERE id = :id")
     suspend fun updateAvatar(id: String, avatar: String, updatedAt: String): Int
 
