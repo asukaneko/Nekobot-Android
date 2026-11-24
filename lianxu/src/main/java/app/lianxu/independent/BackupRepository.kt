@@ -48,7 +48,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
      * recomputed, so they travel with their role; only receipts whose turn belongs to no role are skipped.
      */
     private val derivedPrefixes=listOf("relationship-cache:","memory-core-set:")
-    private fun ignored(key:String)=derivedPrefixes.any{key.startsWith(it)}||key.startsWith(ChatToolJournal.PREFIX)||key.startsWith(OrderedChatReply.PREFIX)||key.startsWith("memory-tools:")||key.startsWith(ChatLedger.ERROR_PREFIX)||key.startsWith(ContactFailures.ERROR_PREFIX)||key.startsWith(ModelStatusStore.PREFIX)||key.startsWith("memory-batch-failure:")||key.startsWith("memory-vectors-v1:")||key.startsWith("model-vault-generation:")
+    private fun ignored(key:String)=key.startsWith(FOLLOW_PREFIX)||derivedPrefixes.any{key.startsWith(it)}||key.startsWith(ChatToolJournal.PREFIX)||key.startsWith(OrderedChatReply.PREFIX)||key.startsWith("memory-tools:")||key.startsWith(ChatLedger.ERROR_PREFIX)||key.startsWith(ContactFailures.ERROR_PREFIX)||key.startsWith(ModelStatusStore.PREFIX)||key.startsWith("memory-batch-failure:")||key.startsWith("memory-vectors-v1:")||key.startsWith("model-vault-generation:")
     private fun snapshot(db:SQLiteDatabase,id:String,files:MutableMap<String,BackupAssetSource>,budget:Budget=Budget(),valid:()->Unit={}):JsonObject {
         val friend=db.rawQuery("SELECT * FROM friends WHERE id=?",arrayOf(id)).use{check(it.moveToFirst()){ "角色已不存在" };row(it).also(budget::json)}
         val tables=JsonObject();order.forEach{table->tables.add(table,rows(db,table,id,budget))}
@@ -106,7 +106,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
         if (cfg.has("streamReplies")) require(cfg["streamReplies"].isJsonPrimitive && cfg["streamReplies"].asJsonPrimitive.isBoolean) { "模型回复方式无效" }
         else cfg.addProperty("streamReplies", true)
         val config=Gson().fromJson(cfg,ModelConfig::class.java)
-        require(config.id.matches(Regex("[a-zA-Z0-9-]{1,80}"))&&config.name.length<=200&&config.modelId.length<=200&&config.baseUrl.length<=2000&&ConfigRules.validate(config,"validation-placeholder")==null&&ThinkingMode.entries.any{it.key==config.thinkingMode}&&config.thinkingCustom.length<=4000&&ThinkingFields.customError(config.thinkingCustom)==null){"模型配置无效"}
+        require(!config.id.isHostModel()&&config.id.matches(Regex("[a-zA-Z0-9-]{1,80}"))&&config.name.length<=200&&config.modelId.length<=200&&config.baseUrl.length<=2000&&ConfigRules.validate(config,"validation-placeholder")==null&&ThinkingMode.entries.any{it.key==config.thinkingMode}&&config.thinkingCustom.length<=4000&&ThinkingFields.customError(config.thinkingCustom)==null){"模型配置无效"}
         val key=if(j.has("key"))j["key"].asString else null;require(key==null||key.length<=4096&&key.none{it.isWhitespace()||it.code<32}){"密钥字段格式无效"};BackupModel(config,key)
     }
     private fun validate(db:SQLiteDatabase,root:JsonObject,files:Map<String,ByteArray>,valid:()->Unit={}){

@@ -25,6 +25,7 @@ class ModelConfigState @JvmOverloads constructor(
     internal var embeddingClient:MemoryEmbeddingClient=HttpsMemoryEmbeddingClient()
     /** 连接测试走真发一句话；测试可注入脚本化实现，不打开网络。 */
     internal var testClient:TextChatClient=HttpsTextChatClient()
+    internal var hostPurposes by mutableStateOf(emptyMap<String,String>()); private set
     var configs by mutableStateOf(emptyList<ModelConfig>());private set
     internal var loaded by mutableStateOf(false);private set
     internal var configRevisions by mutableStateOf(emptyMap<String,String>());private set
@@ -50,7 +51,8 @@ class ModelConfigState @JvmOverloads constructor(
     init {viewModelScope.launch {try {reload()}catch(_:Exception){message("无法读取加密配置，请重试。",true)}}}
     private fun message(text:String,error:Boolean=false){status=text;statusError=error}
     fun refresh(){viewModelScope.launch{runCatching{reload()}.onFailure{message("无法读取恢复后的配置，请重试。",true)}}}
-    private suspend fun reload()=withContext(Dispatchers.IO){AppMutationGate.read{
+    private suspend fun reload()=withContext(Dispatchers.IO){val sources=HostModelSync.refresh(storage,vault);AppMutationGate.read{
+        hostPurposes=sources
         val rows=vault.list();val selected=vault.defaultId()
         val selections=ModelPurpose.entries.associateWith{vault.purposeId(it)}
         val revisions=rows.associate{it.id to vault.recordStamp(it.id)}
@@ -102,7 +104,7 @@ class ModelConfigState @JvmOverloads constructor(
         saveConfig(config,key,ModelPurpose.CHAT,true,original,originalRevision,onSaved)
     }
     private fun saveConfig(config:ModelConfig,key:String,purpose:ModelPurpose?,protectOthers:Boolean,original:ModelConfig?,originalRevision:String?,onSaved:()->Unit){
-        if(busy)return;saving=true;status=""
+        if(busy || config.id.isHostModel())return;saving=true;status=""
         viewModelScope.launch {
         var attempted=false;var configurationConfirmed=false;var selectionConfirmed=false
         try {
@@ -121,7 +123,7 @@ class ModelConfigState @JvmOverloads constructor(
                 attempted=true
                 if(ModelKeyDraft.needsWrite(old,config,oldKey,resolved))vault.save(config,resolved)
                 configurationConfirmed=true
-                if(purpose!=null){vault.setPurpose(purpose,config.id);selectionConfirmed=true}
+                if(purpose!=null){HostModelSync.select(storage,vault,purpose,config.id);selectionConfirmed=true}
                 keep=probeStamp==stamp(config,resolved)&&probe.phase in setOf(ProbePhase.REACHABLE,ProbePhase.FAILED)
                 val pending=pendingTest
                 // Configuration and its status commit together: neither an old save nor an old clear can run after a newer key.
@@ -165,17 +167,17 @@ class ModelConfigState @JvmOverloads constructor(
         catch(_:Exception){if(version==requestVersion){val failed=ProbeDisplay(ProbePhase.FAILED,"向量测试未通过，请核对模型 ID、权限和 /embeddings 兼容性。");val selected=resolved;if(selected==null)probe=failed else tested(config,key,selected,failed,false,"向量接口未通过",version)}}
         finally{if(version==requestVersion)testing=false}}
     }
-    fun makeDefault(config:ModelConfig){if(busy)return;saving=true;viewModelScope.launch {try{withContext(Dispatchers.IO){vault.setDefault(config.id)};reload();message("已设为默认，没有发起网络请求。 ")}catch(_:Exception){message("默认配置保存失败。",true)}finally{saving=false}}}
+    fun makeDefault(config:ModelConfig){if(busy)return;saving=true;viewModelScope.launch {try{withContext(Dispatchers.IO){HostModelSync.select(storage,vault,ModelPurpose.CHAT,config.id)};reload();message("已设为默认，没有发起网络请求。 ")}catch(_:Exception){message("默认配置保存失败。",true)}finally{saving=false}}}
     fun selectPurpose(purpose:ModelPurpose,id:String){
         if(busy)return;saving=true
         viewModelScope.launch{
             var attempted=false;var confirmed=false
-            try{withContext(Dispatchers.IO){attempted=true;LocalStep.MODEL_PURPOSE.observe { vault.setPurpose(purpose,id) };confirmed=true};reload();message("用途选择已保存，没有发起网络请求。")}
+            try{withContext(Dispatchers.IO){attempted=true;LocalStep.MODEL_PURPOSE.observe { HostModelSync.select(storage,vault,purpose,id) };confirmed=true};reload();message("用途选择已保存，没有发起网络请求。")}
             catch(e:CancellationException){throw e}
             catch(_:Exception){message(if(confirmed)"用途选择已保存，但状态刷新未完成。返回后可重新读取。"else if(attempted)"用途写入未确认，可能已改变。请返回核对或重试。"else"用途保存失败，请重试。",true)}finally{saving=false}
         }
     }
-    fun delete(config:ModelConfig){if(busy)return;clearResult();saving=true;viewModelScope.launch {try{withContext(Dispatchers.IO){vault.delete(config.id)};statusStore.clearAll(config.id);reload();connections=connections-config.id;message("配置和关联密钥已删除。")}catch(_:Exception){message("删除未完成，请重试。",true)}finally{saving=false}}}
+    fun delete(config:ModelConfig){if(config.id.isHostModel() || busy)return;clearResult();saving=true;viewModelScope.launch {try{withContext(Dispatchers.IO){vault.delete(config.id)};statusStore.clearAll(config.id);reload();connections=connections-config.id;message("配置和关联密钥已删除。")}catch(_:Exception){message("删除未完成，请重试。",true)}finally{saving=false}}}
     /**
      * 连接测试的探针：真让模型回一句话。
      * 输出上限直接用这份配置的「聊天生成上限 Token」，不再固定 256；

@@ -119,7 +119,7 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
     }
     fun add(embedding:Boolean=false){if(state.saving||saveForPurpose==ModelPurpose.CHAT&&embedding)return;ProcessDiagnostics.action(ProcessAction.ADD_MODEL);prefilledKey="";keyDraft.invalidate();embeddingEditor=embedding;original=null;originalRevision=null;streamReplies=true;draftId=UUID.randomUUID().toString();name="";key="";reveal=false;model="";budgets=ModelBudgetDraft();resetThinking();thinkingCustom="";query="";allProviders=false;providerReturn="overview";state.clearResult();screen="providers"}
     fun sharedWithOtherPurposes(id:String)=saveForPurpose==ModelPurpose.CHAT&&state.purposes.any{(purpose,value)->purpose!=ModelPurpose.CHAT&&value==id}
-    fun edit(config:ModelConfig,embedding:Boolean){if(sharedWithOtherPurposes(config.id))return;ProcessDiagnostics.action(ProcessAction.EDIT_MODEL);prefilledKey="";embeddingEditor=embedding;original=config;streamReplies=config.streamReplies;originalRevision=state.configRevisions[config.id];draftId=config.id;name=config.name;provider=config.providerId;base=config.baseUrl;model=config.modelId;budgets=ModelBudgetDraft.existing(config);key="";reveal=false;advanced=false;thinkingMode=ThinkingFields.effectiveMode(config);thinkingMenu=false;thinkingCustom=config.thinkingCustom;state.clearResult();screen="edit"
+    fun edit(config:ModelConfig,embedding:Boolean){if(config.id.isHostModel() || sharedWithOtherPurposes(config.id))return;ProcessDiagnostics.action(ProcessAction.EDIT_MODEL);prefilledKey="";embeddingEditor=embedding;original=config;streamReplies=config.streamReplies;originalRevision=state.configRevisions[config.id];draftId=config.id;name=config.name;provider=config.providerId;base=config.baseUrl;model=config.modelId;budgets=ModelBudgetDraft.existing(config);key="";reveal=false;advanced=false;thinkingMode=ThinkingFields.effectiveMode(config);thinkingMenu=false;thinkingCustom=config.thinkingCustom;state.clearResult();screen="edit"
         keyDraft.invalidate()
         val ticket=keyDraft.ticket()
         editorScope.launch {
@@ -134,7 +134,7 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
         val targetId=initialEditConfigId?.takeIf{it.isNotBlank()}?:initialPurpose?.let{state.purposes[it]}
         val target=targetId?.let{id->state.configs.firstOrNull{it.id==id}}
         onInitialHandled()
-        if(target!=null){
+        if(target!=null && !target.id.isHostModel()){
             openedDirectlyToEdit=true
             edit(target,embedding=ProviderCatalog.modelKind(target)==ProviderModelKind.TEXT_EMBEDDING)
         }
@@ -180,7 +180,7 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
                 if(state.status.isNotBlank())item("status"){Notice(state.status,state.statusError)}
                 when(panel){
                 0->{
-                    val rows=state.configs.filter{ProviderCatalog.modelKind(it)!=ProviderModelKind.TEXT_EMBEDDING}
+                    val rows=state.configs.filter{config -> state.hostPurposes[config.id]?.let { it == "chat" } ?: (ProviderCatalog.modelKind(config)!=ProviderModelKind.TEXT_EMBEDDING)}
                     item("chat-label"){SectionLabel("聊天模型")}
                     if(rows.isEmpty())item("chat-empty"){Column(Modifier.fillMaxWidth().heightIn(min=180.dp).testTag("config-services-empty"),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
                         ControlIcon("services",ConfigMuted,56.dp);Spacer(Modifier.height(16.dp))
@@ -199,11 +199,11 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
                     item("chat-hint"){Text("用于和角色聊天",style=MaterialTheme.typography.bodySmall,color=ConfigMuted)}
                 }
                 1->{
-                    val rows=state.configs.filter{ProviderCatalog.modelKind(it)==ProviderModelKind.TEXT_EMBEDDING}
+                    val rows=state.configs.filter{config -> state.hostPurposes[config.id]?.let { it == "embedding" } ?: (ProviderCatalog.modelKind(config)==ProviderModelKind.TEXT_EMBEDDING)}
                     item("emb-label"){SectionLabel("向量模型")}
                     item("emb-list"){Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Paper)){
                         rows.forEachIndexed{index,config->
-                            ModelServiceRow(config,state.tests[config.id]?.ok==true,state.purposes[ModelPurpose.EMBEDDING]==config.id){edit(config,embedding=true)}
+                            ModelServiceRow(config,state.tests[config.id]?.ok==true,state.purposes[ModelPurpose.EMBEDDING]==config.id){if(config.id.isHostModel()) state.selectPurpose(ModelPurpose.EMBEDDING,config.id) else edit(config,embedding=true)}
                             if(index<rows.lastIndex)HorizontalDivider(Modifier.padding(horizontal=16.dp),color=ConfigLine)
                         }
                         if(rows.isNotEmpty())HorizontalDivider(Modifier.padding(horizontal=16.dp),color=ConfigLine)
@@ -393,14 +393,14 @@ private fun ModelAdvancedSettings(expanded: Boolean, onToggle: () -> Unit, conte
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
-                Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onOpen)
+                Column(Modifier.fillMaxWidth().clickable(enabled = !config.id.isHostModel(), role = Role.Button, onClick = onOpen)
                     .testTag("config-edit-${config.id}").heightIn(min = 48.dp),
                     verticalArrangement = Arrangement.Center) {
                     Text(config.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
-                    Text("${providerName(ProviderPresets.get(config.providerId))} · ${config.modelId}",
+                    Text(if (config.id.isHostModel()) "来自 NekoBot（在 NekoBot 中修改） · ${config.modelId}" else "${providerName(ProviderPresets.get(config.providerId))} · ${config.modelId}",
                         style = MaterialTheme.typography.labelSmall, color = ConfigMuted)
                 }
-                FlowRow(Modifier.clickable(role = Role.Button, onClick = onOpen)
+                if (!config.id.isHostModel()) FlowRow(Modifier.clickable(role = Role.Button, onClick = onOpen)
                     .testTag("config-manage-${config.id}").sizeIn(minWidth = 48.dp, minHeight = 48.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
                     Box(contentAlignment = Alignment.CenterStart) {
@@ -447,7 +447,7 @@ private fun ModelAdvancedSettings(expanded: Boolean, onToggle: () -> Unit, conte
         .testTag("config-edit-${config.id}").padding(horizontal=16.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)){
             Text(config.name,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis)
-            Text("${providerName(p)} · ${config.modelId}",style=MaterialTheme.typography.labelSmall,color=ConfigMuted,maxLines=1,overflow=TextOverflow.Ellipsis)
+            Text(if (config.id.isHostModel()) "来自 NekoBot（在 NekoBot 中修改） · ${config.modelId}" else "${providerName(p)} · ${config.modelId}",style=MaterialTheme.typography.labelSmall,color=ConfigMuted,maxLines=1,overflow=TextOverflow.Ellipsis)
         }
         if(testOk){
             Box(Modifier.size(7.dp).clip(CircleShape).background(ConfigSuccess));Spacer(Modifier.width(5.dp))

@@ -43,6 +43,8 @@ class CompanionWorker(context:Context,params:WorkerParameters):CoroutineWorker(c
         val store=Store(applicationContext,AppServices.databaseName)
         try{
             val repo=CompanionRepository(store,AppServices.companionClock)
+            val vault = ModelVault(applicationContext, AppServices.vaultNamespace, store)
+            HostModelSync.refresh(store, vault)
             ChatLedger(store).recoverInterrupted()
             repo.refreshRelationshipContacts()
             repo.checkContinuity(CompanionRuntime.owner)
@@ -61,7 +63,7 @@ class CompanionWorker(context:Context,params:WorkerParameters):CoroutineWorker(c
                 var failureDetail="";var secret:String?=null
                 try{
                     currentCoroutineContext().ensureActive()
-                    val access=ModelAccess(ModelVault(applicationContext,AppServices.vaultNamespace,store))
+                    val access=ModelAccess(vault)
                     val credential=access.credential(ModelPurpose.CHAT)?:throw CompanionModelFailure(ChatFailure.MISSING_CONFIG)
                     secret=credential.key
                     val history=repo.contactHistory(o.role);val recent=ProactiveMaterial.recent(history)

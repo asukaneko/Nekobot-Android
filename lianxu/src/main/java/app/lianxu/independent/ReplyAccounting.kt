@@ -25,9 +25,11 @@ class ReplyAccountingWorker(context:Context,params:WorkerParameters):CoroutineWo
     override suspend fun doWork():Result {
         val store=Store(applicationContext,AppServices.databaseName)
         try{
+            val vault = ModelVault(applicationContext, AppServices.vaultNamespace, store)
+            HostModelSync.refresh(store, vault)
             ChatLedger(store).recoverInterrupted()
             val role=inputData.getString("role")?:return Result.failure()
-            val processor=ReplyAccounting(store,ModelAccess(ModelVault(applicationContext,AppServices.vaultNamespace,store)),LoggedTextChatClient(AppServices.createTextClient()))
+            val processor=ReplyAccounting(store,ModelAccess(vault),LoggedTextChatClient(AppServices.createTextClient()))
             val complete=processor.drain(role)
             if(complete)CompanionScheduler.enqueue(applicationContext,CompanionRepository(store,AppServices.companionClock))
             // One delayed retry per wake-up. Persistent failure stays queued for next chat/reopen.

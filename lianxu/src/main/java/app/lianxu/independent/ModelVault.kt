@@ -86,7 +86,7 @@ class ModelVault(context:Context,private val namespace:String="model-configs",pr
             // Old builds pre-filled exactly 16384/2048. That pair is indistinguishable from an untouched
             // default, so it is lifted to the current default (capped by a checked model's real ceiling);
             // any other saved value stays exactly as the user set it.
-            val (liftedContext,liftedOutput)=ModelTokenPolicy.liftLegacy(context,output,provider,base,model)
+            val (liftedContext,liftedOutput)=if(f.nameWithoutExtension.isHostModel()) context to output else ModelTokenPolicy.liftLegacy(context,output,provider,base,model)
             val config=ModelConfig(f.nameWithoutExtension,j.getString("name"),provider,base,model,liftedContext,liftedOutput,j.optInt("memoryOutputTokens",0),j.optString("thinkingMode",ThinkingMode.DEFAULT.key),j.optString("thinkingCustom",""),j.optBoolean("streamReplies",true))
             config to j.getString("key")
         }
@@ -152,13 +152,15 @@ class ModelVault(context:Context,private val namespace:String="model-configs",pr
     }
     fun hasKey(id:String)=AppMutationGate.read {keyStore.containsAlias(alias(id))}
     internal fun backup(includeKeys:Boolean):Pair<List<BackupModel>,Map<ModelPurpose,String>> = AppMutationGate.read {
-        list().map{BackupModel(it,if(includeKeys)secret(it.id) else null)} to ModelPurpose.entries.associateWith{purposeId(it)}
+        list().filterNot { it.id.isHostModel() }.map{BackupModel(it,if(includeKeys)secret(it.id) else null)} to
+            ModelPurpose.entries.associateWith{purposeId(it).takeUnless(String::isHostModel).orEmpty()}
     }
     internal class Prepared(val generation:String,val directory:File,val createdAliases:List<String>)
     internal fun prepareRestore(incoming:List<BackupModel>,selections:Map<ModelPurpose,String>,includeKeys:Boolean):Prepared = AppMutationGate.read {
         check(store!=null){"全量恢复需要绑定数据库"}
         val generation=java.util.UUID.randomUUID().toString();val dir=File(root,"generations/$generation")
-        val old=list();val aliases=mutableListOf<String>()
+        require(incoming.none { it.config.id.isHostModel() })
+        val old=list().filterNot { it.id.isHostModel() };val aliases=mutableListOf<String>()
         try {
             check(dir.isDirectory||dir.mkdirs()){ "无法创建模型恢复暂存目录" }
             val restored=incoming.map{row->

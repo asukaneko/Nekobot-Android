@@ -205,14 +205,15 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     }
     init { viewModelScope.launch { runCatching { val savedDetailed=withContext(Dispatchers.IO){
         Diagnostics.startLocalRecording(application, vaultNamespace)
+        HostModelSync.refresh(store,modelVault)
         modelVault.list() // Register persisted model credentials before accepting user input.
         store.preference(EXPORT_DETAIL_PREF,"1")=="1"
-    };selectDetailedExport(savedDetailed);savedDiagnosticDetailed=savedDetailed;ledger.recoverInterrupted();companion.checkContinuity(CompanionRuntime.owner);runner.restoreReceived();reload();markFailureGuidesSeen(turns);  persona=store.persona();refreshUserAvatar(); ready=true;settleCompanion();recoverProcessing() }.onFailure { error="本地数据读取失败，请重试。" } } }
+    };selectDetailedExport(savedDetailed);savedDiagnosticDetailed=savedDetailed;ledger.recoverInterrupted();companion.checkContinuity(CompanionRuntime.owner);runner.restoreReceived();reload(syncModels=false);markFailureGuidesSeen(turns);  persona=store.persona();refreshUserAvatar(); ready=true;settleCompanion();recoverProcessing() }.onFailure { error="本地数据读取失败，请重试。" } } }
     private var reloadSerial=0L
     private val avatarCache=RoleAvatarCache()
     private var messagePrints=emptyMap<String,MessageFingerprint>()
     init {viewModelScope.launch{CompanionRuntime.revision.collect{if(ready)reload()}}}
-    private suspend fun reload() {val id=++reloadSerial;val f=store.friends();val (m,prints)=loadMessages();val t=ledger.all();val receipts=companion.receipts();val pills=withContext(Dispatchers.IO){ChatMemoryPills.read(store.readableDatabase)};val avatars=loadAvatars(f);if(id==reloadSerial){friends=f;messages=m;messagePrints=prints;turns=t;companionReceipts=receipts;memoryPills=pills;roleAvatars=avatars;processingRevision++}}
+    private suspend fun reload(syncModels:Boolean=true) {val id=++reloadSerial;if(syncModels)HostModelSync.refresh(store,modelVault);val f=store.friends();val (m,prints)=loadMessages();val t=ledger.all();val receipts=companion.receipts();val pills=withContext(Dispatchers.IO){ChatMemoryPills.read(store.readableDatabase)};val avatars=loadAvatars(f);if(id==reloadSerial){friends=f;messages=m;messagePrints=prints;turns=t;companionReceipts=receipts;memoryPills=pills;roleAvatars=avatars;processingRevision++}}
     private suspend fun loadMessages():Pair<List<Message>,Map<String,MessageFingerprint>>{
         // A discarded reload must not publish fingerprints for rows the UI never received.
         // Capture the accepted pair before suspension; publish the new pair together in reload.
@@ -233,7 +234,7 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     }
     internal suspend fun refreshProcessing(){reload()}
     private suspend fun recoverProcessing(){memory.recover();ReplyAccountingScheduler.recover(store)}
-    fun foreground(){if(ready)viewModelScope.launch{runCatching{companion.checkContinuity(CompanionRuntime.owner);settleCompanion();reload();recoverProcessing()}}}
+    fun foreground(){if(ready)viewModelScope.launch{runCatching{HostModelSync.refresh(store,modelVault);companion.checkContinuity(CompanionRuntime.owner);settleCompanion();reload(syncModels=false);recoverProcessing()}}}
     internal var modelsReturnChatId by mutableStateOf<String?>(null); private set
     internal var modelsTargetConfigId by mutableStateOf<String?>(null); private set
     internal var modelsTargetPurpose by mutableStateOf<ModelPurpose?>(null); private set

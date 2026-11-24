@@ -8,7 +8,11 @@ object LianxuModule {
     internal lateinit var onReturnToHost: (Context) -> Unit
         private set
 
-    fun initialize(application: Application, onReturnToHost: (Context) -> Unit) {
+    internal lateinit var hostModels: HostModelBridge
+        private set
+
+    fun initialize(application: Application, hostModels: HostModelBridge, onReturnToHost: (Context) -> Unit) {
+        this.hostModels = hostModels
         this.onReturnToHost = onReturnToHost
         val journal = File(application.filesDir, "diagnostics/${AppServices.vaultNamespace}")
         ProcessDiagnostics.start(application, journal)

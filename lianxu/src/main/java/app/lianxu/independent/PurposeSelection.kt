@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.dp
                     }
                     DropdownMenu(menu,{menu=false}){
                         DropdownMenuItem(text={Text("不选择")},onClick={menu=false;state.selectPurpose(purpose,"")},modifier=Modifier.testTag("purpose-clear-${purpose.key}"))
-                        options.visible.forEach{config->DropdownMenuItem(text={Column{Text(config.name);Text(config.modelId,style=MaterialTheme.typography.bodySmall)}},onClick={menu=false;state.selectPurpose(purpose,config.id)},modifier=Modifier.testTag("purpose-option-${purpose.key}-${config.id}"))}
+                        options.visible.forEach{config->DropdownMenuItem(text={Column{Text(config.name);Text(if(config.id.isHostModel()) "来自 NekoBot · ${config.modelId}" else config.modelId,style=MaterialTheme.typography.bodySmall)}},onClick={menu=false;state.selectPurpose(purpose,config.id)},modifier=Modifier.testTag("purpose-option-${purpose.key}-${config.id}"))}
                         if(options.hasAdditionalUnknown)DropdownMenuItem(text={Text("其他已保存配置（能力未核实）")},onClick={includeUnknown=true},modifier=Modifier.testTag("purpose-unknown-embedding"))
                     }
                 }
