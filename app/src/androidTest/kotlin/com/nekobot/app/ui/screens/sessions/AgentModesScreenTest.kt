@@ -88,22 +88,20 @@ class AgentModesScreenTest {
             File(compose.activity.getExternalFilesDir("validation"), "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
-    @Test fun legacyDetailsExposeConversionWithoutOldSwitches() {
-        var opened = false
+    @Test fun legacyDetailsStayReadOnlyWithoutConversion() {
         compose.setContent { Theme { Box(Modifier.padding(16.dp)) {
-            AgentModeDetailsCard(false, true, { fail("Wrong route") }, { opened = true })
+            AgentModeDetailsCard(false, true) { fail("Wrong route") }
         } } }
         compose.onNodeWithText(text(R.string.agent_legacy_title)).assertIsDisplayed()
         compose.onAllNodes(hasText("继承完整角色能力", substring = true)).assertCountEquals(0)
         compose.onAllNodes(hasText("长久陪伴：", substring = true)).assertCountEquals(0)
         capture("agent-legacy-details")
-        compose.onNodeWithText(text(R.string.agent_character_entry)).performClick()
-        assertTrue(opened)
+        compose.onNodeWithText(text(R.string.agent_character_entry)).assertDoesNotExist()
     }
     @Test fun independentDetailsOpenOwnMemories() {
         var opened = false
         compose.setContent { Theme { Box(Modifier.padding(16.dp)) {
-            AgentModeDetailsCard(true, true, { opened = true }, { fail("Wrong route") })
+            AgentModeDetailsCard(true, true) { opened = true }
         } } }
         compose.onNodeWithText(text(R.string.agent_legacy_title)).assertDoesNotExist()
         capture("agent-character-details")
