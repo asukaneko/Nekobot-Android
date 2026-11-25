@@ -50,6 +50,21 @@ enum class LivePipelineMode {
 }
 
 /**
+ * 首页形态：三张模式卡片（新版）或经典会话列表。
+ *
+ * 默认模式卡片；老用户升级后同样默认新模式，但会通过一次首页引导让用户自己选。
+ */
+enum class HomeStyle {
+    MODE_CARDS,
+    SESSIONS;
+
+    companion object {
+        fun fromStorage(value: String?): HomeStyle =
+            entries.firstOrNull { it.name == value } ?: MODE_CARDS
+    }
+}
+
+/**
  * 单条登录记录：服务器地址 + 用户名 + token（密码不保存，快速登录靠 token 复用）。
  * 若 token 已失效，后端会返回 401，届时用户需重新输入密码登录。
  */
@@ -1101,6 +1116,34 @@ class PrefsManager(context: Context) {
             prefs.edit().putBoolean(KEY_HOME_BANNER_AGGREGATED, value).apply()
         }
 
+    /** 首页形态：模式卡片 / 经典会话列表（高级选项里可切换）。 */
+    private val _homeStyle = MutableStateFlow(
+        HomeStyle.fromStorage(prefs.getString(KEY_HOME_STYLE, null))
+    )
+    val homeStyleFlow: StateFlow<HomeStyle> = _homeStyle.asStateFlow()
+
+    var homeStyle: HomeStyle
+        get() = _homeStyle.value
+        set(value) {
+            _homeStyle.value = value
+            prefs.edit().putString(KEY_HOME_STYLE, value.name).apply()
+        }
+
+    /**
+     * 首页引导是否已经走过一次。
+     *
+     * 新用户与升级后的老用户都是 false，首页会弹一次「模式卡片 / 会话列表」的选择引导。
+     */
+    private val _homeStyleChosen = MutableStateFlow(prefs.getBoolean(KEY_HOME_STYLE_CHOSEN, false))
+    val homeStyleChosenFlow: StateFlow<Boolean> = _homeStyleChosen.asStateFlow()
+
+    var homeStyleChosen: Boolean
+        get() = _homeStyleChosen.value
+        set(value) {
+            _homeStyleChosen.value = value
+            prefs.edit().putBoolean(KEY_HOME_STYLE_CHOSEN, value).apply()
+        }
+
     /**
      * 场景卡角色来源：
      * - AUTO：跟随最近一段会话的角色；
@@ -1779,6 +1822,8 @@ class PrefsManager(context: Context) {
         private const val KEY_LIVE_PIPELINE_MODE = "live_pipeline_mode"
         private const val KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED = "recent_sessions_include_archived"
         private const val KEY_OPEN_LATEST_SESSION_ON_LAUNCH = "open_latest_session_on_launch"
+        private const val KEY_HOME_STYLE = "home_style"
+        private const val KEY_HOME_STYLE_CHOSEN = "home_style_chosen"
         private const val KEY_MESSAGE_IMAGE_PROMPT_OPTIMIZE = "message_image_prompt_optimize_enabled"
         private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
         private const val KEY_REASONING_EFFORT_LEGACY = "reasoning_effort"

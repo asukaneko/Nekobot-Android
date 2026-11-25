@@ -2,16 +2,26 @@
 <!-- 홈: 모드 카드 3장과 Agent / 캐릭터 / 단일 캐릭터 페이지. -->
 <resources>
     <string name="home_mode_title">홈</string>
-    <string name="home_mode_swipe">좌우로 넘겨 전환</string>
     <string name="home_mode_all_sessions">전체</string>
     <string name="home_mode_card_tap">탭하여 열기</string>
+
+    <!-- 첫 방문 홈 안내(텍스트 + 화살표 오버레이) -->
+    <string name="home_guide_top_title">상단·하단 바는 그대로</string>
+    <string name="home_guide_top_desc">검색과 전체 세션 입구는 원래 자리에 있습니다.</string>
+    <string name="home_guide_cards_title">홈에 모드 카드 3장 추가</string>
+    <string name="home_guide_cards_desc">캐릭터 대화 / Agent / 일상 동반. 좌우로 넘겨 전환하고 카드를 탭해 들어갑니다.</string>
+    <string name="home_guide_choose_title">어느 쪽을 홈으로 사용할까요?</string>
+    <string name="home_guide_choose_modes">모드 카드 사용</string>
+    <string name="home_guide_choose_sessions">기존 세션 목록 사용</string>
+    <string name="home_guide_note">「고급 옵션」에서 언제든 전환할 수 있습니다</string>
+    <string name="home_guide_skip">나중에 선택</string>
 
     <!-- 모드 카드 -->
     <string name="home_mode_card_action_all">전체</string>
     <string name="home_mode_card_count">세션 %1$d개</string>
-    <string name="home_mode_card_character">캐릭터 대화 · 선술집</string>
+    <string name="home_mode_card_character">캐릭터 대화</string>
     <string name="home_mode_card_character_empty">캐릭터 대화가 아직 없습니다</string>
-    <string name="home_mode_card_character_hint">선술집에서 캐릭터와 연기하기</string>
+    <string name="home_mode_card_character_hint">캐릭터를 골라 이야기를 이어가세요</string>
     <string name="home_mode_card_agent">Agent</string>
     <string name="home_mode_card_agent_title">새 Agent 세션</string>
     <string name="home_mode_card_agent_hint">목표를 맡기고 실행시키기</string>

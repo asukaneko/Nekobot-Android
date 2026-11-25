@@ -2,16 +2,26 @@
 <!-- Home: three mode cards plus the Agent / character / single-character pages. -->
 <resources>
     <string name="home_mode_title">Home</string>
-    <string name="home_mode_swipe">Swipe to switch</string>
     <string name="home_mode_all_sessions">All</string>
     <string name="home_mode_card_tap">Tap to open</string>
+
+    <!-- First-visit tour: text + arrows overlay -->
+    <string name="home_guide_top_title">Top and bottom bars unchanged</string>
+    <string name="home_guide_top_desc">Search and all chats stay where they were.</string>
+    <string name="home_guide_cards_title">Three new mode cards on Home</string>
+    <string name="home_guide_cards_desc">Character chat / Agent / Daily Companion. Swipe to switch, tap a card to open.</string>
+    <string name="home_guide_choose_title">Which one as home?</string>
+    <string name="home_guide_choose_modes">Use mode cards</string>
+    <string name="home_guide_choose_sessions">Use the original chat list</string>
+    <string name="home_guide_note">Switch anytime in Advanced options</string>
+    <string name="home_guide_skip">Decide later</string>
 
     <!-- Mode cards -->
     <string name="home_mode_card_action_all">All</string>
     <string name="home_mode_card_count">%1$d sessions</string>
-    <string name="home_mode_card_character">Character chat · Tavern</string>
+    <string name="home_mode_card_character">Character chat</string>
     <string name="home_mode_card_character_empty">No character chats yet</string>
-    <string name="home_mode_card_character_hint">Step into the tavern and play a scene</string>
+    <string name="home_mode_card_character_hint">Pick a character and continue the story</string>
     <string name="home_mode_card_agent">Agent</string>
     <string name="home_mode_card_agent_title">New Agent session</string>
     <string name="home_mode_card_agent_hint">Give it a goal and let it run</string>

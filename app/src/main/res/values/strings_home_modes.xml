@@ -2,16 +2,26 @@
 <!-- 首页：三张模式卡 + Agent / 角色 / 单角色三个模式页。 -->
 <resources>
     <string name="home_mode_title">首页</string>
-    <string name="home_mode_swipe">左右滑动切换</string>
     <string name="home_mode_all_sessions">全部</string>
     <string name="home_mode_card_tap">点击卡片进入</string>
+
+    <!-- 首次进入首页的功能引导（文字 + 箭头浮层） -->
+    <string name="home_guide_top_title">顶栏、底栏都没变</string>
+    <string name="home_guide_top_desc">搜索与全部会话入口还在原来的位置。</string>
+    <string name="home_guide_cards_title">首页新增三张模式卡</string>
+    <string name="home_guide_cards_desc">角色聊天 / Agent / 日常陪伴，左右滑动切换，点卡片进入。</string>
+    <string name="home_guide_choose_title">用哪个作为首页？</string>
+    <string name="home_guide_choose_modes">用模式卡片</string>
+    <string name="home_guide_choose_sessions">用原来的会话页</string>
+    <string name="home_guide_note">之后可在「高级选项」随时切换</string>
+    <string name="home_guide_skip">稍后再选</string>
 
     <!-- 模式卡 -->
     <string name="home_mode_card_action_all">全部</string>
     <string name="home_mode_card_count">%1$d 个会话</string>
-    <string name="home_mode_card_character">角色聊天 · 酒馆</string>
+    <string name="home_mode_card_character">角色聊天</string>
     <string name="home_mode_card_character_empty">还没有角色会话</string>
-    <string name="home_mode_card_character_hint">在酒馆里，和角色演下去</string>
+    <string name="home_mode_card_character_hint">挑一个角色，接着上次的剧情</string>
     <string name="home_mode_card_agent">Agent</string>
     <string name="home_mode_card_agent_title">新的 Agent 会话</string>
     <string name="home_mode_card_agent_hint">交代目标，让它自己跑</string>

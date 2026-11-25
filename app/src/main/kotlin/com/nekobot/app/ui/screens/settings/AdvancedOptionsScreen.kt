@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +50,7 @@ import androidx.fragment.app.FragmentActivity
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
+import com.nekobot.app.data.local.HomeStyle
 import com.nekobot.app.ui.components.GlassCard
 
 /**
@@ -63,6 +65,7 @@ fun AdvancedOptionsScreen(onBack: () -> Unit) {
     val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsStateWithLifecycle()
     val openLatestSessionOnLaunch by ServiceContainer.prefs.openLatestSessionOnLaunchFlow.collectAsStateWithLifecycle()
     val homeBannerAggregated by ServiceContainer.prefs.homeBannerAggregatedFlow.collectAsStateWithLifecycle()
+    val homeStyle by ServiceContainer.prefs.homeStyleFlow.collectAsStateWithLifecycle()
 
     val appLockState = remember { mutableStateOf(ServiceContainer.prefs.appLockEnabled) }
     var appLockEnabled by appLockState
@@ -236,6 +239,23 @@ fun AdvancedOptionsScreen(onBack: () -> Unit) {
                         checked = homeBannerAggregated,
                         onCheckedChange = { enabled ->
                             ServiceContainer.prefs.homeBannerAggregated = enabled
+                        }
+                    )
+                    SettingDivider()
+                    SettingSwitchRow(
+                        icon = Icons.Filled.DashboardCustomize,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        title = stringResource(R.string.settings_home_style),
+                        subtitle = stringResource(R.string.settings_home_style_desc),
+                        checked = homeStyle == HomeStyle.MODE_CARDS,
+                        onCheckedChange = { enabled ->
+                            ServiceContainer.prefs.homeStyle = if (enabled) {
+                                HomeStyle.MODE_CARDS
+                            } else {
+                                HomeStyle.SESSIONS
+                            }
+                            // 手动切换也算做过选择，首页不再弹引导
+                            ServiceContainer.prefs.homeStyleChosen = true
                         }
                     )
                     if (appMode == AppMode.LOCAL) {

@@ -2,16 +2,26 @@
 <!-- ホーム：3 枚のモードカードと Agent / キャラクター / 単一キャラの各ページ。 -->
 <resources>
     <string name="home_mode_title">ホーム</string>
-    <string name="home_mode_swipe">左右にスワイプで切替</string>
     <string name="home_mode_all_sessions">すべて</string>
     <string name="home_mode_card_tap">タップして開く</string>
+
+    <!-- 初回ホーム案内（テキスト + 矢印のオーバーレイ） -->
+    <string name="home_guide_top_title">上下のバーは変更なし</string>
+    <string name="home_guide_top_desc">検索と全会話の入口はこれまで通りです。</string>
+    <string name="home_guide_cards_title">ホームにモードカードが 3 枚追加</string>
+    <string name="home_guide_cards_desc">キャラクター会話 / Agent / 日常コンパニオン。左右スワイプで切替、カードをタップで開きます。</string>
+    <string name="home_guide_choose_title">どちらをホームにしますか？</string>
+    <string name="home_guide_choose_modes">モードカードを使う</string>
+    <string name="home_guide_choose_sessions">従来のセッション一覧を使う</string>
+    <string name="home_guide_note">「詳細オプション」でいつでも切り替えられます</string>
+    <string name="home_guide_skip">あとで選ぶ</string>
 
     <!-- モードカード -->
     <string name="home_mode_card_action_all">すべて</string>
     <string name="home_mode_card_count">%1$d 件のセッション</string>
-    <string name="home_mode_card_character">キャラクター会話 · 酒場</string>
+    <string name="home_mode_card_character">キャラクター会話</string>
     <string name="home_mode_card_character_empty">キャラクター会話はまだありません</string>
-    <string name="home_mode_card_character_hint">酒場でキャラクターと演じる</string>
+    <string name="home_mode_card_character_hint">キャラクターを選んで物語の続きを</string>
     <string name="home_mode_card_agent">Agent</string>
     <string name="home_mode_card_agent_title">新しい Agent セッション</string>
     <string name="home_mode_card_agent_hint">目標を伝えて任せる</string>

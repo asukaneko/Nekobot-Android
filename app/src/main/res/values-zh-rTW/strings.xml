@@ -227,6 +227,8 @@
     <string name="settings_open_latest_session_on_launch_desc">啟動後自動開啟最近更新的會話</string>
     <string name="settings_home_banner_aggregated">聚合首頁頂部卡片</string>
     <string name="settings_home_banner_aggregated_desc">「繼續上次」併入歡迎卡片</string>
+    <string name="settings_home_style">模式卡片作為首頁</string>
+    <string name="settings_home_style_desc">關閉後首頁為原來的會話列表</string>
     <string name="settings_message_image_prompt_optimize">生圖提示詞優化</string>
     <string name="settings_message_image_prompt_optimize_desc">生圖前把訊息改寫為畫面描述</string>
     <string name="settings_data_portability">資料匯入與匯出</string>

@@ -195,6 +195,8 @@
     <string name="settings_open_latest_session_on_launch_desc">起動時に最新のチャットを開く</string>
     <string name="settings_home_banner_aggregated">ホーム上部カードを統合</string>
     <string name="settings_home_banner_aggregated_desc">「前回の続き」をウェルカムカードに統合</string>
+    <string name="settings_home_style">モードカードをホームに</string>
+    <string name="settings_home_style_desc">オフ：従来のセッション一覧をホームに</string>
     <string name="settings_message_image_prompt_optimize">画像プロンプト最適化</string>
     <string name="settings_message_image_prompt_optimize_desc">画像生成前にメッセージを画面描写に書き換え</string>
     <string name="settings_data_portability">データのインポートとエクスポート</string>

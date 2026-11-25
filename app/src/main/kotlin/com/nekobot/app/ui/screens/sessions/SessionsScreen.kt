@@ -123,6 +123,7 @@ import coil.request.repeatCount
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.R
 import com.nekobot.app.data.local.AppMode
+import com.nekobot.app.data.local.HomeStyle
 import com.nekobot.app.data.local.ai.AgentAttentionItem
 import com.nekobot.app.data.local.ai.AgentAttentionKind
 import com.nekobot.app.data.model.CharacterPreset
@@ -160,6 +161,7 @@ import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.adaptive.listItemSemantics
 import com.nekobot.app.ui.adaptive.rememberShouldUseTwoPane
 import com.nekobot.app.ui.screens.chat.ModernChatScreen
+import com.nekobot.app.ui.screens.home.HomeFeatureGuideOverlay
 import kotlinx.coroutines.launch
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -574,6 +576,15 @@ fun SessionsScreen(
         if (initialFilter != null) viewModel.setFilter(initialFilter)
     }
 
+    // 首页形态：三张模式卡片 / 经典会话列表。首次进入首页时由引导让用户选。
+    val homeStyle by ServiceContainer.prefs.homeStyleFlow.collectAsStateWithLifecycle()
+    val homeStyleChosen by ServiceContainer.prefs.homeStyleChosenFlow.collectAsStateWithLifecycle()
+    val deckHome = asHome && homeStyle == HomeStyle.MODE_CARDS
+    val chooseHomeStyle: (HomeStyle) -> Unit = { style ->
+        ServiceContainer.prefs.homeStyle = style
+        ServiceContainer.prefs.homeStyleChosen = true
+    }
+
     // 会话改名等资料保存后立即刷新列表，避免列表显示旧名称
     LaunchedEffect(Unit) {
         ServiceContainer.sessionChanged.collect {
@@ -616,6 +627,8 @@ fun SessionsScreen(
     // 列表底部需要给底部导航栏留出避让高度（随窗口宽度变化）
     val bottomBarClearance = rememberBottomBarClearance()
 
+    // 首页内容 + 首屏引导浮层共用一层 Box：引导盖在页面上，不弹窗
+    Box(modifier = Modifier.fillMaxSize()) {
     TwoPaneSessionsWrapper(
         useTwoPane = useTwoPane,
         selectedSessionId = selectedSessionId,
@@ -748,8 +761,8 @@ fun SessionsScreen(
                     }
                 }
             when {
-                // 模式首页：大标题 + 全部会话 + 搜索，把注意力交给下面三张卡
-                asHome && !dashboardVisible -> NekoPageTopBar(
+                // 卡片首页：大标题 + 全部会话 + 搜索，把注意力交给下面三张卡
+                deckHome && !dashboardVisible -> NekoPageTopBar(
                     title = stringResource(R.string.home_mode_title),
                     actions = {
                         NekoIconAction(
@@ -769,6 +782,7 @@ fun SessionsScreen(
                     onBack = onBack,
                     actions = listActions
                 )
+                // 会话列表首页 / 统计面板：沿用完整列表的顶栏与动作
                 else -> NekoPageTopBar(
                     title = if (dashboardVisible) dashboardTitle else titleText,
                     badge = if (dashboardVisible) {
@@ -891,8 +905,9 @@ fun SessionsScreen(
                     filter = filter,
                     homeRows = homeRows,
                     onOpenSession = handleOpenChat,
-                    // 首页没有顶栏「+」菜单：新对话直接进角色聊天模式页
-                    onNewChat = if (asHome) {
+                    // 卡片首页没有顶栏「+」菜单：新对话直接进角色聊天模式页；
+                    // 会话列表首页与独立列表仍用原有的新建菜单
+                    onNewChat = if (deckHome) {
                         { onNavigate(Routes.mode(HomeModeRoutes.CHARACTER)) }
                     } else {
                         { showCreateModeMenu = true }
@@ -914,11 +929,11 @@ fun SessionsScreen(
                     },
                     // 首页保留欢迎区；独立会话列表不展示 banner，直接从筛选开始
                     showWelcome = asHome,
-                    // 首页导航形态只留欢迎卡：筛选与分段控件交给独立会话列表
-                    showListControls = !asHome
+                    // 卡片首页只留欢迎卡：筛选与分段控件交给会话列表形态与独立列表
+                    showListControls = !deckHome
                 )
             }
-            if (asHome) {
+            if (deckHome) {
                 // 首页整屏不滚动：欢迎区按内容高，模式卡吃掉剩余高度
                 Column(
                     modifier = Modifier
@@ -1140,6 +1155,18 @@ fun SessionsScreen(
     }
     } // 结束 SessionDashboardPager
     } // 结束 TwoPaneSessionsWrapper
+
+    // 首次进入首页（新用户 / 升级后的老用户）：用文字 + 箭头指出新首页的变化，
+    // 并在底部让用户选「模式卡片」还是「原来的会话页」
+    if (asHome && !homeStyleChosen) {
+        HomeFeatureGuideOverlay(
+            onChoose = chooseHomeStyle,
+            // 稍后再选：保持当前形态，不再重复打扰
+            onDismiss = { ServiceContainer.prefs.homeStyleChosen = true },
+            bottomClearance = bottomBarClearance
+        )
+    }
+    } // 结束首页内容 + 引导浮层
 
     // 多选模式下返回键先退出多选，不直接返回上一页
     BackHandler(enabled = selectionMode) { exitSelection() }

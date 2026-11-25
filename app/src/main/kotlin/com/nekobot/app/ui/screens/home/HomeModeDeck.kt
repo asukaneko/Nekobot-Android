@@ -51,7 +51,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -69,14 +68,17 @@ import kotlin.math.roundToInt
 
 /** 卡片尺寸与叠放参数：改这几个数就能调整 3D 的强弱。 */
 private val CardMaxWidth = 296.dp
-private val CardAspect = 1.26f
+/** 没有高度约束（被放进可滚动容器）时的兜底宽高比。 */
+private val CardMinAspect = 1.26f
+/** 卡片最高宽高比：卡片会拉长吃满剩余高度，但不会在超高屏上变成细长条。 */
+private val CardMaxAspect = 1.72f
 private val CardSideScale = 0.86f
 private val CardSideRotation = 9f
 private val CardSideSink = 18.dp
 private val CardCenterLift = 6.dp
 
-/** 卡片之外还要占的高度：下沉留白 + 圆点 + 滑动提示。 */
-private val DeckChrome = 66.dp
+/** 卡片之外还要占的高度：叠卡下沉留白 + 底部圆点。 */
+private val DeckChrome = 40.dp
 
 /** 拖过卡宽的多少比例算切换一张：越小越跟手。 */
 private const val DragStepRatio = 0.55f
@@ -88,7 +90,8 @@ private const val FlingDistance = 64f
 /**
  * 三张模式卡叠成一副牌：中间最大、两侧缩小后退并轻微转向。
  *
- * 高度按剩余空间自适应：首页不滚动，卡片会缩小而不是把页面撑出屏幕。
+ * 高度按剩余空间自适应：首页不滚动，卡片会「拉长」吃满剩余高度（而不是留一大块空白），
+ * 只在非常高的屏幕上用 [CardMaxAspect] 封顶。
  * 左右滑动切换，松手用弹簧收敛；点中间卡进入该模式，点两侧卡先把它滑到中间。
  */
 @Composable
@@ -128,13 +131,18 @@ fun HomeModeDeck(
     }
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val cardWidth = minOf(CardMaxWidth, maxWidth * 0.88f)
         val heightBudget = if (maxHeight == Dp.Infinity) {
-            cardWidth * CardAspect
+            CardMaxWidth * CardMinAspect
         } else {
-            (maxHeight - DeckChrome).coerceAtLeast(200.dp)
+            (maxHeight - DeckChrome).coerceAtLeast(220.dp)
         }
-        val cardHeight = minOf(cardWidth * CardAspect, heightBudget)
+        // 卡片拉长吃满剩余高度：屏幕越高卡片越长，底部不留大块空白。
+        // 很宽的屏幕（平板）同时放宽卡宽，让叠卡比例保持在 CardMaxAspect 以内。
+        val cardWidth = minOf(
+            maxWidth * 0.88f,
+            maxOf(CardMaxWidth, heightBudget / CardMaxAspect)
+        )
+        val cardHeight = minOf(heightBudget, cardWidth * CardMaxAspect)
         val sideOffset = cardWidth * 0.185f
 
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.Center) {
@@ -264,15 +272,6 @@ fun HomeModeDeck(
                     )
                 }
             }
-            Text(
-                text = stringResource(R.string.home_mode_swipe),
-                style = nekoCaptionStyle(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp),
-                textAlign = TextAlign.Center
-            )
         }
     }
 }

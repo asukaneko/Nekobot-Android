@@ -195,6 +195,8 @@
     <string name="settings_open_latest_session_on_launch_desc">앱을 열면 최신 대화를 자동으로 열기</string>
     <string name="settings_home_banner_aggregated">홈 상단 카드 통합</string>
     <string name="settings_home_banner_aggregated_desc">이어서 대화를 환영 카드에 통합</string>
+    <string name="settings_home_style">모드 카드를 홈으로</string>
+    <string name="settings_home_style_desc">끄면 기존 세션 목록을 홈으로 사용</string>
     <string name="settings_message_image_prompt_optimize">이미지 프롬프트 최적화</string>
     <string name="settings_message_image_prompt_optimize_desc">이미지 생성 전에 메시지를 화면 묘사로 바꾸기</string>
     <string name="settings_data_portability">데이터 가져오기 및 내보내기</string>

@@ -207,6 +207,8 @@
     <string name="settings_open_latest_session_on_launch_desc">Auto-open the latest chat on launch</string>
     <string name="settings_home_banner_aggregated">Merge home top card</string>
     <string name="settings_home_banner_aggregated_desc">Merge Continue last chat into the welcome card</string>
+    <string name="settings_home_style">Mode cards as home</string>
+    <string name="settings_home_style_desc">Off: original chat list as home</string>
     <string name="settings_message_image_prompt_optimize">Optimize image prompt</string>
     <string name="settings_message_image_prompt_optimize_desc">Rewrite messages into visual prompts before generating</string>
     <string name="settings_data_portability">Data import and export</string>
