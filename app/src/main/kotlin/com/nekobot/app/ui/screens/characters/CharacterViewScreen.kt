@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.characters
 
+import com.nekobot.app.data.repository.CharacterDeleteApproval
 import androidx.compose.ui.platform.LocalResources
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -94,10 +95,10 @@ class CharacterViewModelView(characterId: String) : com.nekobot.app.ui.BaseViewM
         )
     }
 
-    fun delete(onSuccess: () -> Unit) {
+    fun delete(approval:CharacterDeleteApproval, onSuccess: () -> Unit) {
         val id = _character.value?.id ?: return
         launchResult(
-            block = { unified.deleteCharacter(id) },
+            block = { unified.deleteCharacter(id,approval) },
             onSuccess = { onSuccess() }
         )
     }
@@ -411,18 +412,10 @@ fun CharacterViewScreen(
     }
 
     if (showDeleteDialog) {
-        NekoDialog(
-            onDismiss = { showDeleteDialog = false },
-            title = stringResource(R.string.character_delete_title),
-            message = stringResource(R.string.character_delete_confirm),
-            confirmText = stringResource(R.string.common_delete),
-            cancelText = stringResource(R.string.common_cancel),
-            onConfirm = {
-                showDeleteDialog = false
-                vm.delete(onBack)
-            },
-            onCancel = { showDeleteDialog = false }
-        )
+        CharacterDeletion(characterId,onCancel={ showDeleteDialog=false }) { approval ->
+            showDeleteDialog=false
+            vm.delete(approval,onBack)
+        }
     }
 
     // 导出结果提示

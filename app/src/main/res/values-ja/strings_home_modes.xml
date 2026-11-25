@@ -18,9 +18,9 @@
     <string name="home_mode_card_agent_idle">最初の指示を待っています</string>
     <string name="home_mode_card_agent_running">%1$d 件のセッションが待機中</string>
     <string name="home_mode_card_agent_ready">ツールの準備完了</string>
-    <string name="home_mode_card_companion">単一キャラ · 関係</string>
-    <string name="home_mode_card_companion_empty">単一キャラの会話はまだありません</string>
-    <string name="home_mode_card_companion_hint">一人だけと話す、関係を覚えている</string>
+    <string name="home_mode_card_companion">日常コンパニオン</string>
+    <string name="home_mode_card_enter">入る →</string>
+    <string name="home_mode_card_companion_hint">台本はなし。彼女との毎日を大切に。</string>
 
     <!-- Agent ページ -->
     <string name="home_agent_bar_title">Agent</string>
@@ -64,4 +64,6 @@
     <string name="home_companion_empty">単一キャラの会話はまだありません</string>
     <string name="home_companion_empty_hint">キャラクターを選んで長期の関係を始める</string>
     <string name="home_companion_yours">あなたの単一キャラ</string>
+    <string name="character_delete_single_warning">日常コンパニオンの会話履歴、記憶、交流記録も完全に削除されます。元に戻せません。</string>
+    <string name="character_link_check_failed">キャラクターの連携を確認できません。開き直してください。</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.nekobot.app.data.repository
 
+import app.lianxu.independent.RoleLink
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -120,6 +121,8 @@ data class SessionImportResult(
 ) {
     val isSuccess: Boolean get() = imported > 0
 }
+
+data class CharacterDeleteApproval(val id:String,val profile:String?,val link:RoleLink?)
 
 /**
  * 统一仓库：根据 [PrefsManager.appMode] 分发到本地或远程实现。
@@ -894,8 +897,12 @@ class UnifiedRepository(
             result
         }
 
-    suspend fun deleteCharacter(id: String): Resource<Unit> =
-        if (isLocal) { local.deleteCharacter(id); Resource.Success(Unit) } else remote.deleteCharacter(id)
+    suspend fun deleteCharacter(id:String, approval:CharacterDeleteApproval):Resource<Unit> {
+        val profile=if(isLocal) prefs.activeDbName.removeSuffix(".db")+".db" else null
+        check(approval.id==id && approval.profile==profile){"资料库已切换，请重新确认"}
+        return if(profile!=null) { local.deleteCharacter(id,approval.link,profile);Resource.Success(Unit) }
+            else remote.deleteCharacter(id)
+    }
 
     /**
      * AI 生成角色卡：根据自然语言描述生成完整角色卡。

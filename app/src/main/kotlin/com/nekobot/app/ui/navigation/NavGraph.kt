@@ -597,8 +597,7 @@ fun NekobotNavGraph() {
                             }
                             launchSingleTop = true
                         }
-                    },
-                    onCreateCompanion = { navController.navigate(Routes.COMPANION_CREATE) }
+                    }
                 )
             }
             // 完整会话列表：首页「会话」入口与各模式卡「全部」都落在这里
@@ -632,8 +631,7 @@ fun NekobotNavGraph() {
                             launchSingleTop = true
                         }
                     },
-                    onOpenExperienceArchive = { id -> navController.navigate(Routes.experienceArchive(id)) },
-                    onCreateAgentCharacter = { navController.navigate(Routes.COMPANION_CREATE) }
+                    onOpenExperienceArchive = { id -> navController.navigate(Routes.experienceArchive(id)) }
                 )
             }
             composable(

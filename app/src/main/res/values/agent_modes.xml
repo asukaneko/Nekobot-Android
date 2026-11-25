@@ -5,6 +5,6 @@
     <string name="agent_character_details_body">固定在这个窗口聊天，使用「单会话角色记忆」记住喜好、重要事情和约定。</string>
     <string name="agent_character_memories">打开 单会话角色记忆</string>
     <string name="agent_legacy_title">旧会话兼容</string>
-    <string name="agent_legacy_body">此会话保留原有设置和资料。新的角色陪伴功能已集中到 单会话角色，可在创建页选择此角色并转换旧会话。</string>
+    <string name="agent_legacy_body">此会话保留原有设置和资料。</string>
     <string name="agent_character_entry">前往 单会话角色</string>
 </resources>

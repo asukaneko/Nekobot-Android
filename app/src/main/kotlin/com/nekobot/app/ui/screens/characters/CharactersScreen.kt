@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.characters
 
+import app.lianxu.independent.LianxuModule
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,6 +45,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.NekobotRoleScope
+import com.nekobot.app.syncCompanionRoles
 import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.repository.Resource
@@ -90,6 +93,7 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
         _sessionModes.value = null
         launchResult(
             block = {
+                syncCompanionRoles { LianxuModule.roles.sync() }
                 when (val result = unified.listCharacters()) {
                     is Resource.Success -> {
                         val modes = when (val sessions = unified.listSessions()) {
@@ -109,17 +113,6 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
                 }
             },
             onError = { if (generation == loadGeneration) showError(it) }
-        )
-    }
-
-    /** 删除指定角色 */
-    fun delete(id: String) {
-        launchResult(
-            block = { unified.deleteCharacter(id) },
-            onSuccess = {
-                _characters.value = _characters.value.filterNot { it.id == id }
-                showToast(string(R.string.character_deleted))
-            }
         )
     }
 
@@ -212,7 +205,8 @@ fun CharactersScreen(
 
     // 模式切换或返回页面时自动刷新角色列表
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
-    LaunchedEffect(appMode) { viewModel.load() }
+    val roleRevision by NekobotRoleScope.roleRevision.collectAsStateWithLifecycle()
+    LaunchedEffect(appMode, roleRevision) { viewModel.load() }
 
     // 文件选择器：导入角色卡（.json / .zip）
     val importLauncher = rememberLauncherForActivityResult(

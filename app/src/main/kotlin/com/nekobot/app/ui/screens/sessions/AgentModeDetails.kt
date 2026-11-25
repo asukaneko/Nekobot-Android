@@ -15,8 +15,7 @@ import com.nekobot.app.ui.components.SectionHeader
 internal fun AgentModeDetailsCard(
     companion: Boolean,
     legacy: Boolean,
-    onOpenMemories: () -> Unit,
-    onCreateAgentCharacter: () -> Unit
+    onOpenMemories: () -> Unit
 ) {
     if (!companion && !legacy) return
     GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -27,12 +26,11 @@ internal fun AgentModeDetailsCard(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = if (companion) onOpenMemories else onCreateAgentCharacter,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(if (companion) R.string.agent_character_memories else R.string.agent_character_entry))
+        if (companion) {
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onOpenMemories, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.agent_character_memories))
+            }
         }
     }
 }

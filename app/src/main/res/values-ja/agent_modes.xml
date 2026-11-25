@@ -5,6 +5,6 @@
     <string name="agent_character_details_body">一つのウィンドウで会話を続け、独立した Agent キャラクターの記憶を使用します。</string>
     <string name="agent_character_memories">Agent キャラクターの記憶を開く</string>
     <string name="agent_legacy_title">旧会話の互換機能</string>
-    <string name="agent_legacy_body">既存の設定とデータは保持されます。新しい機能は Agent キャラクターに集約されています。作成画面でこのキャラクターを選び、旧会話を変換できます。</string>
+    <string name="agent_legacy_body">既存の設定とデータは保持されます。</string>
     <string name="agent_character_entry">Agent キャラクターへ</string>
 </resources>

@@ -3484,7 +3484,7 @@ class LocalAiClient(
         }
 
         /** 解析 OpenAI 兼容 Embedding 端点。 */
-        private fun resolveEmbeddingUrl(baseUrl: String, appendBaseUrlPath: Boolean): String {
+        internal fun resolveEmbeddingUrl(baseUrl: String, appendBaseUrlPath: Boolean): String {
             val base = baseUrl.trimEnd('/')
             if (base.contains("/embeddings")) return base
             if (base.contains("/chat/completions")) {

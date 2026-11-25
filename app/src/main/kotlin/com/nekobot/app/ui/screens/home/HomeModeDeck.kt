@@ -3,7 +3,7 @@ package com.nekobot.app.ui.screens.home
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,10 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -49,6 +47,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -230,7 +229,13 @@ fun HomeModeDeck(
                                     if (isCenter) onOpenMode(card.mode) else snapTo(index)
                                 }
                             ),
-                        onOpenList = { onOpenModeList(card.mode) }
+                        onOpenList = {
+                            if (card.mode == HomeMode.COMPANION) {
+                                if (isCenter) onOpenMode(card.mode) else snapTo(index)
+                            } else {
+                                onOpenModeList(card.mode)
+                            }
+                        }
                     )
                 }
             }
@@ -280,23 +285,20 @@ private fun ModeCard(
     onOpenList: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (card.mode == HomeMode.COMPANION) {
+        SingleChatCard(card, onOpenList, modifier.width(width).height(height), compact = height < 330.dp)
+        return
+    }
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val shape = RoundedCornerShape(26.dp)
     val accent = MaterialTheme.colorScheme.primary
-    val container = when (card.mode) {
-        HomeMode.CHARACTER -> Brush.linearGradient(
+    val container = if (card.mode == HomeMode.AGENT) {
+        Brush.linearGradient(listOf(Color(0xFF1C262B), Color(0xFF131A1E)))
+    } else {
+        Brush.linearGradient(
             listOf(
                 lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.primaryContainer, if (dark) 0.30f else 0.62f),
                 lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.primaryContainer, if (dark) 0.10f else 0.26f)
-            )
-        )
-        HomeMode.AGENT -> Brush.linearGradient(
-            listOf(Color(0xFF1C262B), Color(0xFF131A1E))
-        )
-        HomeMode.COMPANION -> Brush.linearGradient(
-            listOf(
-                lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.tertiaryContainer, if (dark) 0.32f else 0.66f),
-                lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.secondaryContainer, if (dark) 0.14f else 0.32f)
             )
         )
     }
@@ -443,10 +445,10 @@ private fun ModeCardHero(card: ModeCardUi, ink: Color, accent: Color, modifier: 
             .border(1.dp, ink.copy(alpha = 0.06f), heroShape),
         contentAlignment = Alignment.Center
     ) {
-        when (card.mode) {
-            HomeMode.CHARACTER -> CharacterCover(card = card, ink = ink, accent = accent)
-            HomeMode.AGENT -> AgentHero(lines = card.agentLines, ink = ink)
-            HomeMode.COMPANION -> CompanionHero(initial = card.companionInitial, ink = ink, accent = accent)
+        if (card.mode == HomeMode.AGENT) {
+            AgentHero(lines = card.agentLines, ink = ink)
+        } else {
+            CharacterCover(card = card, ink = ink, accent = accent)
         }
     }
 }
@@ -559,50 +561,34 @@ private fun AgentHero(lines: List<String>, ink: Color) {
     }
 }
 
-/** 单角色卡封面：一圈关系环，中间是角色的首字。 */
 @Composable
-private fun CompanionHero(initial: String?, ink: Color, accent: Color) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize().padding(12.dp)) {
-            // 关系环按可用尺寸缩放，但不超过 120dp，卡片变高时不会占满整块
-            val diameter = minOf(size.width, size.height).coerceAtMost(120.dp.toPx())
-            val stroke = (diameter * 0.055f).coerceAtLeast(3.dp.toPx())
-            val radius = (diameter - stroke) / 2f
-            drawCircle(
-                color = ink.copy(alpha = 0.10f),
-                radius = radius,
-                center = center,
-                style = Stroke(width = stroke)
-            )
-            drawArc(
-                color = accent.copy(alpha = 0.85f),
-                startAngle = -90f,
-                sweepAngle = 360f * 0.62f,
-                useCenter = false,
-                topLeft = Offset(center.x - radius, center.y - radius),
-                size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
-                style = Stroke(
-                    width = stroke,
-                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
-            )
-        }
-        if (!initial.isNullOrBlank()) {
-            Text(
-                text = initial,
-                style = nekoRowTitleStyle().copy(
-                    fontSize = nekoTextSize(28f),
-                    fontWeight = FontWeight.Medium
-                ),
-                color = ink.copy(alpha = 0.82f)
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Outlined.PersonOutline,
+private fun SingleChatCard(card: ModeCardUi, onEnter: () -> Unit, modifier: Modifier, compact: Boolean) {
+    val shape = RoundedCornerShape(26.dp)
+    val ink = Color(0xFF443A30)
+    val edge = Color(0xFFD4C8B9)
+    Box(
+        modifier.clip(shape).background(Color(0xFFF4EEE4)).border(1.dp, edge, shape)
+            .padding(if (compact) 12.dp else 18.dp)
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Text("03 ${card.badge}", color = ink, style = nekoCaptionStyle())
+            Image(
+                painter = painterResource(R.drawable.lianxu_card_companion_mark),
                 contentDescription = null,
-                tint = ink.copy(alpha = 0.45f),
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentScale = ContentScale.Fit
             )
+            Text(card.title, style = nekoRowTitleStyle().copy(fontSize = nekoTextSize(if (compact) 22f else 25f)),
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.SemiBold, color = ink)
+            Text(card.subtitle.orEmpty(), style = nekoRowSubtitleStyle(), color = Color(0xFF685D51))
+            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+            Box(
+                Modifier.align(Alignment.End).clip(CircleShape).border(1.dp, edge, CircleShape)
+                    .clickable(onClick = onEnter).padding(horizontal = 13.dp, vertical = 6.dp)
+            ) {
+                Text(card.action, color = Color(0xFF6B5847), style = nekoCaptionStyle())
+            }
         }
     }
 }

@@ -507,8 +507,7 @@ private fun AgentDrawerContent(
         NekoSegmentedControl(
             options = listOf(
                 stringResource(R.string.shell_seg_character),
-                stringResource(R.string.shell_seg_agent),
-                stringResource(R.string.shell_seg_single)
+                stringResource(R.string.shell_seg_agent)
             ),
             selectedIndex = HomeMode.AGENT.ordinal,
             onSelect = { index ->

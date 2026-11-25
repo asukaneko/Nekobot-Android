@@ -5,6 +5,6 @@
     <string name="agent_character_details_body">Keep chatting in one window with independent Agent character memories.</string>
     <string name="agent_character_memories">Open Agent character memories</string>
     <string name="agent_legacy_title">Legacy conversation</string>
-    <string name="agent_legacy_body">This conversation keeps its existing settings and data. New companion features are available in Agent character mode. Select this character on the creation page to convert an old conversation.</string>
+    <string name="agent_legacy_body">This conversation keeps its existing settings and data.</string>
     <string name="agent_character_entry">Go to Agent character</string>
 </resources>

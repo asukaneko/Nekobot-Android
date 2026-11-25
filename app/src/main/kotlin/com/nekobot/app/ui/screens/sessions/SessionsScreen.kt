@@ -674,11 +674,6 @@ fun SessionsScreen(
                                 expanded = showCreateModeMenu,
                                 onDismissRequest = { showCreateModeMenu = false }
                             ) {
-                                if (ServiceContainer.prefs.isLocalMode) DropdownMenuItem(
-                                    text = { SessionModeMenuText(SessionModeLabel.COMPANION) },
-                                    leadingIcon = { Icon(SessionModeLabel.COMPANION.icon(), null, tint = SessionModeLabel.COMPANION.color()) },
-                                    onClick = { showCreateModeMenu = false; onNavigate(com.nekobot.app.ui.navigation.Routes.COMPANION_CREATE) }
-                                )
                                 DropdownMenuItem(
                                     text = { SessionModeMenuText(SessionModeLabel.CHARACTER) },
                                     leadingIcon = {
@@ -939,7 +934,6 @@ fun SessionsScreen(
                     com.nekobot.app.ui.screens.home.HomeModeNavigation(
                         rows = homeRows,
                         characters = characters,
-                        onOpenSession = handleOpenChat,
                         onNavigate = onNavigate,
                         modifier = Modifier.weight(1f)
                     )

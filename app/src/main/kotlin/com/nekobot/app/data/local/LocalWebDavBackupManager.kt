@@ -6,11 +6,13 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.withTransaction
+import app.lianxu.independent.LianxuModule
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.syncCompanionRoles
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
@@ -2135,7 +2137,7 @@ class LocalWebDavBackupManager(
         db: NekobotDatabase,
         records: List<WebDavSyncRecord>
     ) {
-        db.withTransaction {
+        suspend fun applyDatabaseRecords() = db.withTransaction {
             records.filter { it.deleted }
                 .sortedWith(compareBy<WebDavSyncRecord> {
                     if (it.type in GENERIC_INCREMENTAL_TYPE_IDS) 0 else 1
@@ -2253,6 +2255,16 @@ class LocalWebDavBackupManager(
                         }
                     }
                 }
+        }
+        val deletedCharacterIds = records.filter { it.deleted && it.type == TYPE_CHARACTER }.map { it.id }
+        val roles = LianxuModule.rolesIfInitialized
+        if (deletedCharacterIds.isEmpty() || roles == null) {
+            applyDatabaseRecords()
+        } else {
+            roles.applyHostTombstones(deletedCharacterIds) { detach ->
+                applyDatabaseRecords()
+                syncCompanionRoles { detach(requireNotNull(db.openHelper.databaseName)) }
+            }
         }
         val fileRecords = records.filter { it.type == TYPE_FILE }
         fileRecords.forEach { applyIncrementalFileRecord(db, it) }
