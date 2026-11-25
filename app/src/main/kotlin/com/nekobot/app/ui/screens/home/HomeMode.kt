@@ -33,6 +33,10 @@ data class ModeCardUi(
     val action: String,
     /** 角色聊天卡的封面：最近一段角色会话的立绘。 */
     val coverUrl: String? = null,
+    /** 封面所属角色：立绘取景按角色保存，首页 banner 与这张卡共用。 */
+    val coverCharacterId: String? = null,
+    /** 封面角色名：取景对话框里没有图片时用它兜底显示首字。 */
+    val coverCharacterName: String? = null,
     /** 没有立绘时封面里的首字。 */
     val coverInitial: String? = null,
     /** Agent 卡的终端两行：一行状态、一行提示。 */

@@ -1,40 +1,15 @@
 package com.nekobot.app.ui.screens.sessions
 
 import androidx.compose.foundation.Image
-import kotlin.math.roundToInt
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.BoxWithConstraints
 import com.nekobot.app.ui.components.NekoDialog
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.foundation.Canvas
 import com.nekobot.app.ui.components.NekoDivider
 import com.nekobot.app.ui.components.GlassCard
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.Button
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,7 +22,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -102,6 +76,9 @@ import com.nekobot.app.ui.components.NekoSegmentedControl
 import com.nekobot.app.ui.components.NekoSheet
 import com.nekobot.app.ui.components.NekoSheetHeader
 import com.nekobot.app.ui.components.NekoSheetNote
+import com.nekobot.app.ui.components.FramedPortraitImage
+import com.nekobot.app.ui.components.PortraitFramingDialog
+import com.nekobot.app.ui.components.rememberPortraitFraming
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
@@ -269,19 +246,16 @@ fun SessionHomeHeaderContent(
                 prefs.homeBannerSessionId = ""
                 prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_AUTO
                 prefs.homeWelcomeCharacterId = ""
-                prefs.homePortraitCrop = ""
             },
             onQuickChat = onQuickChat,
             onGreetingChanged = onQuickChatGreetingChanged,
-            onSceneCharacterChanged = { id, portraitCrop ->
+            onSceneCharacterChanged = { id ->
                 if (id.isBlank()) {
                     prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_NONE
                     prefs.homeWelcomeCharacterId = ""
-                    prefs.homePortraitCrop = ""
                 } else {
                     prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_CHARACTER
                     prefs.homeWelcomeCharacterId = id
-                    if (portraitCrop != null) prefs.homePortraitCrop = portraitCrop
                 }
                 // 只有聚合模式才让欢迎形象与「继续入口」指向同一个角色；
                 // 关闭聚合时保持原来的语义：选形象不改变独立 banner 的来源。
@@ -332,6 +306,12 @@ fun SessionHomeHeaderContent(
                     modeLabel = bannerRow?.modeLabel ?: SessionModeLabel.CHARACTER,
                     isGroupSession = bannerRow?.isGroupSession == true,
                     pinned = pinnedActive,
+                    // 立绘取景按角色取，固定角色与最近会话角色都能对上同一份
+                    characterId = if (pinnedActive) {
+                        pinnedCharacter?.id ?: bannerRow?.characterId
+                    } else {
+                        bannerRow?.characterId
+                    },
                     onOpen = {
                         when {
                             !pinnedActive -> bannerRow?.id?.let(onOpenSession)
@@ -486,7 +466,6 @@ fun SessionHomeHeaderContent(
                 // 跟随最近会话：清掉显式角色，场景卡与问候重新跟随最新会话
                 prefs.homeSceneSource = PrefsManager.HOME_SCENE_SOURCE_AUTO
                 prefs.homeWelcomeCharacterId = ""
-                prefs.homePortraitCrop = ""
                 showSourceSheet = false
             },
             onSelectCharacter = { entry ->
@@ -585,6 +564,8 @@ private fun HomeSessionBanner(
     pinned: Boolean,
     onOpen: () -> Unit,
     onChoose: () -> Unit,
+    /** 会话所属角色：套用该角色的立绘取景，与首页立绘保持一致。 */
+    characterId: String? = null,
     showEmptySubtitle: Boolean = true
 ) {
     val shape = RoundedCornerShape(18.dp)
@@ -605,7 +586,8 @@ private fun HomeSessionBanner(
             modeLabel = modeLabel,
             fallbackText = title,
             isGroupSession = isGroupSession,
-            size = 46.dp
+            size = 46.dp,
+            characterId = characterId
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -664,10 +646,15 @@ internal fun BannerAvatar(
     modeLabel: SessionModeLabel,
     fallbackText: String,
     isGroupSession: Boolean,
-    size: Dp
+    size: Dp,
+    /** 有角色 ID 时套用该角色的立绘取景，与首页立绘 / 模式卡取景一致。 */
+    characterId: String? = null
 ) {
     val context = LocalContext.current
     val modeColor = modeLabel.color()
+    // 与首页欢迎立绘、角色聊天模式卡共用同一份"按角色"的取景
+    val framing = rememberPortraitFraming(characterId)
+    val framedUrl = portraitUrl?.takeIf { characterId != null }
     val request = remember(context, portraitUrl) {
         portraitUrl?.let {
             ImageRequest.Builder(context)
@@ -685,6 +672,11 @@ internal fun BannerAvatar(
         contentAlignment = Alignment.Center
     ) {
         when {
+            framedUrl != null -> FramedPortraitImage(
+                url = framedUrl,
+                framing = framing,
+                modifier = Modifier.fillMaxSize()
+            )
             request != null -> AsyncImage(
                 model = request,
                 contentDescription = null,
@@ -754,7 +746,8 @@ private fun BannerSourceSheet(
                                 modeLabel = entry.modeLabel,
                                 fallbackText = entry.title,
                                 isGroupSession = false,
-                                size = 38.dp
+                                size = 38.dp,
+                                characterId = entry.id
                             )
                         },
                         trailing = {
@@ -826,7 +819,8 @@ private fun PinnedRoleSheet(
                                 modeLabel = row.modeLabel,
                                 fallbackText = row.listTitle,
                                 isGroupSession = row.isGroupSession,
-                                size = 38.dp
+                                size = 38.dp,
+                                characterId = row.characterId
                             )
                         },
                         showChevron = false,
@@ -868,7 +862,8 @@ private fun HomeSceneCard(
     onQuickChat: ((HomeQuickChatRequest) -> Unit)?,
     /** 问候语变化时同步给轻聊面板（角色 ID + 当前问候）。 */
     onGreetingChanged: (String, String) -> Unit,
-    onSceneCharacterChanged: (String, String?) -> Unit,
+    /** 换欢迎形象；取景参数由取景对话框按角色单独写入偏好。 */
+    onSceneCharacterChanged: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val prefs = ServiceContainer.prefs
@@ -887,11 +882,6 @@ private fun HomeSceneCard(
     var regenerateKey by remember { mutableIntStateOf(0) }
     var generating by remember { mutableStateOf(false) }
     var showFullGreeting by remember { mutableStateOf(false) }
-    // 取景参数同样要可观察：重新裁剪后立绘应立即套用新取景
-    val portraitCropPref by prefs.homePortraitCropFlow.collectAsStateWithLifecycle()
-    val crop = remember(characterId, portraitCropPref) {
-        parsePortraitCrop(portraitCropPref, characterId)
-    }
 
     LaunchedEffect(period.key, characterId, character, localeTag, regenerateKey) {
         // 角色列表还没加载完（有 id 但解析不出角色卡）时先不生成：
@@ -974,7 +964,11 @@ private fun HomeSceneCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            WelcomePortrait(character = character, crop = crop, onClick = { showPicker = true })
+            WelcomePortrait(
+                character = character,
+                characterId = characterId,
+                onClick = { showPicker = true }
+            )
             Spacer(Modifier.width(14.dp))
             Column(
                 modifier = Modifier
@@ -1081,7 +1075,7 @@ private fun HomeSceneCard(
                 showPicker = false
                 if (id.isEmpty()) {
                     // 应用图标不需要取景：直接把来源切成「应用图标」
-                    onSceneCharacterChanged("", null)
+                    onSceneCharacterChanged("")
                 } else {
                     characters.firstOrNull { it.id == id }?.let { croppingCharacter = it }
                 }
@@ -1089,17 +1083,19 @@ private fun HomeSceneCard(
         )
     }
 
-    // 选完角色先进取景框确认方形区域，确认后才写入偏好
+    // 选完角色先进取景框确认，确认后才写入偏好（与模式卡共用同一份取景）
     croppingCharacter?.let { target ->
-        PortraitCropDialog(
-            character = target,
-            initial = parsePortraitCrop(prefs.homePortraitCrop, target.id.orEmpty()),
+        val id = target.id.orEmpty()
+        PortraitFramingDialog(
+            imageUrl = characterPortraitUrl(target),
+            characterName = target.displayName,
+            // 首页 banner 的立绘是方形，预览也按方形，所见即所得
+            previewAspect = 1f,
+            initial = rememberPortraitFraming(id),
             onDismiss = { croppingCharacter = null },
             onConfirm = { confirmed ->
-                onSceneCharacterChanged(
-                    target.id.orEmpty(),
-                    serialisePortraitCrop(target.id.orEmpty(), confirmed)
-                )
+                prefs.setPortraitFraming(id, confirmed.serialise())
+                onSceneCharacterChanged(id)
                 croppingCharacter = null
             }
         )
@@ -1238,11 +1234,12 @@ private fun SceneActionChip(text: String, onClick: () -> Unit) {
 @Composable
 private fun WelcomePortrait(
     character: CharacterPreset?,
-    crop: PortraitCrop,
+    characterId: String,
     onClick: () -> Unit
 ) {
-    val context = LocalContext.current
     val shape = RoundedCornerShape(22.dp)
+    // 与角色聊天模式卡共用同一份取景：卡片上怎么调，banner 就怎么显示
+    val framing = rememberPortraitFraming(characterId)
     Box(
         modifier = Modifier.size(76.dp),
         contentAlignment = Alignment.BottomEnd
@@ -1256,7 +1253,8 @@ private fun WelcomePortrait(
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            val avatarUrl = resolveAvatarUrl(character?.avatarUrl)
+            // 优先立绘（与模式卡封面同源），没有立绘时才退回列表头像
+            val portraitUrl = character?.let(::characterPortraitUrl)
             when {
                 // 用位图 logo 而不是 ic_launcher：后者是自适应图标 XML，
                 // Compose 的 painterResource 无法把它转成位图（会崩）。
@@ -1266,9 +1264,9 @@ private fun WelcomePortrait(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
-                avatarUrl != null -> CroppedPortraitImage(
-                    url = avatarUrl,
-                    crop = crop,
+                portraitUrl != null -> FramedPortraitImage(
+                    url = portraitUrl,
+                    framing = framing,
                     modifier = Modifier.fillMaxSize()
                 )
                 else -> NekoLetterAvatar(
@@ -1461,280 +1459,5 @@ private fun rememberLocalGreetingLine(period: GreetingPeriod): String {
 }
 
 // ---------------------------------------------------------------- 立绘取景
-
-/**
- * 方形取景参数（相对整张图片的比例，与显示尺寸无关）。
- *
- * - [frame]：方形取景框边长 ÷ 图片宽度。0 表示"自动"＝能放下的最大方形（居中）。
- * - [centerX]/[centerY]：取景框中心在图片里的位置（0..1）。
- *
- * 用比例而不是像素保存，76dp 头像与取景预览框才会显示同一块画面。
- */
-private data class PortraitCrop(
-    val frame: Float = 0f,
-    val centerX: Float = 0.5f,
-    val centerY: Float = 0.5f
-)
-
-private fun parsePortraitCrop(raw: String, characterId: String): PortraitCrop {
-    if (characterId.isBlank()) return PortraitCrop()
-    val parts = raw.split('|')
-    if (parts.size != 4 || parts[0] != characterId) return PortraitCrop()
-    return PortraitCrop(
-        frame = parts[1].toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 0f,
-        centerX = parts[2].toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.5f,
-        centerY = parts[3].toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.5f
-    )
-}
-
-private fun serialisePortraitCrop(characterId: String, crop: PortraitCrop): String =
-    "$characterId|${crop.frame}|${crop.centerX}|${crop.centerY}"
-
-/** 图片长宽比下，方形取景框边长最多能占图片宽度的比例。 */
-private fun maxFrameFraction(imageAspect: Float): Float =
-    if (imageAspect >= 1f) 1f / imageAspect else 1f
-
-/**
- * 按取景参数绘制头像。
- *
- * 直接从位图里取**源矩形**（正方形）再铺满方框：不依赖 ContentScale 的裁切规则，
- * 也不用自己推算缩放/位移，因此既不会露白边，也不会多裁或少裁。
- */
-@Composable
-private fun CroppedPortraitImage(
-    url: String,
-    crop: PortraitCrop,
-    modifier: Modifier = Modifier
-) {
-    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-    val loaded = bitmap
-    if (loaded == null) {
-        // 位图还没拿到：先按 Crop 铺一张，拿到后立刻切成精确的源矩形
-        AsyncImage(
-            model = url,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            onSuccess = { state -> bitmap = state.result.drawable.toImageBitmapOrNull() },
-            modifier = modifier
-        )
-        return
-    }
-    val imageWidth = loaded.width
-    val imageHeight = loaded.height
-    if (imageWidth <= 0 || imageHeight <= 0) {
-        Image(painter = BitmapPainter(loaded), contentDescription = null, modifier = modifier)
-        return
-    }
-    val aspect = imageWidth.toFloat() / imageHeight.toFloat()
-    val maxFrame = maxFrameFraction(aspect)
-    val frame = if (crop.frame <= 0f) maxFrame else crop.frame.coerceIn(0.05f, maxFrame)
-    val sourceSide = (frame * imageWidth).roundToInt()
-        .coerceIn(1, minOf(imageWidth, imageHeight))
-    val half = sourceSide / 2f
-    val centerX = (crop.centerX * imageWidth).coerceIn(half, imageWidth - half)
-    val centerY = (crop.centerY * imageHeight).coerceIn(half, imageHeight - half)
-    val left = (centerX - half).roundToInt().coerceIn(0, imageWidth - sourceSide)
-    val top = (centerY - half).roundToInt().coerceIn(0, imageHeight - sourceSide)
-    val painter = remember(loaded, left, top, sourceSide) {
-        BitmapPainter(
-            image = loaded,
-            srcOffset = IntOffset(left, top),
-            srcSize = IntSize(sourceSide, sourceSide)
-        )
-    }
-    Image(
-        painter = painter,
-        contentDescription = null,
-        contentScale = ContentScale.FillBounds,
-        modifier = modifier
-    )
-}
-/**
- * 立绘取景：**先看到完整图片**，再拖动方形取景框选区域，双指缩放改变方框大小。
- */
-@Composable
-private fun PortraitCropDialog(
-    character: CharacterPreset,
-    initial: PortraitCrop,
-    onDismiss: () -> Unit,
-    onConfirm: (PortraitCrop) -> Unit
-) {
-    var aspect by remember { mutableFloatStateOf(1f) }
-    var frameFraction by remember { mutableFloatStateOf(1f) }
-    var centerX by remember { mutableFloatStateOf(initial.centerX) }
-    var centerY by remember { mutableFloatStateOf(initial.centerY) }
-    val avatarUrl = resolveAvatarUrl(character.avatarUrl)
-
-    // 已有取景：把"边长占图片宽度比例"换回"占显示短边比例"
-    LaunchedEffect(aspect) {
-        if (initial.frame > 0f) {
-            frameFraction = (initial.frame / maxFrameFraction(aspect)).coerceIn(0.25f, 1f)
-        }
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            GlassCard(
-                modifier = Modifier
-                    .widthIn(max = 380.dp)
-                    .fillMaxWidth(),
-                cornerRadius = 20,
-                containerColor = MaterialTheme.colorScheme.surface,
-                borderWidth = 1
-            ) {
-                Text(
-                    text = stringResource(R.string.shell_portrait_crop_title),
-                    style = nekoRowTitleStyle(),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(12.dp))
-                // 预览框：在可用宽度与最大高度内按图片比例 contain，避免长图把按钮顶出屏幕
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                val previewAspect = if (aspect > 0f) aspect else 1f
-                val previewWidth = if (maxWidth / previewAspect <= maxHeight) maxWidth else maxHeight * previewAspect
-                val previewHeight = previewWidth / previewAspect
-                Box(
-                    modifier = Modifier
-                        .size(previewWidth, previewHeight)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
-                        .pointerInput(previewAspect) {
-                            detectTransformGestures { _, pan, gestureZoom, _ ->
-                                val boxWidth = size.width.toFloat()
-                                val boxHeight = size.height.toFloat()
-                                val minSide = minOf(boxWidth, boxHeight)
-                                if (minSide <= 0f) return@detectTransformGestures
-                                val nextFrame = (frameFraction * gestureZoom).coerceIn(0.25f, 1f)
-                                val half = nextFrame * minSide / 2f
-                                frameFraction = nextFrame
-                                val nextX = (centerX * boxWidth + pan.x)
-                                    .coerceIn(half, (boxWidth - half).coerceAtLeast(half))
-                                val nextY = (centerY * boxHeight + pan.y)
-                                    .coerceIn(half, (boxHeight - half).coerceAtLeast(half))
-                                centerX = if (boxWidth > 0f) nextX / boxWidth else 0.5f
-                                centerY = if (boxHeight > 0f) nextY / boxHeight else 0.5f
-                            }
-                        }
-                ) {
-                    if (avatarUrl != null) {
-                        AsyncImage(
-                            model = avatarUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.FillBounds,
-                            onSuccess = { state ->
-                                val drawable = state.result.drawable
-                                val width = drawable.intrinsicWidth
-                                val height = drawable.intrinsicHeight
-                                if (width > 0 && height > 0) {
-                                    aspect = width.toFloat() / height.toFloat()
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        NekoLetterAvatar(
-                            text = character.displayName,
-                            size = 96.dp,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                    // 取景框：框外压暗，框线用强调色，一眼能看出会截哪一块
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val boxWidth = size.width
-                        val boxHeight = size.height
-                        val minSide = minOf(boxWidth, boxHeight)
-                        val side = frameFraction * minSide
-                        val half = side / 2f
-                        val cx = (centerX * boxWidth).coerceIn(half, (boxWidth - half).coerceAtLeast(half))
-                        val cy = (centerY * boxHeight).coerceIn(half, (boxHeight - half).coerceAtLeast(half))
-                        val left = cx - half
-                        val top = cy - half
-                        val dim = Color.Black.copy(alpha = 0.45f)
-                        drawRect(dim, topLeft = Offset(0f, 0f), size = Size(boxWidth, top))
-                        drawRect(dim, topLeft = Offset(0f, top + side), size = Size(boxWidth, boxHeight - top - side))
-                        drawRect(dim, topLeft = Offset(0f, top), size = Size(left, side))
-                        drawRect(dim, topLeft = Offset(left + side, top), size = Size(boxWidth - left - side, side))
-                        drawRect(
-                            color = Color.White,
-                            topLeft = Offset(left, top),
-                            size = Size(side, side),
-                            style = Stroke(width = 2.dp.toPx())
-                        )
-                    }
-                }
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = stringResource(R.string.shell_portrait_crop_hint),
-                    style = nekoCaptionStyle(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = {
-                        frameFraction = 1f
-                        centerX = 0.5f
-                        centerY = 0.5f
-                    }) {
-                        Text(
-                            stringResource(R.string.shell_portrait_crop_reset),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) {
-                        Text(
-                            stringResource(R.string.common_cancel),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            onConfirm(
-                                PortraitCrop(
-                                    frame = (frameFraction * maxFrameFraction(aspect))
-                                        .coerceIn(0.05f, 1f),
-                                    centerX = centerX.coerceIn(0f, 1f),
-                                    centerY = centerY.coerceIn(0f, 1f)
-                                )
-                            )
-                        }
-                    ) {
-                        Text(stringResource(R.string.common_confirm))
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 把 Coil 的 drawable 转成 ImageBitmap（兼容不同 Coil 版本；失败返回 null）。 */
-private fun android.graphics.drawable.Drawable?.toImageBitmapOrNull(): ImageBitmap? {
-    if (this == null) return null
-    val bitmap = runCatching {
-        if (this is android.graphics.drawable.BitmapDrawable) {
-            this.bitmap
-        } else {
-            this.toBitmap()
-        }
-    }.getOrNull() ?: return null
-    return if (bitmap.width > 0 && bitmap.height > 0) bitmap.asImageBitmap() else null
-}
+// 取景参数与渲染统一收敛到 ui/components/PortraitFraming.kt：
+// 首页 banner 与角色聊天模式卡共用同一份"按角色"的取景，逻辑保持一致。

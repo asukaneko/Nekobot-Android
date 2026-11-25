@@ -31,6 +31,10 @@
     <string name="home_mode_card_companion">日常コンパニオン</string>
     <string name="home_mode_card_enter">入る →</string>
     <string name="home_mode_card_companion_hint">台本はなし。彼女との毎日を大切に。</string>
+    <!-- 立ち絵のフレーミング（ホームバナーとキャラクター会話カードで共通） -->
+    <string name="home_portrait_framing_edit">立ち絵のフレーミングを調整</string>
+    <string name="home_portrait_framing_title">立ち絵のフレーミングを調整</string>
+    <string name="home_portrait_framing_hint">ドラッグで位置を調整、ピンチで拡大縮小</string>
 
     <!-- Agent ページ -->
     <string name="home_agent_bar_title">Agent</string>

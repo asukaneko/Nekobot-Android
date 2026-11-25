@@ -31,6 +31,10 @@
     <string name="home_mode_card_companion">日常陪伴</string>
     <string name="home_mode_card_enter">进入 →</string>
     <string name="home_mode_card_companion_hint">不演剧本，只和她认真过日子</string>
+    <!-- 立绘取景（首页 banner 与角色聊天模式卡共用同一份） -->
+    <string name="home_portrait_framing_edit">调整立绘取景</string>
+    <string name="home_portrait_framing_title">调整立绘取景</string>
+    <string name="home_portrait_framing_hint">拖动调整位置，双指缩放画面</string>
 
     <!-- Agent 模式页 -->
     <string name="home_agent_bar_title">Agent</string>

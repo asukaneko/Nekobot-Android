@@ -31,6 +31,10 @@
     <string name="home_mode_card_companion">Daily Companion</string>
     <string name="home_mode_card_enter">Enter →</string>
     <string name="home_mode_card_companion_hint">No script. Just you and her sharing everyday life.</string>
+    <!-- Portrait framing (shared by the home banner and the character mode card) -->
+    <string name="home_portrait_framing_edit">Adjust portrait framing</string>
+    <string name="home_portrait_framing_title">Adjust portrait framing</string>
+    <string name="home_portrait_framing_hint">Drag to reposition, pinch to zoom</string>
 
     <!-- Agent page -->
     <string name="home_agent_bar_title">Agent</string>

@@ -31,6 +31,10 @@
     <string name="home_mode_card_companion">일상 동반</string>
     <string name="home_mode_card_enter">입장 →</string>
     <string name="home_mode_card_companion_hint">대본 없이, 그녀와 하루하루를 소중하게 보내요</string>
+    <!-- 일러스트 구도 (홈 배너와 캐릭터 대화 카드가 함께 사용) -->
+    <string name="home_portrait_framing_edit">일러스트 구도 조정</string>
+    <string name="home_portrait_framing_title">일러스트 구도 조정</string>
+    <string name="home_portrait_framing_hint">드래그로 위치를, 핀치로 확대/축소하세요</string>
 
     <!-- Agent 페이지 -->
     <string name="home_agent_bar_title">Agent</string>

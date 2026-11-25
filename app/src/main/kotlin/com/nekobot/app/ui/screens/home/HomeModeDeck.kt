@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -53,15 +56,19 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
+import com.nekobot.app.ui.components.FramedPortraitImage
+import com.nekobot.app.ui.components.PortraitFramingDialog
 import com.nekobot.app.ui.components.nekoCaptionStyle
 import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
 import com.nekobot.app.ui.components.nekoTextSize
+import com.nekobot.app.ui.components.rememberPortraitFraming
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -208,6 +215,8 @@ fun HomeModeDeck(
                         card = card,
                         width = cardWidth,
                         height = cardHeight,
+                        // 只有正面卡提供立绘取景编辑：侧卡叠在后面且半透明，弹窗会显得错位
+                        showCoverEditor = isCenter,
                         modifier = Modifier
                             // 用吸附后的下标排序，滑动过程中不必每帧重组
                             .zIndex(10f - abs(index - settledIndex))
@@ -282,6 +291,8 @@ private fun ModeCard(
     width: Dp,
     height: Dp,
     onOpenList: () -> Unit,
+    /** 角色卡封面是否显示立绘取景编辑按钮（仅当前正面卡）。 */
+    showCoverEditor: Boolean,
     modifier: Modifier = Modifier
 ) {
     if (card.mode == HomeMode.COMPANION) {
@@ -359,6 +370,7 @@ private fun ModeCard(
             card = card,
             ink = ink,
             accent = accent,
+            showCoverEditor = showCoverEditor,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -435,7 +447,13 @@ private fun ModeCard(
 }
 
 @Composable
-private fun ModeCardHero(card: ModeCardUi, ink: Color, accent: Color, modifier: Modifier = Modifier) {
+private fun ModeCardHero(
+    card: ModeCardUi,
+    ink: Color,
+    accent: Color,
+    showCoverEditor: Boolean,
+    modifier: Modifier = Modifier
+) {
     val heroShape = RoundedCornerShape(18.dp)
     Box(
         modifier = modifier
@@ -447,26 +465,48 @@ private fun ModeCardHero(card: ModeCardUi, ink: Color, accent: Color, modifier: 
         if (card.mode == HomeMode.AGENT) {
             AgentHero(lines = card.agentLines, ink = ink)
         } else {
-            CharacterCover(card = card, ink = ink, accent = accent)
+            CharacterCover(
+                card = card,
+                ink = ink,
+                accent = accent,
+                showEditor = showCoverEditor
+            )
         }
     }
 }
 
 /** 角色聊天卡封面：最近一段角色会话的立绘；没有立绘时用首字兜底。 */
 @Composable
-private fun CharacterCover(card: ModeCardUi, ink: Color, accent: Color) {
+private fun CharacterCover(
+    card: ModeCardUi,
+    ink: Color,
+    accent: Color,
+    /** 是否在立绘右下角显示取景编辑按钮。 */
+    showEditor: Boolean
+) {
     val context = LocalContext.current
-    val request = remember(context, card.coverUrl) {
-        card.coverUrl?.takeIf { it.isNotBlank() }?.let { url ->
+    var editing by remember { mutableStateOf(false) }
+    var coverSize by remember { mutableStateOf(IntSize.Zero) }
+    val coverUrl = card.coverUrl?.takeIf { it.isNotBlank() }
+    val characterId = card.coverCharacterId
+    // 与首页 banner 立绘共用同一份"按角色"的取景：在这里调完，banner 同步生效
+    val framing = rememberPortraitFraming(characterId)
+    val editLabel = stringResource(R.string.home_portrait_framing_edit)
+    val request = remember(context, coverUrl) {
+        coverUrl?.let { url ->
             ImageRequest.Builder(context).data(url).crossfade(true).build()
         }
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { coverSize = it },
+        contentAlignment = Alignment.Center
+    ) {
         if (request != null) {
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            FramedPortraitImage(
+                url = coverUrl,
+                framing = framing,
                 modifier = Modifier.fillMaxSize()
             )
             // 图片底部压一点同色暗角，和下方文字衔接不生硬
@@ -480,6 +520,27 @@ private fun CharacterCover(card: ModeCardUi, ink: Color, accent: Color) {
                         )
                     )
             )
+            // 立绘右下角：取景编辑入口，点了只开对话框，不会顺带进入模式
+            if (showEditor && characterId != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.42f))
+                        .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                        .clickable { editing = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = editLabel,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
         } else {
             Box(
                 Modifier
@@ -508,6 +569,26 @@ private fun CharacterCover(card: ModeCardUi, ink: Color, accent: Color) {
                 )
             }
         }
+    }
+
+    if (editing && coverUrl != null && characterId != null) {
+        // 预览框按封面的实际比例，所见即卡片里最终的样子
+        val previewAspect = if (coverSize.height > 0) {
+            coverSize.width.toFloat() / coverSize.height
+        } else {
+            0.9f
+        }
+        PortraitFramingDialog(
+            imageUrl = coverUrl,
+            characterName = card.coverCharacterName ?: card.title,
+            previewAspect = previewAspect,
+            initial = framing,
+            onDismiss = { editing = false },
+            onConfirm = { confirmed ->
+                ServiceContainer.prefs.setPortraitFraming(characterId, confirmed.serialise())
+                editing = false
+            }
+        )
     }
 }
 

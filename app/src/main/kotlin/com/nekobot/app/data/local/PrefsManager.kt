@@ -1019,22 +1019,58 @@ class PrefsManager(context: Context) {
         }
 
     /**
-     * 欢迎立绘的方形取景：`角色ID|zoom|offsetX|offsetY`。
+     * 旧版首页欢迎立绘的方形取景：`角色ID|方形边长占图片宽度比例|centerX|centerY`。
      *
-     * offsetX/Y 是相对"可移动范围"的归一化比例（-1..1），因此同一组参数在
-     * 76dp 头像与取景预览框里得到完全一致的画面。
+     * 新版本改成按角色保存的 [setPortraitFraming]，这里只作为迁移来源读取，
+     * 不再写入；[portraitFramingValue] 会把旧值换算成新格式。
      */
-    private val _homePortraitCrop = MutableStateFlow(
-        prefs.getString(KEY_HOME_PORTRAIT_CROP, "").orEmpty()
-    )
-    val homePortraitCropFlow: StateFlow<String> = _homePortraitCrop.asStateFlow()
-
     var homePortraitCrop: String
-        get() = _homePortraitCrop.value
+        get() = prefs.getString(KEY_HOME_PORTRAIT_CROP, "").orEmpty()
         set(value) {
-            _homePortraitCrop.value = value
             prefs.edit().putString(KEY_HOME_PORTRAIT_CROP, value).apply()
         }
+
+    /**
+     * 每个角色一套立绘取景（`角色ID -> "zoom|centerX|centerY"`）。
+     *
+     * 首页 banner 与角色聊天模式卡共用这一份，所以同一张立绘在两处的取景一致；
+     * 用 StateFlow 承载：在任意一处调完取景，另一处立即同步。
+     */
+    private val _characterPortraitFramings = MutableStateFlow(
+        readStringMap(KEY_CHARACTER_PORTRAIT_FRAMINGS)
+    )
+    val characterPortraitFramingsFlow: StateFlow<Map<String, String>> =
+        _characterPortraitFramings.asStateFlow()
+
+    /** 读取某角色的立绘取景原始串；没有设置过时返回空串。 */
+    fun portraitFramingValue(characterId: String): String {
+        if (characterId.isBlank()) return ""
+        val saved = _characterPortraitFramings.value[characterId]
+        if (!saved.isNullOrBlank()) return saved
+        // 旧版只存了首页那一张的取景：若属于这个角色就继续沿用，避免升级后画面跳回默认
+        val legacy = homePortraitCrop
+        val parts = legacy.split('|')
+        return if (parts.size == 4 && parts[0] == characterId) legacy else ""
+    }
+
+    /** 写入某角色的立绘取景；空串表示删除，恢复默认取景。 */
+    fun setPortraitFraming(characterId: String, value: String) {
+        if (characterId.isBlank()) return
+        val next = _characterPortraitFramings.value.toMutableMap()
+        if (value.isBlank()) next.remove(characterId) else next[characterId] = value
+        _characterPortraitFramings.value = next
+        prefs.edit().putString(KEY_CHARACTER_PORTRAIT_FRAMINGS, gson.toJson(next)).apply()
+    }
+
+    /** 读取 `Map<String, String>` 形式的偏好；格式错误时按空表处理。 */
+    private fun readStringMap(key: String): Map<String, String> {
+        val raw = prefs.getString(key, null)?.takeIf { it.isNotBlank() } ?: return emptyMap()
+        val type = object : TypeToken<Map<String, String>>() {}.type
+        return runCatching { gson.fromJson<Map<String, String>>(raw, type) }
+            .getOrNull()
+            ?.filterValues { it.isNotBlank() }
+            .orEmpty()
+    }
 
     /**
      * 最近展示过的问候语标识（"|" 分隔）。
@@ -1903,6 +1939,7 @@ class PrefsManager(context: Context) {
         private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
         private const val KEY_HOME_WELCOME_CHARACTER = "home_welcome_character"
         private const val KEY_HOME_PORTRAIT_CROP = "home_portrait_crop"
+        private const val KEY_CHARACTER_PORTRAIT_FRAMINGS = "character_portrait_framings"
         private const val KEY_HOME_GREETING_HISTORY = "home_greeting_history"
         private const val KEY_HOME_GREETING_AI_LINE = "home_greeting_ai_line"
         private const val KEY_HOME_GREETING_AI_KEY = "home_greeting_ai_key"

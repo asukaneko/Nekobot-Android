@@ -28,6 +28,14 @@ fun homeModeCards(
     val coverUrl = latestCharacter?.let { resolveAvatarUrl(it.portrait) }
         ?: characterRow?.portraitUrl
         ?: coverCharacter?.let { resolveAvatarUrl(it.portrait ?: it.avatar) }
+    // 取景按角色保存：封面角色可能是"最近会话角色"或内容库第一个角色，
+    // 会话快照没有角色卡时仍用会话里的角色 ID，保证和首页 banner 对得上
+    val coverCharacterId = latestCharacter?.id
+        ?: coverCharacter?.id
+        ?: characterRow?.characterId
+    val coverCharacterName = latestCharacter?.displayName
+        ?: coverCharacter?.displayName
+        ?: characterRow?.listTitle
     val coverInitial = (characterRow?.listTitle ?: coverCharacter?.displayName)
         ?.takeIf { it.isNotBlank() }
         ?.let { it.substring(0, it.offsetByCodePoints(0, 1)) }
@@ -42,6 +50,8 @@ fun homeModeCards(
             meta = characterRow?.listDate.orEmpty(),
             action = listAction,
             coverUrl = coverUrl,
+            coverCharacterId = coverCharacterId,
+            coverCharacterName = coverCharacterName,
             coverInitial = coverInitial
         ),
         ModeCardUi(
