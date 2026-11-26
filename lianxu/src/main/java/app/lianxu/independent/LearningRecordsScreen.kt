@@ -1,14 +1,26 @@
 package app.lianxu.independent
 
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.sp
+import java.util.Calendar
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -79,7 +91,7 @@ import kotlin.coroutines.coroutineContext
     var page by rememberSaveable(friend.id){mutableIntStateOf(0)}
     var searching by rememberSaveable(friend.id){mutableStateOf(false)}
     var archived by rememberSaveable(friend.id){mutableStateOf(false)}
-    val kinds=listOf("","viewpoint","interest","habit")
+    val kinds=listOf("","habit","interest","viewpoint")
     val lists=key(friend.id){listOf(rememberLazyListState(),rememberLazyListState(),rememberLazyListState(),rememberLazyListState())}
 
     var detailId by rememberSaveable(friend.id){mutableStateOf<String?>(null)}
@@ -91,7 +103,7 @@ import kotlin.coroutines.coroutineContext
             if(detailId==null)IconButton({searching=!searching;if(!searching)query=""},modifier=Modifier.testTag("learning-open-search").semantics{contentDescription="搜索学习"}){ControlIcon("search",Muted)}
         })
         if(detailId==null)worldTabs()
-        when{
+        SoftPage(detailId,{_,to->if(to==null)-1 else 1}){shownId->when{
             loadFailed->Column(Modifier.fillMaxWidth().padding(UiSpace.page).testTag("learning-error"),verticalArrangement=Arrangement.spacedBy(12.dp)){
                 Text("学习记录暂时无法读取。",style=MaterialTheme.typography.bodyLarge)
                 Text("可以重试，已保存的内容不会因此修改。",style=MaterialTheme.typography.bodyMedium,color=Muted)
@@ -103,8 +115,8 @@ import kotlin.coroutines.coroutineContext
                     Text("正在读取学习记录…",style=MaterialTheme.typography.bodyMedium,color=Muted)
                 }
             }
-            detailId!=null->{
-                val detail=records.firstOrNull{it.state.id==detailId}
+            shownId!=null->{
+                val detail=records.firstOrNull{it.state.id==shownId}
                 if(detail!=null)LearningRecordDetail(friend,detail){action->onControl(detail.state.id,action);if(action=="delete")detailId=null}
                 else Column(Modifier.fillMaxWidth().padding(UiSpace.page).testTag("learning-detail-missing"),verticalArrangement=Arrangement.spacedBy(12.dp)){
                     Text("这条学习已不在当前记录中。",style=MaterialTheme.typography.bodyLarge)
@@ -113,141 +125,241 @@ import kotlin.coroutines.coroutineContext
                 }
             }
             else->{
-                key(page){
-                    val kind=kinds[page]
-                    val search=query.trim()
-                    val shown=records.filter{record->
-                        (record.state.state in setOf("paused","faded"))==archived && (kind.isEmpty()||record.state.kind==kind)&&
-                            (search.isEmpty()||record.state.content.contains(search,true)||record.state.scope.contains(search,true))
+                Column(Modifier.fillMaxSize().padding(horizontal=UiSpace.page)){
+                    SoftVisibility(searching){
+                        AppField(query,{query=it},"搜索内容或适用情况","learning-search",singleLine=true)
                     }
-                    LazyColumn(Modifier.fillMaxSize().background(Paper).testTag("learning-list"),state=lists[page],contentPadding=PaddingValues(UiSpace.page),verticalArrangement=Arrangement.spacedBy(12.dp)){
-                        item("intro"){Column {
-                            Text("${friend.name}的学习手记",style=MaterialTheme.typography.labelMedium,color=Muted)
-                            Text("私藏手账贴页",fontFamily=FontFamily.Serif,style=MaterialTheme.typography.headlineSmall,color=Ink)
-                        }}
-                        if(searching)item("search"){AppField(query,{query=it},"搜索内容或适用情况","learning-search",singleLine=true)}
-                        item("filters"){
-                            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                                listOf("" to "全部","viewpoint" to "看法","interest" to "兴趣","habit" to "相处习惯").forEach{(value,label)->
-                                    FilterChip(selected=kind==value,onClick={page=kinds.indexOf(value)},label={Text(label)},
-                                        modifier=Modifier.heightIn(min=UiSpace.action).testTag("learning-filter-${value.ifEmpty{"all"}}"),
-                                        colors=FilterChipDefaults.filterChipColors(selectedContainerColor=SelectedBackground,selectedLabelColor=GreenText))
+                    val archivedCount=records.count{it.state.archived}
+                    LearningFilters(kinds,page,{page=it},archived,archivedCount,{archived=!archived})
+                    SoftPage(page to archived){(shownPage,showArchived)->
+                        val kind=kinds[shownPage]
+                        val search=query.trim()
+                        val shown=records.filter{record->
+                            record.state.archived==showArchived && (kind.isEmpty() || record.state.kind==kind) &&
+                                (record.state.content.contains(search,true) || record.state.scope.contains(search,true))
+                        }.sortedByDescending{it.state.pinned}
+                        LazyColumn(Modifier.fillMaxSize().testTag("learning-list"),state=lists[shownPage],
+                            contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+                            if(showArchived)item{
+                                Text("暂时停用、或很久没再提起已自然淡忘的记录会收在这里，聊天时不会参考。",
+                                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer,RoundedCornerShape(12.dp)).padding(14.dp),
+                                    style=MaterialTheme.typography.bodySmall,color=Muted)
+                            }
+                            if(shown.isEmpty())item{
+                                val label=when{
+                                    showArchived && archivedCount==0 -> "还没有收起的记录"
+                                    records.isEmpty() -> "还没有学习记录"
+                                    else -> "没有找到匹配的记录"
+                                }
+                                Text(label,Modifier.padding(vertical=24.dp).testTag("learning-empty"),color=Muted)
+                            }
+                            items(shown,key={it.state.id}){record->
+                                LearningCard(record){detailId=record.state.id}
+                            }
+                            if(shown.isNotEmpty() && !showArchived)item{
+                                Box(Modifier.fillMaxWidth().padding(vertical=8.dp),contentAlignment=Alignment.Center){
+                                    Text("她从平时聊天里慢慢攒下的印象，点开可以调整",style=MaterialTheme.typography.bodySmall,color=Muted)
                                 }
                             }
                         }
-                        item("archived"){FilterChip(archived,{archived=!archived},{Text("已暂停与淡出")},modifier=Modifier.testTag("learning-archived"))}
-                        if(shown.isEmpty())item("empty"){
-                            Column(Modifier.fillMaxWidth().padding(vertical=24.dp).testTag("learning-empty"),verticalArrangement=Arrangement.spacedBy(8.dp)){
-                                Text(if(records.isEmpty())"还没有学习记录"else"没有找到匹配的记录",style=MaterialTheme.typography.titleSmall)
-                                Text(if(records.isEmpty())"有了可保留的看法、兴趣或相处习惯后，会在这里显示。聊天不一定每轮都产生新记录。"else"试试其他关键词，或切换到全部分类。",style=MaterialTheme.typography.bodyMedium,color=Muted)
-                            }
-                        }
-                        val sorted=shown.sortedByDescending{it.state.pinned}
-                        sorted.firstOrNull()?.let{first->item(first.state.id){LearningPatch(first,0,Modifier.fillMaxWidth()){detailId=first.state.id}}}
-                        items(sorted.drop(1).chunked(2),key={it.first().state.id}){pair->
-                            Row(Modifier.fillMaxWidth().padding(horizontal=3.dp,vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){
-                                pair.forEachIndexed{index,record->LearningPatch(record,index+1,Modifier.weight(if(index==0)1.04f else .96f).padding(top=if(index==0)0.dp else 10.dp)){detailId=record.state.id}}
-                                if(pair.size==1)Spacer(Modifier.weight(.96f))
-                            }
-                        }
-                }}
+                    }
+                }
             }
+        }}
+    }
+}
+
+private val learningGold=Color(0xFFC49352)
+private val cardShape=RoundedCornerShape(18.dp)
+private val RoleLearningState.archived get()=state=="paused" || state=="faded"
+private val RoleLearningState.remembered get()=pinned && !archived
+private val RoleLearningState.displayStatus get()=when{
+    state=="paused" -> "已暂停"
+    state=="faded" -> "已自然淡忘"
+    pinned -> "一直记住"
+    dots==1 -> "刚记下"
+    else -> familiarity
+}
+
+@Composable private fun LearningFilters(kinds:List<String>,page:Int,onPage:(Int)->Unit,archived:Boolean,count:Int,onArchive:()->Unit){
+    Row(Modifier.fillMaxWidth().padding(top=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+        Row(Modifier.weight(1f).background(MaterialTheme.colorScheme.surfaceContainerHigh,CircleShape)
+            .selectableGroup().padding(horizontal=3.dp)){
+            kinds.forEachIndexed{index,kind->
+                val selected=page==index
+                Box(Modifier.weight(1f).heightIn(min=48.dp).clip(CircleShape)
+                    .selectable(selected,role=Role.Tab,onClick={onPage(index)}).testTag("learning-filter-${kind.ifEmpty{"all"}}"),
+                    contentAlignment=Alignment.Center){
+                    Text(when(kind){""->"全部";"habit"->"习惯";else->learningKindLabel(kind)},
+                        Modifier.background(softColor(if(selected)Paper else Color.Transparent),CircleShape).padding(horizontal=8.dp,vertical=5.dp),
+                        style=MaterialTheme.typography.labelLarge,color=softColor(if(selected)Ink else Muted))
+                }
+            }
+        }
+        Box(Modifier.heightIn(min=48.dp).clip(CircleShape).selectable(archived,role=Role.Button,onClick=onArchive)
+            .testTag("learning-archived"),contentAlignment=Alignment.Center){
+            Text(if(count>0)"已收起 $count" else "已收起",Modifier.background(softColor(if(archived)SelectedBackground else Color.Transparent),CircleShape)
+                .padding(horizontal=9.dp,vertical=5.dp),style=MaterialTheme.typography.labelMedium,color=if(archived)GreenText else Muted)
+        }
+    }
+}
+
+@Composable private fun LearningCategory(state:RoleLearningState,modifier:Modifier=Modifier){
+    Row(modifier,verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){
+        Text(learningKindLabel(state.kind),Modifier.background(SelectedBackground,CircleShape).padding(horizontal=8.dp,vertical=3.dp),
+            style=MaterialTheme.typography.labelSmall,color=GreenText)
+        Text(state.scope,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.labelSmall,color=Muted)
+    }
+}
+
+@Composable private fun HeatDots(state:RoleLearningState){
+    val color=if(state.remembered)learningGold else GreenText
+    Row(horizontalArrangement=Arrangement.spacedBy(3.dp)){
+        repeat(3){index->
+            val filled=!state.archived && index<state.dots
+            Spacer(Modifier.size(6.dp).then(if(filled)Modifier.background(color,CircleShape) else Modifier.border(1.dp,Muted.copy(alpha=.45f),CircleShape)))
+        }
+    }
+}
+
+@Composable private fun LearningCard(record:LearningRecord,open:()->Unit){
+    val state=record.state
+    val press=remember{MutableInteractionSource()}
+    val tint=if(state.remembered)lerp(Paper,learningGold,.08f) else Paper
+    Column(Modifier.fillMaxWidth().alpha(if(state.archived).82f else 1f).pressScale(press)
+        .clip(cardShape).background(tint).border(.5.dp,if(state.remembered)learningGold.copy(alpha=.65f) else Line,cardShape)
+        .clickable(interactionSource=press,indication=LocalIndication.current,onClick=open)
+        .testTag("learning-item-${state.id}").padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
+            LearningCategory(state,Modifier.weight(1f))
+            HeatDots(state)
+            Text(state.displayStatus,color=Muted,style=MaterialTheme.typography.labelSmall)
+        }
+        Text(state.content,fontFamily=FontFamily.Serif,style=MaterialTheme.typography.titleMedium,lineHeight=26.sp,color=Ink)
+        Row(verticalAlignment=Alignment.CenterVertically){
+            Text(record.dateLabel(),Modifier.weight(1f),style=MaterialTheme.typography.labelSmall,color=Muted)
+            if(state.archived || state.remembered)Text(if(state.archived)"点开可重新启用" else "不会淡忘",style=MaterialTheme.typography.labelSmall,color=Muted)
         }
     }
 }
 
 @Composable private fun LearningRecordDetail(friend:Friend,record:LearningRecord,onControl:(String)->Unit){
-    var deleting by rememberSaveable(record.state.id){mutableStateOf(false)}
-    if(deleting)AlertDialog({deleting=false},title={Text("删除这条学习？")},text={Text("原聊天消息会保留。")},confirmButton={TextButton({deleting=false;onControl("delete")},modifier=Modifier.testTag("learning-delete-confirm")){Text("删除")}},dismissButton={TextButton({deleting=false}){Text("取消")}})
-    LazyColumn(Modifier.fillMaxSize().background(Paper).testTag("learning-detail"),contentPadding=PaddingValues(UiSpace.page),verticalArrangement=Arrangement.spacedBy(20.dp)){
-        item("current"){
-            Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
-                Text("${friend.name} · ${learningKindLabel(record.state.kind)}",style=MaterialTheme.typography.labelLarge,color=GreenText)
-                Text(record.state.content,style=MaterialTheme.typography.bodyLarge)
-                Text("适用情况",style=MaterialTheme.typography.titleSmall)
-                Text(record.state.scope,style=MaterialTheme.typography.bodyMedium)
-                Text("当前状态：${record.state.familiarity}",style=MaterialTheme.typography.bodyMedium,color=GreenText)
-                Text(learningStateDescription(record.state.state),style=MaterialTheme.typography.bodyMedium,color=Muted)
-                Text("更新时间：${learningDate(record.updatedAt)}",style=MaterialTheme.typography.bodySmall,color=Muted)
+    val state=record.state
+    var deleting by rememberSaveable(state.id){mutableStateOf(false)}
+    var expanded by rememberSaveable(state.id){mutableStateOf(false)}
+    if(deleting)AlertDialog(onDismissRequest={deleting=false},title={Text("忘掉这条学习？")},text={Text("原聊天记录会完整保留。")},
+        confirmButton={TextButton({deleting=false;onControl("delete")},modifier=Modifier.testTag("learning-delete-confirm")){Text("忘掉")}},
+        dismissButton={TextButton({deleting=false}){Text("取消")}})
+    Column(Modifier.fillMaxSize().background(Chrome).testTag("learning-detail").verticalScroll(rememberScrollState())
+        .padding(UiSpace.page),verticalArrangement=Arrangement.spacedBy(14.dp)){
+        PaperCard{
+            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
+                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
+                    LearningCategory(state,Modifier.weight(1f))
+                    Text(record.dateLabel(),color=Muted,style=MaterialTheme.typography.labelSmall)
+                }
+                Text(state.content,fontFamily=FontFamily.Serif,fontSize=18.sp,lineHeight=28.sp,color=Ink)
+                val (status,note)=when{
+                    state.state=="paused" -> "已暂时停用 · 聊天时不参考" to "已收进「已收起」，随时可以重新启用"
+                    state.state=="faded" -> "已自然淡忘 · 聊天时不参考" to "很久没再提起，点下方可重新启用或一直记住"
+                    state.remembered -> "已一直记住 · 聊天时会参考" to "不会随时间淡忘，也会置顶在学习列表里"
+                    else -> "${state.displayStatus} · 聊天时会参考" to "常提到会记更牢，很久不提会慢慢淡忘"
+                }
+                val tint=when{state.archived->MaterialTheme.colorScheme.surfaceContainer;state.remembered->lerp(Paper,learningGold,.12f);else->MaterialTheme.colorScheme.surfaceContainerLow}
+                Row(Modifier.fillMaxWidth().background(tint,RoundedCornerShape(12.dp)).padding(12.dp),
+                    verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
+                    HeatDots(state)
+                    Column(verticalArrangement=Arrangement.spacedBy(3.dp)){
+                        Text(status,style=MaterialTheme.typography.bodyMedium,color=Ink)
+                        Text(note,style=MaterialTheme.typography.bodySmall,color=Muted)
+                    }
+                }
             }
         }
-        item("control"){Row {
-            TextButton({onControl(if(record.state.pinned)"unpin" else "pin")},modifier=Modifier.testTag("learning-pin")){Text(if(record.state.pinned)"取消钉住" else "钉住")}
-            TextButton({onControl(if(record.state.state=="paused")"resume" else "pause")},modifier=Modifier.testTag("learning-pause")){Text(if(record.state.state=="paused")"恢复" else "暂停")}
-            TextButton({deleting=true},modifier=Modifier.testTag("learning-delete")){Text("删除")}
-        }}
-        item("evidence"){
-            Column(Modifier.fillMaxWidth().testTag("learning-evidence"),verticalArrangement=Arrangement.spacedBy(14.dp)){
-                HorizontalDivider(color=Line)
-                Text("依据",style=MaterialTheme.typography.titleSmall)
-                if(record.evidence.isEmpty())Text("没有可展示的依据。",style=MaterialTheme.typography.bodyMedium,color=Muted)
-                record.evidence.forEach{LearningEvidenceRow(friend,it)}
+        PaperCard{
+            ControlRow("一直记住","锁住这条印象，不会随时间慢慢淡忘","learning-pin",checked=state.remembered){
+                onControl(if(state.remembered)"unpin" else "pin")
+            }
+            HorizontalDivider(color=Line,thickness=.5.dp)
+            if(state.state=="faded"){
+                ControlRow("重新启用","放回学习列表，聊天时会重新参考","learning-pause"){onControl("resume")}
+            }else{
+                val paused=state.state=="paused"
+                ControlRow("暂时不用",if(paused)"已收进「已收起」，关闭即可恢复使用" else "先收进「已收起」，聊天时不参考",
+                    "learning-pause",checked=paused){onControl(if(paused)"resume" else "pause")}
+            }
+            HorizontalDivider(color=Line,thickness=.5.dp)
+            ControlRow("忘掉这条","从学习记录移除，原聊天记录不受影响","learning-delete",
+                titleColor=if(Paper.luminance()<.3f)Color(0xFFE4A098) else Color(0xFF9E473D)){deleting=true}
+        }
+        PaperCard{
+            val changes=record.changes.count{it.phase!="propose"}
+            val summary="${record.evidence.count{it.kind!="interpretation"}} 句聊天"+if(changes>0)" · 改过 $changes 次" else ""
+            Row(Modifier.fillMaxWidth().clickable{expanded=!expanded}.testTag("learning-origin-toggle").heightIn(min=56.dp)
+                .padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
+                Text("她是怎么记住这条的",Modifier.weight(1f),style=MaterialTheme.typography.titleSmall,color=Ink)
+                Text(summary,style=MaterialTheme.typography.labelSmall,color=Muted)
+                Text(if(expanded)"▴" else "▾",color=Muted)
+            }
+            SoftVisibility(expanded){
+                Column(Modifier.padding(start=16.dp,end=16.dp,bottom=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
+                    Column(Modifier.fillMaxWidth().testTag("learning-evidence"),verticalArrangement=Arrangement.spacedBy(10.dp)){
+                        Text("相关聊天原话",style=MaterialTheme.typography.titleSmall,color=Ink)
+                        if(record.evidence.isEmpty())Text("还没有可展示的原话",style=MaterialTheme.typography.bodySmall,color=Muted)
+                        record.evidence.forEach{source->
+                            Row(Modifier.height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(10.dp)){
+                                Spacer(Modifier.width(2.dp).fillMaxHeight().background(Line))
+                                Column{
+                                    val who=when{source.kind=="interpretation"->"当时理解";source.mine->"你说";else->"${friend.name}回"}
+                                    Text("$who · ${learningDate(source.created,true)}",style=MaterialTheme.typography.labelSmall,color=Muted)
+                                    Text(source.text,style=MaterialTheme.typography.bodyMedium,color=Ink)
+                                }
+                            }
+                        }
+                    }
+                    if(record.changes.isNotEmpty())Column(Modifier.testTag("learning-history"),verticalArrangement=Arrangement.spacedBy(8.dp)){
+                        Text("印象的变化",style=MaterialTheme.typography.titleSmall,color=Ink)
+                        record.changes.forEach{change->
+                            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow,RoundedCornerShape(12.dp))
+                                .padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
+                                Text("${learningDate(change.created,true)} · ${learningPhaseLabel(change.phase)}",style=MaterialTheme.typography.labelSmall,color=Muted)
+                                Text(change.content,style=MaterialTheme.typography.bodyMedium,color=Ink)
+                                if(change.reason.startsWith("反馈：“"))Text(change.reason.substringBeforeLast("”")+"”",style=MaterialTheme.typography.bodySmall,color=Muted)
+                            }
+                        }
+                    }
+                }
             }
         }
-        item("history-title"){
-            Column(Modifier.fillMaxWidth().testTag("learning-history"),verticalArrangement=Arrangement.spacedBy(14.dp)){
-                HorizontalDivider(color=Line)
-                Text("变化经过",style=MaterialTheme.typography.titleSmall)
-                if(record.changes.isEmpty())Text("没有可展示的变化经过。",style=MaterialTheme.typography.bodyMedium,color=Muted)
-            }
-        }
-        record.changes.forEachIndexed{index,change->item("change-$index-${change.sourceId}-${change.phase}"){
-            LearningChangeRow(friend,record.state.id,index,change)
-        }}
     }
 }
 
-@Composable private fun LearningEvidenceRow(friend:Friend,evidence:LearningEvidence){
-    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
-        val label=if(evidence.kind=="interpretation")"当时理解"else if(evidence.mine)"你的原话"else"${friend.name}的实际回复"
-        Text("$label · ${learningDate(evidence.created)}",style=MaterialTheme.typography.labelMedium,color=Muted)
-        Text(evidence.text,style=MaterialTheme.typography.bodyMedium)
-    }
+@Composable private fun PaperCard(content:@Composable ColumnScope.()->Unit){
+    Column(Modifier.fillMaxWidth().clip(cardShape).background(Paper).border(.5.dp,Line,cardShape),content=content)
 }
 
-@Composable private fun LearningChangeRow(friend:Friend,id:String,index:Int,change:LearningChange){
-    var showEvidence by rememberSaveable(friend.id,id,index,change.sourceId,change.phase){mutableStateOf(false)}
-    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(10.dp)){
-        Text("${learningPhaseLabel(change.phase)} · ${learningDate(change.created)}",style=MaterialTheme.typography.labelLarge,color=GreenText)
-        Text(change.content,style=MaterialTheme.typography.bodyMedium)
-        if(change.reason.isNotBlank())Text(change.reason,style=MaterialTheme.typography.bodyMedium,color=Muted)
-        if(change.evidence.isNotEmpty()){
-            TextButton({showEvidence=!showEvidence},modifier=Modifier.heightIn(min=UiSpace.action).testTag("learning-change-evidence-$index")){
-                Text(if(showEvidence)"收起这次依据"else"查看这次依据（${change.evidence.size} 条）")
-            }
-            if(showEvidence)change.evidence.forEach{LearningEvidenceRow(friend,it)}
+@Composable private fun ControlRow(title:String,note:String,tag:String,checked:Boolean?=null,titleColor:Color=Ink,action:()->Unit){
+    val interaction=if(checked==null)Modifier.clickable(onClick=action)
+        else Modifier.toggleable(checked,role=Role.Switch,onValueChange={action()})
+    Row(Modifier.fillMaxWidth().then(interaction).heightIn(min=56.dp).testTag(tag).padding(horizontal=16.dp,vertical=10.dp),
+        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
+            Text(title,style=MaterialTheme.typography.titleSmall,color=titleColor)
+            Text(note,style=MaterialTheme.typography.bodySmall,color=Muted)
         }
-        HorizontalDivider(color=Line,thickness=.5.dp)
-    }
-}
-
-@Composable private fun LearningPatch(record:LearningRecord,slot:Int,modifier:Modifier,open:()->Unit){
-    val dark=Paper.luminance()<.3f
-    val paper=when(slot){0->if(dark)Color(0xFF443B31) else Color(0xFFEFE5D4);1->if(dark)Color(0xFF383C33) else Color(0xFFE5E8DC);else->if(dark)Color(0xFF403933) else Color(0xFFF3EBDD)}
-    val learning=record.state
-    Column(modifier.rotate(when(slot){1->-1.4f;2->1.2f;else->0f}).background(paper,androidx.compose.foundation.shape.RoundedCornerShape(5.dp))
-        .clickable(onClick=open).testTag("learning-item-${learning.id}").padding(if(slot==0)20.dp else 12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-        Row(verticalAlignment=Alignment.CenterVertically){
-            Text(learningKindLabel(learning.kind),Modifier.weight(1f),style=MaterialTheme.typography.labelSmall,color=Muted)
-            Text("● ".repeat(learning.dots).trim(),style=MaterialTheme.typography.labelSmall,color=GreenText)
-        }
-        Text(learning.content,fontFamily=FontFamily.Serif,style=MaterialTheme.typography.titleMedium,color=Ink)
-        Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
-            if(learning.pinned)Text("●",color=Color(0xFFC49352),style=MaterialTheme.typography.labelSmall)
-            Text((if(learning.pinned)"已钉住 · " else "")+learning.familiarity,style=MaterialTheme.typography.labelSmall,color=Muted)
-        }
-        Text((if(record.origin=="chat")"来自聊天" else "其他来源")+" · "+learning.scope,style=MaterialTheme.typography.bodySmall,color=Muted)
+        if(checked==null)Text("›",color=Muted,fontSize=20.sp)
+        else Switch(checked=checked,onCheckedChange=null,colors=SwitchDefaults.colors(checkedTrackColor=if(tag=="learning-pin")learningGold else GreenText))
     }
 }
 
 private fun learningKindLabel(value:String)=when(value){"viewpoint"->"看法";"interest"->"兴趣";"habit"->"相处习惯";else->"其他学习"}
-private fun learningStateDescription(value:String)=when(value){
-    "faded"->"这条学习已经自然淡出。"
-    "candidate"->"刚形成的想法，还需要后续相处检验。"
-    "developing"->"已经有所调整，现有依据还不足以确定。"
-    "active"->"已有后续经历支持，可以作为参考；仍可能继续调整。"
-    "paused"->"暂时不再采用这个想法或做法。"
-    else->"当前状态暂时无法识别。"
+private fun learningPhaseLabel(value:String)=when(value){"propose"->"最初记下";"revise"->"补充调整";"confirm"->"再次印证";"pause"->"暂停使用";else->"记录变化"}
+private fun LearningRecord.dateLabel()=learningDate(updatedAt,false)+if(updatedAt==null)"" else if(changes.size>1)" 更新" else " 记下"
+private fun learningDate(value:Long?,time:Boolean):String{
+    if(value==null)return "时间未记录"
+    val date=Date(value)
+    val year=Calendar.getInstance().get(Calendar.YEAR)
+    val sameYear=Calendar.getInstance().apply{this.time=date}.get(Calendar.YEAR)==year
+    val format=(if(sameYear)"" else "yyyy年")+"M月d日"+if(time)" HH:mm" else ""
+    return SimpleDateFormat(format,Locale.getDefault()).format(date)
 }
-private fun learningPhaseLabel(value:String)=when(value){"propose"->"提出新想法";"revise"->"修订内容";"confirm"->"得到印证";"pause"->"暂停使用";else->"记录变化"}
-private fun learningDate(value:Long?)=if(value==null)"时间未记录"else SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(value))

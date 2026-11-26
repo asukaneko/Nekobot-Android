@@ -38,8 +38,7 @@ class ReplyAccountingWorker(context:Context,params:WorkerParameters):CoroutineWo
     }
 }
 
-internal class ReplyAccounting(private val store:Store,private val access:ModelAccess,private val client:TextChatClient,
-    private val embeddingClient:MemoryEmbeddingClient=HttpsMemoryEmbeddingClient()){
+internal class ReplyAccounting(private val store:Store,private val access:ModelAccess,private val client:TextChatClient){
     private val repo=ProcessingRepository(store)
     private val companion=CompanionRepository(store,AppServices.companionClock)
     suspend fun drain(role:String):Boolean=AccountingDrain.run(role,
@@ -84,13 +83,7 @@ internal class ReplyAccounting(private val store:Store,private val access:ModelA
             throw e
         }
         val saved=companion.finishReviewBatch(batch,items,records,snapshot,now,::active)
-        if(saved){
-            CompanionRuntime.changed()
-            // Chat completion can precede this commit. Index the newly published experiences here,
-            // otherwise the next query only sees the cache from before this private review.
-            // The index is rebuildable: its transport failure must not undo committed accounting.
-            CompanionVectorIndex(companion,access,embeddingClient).index(role)
-        }
+        if(saved)CompanionRuntime.changed()
         return saved
     }
 }

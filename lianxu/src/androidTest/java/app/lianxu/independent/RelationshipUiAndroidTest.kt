@@ -24,7 +24,9 @@ class RelationshipUiAndroidTest {
         swipeTab(true);ui.onNodeWithTag("inner-tab-1").assertIsSelected()
         ui.onNodeWithTag("learning-page").performTouchInput{swipe(Offset(width*.80f,height*.8f),Offset(width*.20f,height*.8f),380)}
         ui.onNodeWithTag("inner-tab-2").assertIsSelected()
-        ui.onNodeWithTag("inner-tab-0").performClick();selected(0)
+        ui.onNodeWithTag("inner-tab-0").performClick()
+        ui.waitUntil(10000) { ui.onNodeWithTag("relationship-tab-0").isDisplayed() }
+        selected(0)
         assertEquals(before,runBlocking{vm.companion.relationshipAudit("seed-lin")})
     }
     @Test fun scrollingLongDetailAndSwitchingRoleKeepContentAndRoleIsolation(){

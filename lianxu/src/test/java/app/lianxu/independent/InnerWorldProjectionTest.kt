@@ -26,6 +26,25 @@ class InnerWorldProjectionTest {
         val faded=project(start+28*day)
         assertEquals("faded",faded.single().state);assertFalse(prompt(faded).contains(state.content))
     }
+    @Test fun resumingAFadedImpressionRestoresChatAndRestartsCooling(){
+        val at=start+28*day
+        val faded=project(at).single()
+        val control=LearningControl().change("resume",faded,at)
+        assertEquals(35.0,project(at,control).single().heat,1e-9)
+        assertTrue(prompt(project(at,control)).contains(state.content))
+        assertEquals("faded",project(at+28*day,control).single().state)
+    }
+    @Test fun pinningAPausedImpressionResumesItAboveTheHeatFloor(){
+        val at=start+28*day
+        val paused=LearningControl().change("pause",project(at).single(),at)
+        val pin=paused.change("pin",project(at,paused).single(),at+1)
+        assertFalse(pin.paused)
+        assertEquals(at+1,pin.resumedAt)
+        val active=project(at+200*day,pin)
+        assertEquals(35.0,active.single().heat,1e-9)
+        assertTrue(active.single().pinned)
+        assertTrue(prompt(active).contains(state.content))
+    }
     @Test fun controlsSurviveBackupAndNeverRestoreWithdrawnSources(){
         val at=start+28*day
         val pin=LearningControl(pinned=true,heldHeat=8.75,changedAt=at)

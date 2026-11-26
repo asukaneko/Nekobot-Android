@@ -29,7 +29,7 @@ internal object RoleRecordParser {
         val allowed=view.knownSources[view.current.turnId]==view.current
         if(!allowed&&relation!=null){relation=null;relationIssues+=RelationIssue("source","UNKNOWN_SOURCE")}
         val reply=RolePlanner.Reply(flow,"",relationInput=relation,relationIssues=relationIssues,recordIssues=recordIssues,
-            parameterProposal=if(allowed)RelationParameterContract.parse(json.get("改主动参数"),view.current,input,now)else null,experience=acceptedFacts,recordAccepted=true)
+            experience=acceptedFacts,recordAccepted=true)
         val problems=if(allowed&&RelationReceipt.needed(parsedRelation,parseIssues))RelationReceipt.problems(json.get("关系输入"),parseIssues,view.current.turnId)else emptyList()
         return Parsed(reply,problems,parsedRelation==null)
     }

@@ -12,6 +12,16 @@ internal data class LearningHeat(val anchor:Double=35.0,val at:Long=0,val days:I
 }
 internal data class LearningControl(val pinned:Boolean=false,val paused:Boolean=false,val deleted:Boolean=false,
     val changedAt:Long=0,val heldHeat:Double=0.0,val resumedAt:Long=0) {
+    fun change(action:String,state:RoleLearningState,at:Long):LearningControl = when(action){
+        "pin" -> copy(pinned=true,paused=false,changedAt=at,heldHeat=maxOf(state.heat,35.0),
+            resumedAt=if(state.state=="paused")at else resumedAt)
+        "unpin" -> copy(pinned=false,heldHeat=state.heat,changedAt=at)
+        "pause" -> copy(paused=true,heldHeat=state.heat,changedAt=at)
+        "resume" -> copy(paused=false,resumedAt=at,heldHeat=maxOf(state.heat,35.0),changedAt=at)
+        "delete" -> copy(deleted=true)
+        else -> error("未知学习操作")
+    }
+
     fun anchor(heat:LearningHeat,now:Long):LearningHeat {
         if(changedAt==0L || changedAt>now)return heat
         val base=if(changedAt>=heat.at)heat.copy(anchor=heldHeat,at=changedAt) else heat
@@ -51,13 +61,7 @@ internal suspend fun CompanionRepository.controlLearning(role:String,id:String,a
     val at=clock()
     val controls=LearningControls.read(db,role).toMutableMap()
     val old=controls[id]?:LearningControl()
-    controls[id]=when(action){
-        "pin","unpin"->old.copy(pinned=action=="pin",heldHeat=state.heat,changedAt=at)
-        "pause"->old.copy(paused=true,heldHeat=state.heat,changedAt=at)
-        "resume"->old.copy(paused=false,resumedAt=at,heldHeat=state.heat,changedAt=at)
-        "delete"->old.copy(deleted=true)
-        else->error("未知学习操作")
-    }
+    controls[id]=old.change(action,state,at)
     db.insertWithOnConflict("preferences",null,ContentValues().apply{put("key",LearningControls.key(role));put("value",Gson().toJson(controls))},SQLiteDatabase.CONFLICT_REPLACE)
     CompanionRepository.bump(db,role)
 }.also{CompanionRuntime.changed()}

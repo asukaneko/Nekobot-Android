@@ -64,7 +64,10 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
     onInitialHandled:()->Unit={},
 ) {
     LaunchedEffect(state.vaultVersion){state.refresh()}
-    var screen by remember {mutableStateOf("overview")}
+    // The purposes page has no draft. Editor/provider routes need their transient configuration.
+    var screen by rememberSaveable(stateSaver = androidx.compose.runtime.saveable.Saver<String, String>(
+        save = { if (it == "purposes") it else "overview" }, restore = { it }
+    )) { mutableStateOf("overview") }
     var openedDirectlyToEdit by remember {mutableStateOf(false)}
     SideEffect { ProcessDiagnostics.view(when(screen) {
         "edit" -> "model-editor"; "providers" -> "model-providers"; "voice-studio" -> "voice-studio"; else -> "models"
@@ -148,9 +151,10 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
         onDispose{keyDraft.invalidate();lifecycle.removeObserver(observer);state.clearResult();activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)}
     }
     SideEffect{if(reveal)activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)}
-    if (screen == "voice-studio") {
+    SoftPage(screen,{from,to->if(to=="overview" || from=="edit" && to=="providers")-1 else 1}){panel->
+    if (panel == "voice-studio") {
         BreezeStudioScreen { screen = "overview" }
-        return
+        return@SoftPage
     }
     BackHandler{back()}
     val preset=ProviderPresets.get(provider)
@@ -165,7 +169,7 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
             }}
         )
         if(saveForPurpose==ModelPurpose.CHAT&&!embeddingEditor)Text("这里只设置全局聊天。其他用途正在使用的配置可直接选用，但不能在这里修改或删除；可另加全局聊天配置。",Modifier.padding(horizontal=UiSpace.page,vertical=8.dp).testTag("config-chat-context"),style=MaterialTheme.typography.bodySmall,color=ConfigMuted)
-        if(screen=="overview"){
+        if(panel=="overview"){
             Row(Modifier.padding(horizontal=UiSpace.page,vertical=12.dp).fillMaxWidth().selectableGroup().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(4.dp)){
                 listOf("聊天模型","向量","语音","画图").forEachIndexed{index,label->
                     Tab(selected=overviewTab==index,onClick={tabs.select(index)},
@@ -226,12 +230,12 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
                 }
             }}
             }
-        }else if(screen=="purposes"){
+        }else if(panel=="purposes"){
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(UiSpace.page),verticalArrangement=Arrangement.spacedBy(16.dp)){
                 if(state.status.isNotBlank())Notice(state.status,state.statusError)
                 PurposeSelection(state)
             }
-        }else if(screen=="providers"){
+        }else if(panel=="providers"){
             OutlinedTextField(query,{query=it.take(80)},placeholder={Text("搜索服务商")},singleLine=true,leadingIcon={ControlIcon("search")},modifier=Modifier.fillMaxWidth().padding(horizontal=UiSpace.page,vertical=12.dp).testTag("provider-search"),shape=RoundedCornerShape(16.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedContainerColor=Paper,focusedContainerColor=Paper,unfocusedBorderColor=Color.Transparent))
             val groups=ProviderCatalog.groups(embeddingEditor,query,allProviders)
             fun choose(p:ProviderPreset){
@@ -357,7 +361,7 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
                 Spacer(Modifier.height(12.dp))
             }
         }
-    }}
+    }}}
     if(imageNotice)AlertDialog(onDismissRequest={imageNotice=false},title={Text("画图功能还没接入")},
         text={Text("现在还不能添加画图服务商。等画图接上以后，这里会列出可以选的服务。")},
         confirmButton={TextButton({imageNotice=false}){Text("知道了")}})
@@ -492,7 +496,7 @@ private fun ModelAdvancedSettings(expanded: Boolean, onToggle: () -> Unit, conte
 
 /** 卡片最下面那一行「+ 添加…」。 */
 @Composable private fun AddServiceRow(label:String,tag:String,onClick:()->Unit){
-    Row(Modifier.fillMaxWidth().heightIn(min=44.dp).clickable(role=Role.Button,onClick=onClick)
+    Row(Modifier.fillMaxWidth().heightIn(min=UiSpace.action).clickable(role=Role.Button,onClick=onClick)
         .testTag(tag).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically){
         Text(label,style=MaterialTheme.typography.bodyMedium,color=ConfigGreen)
     }

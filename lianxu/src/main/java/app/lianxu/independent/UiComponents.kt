@@ -103,7 +103,8 @@ internal fun decodeAvatar(bytes:ByteArray,target:Int):android.graphics.Bitmap?=r
 }
 
 @Composable internal fun PrimaryAction(text:String,modifier:Modifier=Modifier,enabled:Boolean=true,onClick:()->Unit){
-    Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=UiSpace.action),shape=RoundedCornerShape(16.dp),colors=freshButtonColors(),contentPadding=PaddingValues(horizontal=16.dp,vertical=12.dp)){Text(text,style=MaterialTheme.typography.labelLarge)}
+    val press=androidx.compose.runtime.remember{androidx.compose.foundation.interaction.MutableInteractionSource()}
+    Button(onClick=onClick,interactionSource=press,enabled=enabled,modifier=modifier.heightIn(min=UiSpace.action).pressScale(press),shape=RoundedCornerShape(16.dp),colors=freshButtonColors(),contentPadding=PaddingValues(horizontal=16.dp,vertical=12.dp)){Text(text,style=MaterialTheme.typography.labelLarge)}
 }
 @Composable internal fun CompactSaveAction(enabled:Boolean,onClick:()->Unit){
     Box(Modifier.widthIn(min=76.dp).heightIn(min=52.dp).clickable(enabled=enabled,role=Role.Button,onClick=onClick).testTag("config-save").semantics{contentDescription="保存配置"},contentAlignment=Alignment.Center){

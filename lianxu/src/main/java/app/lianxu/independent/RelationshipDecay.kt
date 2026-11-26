@@ -42,13 +42,8 @@ internal object RelationDecay {
     const val MISS_BASE_H=24.0
     const val MISS_CHAT=0.2
     const val MISS_REACH=0.6
-    const val THETA_MAX=0.95
-    const val THETA_GRUDGE=0.5
 
     fun expectation(closeness:Double)=0.5+0.5*closeness
-    fun thetaBase(silenceDays:Double)=(if(silenceDays<=2.0)
-        0.40+0.20*(silenceDays-1.0) else 0.60+(0.20/1.5)*(silenceDays-2.0)).coerceIn(0.30,0.90)
-    fun theta(base:Double,grudge:Double)=minOf(THETA_MAX,base+THETA_GRUDGE*grudge)
     fun careMultiplier(n:Int)=1+CARE_MAX_EXTRA*(1-exp(-n/CARE_SCALE))
     fun grudgeHalfDays(closeness:Double,slow:Double)=GRUDGE_DAYS*slow/(1+GRUDGE_CLOSENESS*closeness)
     fun missingRate(closeness:Double)=ln(2.0)/MISS_BASE_H*(1+closeness)

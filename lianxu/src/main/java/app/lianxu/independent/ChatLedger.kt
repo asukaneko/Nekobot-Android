@@ -100,9 +100,8 @@ class ChatLedger(private val store:Store,private val session:String=processSessi
         val message=db.insertOrThrow("messages",null,ContentValues().apply{put("friend_id",friendId);put("body",input);put("mine",1);put("created",System.currentTimeMillis())})
         image?.let{ChatImages.put(db,friendId,message,it)}
         db.insertOrThrow("chat_turns",null,ContentValues().apply{put("id",id);put("friend_id",friendId);put("user_message_id",message);put("state",TurnState.PENDING.name);put("attempt",1);put("config_id",configId);put("owner_session",session);put("source_zone",java.time.ZoneId.systemDefault().id)})
-        // Accepting this input and invalidating old plans is one transaction. A Worker
-        // already waiting on its model can no longer commit or requeue its old claim.
-        CompanionRepository.bump(db,friendId)
+        // Fence stale model output while preserving existing reminders for a fresh decision.
+        CompanionRepository.bump(db,friendId,keepAppointments=true)
         ReplyAccountingQueue.enqueue(db,id)
         turn(db,id)!!
     }}

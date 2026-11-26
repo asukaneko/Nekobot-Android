@@ -67,6 +67,9 @@ import kotlinx.coroutines.launch
         if(summarizing)Text("正在总结记忆，暂不能修改。",Modifier.padding(horizontal=UiSpace.page,vertical=8.dp).testTag("memory-summary-guard"),style=MaterialTheme.typography.bodySmall,color=Muted)
         if(error.isNotEmpty())Text(error,Modifier.padding(horizontal=UiSpace.page,vertical=8.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.error)
         if(mode=="maintenance"&&!summarizing)failure?.let{f->Text(memoryFailureText(f),Modifier.padding(horizontal=UiSpace.page,vertical=8.dp).testTag("memory-batch-failure"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
+        SoftPage(mode to detail?.id,{from,to->if(to.second!=null || from.first=="browse"&&to.first!="browse")1 else -1}){panel->
+        val detail=memories.firstOrNull{it.id==panel.second}
+        val shownMode=panel.first
         if(detail!=null){
             Column(Modifier.fillMaxSize().padding(UiSpace.page),verticalArrangement=Arrangement.spacedBy(16.dp)){
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){
@@ -114,7 +117,7 @@ import kotlinx.coroutines.launch
                     OutlinedButton({deleting=detail},enabled=!summarizing&&!busy,modifier=Modifier.weight(1f).testTag("memory-delete"),border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.error.copy(alpha=.3f)),colors=ButtonDefaults.outlinedButtonColors(containerColor=Paper,contentColor=MaterialTheme.colorScheme.error)){Text("删除")}
                 }
             }
-        }else if(mode=="maintenance"){
+        }else if(shownMode=="maintenance"){
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(UiSpace.page),verticalArrangement=Arrangement.spacedBy(18.dp)){
                 Text(taskDescription(task),Modifier.testTag("memory-task-status"),style=MaterialTheme.typography.bodyLarge)
                 reviews.forEach{r->Text("这条内容在总结记忆后被改动",style=MaterialTheme.typography.titleSmall);Text(r.current.text,style=MaterialTheme.typography.bodyLarge);Text("保留当前版本，不跳过来源检查或完整回执。",style=MaterialTheme.typography.bodySmall,color=Muted)
@@ -128,7 +131,7 @@ import kotlinx.coroutines.launch
                 TextButton({action{val p=policy.copy(coreGoal=coreGoal.toIntOrNull()?:0);if(!p.valid())throw ProcessingRejected("CAPACITY");repo.savePolicy(friend.id,p);repo.maintainCore(friend.id)}},enabled=!summarizing){Text("保存核心目标")}
                 TextButton({action{sourceRows=repo.sources(friend.id)}},modifier=Modifier.testTag("processing-sources")){Text("回查聊天原话")}
             }
-        }else if(mode=="candidates"){
+        }else if(shownMode=="candidates"){
             LazyColumn(Modifier.fillMaxSize().padding(horizontal=UiSpace.page),verticalArrangement=Arrangement.spacedBy(20.dp)){
                 item{Text("先核对，再成为记忆",style=MaterialTheme.typography.titleLarge)}
                 items(candidates,key={it.id}){c->Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
@@ -143,14 +146,17 @@ import kotlinx.coroutines.launch
                 Text("流年竖脉",Modifier.padding(top=10.dp),fontFamily=androidx.compose.ui.text.font.FontFamily.Serif,style=MaterialTheme.typography.headlineSmall,color=Ink)
                 Row(Modifier.fillMaxWidth().selectableGroup().padding(vertical=10.dp).background(Line.copy(alpha=.35f),androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(4.dp)){
                     listOf(false to "她记下的",true to "我写的").forEach{(value,label)->
-                        Box(Modifier.weight(1f).background(if(mine==value)Paper else androidx.compose.ui.graphics.Color.Transparent,androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).selectable(mine==value,role=androidx.compose.ui.semantics.Role.Tab){mine=value}.testTag(if(value)"memory-tab-mine"else"memory-tab-hers").padding(vertical=12.dp),contentAlignment=Alignment.Center){Text(label,color=if(mine==value)MaterialTheme.colorScheme.onSurface else Muted)}
+                        Box(Modifier.weight(1f).background(softColor(if(mine==value)Paper else androidx.compose.ui.graphics.Color.Transparent),androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).selectable(mine==value,role=androidx.compose.ui.semantics.Role.Tab){mine=value}.testTag(if(value)"memory-tab-mine"else"memory-tab-hers").padding(vertical=12.dp),contentAlignment=Alignment.Center){Text(label,color=softColor(if(mine==value)MaterialTheme.colorScheme.onSurface else Muted))}
                     }
                 }
                 if(failure!=null&&!summarizing)TextButton({mode="maintenance"},modifier=Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer.copy(alpha=.45f),androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).testTag("memory-batch-failure")){Text("有一段聊天没总结成功　重试 ›",maxLines=1)}
+                SoftPage(mine){mine->
                 val shown=remember(memories,mine){memories.filter{it.manual==mine}.sortedByDescending{it.createdAt}}
                 MemoryTimeline(shown,memories,edges,clarity,memoryLists[if(mine)1 else 0],mine,!summarizing,
                     {editing=true},{detailId=it})
+                }
             }
+        }
         }
     }
 

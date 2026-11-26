@@ -76,11 +76,6 @@ internal fun CompanionRepository.relationship(db:SQLiteDatabase,role:String,at:L
 }
 internal suspend fun CompanionRepository.relationship(role:String,at:Long=clock())=ProcessingRepository(store).read{relationship(it,role,at)}
 
-internal fun CompanionRepository.relationshipForecast(db:SQLiteDatabase,role:String):Pair<RelationshipView,(Long)->RelationState> {
-    val view=relationship(db,role)
-    val cursor=RelationCaches.get(db,role).feeling?.copy()
-    return view to {time->if(cursor!=null&&time>=(cursor.at?:Long.MIN_VALUE))cursor.copy().also{it.advance(time);it.compact()}.state()else relationship(db,role,time).state}
-}
 internal suspend fun CompanionRepository.relationshipHistory(role:String)=ProcessingRepository(store).read{relationshipInputs(it,role,true)}
 
 /** User correction affects relationship interpretation only; source text and all history remain. */

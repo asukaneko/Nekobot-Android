@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <queries>
         <intent><action android:name="android.settings.CHANNEL_NOTIFICATION_SETTINGS" /></intent>
         <intent><action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" /></intent>
@@ -16,6 +18,9 @@
             android:exported="false"
             android:theme="@style/Theme.Lianxu"
             android:windowSoftInputMode="adjustResize" />
+        <receiver android:name=".ContactWakeReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+        </receiver>
         <service
             android:name=".ChatRequestService"
             android:exported="false"

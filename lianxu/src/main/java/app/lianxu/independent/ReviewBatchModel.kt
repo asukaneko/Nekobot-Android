@@ -10,14 +10,14 @@ internal class ReviewBatchModel(private val client:TextChatClient) {
     suspend fun review(config:ModelConfig,key:String,items:List<ReplyAccountingQueue.Item>,context:RoleContext,profile:String,now:Long,allowInnerNote:Boolean=true,active:()->Boolean):Map<Long,JsonObject?> {
         val instructions="""
             $profile
-            [多轮后台轻回顾] 记忆总结保持独立。按顺序看每轮实际说过的话，只用当时已经发生的事。
+            $HEADING 记忆总结保持独立。按顺序看每轮实际说过的话，只用当时已经发生的事。
             只返回 {"records":[{"source":本轮用户消息编号,"record":null}]}。每轮恰好一行，普通闲聊填 null。
             有波澜时才写 record，例如 {"关系输入":{"P":"轻"}}。只填发生的事：暖心 P、兑现 C、失约 V、越界 B，程度轻/中/重。
             定下新约加“约定”:true；兑现必须填“兑现约定”:旧约编号。提前改期只填“没达到预期”:小/中/大。
             道歉和好填“指向之前”:{消息:旧编号,方式:道歉和好}。解释填“解释”:{事件:旧编号,判断:真误会/有原因,类别:工作忙/身体不舒服/忘了/家里有事/其他}。
             已经弥补才填“修复心结”:旧编号、“弥补已完成”:true。旧编号只能选材料中有效且适用的原话，没有就省略。假设、转述、回忆不算新的互动。
             ${if(allowInnerNote) "整批最多在一行 record 内附 innerNote，一句自己心里的话，30字以内。该行用户原话就是依据，没有就省略。" else "本批还有后续内容，本段省略 innerNote。"}
-            确有新看法或习惯时可附 learning:{id,kind:viewpoint/interest/habit,scope,content,phase:propose/revise/pause,evidence:[{source:编号,layer:"fact"}]}。新提议 id 填空，修订/暂停沿用已有 id 和范围。本轮让你修正或印证已有学习时，用 revise，依据填本轮用户消息编号和 fact 即可。
+            确有新看法或习惯时可附 learning:{id,kind:viewpoint/interest/habit,scope,content,phase:propose/revise/pause,evidence:[{source:编号,layer:"fact"}]}。新提议 id 填空，修订/暂停沿用已有 id 和范围。本轮让你修正或印证已有学习时，用 revise，依据填本轮用户消息编号和 fact 即可。content 用“你”称呼对方，写得自然简短，不用“用户”这种第三人称汇报口吻。
             不继续聊天，不重复写经历。即时控制与联系安排不得执行或重新安排。
         """.trimIndent()
         val data=Gson().toJson(items.map{mapOf("source" to it.source.turnId,"version" to it.source.version,"发生时间" to ExperiencePresentation.at(it.at,now),"用户原话" to it.input,"已发回复编号" to it.turn.assistantMessageId,"已实际说过的正文" to it.spoken)})
@@ -33,7 +33,8 @@ internal class ReviewBatchModel(private val client:TextChatClient) {
         val messages=if(ConservativeTokens.tokens(notes)+8<=remaining)listOf(fixed.first(),WireMessage("system",notes),fixed.last())else fixed
         return StructuredModelCall(client).generate("reply_batch_review",config,key,messages,active=active){parse(it,items,now,allowInnerNote)}
     }
-    companion object {
+    internal companion object {
+        const val HEADING = "[多轮后台轻回顾]"
         fun relationForCommit(record:JsonObject?,parsed:RelationInput?,cached:RelationInput?):RelationInput? {
             val light=record!=null && !record.has("experience")
             return if(light && record?.get("关系输入")?.takeUnless{it.isJsonNull}==null) cached else parsed

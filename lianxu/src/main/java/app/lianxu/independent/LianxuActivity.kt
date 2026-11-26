@@ -138,6 +138,14 @@ class LianxuActivity : FragmentActivity() {
             if (vm.chatHostLifecycle === lifecycle) vm.chatHostLifecycle = null
         }
     }
+    if(vm.page=="chat") DisposableEffect(lifecycle,vm.activeId){
+        val role=vm.activeId
+        var visible=false
+        fun record(show:Boolean){if(show!=visible){visible=show;if(show)CompanionRuntime.foreground(role) else CompanionRuntime.leave(role)}}
+        val observer=LifecycleEventObserver{_,_->record(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))}
+        lifecycle.addObserver(observer);record(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+        onDispose{lifecycle.removeObserver(observer);record(false)}
+    }
     BackHandler(enabled = vm.page == "home", onBack = onReturnToHost)
     BackHandler(vm.page!="home"&&!guidedCreate){vm.back()}
     val notice: @Composable () -> Unit = {
@@ -150,12 +158,14 @@ class LianxuActivity : FragmentActivity() {
             val choice=encounter.choose(target);encounter=choice.state
             choice.navigateTo?.let{vm.open(it.page)}
         })
-        else when(vm.page){
+        else SoftPage(vm.page to vm.activeId,{from,to->if(vm.goingBack || to.first=="home")-1 else if(from.first==to.first)0 else 1}){route->
+            if(route.second!=vm.activeId && route.first!="home")return@SoftPage
+            when(route.first){
             "home"->Home(vm, onReturnToHost)
             "chat"->chatState.SaveableStateProvider("chat-${vm.activeId}"){Chat(vm)}
             "detail"->Detail(vm)
             "role-prompts"->RolePromptsScreen(vm)
-            "role-learning","role-relationship","processing-role"->key(vm.activeId,vm.page){InnerWorldScreen(vm)}
+            "role-learning","role-relationship","processing-role"->key(route.second,route.first){InnerWorldScreen(vm, route.first)}
             "role-companion"->CompanionSettingsScreen(vm)
             "toolbox"->ToolboxScreen(vm)
             "role-voice"->BreezeRoleSettings(vm)
@@ -181,6 +191,7 @@ class LianxuActivity : FragmentActivity() {
             "settings-memory"->MemoryRulesScreen(vm)
             "settings-info"->DataAndVersion({vm.back()})
             "settings-updates"->UpdatesScreen({vm.back()})
+            }
         }
     }}}
 }
@@ -237,7 +248,7 @@ internal fun ReturnHomeButton(
                 }
             }
         }
-        Box(Modifier.weight(1f).background(Paper)){when(vm.tab){
+        Box(Modifier.weight(1f).background(Paper)){SoftPage(vm.tab){tab->when(tab){
             0->LazyColumn(Modifier.fillMaxSize().testTag("chat-list")){
                 item{SectionLabel("最近对话",Modifier.padding(horizontal=UiSpace.page,vertical=8.dp))}
                 if(vm.friends.isEmpty())item{EmptyRoles("roles-empty-chat"){vm.open("create")}}
@@ -250,7 +261,7 @@ internal fun ReturnHomeButton(
             }
             2->SettingsDirectory(vm)
             3->Profile(vm)
-        }}
+        }}}
         HorizontalDivider(color=Line,thickness=.5.dp)
         NavigationBar(containerColor=Chrome,tonalElevation=0.dp,windowInsets=WindowInsets(0,0,0,0)){labels.forEachIndexed{index,label->
             NavigationBarItem(selected=index==vm.tab,onClick={vm.tab=index},icon={NavigationIcon(index,index==vm.tab)},label={Text(label,style=MaterialTheme.typography.labelMedium,maxLines=1)},modifier=Modifier.testTag("tab-$index"),colors=NavigationBarItemDefaults.colors(selectedIconColor=GreenText,selectedTextColor=GreenText,indicatorColor=SelectedBackground,unselectedIconColor=Muted,unselectedTextColor=Muted))

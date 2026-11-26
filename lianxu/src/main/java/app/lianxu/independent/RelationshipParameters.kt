@@ -41,14 +41,6 @@ internal data class RelationCustom(val label:String,val base:RelationTemplate,va
 internal data class RelationParameterProposal(val source:SourceRef?,val values:Map<String,String>,val sentence:String,val at:Long)
 internal data class RelationParameterAnswer(val proposal:RelationParameterProposal?,val message:String=if(proposal==null)"她没说清楚，再问一次"else "")
 internal object RelationParameterContract {
-    val parameterInstruction="""
-        只有本轮用户明确提出更改主动联系的语气时，顶层加“改主动参数”:{"消息":"本轮来源编号","参数":{"tone":"温柔些"},"她的话":"那我说得温柔些。"}。
-        参数只准tone（语气）。用户没有提出就省略。不能改情绪、人设、记忆、模型或密钥，不要把普通聊天当设置。只是待用户确认的建议，不能声称已经改好。
-    """.trimIndent()
-    val instruction="""
-        只有本轮用户明确提出更改主动联系的语气时，顶层加“改主动参数”:{"消息":"本轮来源编号","参数":{"tone":"温柔些"},"她的话":"那我说得温柔些。"}。
-        参数只准tone（语气）。用户没有提出就省略。联系时间由你结合对话安排，不提供频率、间隔或次数设置建议。不能改情绪、人设、记忆、模型或密钥，不要把普通聊天当设置。只是待用户确认的建议，不能声称已经改好。
-    """.trimIndent()
     fun parse(value:JsonElement?,source:SourceRef?,input:String?,at:Long):RelationParameterProposal?=runCatching{
         val j=value?.takeIf{it.isJsonObject}?.asJsonObject?:return null
         if(source!=null){

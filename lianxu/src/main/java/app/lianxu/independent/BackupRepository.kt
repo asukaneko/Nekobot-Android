@@ -20,7 +20,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
     private val companionTables=listOf("companion_state","companion_sources","companion_blocks","companion_uses","companion_opportunities","companion_receipts","companion_action_learning")
     private val order=base+extra+companionTables
     // One-off migration markers travel as global settings, so a full backup never stops on them and a restore never reruns the migration.
-    private val globalKeys=setOf("nickname","compact","diagnostic-detailed",EXPORT_DETAIL_PREF,MemoryRules.KEY,UserPersona.KEY,LocalUpdateReceipt.KEY,MemoryForgetting.RECALL_DEFAULT_MIGRATED,UserAvatarData.KEY,ChatImages.SWITCH,ChatImages.SWITCH_REVISION,ToolboxPreferences.ORDER_KEY,ToolboxPreferences.VIDEO_KEY,ToolboxPreferences.VIDEO_REVISION)
+    private val globalKeys=setOf(QuietHours.KEY,"nickname","compact","diagnostic-detailed",EXPORT_DETAIL_PREF,MemoryRules.KEY,UserPersona.KEY,LocalUpdateReceipt.KEY,MemoryForgetting.RECALL_DEFAULT_MIGRATED,UserAvatarData.KEY,ChatImages.SWITCH,ChatImages.SWITCH_REVISION,ToolboxPreferences.ORDER_KEY,ToolboxPreferences.VIDEO_KEY,ToolboxPreferences.VIDEO_REVISION)
     private val legacy=RoleArchiveRepository(store)
     private val repo=ProcessingRepository(store)
     private class Budget {
@@ -67,7 +67,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
         for(table in companionTables)tables[table]?.asJsonArray?.forEach{v->v.asJsonObject.apply{
             if(has("owner"))addProperty("owner","")
             if(has("claim_owner"))addProperty("claim_owner","")
-            if(table=="companion_state"){addProperty("policy","awaiting_user_resume");addProperty("epoch",get("epoch").asLong+1);addProperty("policy_version",get("policy_version").asLong+1)}
+            if(table=="companion_state"){addProperty("policy","awaiting_user_resume");remove("plan_user");remove("plan_ran_at");remove("plan_due");remove("plan_retry");remove("plan_error");remove("plan_failed_at");addProperty("epoch",get("epoch").asLong+1);addProperty("policy_version",get("policy_version").asLong+1)}
             if(table=="companion_opportunities"&&get("state").asString in setOf("queued","running"))addProperty("state","cancelled")
             if(table=="companion_receipts"&&get("delivery").asString in setOf("ready","claimed"))addProperty("delivery","unknown")
         }}
@@ -111,7 +111,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
     }
     private fun validate(db:SQLiteDatabase,root:JsonObject,files:Map<String,ByteArray>,valid:()->Unit={}){
         require(root["preferences"].asJsonObject.keySet().all{it in globalKeys})
-        root["preferences"].asJsonObject.entrySet().forEach{(k,v)->require(v.isJsonPrimitive&&v.asJsonPrimitive.isString);when(k){ToolboxPreferences.ORDER_KEY->ToolboxPreferences.order(v.asString);ToolboxPreferences.VIDEO_KEY->ToolboxPreferences.VideoMode.valueOf(v.asString);"compact"->require(v.asString in setOf("true","false"));ChatImages.SWITCH->require(v.asString in setOf("0","1"));ChatImages.SWITCH_REVISION,ToolboxPreferences.VIDEO_REVISION->require(v.asString.length<=80);"diagnostic-detailed",EXPORT_DETAIL_PREF->require(v.asString in setOf("0","1"));"nickname"->require(v.asString.length in 1..80);MemoryRules.KEY->require(MemoryRules.from(JSONObject(v.asString)).valid());UserPersona.KEY->UserPersona.decode(v.asString);LocalUpdateReceipt.KEY->LocalUpdateReceipt.decode(v.asString);MemoryForgetting.RECALL_DEFAULT_MIGRATED->require(v.asString=="true");UserAvatarData.KEY->require(v.asString.length<=UserAvatarData.MAX_ENCODED){"本人头像资料过大"}}}
+        root["preferences"].asJsonObject.entrySet().forEach{(k,v)->require(v.isJsonPrimitive&&v.asJsonPrimitive.isString);when(k){QuietHours.KEY->QuietHours.decode(v.asString);ToolboxPreferences.ORDER_KEY->ToolboxPreferences.order(v.asString);ToolboxPreferences.VIDEO_KEY->ToolboxPreferences.VideoMode.valueOf(v.asString);"compact"->require(v.asString in setOf("true","false"));ChatImages.SWITCH->require(v.asString in setOf("0","1"));ChatImages.SWITCH_REVISION,ToolboxPreferences.VIDEO_REVISION->require(v.asString.length<=80);"diagnostic-detailed",EXPORT_DETAIL_PREF->require(v.asString in setOf("0","1"));"nickname"->require(v.asString.length in 1..80);MemoryRules.KEY->require(MemoryRules.from(JSONObject(v.asString)).valid());UserPersona.KEY->UserPersona.decode(v.asString);LocalUpdateReceipt.KEY->LocalUpdateReceipt.decode(v.asString);MemoryForgetting.RECALL_DEFAULT_MIGRATED->require(v.asString=="true");UserAvatarData.KEY->require(v.asString.length<=UserAvatarData.MAX_ENCODED){"本人头像资料过大"}}}
         val configs=models(root);require(configs.map{it.config.id}.distinct().size==configs.size)
         backupPurposeSelections(root["selections"].asJsonObject).values.forEach{id->require(id.isEmpty() || configs.any{it.config.id==id})}
         val ids=hashSetOf<String>();val used=hashSetOf<String>();var total=0
@@ -141,7 +141,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
                 rows.forEach{r->val j=r.asJsonObject;require(j.keySet().all{it in schema.keys});j.entrySet().forEach{(k,x)->if(!x.isJsonNull){if(schema[k]=="INTEGER")RoleArchive.integer(x)else if(schema[k]=="REAL")require(x.isJsonPrimitive&&x.asJsonPrimitive.isNumber&&x.asDouble.isFinite())else require(x.isJsonPrimitive&&x.asJsonPrimitive.isString)}};if(j.has("friend_id"))require(j["friend_id"].asString==id)
                     if(table in companionTables){
                         require(j["role"].asString==id)
-                        for(field in listOf("source_id","turn_source","message_id"))if(j.has(field))require(j[field].asLong in messageIds)
+                        for(field in listOf("source_id","turn_source","message_id"))if(j.has(field) && !(table=="companion_opportunities" && field=="source_id" && j[field].isJsonNull && j["id"].asString.startsWith("daily:")))require(j[field].asLong in messageIds)
                         if(table=="companion_state")require(j["policy"].asString in setOf("disabled","paused_by_user","awaiting_user_resume")&&j["owner"].asString.isEmpty())
                         if(table=="companion_opportunities")require(j["state"].asString !in setOf("queued","running")&&j["owner"].asString.isEmpty())
                         if(table=="companion_action_learning"){val use=ProactiveLearningUse.decode(j["considered"].asString,j["used"].asString);require(JsonParser.parseString(j["considered"].asString).asJsonArray.size()==use.first.size&&JsonParser.parseString(j["used"].asString).asJsonArray.size()==use.second.size){"主动交流学习引用无效"}}
@@ -338,7 +338,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
         tables["memory_retired"].asJsonArray.forEach{strings.putIfAbsent(it.asJsonObject["batch_id"].asString,UUID.randomUUID().toString())}
         var next=db.rawQuery("SELECT COALESCE(MAX(seq),0) FROM sqlite_sequence WHERE name='messages'",null).use{it.moveToFirst();it.getLong(0)}
         val messages=tables["messages"].asJsonArray.associate{it.asJsonObject["id"].asLong to ++next}
-        tables["companion_opportunities"]?.asJsonArray?.forEach{strings[it.asJsonObject["id"].asString]=UUID.randomUUID().toString()}
+        tables["companion_opportunities"]?.asJsonArray?.forEach{val old=it.asJsonObject["id"].asString;strings[old]=(if(old.startsWith("daily:"))"daily:" else "")+UUID.randomUUID()}
         tables["image_observations"]?.asJsonArray?.forEach{strings[it.asJsonObject["id"].asString]=UUID.randomUUID().toString()}
         val map=BackupRemapper(oldId,id,strings,messages)
         db.insertOrThrow("friends",null,cv(map.json(role["character"]).asJsonObject.apply{addProperty("id",id)}))

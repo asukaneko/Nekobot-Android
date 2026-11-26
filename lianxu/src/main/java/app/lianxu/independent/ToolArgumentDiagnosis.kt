@@ -70,7 +70,7 @@ internal object ToolArgumentDiagnosis {
         // MemoryTools.stage state guards are not argument errors; never diagnose them as fields.
         if(base["error"] in setOf("SOURCE_CHANGED","TOOL_LIMIT","TOOLS_DISABLED","STALE"))return base+mapOf("detail" to "当前状态不允许这次操作，无需修改参数重试。")
         if(name==ImmediateContact.NAME){
-            val knownCodes=setOf("MISSING_CONTACT_TIME","INVALID_CONTACT_TIME","CONTACT_TIME_IN_PAST","AMBIGUOUS_CONTACT_TIME","AMBIGUOUS_OR_MISSING_LOCAL_TIME","INVALID_CONTACT_DURATION","INVALID_CONTACT_NUMBER","EMPTY_CONTACT","INVALID_CONTACT_PARAMETERS","SCHEDULING_DISABLED","PARAMETER_SUGGESTION_REQUIRED")
+            val knownCodes=setOf("MISSING_CONTACT_TIME","INVALID_CONTACT_TIME","CONTACT_TIME_IN_PAST","AMBIGUOUS_CONTACT_TIME","AMBIGUOUS_OR_MISSING_LOCAL_TIME","INVALID_CONTACT_DURATION","INVALID_CONTACT_NUMBER","EMPTY_CONTACT","INVALID_CONTACT_FIELDS","SCHEDULING_DISABLED")
             val code=(error as? RoleContractViolation)?.code?:error.message?.takeIf{it in knownCodes}
             val result=if(code!=null)base+("validation_code" to code)else base
             return failure(result,error){diagnoseContact(raw,contactSource,code)}
@@ -84,11 +84,10 @@ internal object ToolArgumentDiagnosis {
         val root=runCatching{JsonParser.parseString(raw)}.getOrNull()
         fun kind(v:JsonElement?):String=when{v==null->"缺失";v.isJsonNull->"空值 null";v.isJsonObject->"对象";v.isJsonArray->"数组";v.asJsonPrimitive.isString->"字符串";v.asJsonPrimitive.isBoolean->"布尔值";else->"数字"}
         if(root?.isJsonObject!=true)return listOf(Problem("$","为JSON对象",kind(root)))
-        if(code in setOf("SCHEDULING_DISABLED","PARAMETER_SUGGESTION_REQUIRED"))return listOf(Problem("$","仅包含用户明确要求的改主动参数","未提供当前可执行的内容"))
+        if(code=="SCHEDULING_DISABLED")return listOf(Problem("$","当前角色已关闭主动联系","无法预约"))
         val j=root.asJsonObject;val out=mutableListOf<Problem>()
-        if(j.keySet().any{it !in setOf("future","改主动参数")})return listOf(Problem("$","仅包含future或改主动参数","包含未支持字段"))
-        if(code=="EMPTY_CONTACT")return listOf(Problem("$","至少提供有效future或用户明确要求的改主动参数","未提供有效安排或建议"))
-        if(code=="INVALID_CONTACT_PARAMETERS")return listOf(Problem("改主动参数","为用户直接要求且符合允许参数协议的建议","原参数校验拒绝"))
+        if(j.keySet().any{it!="future"})return listOf(Problem("$","仅包含future","包含未支持字段"))
+        if(code=="EMPTY_CONTACT")return listOf(Problem("$","提供有效future","未提供有效安排或建议"))
         val f=j.get("future")?:return out
         if(f.isJsonNull)return out
         if(!f.isJsonObject)return out+Problem("future","为联系机会对象",kind(f))

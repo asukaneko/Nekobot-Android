@@ -36,7 +36,7 @@ internal fun moodSky(s:RelationState):MoodSky {
     }
 }
 
-@Composable internal fun MoodHero(view:RelationshipView, template:()->Unit, correct:(SourceRef)->Unit) {
+@Composable internal fun MoodHero(view:RelationshipView, correct:(SourceRef)->Unit) {
     val sky=if(view.attributionIncomplete)MoodSky.CALM else moodSky(view.state)
     val morning=Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val period=when(morning){in 5..10->"清晨";in 11..16->"午后";in 17..19->"薄暮";else->"夜间"}
@@ -46,11 +46,13 @@ internal fun moodSky(s:RelationState):MoodSky {
     val outline=remember(sky){PathParser().parsePathString(sky.outline).toPath()}
     BoxWithConstraints(Modifier.fillMaxWidth().fillMaxHeight(.42f).heightIn(min=130.dp).testTag("mood-hero")) {
         Canvas(Modifier.matchParentSize()) {
-            listOf(sky.a to Offset(sky.x,.24f),sky.b to Offset(.87f,.12f),sky.c to Offset(.5f,.57f)).forEach { (color,point) ->
+            listOf(sky.a to Offset(sky.x,.36f),sky.b to Offset(.85f,.30f),sky.c to Offset(.50f,.58f)).forEach { (color,point) ->
                 val center=Offset(size.width*point.x,size.height*point.y)
                 drawRect(Brush.radialGradient(listOf(color.copy(alpha=if(dark).20f else .86f),color.copy(alpha=0f)), center, size.width*.76f))
             }
             drawRect(Brush.verticalGradient(listOf(base.copy(alpha=0f),base),startY=size.height*.48f))
+            drawRect(Brush.verticalGradient(0f to base, .28f to base.copy(alpha=.72f),
+                .62f to base.copy(alpha=.24f), 1f to base.copy(alpha=0f), endY=size.height*.36f))
         }
         Canvas(Modifier.align(Alignment.TopEnd).padding(14.dp).size(46.dp)) {
             val factor=size.width/48f
@@ -66,12 +68,15 @@ internal fun moodSky(s:RelationState):MoodSky {
                 sky==MoodSky.MISSING->RelationshipSummary.degree(view.state.missing)+"想你"
                 else->"心里"+RelationshipSummary.mood(view.state).sentence
             },fontFamily=FontFamily.Serif,fontSize=26.sp,color=ink)
-            Row(verticalAlignment=Alignment.CenterVertically) {
-                Text(listOfNotNull(RelationshipSummary.trust(view.state.trust).takeUnless{view.attributionIncomplete},
-                    RelationshipSummary.closeness(view.state.closeness).takeUnless{view.attributionIncomplete},view.label).joinToString(" · "),Modifier.weight(1f,false),color=Muted,style=MaterialTheme.typography.bodySmall)
-                TextButton(template){Text("换",color=GreenText)}
+            if (!view.attributionIncomplete) {
+                val summary = listOf(RelationshipSummary.trust(view.state.trust), RelationshipSummary.closeness(view.state.closeness))
+                    .filter { it.isNotBlank() }.joinToString(" · ")
+                if (summary.isNotEmpty()) Text(summary, color = Muted, style = MaterialTheme.typography.bodySmall)
             }
-            view.innerNote?.takeUnless{view.attributionIncomplete}?.let { note ->
+            val visibleNote=view.innerNote?.takeUnless{view.attributionIncomplete}
+            val savedNote=remember{mutableStateOf(visibleNote)}
+            if(visibleNote!=null)SideEffect{savedNote.value=visibleNote}
+            SoftVisibility(visibleNote!=null){ val note=visibleNote?:savedNote.value?:return@SoftVisibility
                 Row(Modifier.fillMaxWidth().background(Paper.copy(alpha=.8f)).height(IntrinsicSize.Min).testTag("mood-inner-note"),verticalAlignment=Alignment.CenterVertically) {
                     Spacer(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFFC49352)))
                     Column(Modifier.weight(1f).padding(10.dp)) {

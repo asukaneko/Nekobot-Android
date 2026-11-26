@@ -28,7 +28,7 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
             db.execSQL("CREATE TABLE IF NOT EXISTS companion_sources(role TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,source_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,revision INTEGER NOT NULL,created INTEGER NOT NULL,proposal TEXT NOT NULL,committed INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(role,source_id,revision),FOREIGN KEY(role,source_id) REFERENCES messages(friend_id,id) ON DELETE CASCADE)")
             db.execSQL("CREATE TABLE IF NOT EXISTS companion_blocks(role TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,source_id INTEGER NOT NULL,PRIMARY KEY(role,source_id))")
             db.execSQL("CREATE TABLE IF NOT EXISTS companion_uses(role TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,turn_source INTEGER NOT NULL,source_id INTEGER NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(role,turn_source,source_id))")
-            db.execSQL("CREATE TABLE IF NOT EXISTS companion_opportunities(id TEXT PRIMARY KEY,role TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,source_id INTEGER NOT NULL,revision INTEGER NOT NULL,epoch INTEGER NOT NULL,policy_version INTEGER NOT NULL,not_before INTEGER NOT NULL,expires_at INTEGER NOT NULL,reason TEXT NOT NULL,state TEXT NOT NULL,attempt INTEGER NOT NULL DEFAULT 0,owner TEXT NOT NULL DEFAULT '',FOREIGN KEY(role,source_id) REFERENCES messages(friend_id,id) ON DELETE CASCADE)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS companion_opportunities(id TEXT PRIMARY KEY,role TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,source_id INTEGER,revision INTEGER NOT NULL,epoch INTEGER NOT NULL,policy_version INTEGER NOT NULL,not_before INTEGER NOT NULL,expires_at INTEGER NOT NULL,reason TEXT NOT NULL,state TEXT NOT NULL,attempt INTEGER NOT NULL DEFAULT 0,owner TEXT NOT NULL DEFAULT '',FOREIGN KEY(role,source_id) REFERENCES messages(friend_id,id) ON DELETE CASCADE)")
             db.execSQL("CREATE TABLE IF NOT EXISTS companion_receipts(message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,role TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,opportunity_id TEXT UNIQUE,delivery TEXT NOT NULL,claim_owner TEXT NOT NULL DEFAULT '',claimed_at INTEGER,requested_at INTEGER,observed_at INTEGER,clicked_at INTEGER,read_at INTEGER,FOREIGN KEY(role,message_id) REFERENCES messages(friend_id,id) ON DELETE CASCADE)")
             // v8: learning IDs that a formally saved proactive message considered/used (JSON string arrays).
             db.execSQL("CREATE TABLE IF NOT EXISTS companion_action_learning(message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,role TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,considered TEXT NOT NULL,used TEXT NOT NULL,judgment TEXT NOT NULL DEFAULT '',FOREIGN KEY(role,message_id) REFERENCES messages(friend_id,id) ON DELETE CASCADE)")
@@ -38,10 +38,16 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
             if(db.rawQuery("SELECT 1 FROM companion_blocks WHERE role=? AND source_id=?",arrayOf(role,id.toString())).use{it.moveToFirst()})return false
             return !db.rawQuery("SELECT 1 FROM companion_uses u LEFT JOIN chat_turns t ON t.friend_id=u.role AND t.user_message_id=u.source_id LEFT JOIN companion_blocks b ON b.role=u.role AND b.source_id=u.source_id LEFT JOIN message_state ms ON ms.message_id=u.source_id WHERE u.role=? AND u.turn_source=? AND (b.source_id IS NOT NULL OR t.id IS NULL OR t.source_revision<>u.revision OR COALESCE(ms.deleted,0)=1) LIMIT 1",arrayOf(role,id.toString())).use{it.moveToFirst()}
         }
-        fun bump(db:SQLiteDatabase,role:String){
+        fun bump(db:SQLiteDatabase,role:String,keepAppointments:Boolean=false){
             db.execSQL("INSERT OR IGNORE INTO companion_state(role,owner) VALUES(?,?)",arrayOf<Any>(role,CompanionRuntime.owner))
             db.execSQL("UPDATE companion_state SET epoch=epoch+1 WHERE role=?",arrayOf<Any>(role))
-            db.execSQL("UPDATE companion_opportunities SET state='cancelled' WHERE role=? AND state IN('queued','running')",arrayOf<Any>(role))
+            db.execSQL("UPDATE companion_opportunities SET state='queued',owner='',attempt=attempt+1 WHERE role=? AND state='running'",arrayOf<Any>(role))
+            if(!keepAppointments){
+                // Automatic thoughts can depend on the changed material. Promises have their own original source and revision.
+                db.execSQL("""UPDATE companion_opportunities SET state='cancelled' WHERE role=? AND state='queued' AND (id LIKE 'daily:%' OR NOT EXISTS(
+                    SELECT 1 FROM chat_turns t LEFT JOIN message_state m ON m.message_id=t.user_message_id LEFT JOIN companion_blocks b ON b.role=t.friend_id AND b.source_id=t.user_message_id
+                    WHERE t.friend_id=companion_opportunities.role AND t.user_message_id=companion_opportunities.source_id AND t.source_revision=companion_opportunities.revision AND COALESCE(m.deleted,0)=0 AND b.source_id IS NULL))""",arrayOf<Any>(role))
+            }
         }
     }
     private fun state(db:SQLiteDatabase,role:String):Triple<Long,Long,String> {
@@ -61,7 +67,8 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
     suspend fun setPolicy(role:String,enabled:Boolean,owner:String)=repo.tx{db->
         check(db.rawQuery("SELECT 1 FROM friends WHERE id=?",arrayOf(role)).use{it.moveToFirst()}){"角色已不存在"}
         state(db,role);bump(db,role)
-        db.execSQL("UPDATE companion_state SET policy=?,policy_version=policy_version+1,owner=? WHERE role=?",arrayOf<Any>(if(enabled)"enabled"else"paused_by_user",owner,role))
+        db.execSQL("UPDATE companion_opportunities SET state='cancelled' WHERE role=? AND state='queued'",arrayOf(role))
+        db.execSQL("UPDATE companion_state SET plan_error='',plan_failed_at=0,plan_due=0,plan_user=0,plan_ran_at=0,plan_retry=0,policy=?,policy_version=policy_version+1,owner=? WHERE role=?",arrayOf<Any>(if(enabled)"enabled"else"paused_by_user",owner,role))
         // Explicit permission changes never revive a cancelled reason.
     }
     /** The toolbox list must not create states merely by displaying roles. */
@@ -162,33 +169,24 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         val source=SourceRef(turn.friendId,turn.userMessageId,revision)
         check(refCurrent(db,source)&&aiAllowed(db,turn.friendId,source.turnId))
         val prior=db.rawQuery("SELECT proposal FROM companion_sources WHERE role=? AND source_id=? AND revision=?",arrayOf(source.characterId,source.turnId.toString(),source.version.toString())).use{if(it.moveToFirst())gson.fromJson(it.getString(0),ExperienceProposal::class.java)else null}
-        val future=request.flow?.future?.let{candidate->prior?.understanding?.future?.takeIf{ImmediateContact.same(it,candidate)}?:candidate}
-        if(future!=null){
-            check(expected.policy=="enabled"){"contact_permission_disabled"}
-            require(prior?.understanding?.future==null||prior.understanding.future==future){"contact_already_applied"}
-        }
-        require(prior?.parameterProposal==null||request.parameters==null||prior.parameterProposal.values==request.parameters.values){"parameter_proposal_already_applied"}
-        val flow=prior?.understanding?.let{old->if(future==null)old else old.copy(future=future,dependencies=(old.dependencies+future.evidence).distinct())}?:request.flow
-        val p=(prior?:ExperienceProposal(claimKind="none")).copy(understanding=flow,reconsider=flow?.future?.timing,
-            timingReferenceAt=if(prior?.understanding?.future!=null)prior.timingReferenceAt?:at else at,parameterProposal=prior?.parameterProposal?:request.parameters)
+        val future=requireNotNull(request.flow.future).let{candidate->prior?.understanding?.future?.takeIf{ImmediateContact.same(it,candidate)}?:candidate}
+        check(expected.policy=="enabled"){"contact_permission_disabled"}
+        require(prior?.understanding?.future==null||prior.understanding.future==future){"contact_already_applied"}
+        val flow=prior?.understanding?.let{old->old.copy(future=future,dependencies=(old.dependencies+future.evidence).distinct())}?:request.flow
+        val p=(prior?:ExperienceProposal(claimKind="none")).copy(understanding=flow,reconsider=future.timing,
+            timingReferenceAt=if(prior?.understanding?.future!=null)prior.timingReferenceAt?:at else at)
         check(saveProposal(db,turn,revision,p,expected,true))
-        if(future!=null){
-            val stored=db.rawQuery("SELECT proposal FROM companion_sources WHERE role=? AND source_id=? AND revision=?",arrayOf(source.characterId,source.turnId.toString(),source.version.toString())).use{check(it.moveToFirst());gson.fromJson(it.getString(0),ExperienceProposal::class.java)}
-            check(stored.understanding?.future==future){"contact_evidence_changed"}
-        }
-        // Parameter suggestions stay pending user approval. No appraisal/score is generated here.
+        val stored=db.rawQuery("SELECT proposal FROM companion_sources WHERE role=? AND source_id=? AND revision=?",arrayOf(source.characterId,source.turnId.toString(),source.version.toString())).use{check(it.moveToFirst());gson.fromJson(it.getString(0),ExperienceProposal::class.java)}
+        check(stored.understanding?.future==future){"contact_evidence_changed"}
         db.execSQL("UPDATE companion_sources SET committed=1 WHERE role=? AND source_id=? AND revision=?",arrayOf<Any>(source.characterId,source.turnId,source.version))
-        if(future!=null){
-            val t=future.timing
-            db.insertWithOnConflict("companion_opportunities",null,ContentValues().apply{
-                put("id","${source.characterId}:${source.turnId}:${source.version}");put("role",source.characterId);put("source_id",source.turnId);put("revision",source.version);put("epoch",expected.epoch);put("policy_version",expected.policyVersion);put("not_before",t.notBefore);put("expires_at",t.expiresAt);put("reason",t.reason);put("state","queued")
-            },SQLiteDatabase.CONFLICT_IGNORE)
-        }
-        val state=if(future==null)null else db.rawQuery("SELECT state FROM companion_opportunities WHERE id=?",arrayOf("${source.characterId}:${source.turnId}:${source.version}")).use{check(it.moveToFirst());it.getString(0)}
+        val t=future.timing
+        db.insertWithOnConflict("companion_opportunities",null,ContentValues().apply{
+            put("id","${source.characterId}:${source.turnId}:${source.version}");put("role",source.characterId);put("source_id",source.turnId);put("revision",source.version);put("epoch",expected.epoch);put("policy_version",expected.policyVersion);put("not_before",t.notBefore);put("expires_at",t.expiresAt);put("reason",t.reason);put("state","queued")
+        },SQLiteDatabase.CONFLICT_IGNORE)
+        val state=db.rawQuery("SELECT state FROM companion_opportunities WHERE id=?",arrayOf("${source.characterId}:${source.turnId}:${source.version}")).use{check(it.moveToFirst());it.getString(0)}
         mapOf("success" to true,"status" to "applied","note" to when{
-            future==null->"已提出参数建议，等待用户确认；设置尚未改变。"
-            state !in setOf("queued","running")->"此前的联系机会已经处理或结束，这次没有重新安排；参数建议仍需用户确认。"
-            else->"已保存再次考虑联系的机会，不保证发送或送达；参数建议仍需用户确认。"
+            state !in setOf("queued","running")->"此前的联系机会已经处理或结束，这次没有重新安排。"
+            else->"已保存再次考虑联系的机会，不保证发送或送达。"
         })
     }
     /** Both paths use the same validation; post-reply accounting can never execute a control. */
@@ -311,7 +309,7 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         db.rawQuery("SELECT m.id,m.friend_id,m.body,m.mine,m.created,COALESCE(t.user_message_id,m.id),r.opportunity_id,o.source_id,o.revision FROM messages m LEFT JOIN chat_turns t ON t.friend_id=m.friend_id AND (t.user_message_id=m.id OR t.assistant_message_id=m.id) LEFT JOIN companion_receipts r ON r.message_id=m.id AND r.role=m.friend_id LEFT JOIN companion_opportunities o ON o.id=r.opportunity_id AND o.role=r.role LEFT JOIN message_state ms ON ms.message_id=m.id WHERE m.friend_id=? AND COALESCE(ms.deleted,0)=0 AND NOT EXISTS(SELECT 1 FROM message_state s WHERE s.deleted=1 AND s.message_id IN(t.user_message_id,t.assistant_message_id)) ORDER BY m.id",arrayOf(role)).use{c->buildList{
             while(c.moveToNext()){
                 val sourceAllowed=aiAllowed(db,role,c.getLong(5))&&aiAllowed(db,role,c.getLong(0))
-                val contactAllowed=c.isNull(6)||!c.isNull(7)&&repo.sourceValid(db,SourceRef(role,c.getLong(7),c.getLong(8)))
+                val contactAllowed=c.isNull(6)||c.getString(6).startsWith("daily:")&&c.isNull(7)||!c.isNull(7)&&repo.sourceValid(db,SourceRef(role,c.getLong(7),c.getLong(8)))
                 if(sourceAllowed&&contactAllowed)add(Message(c.getLong(0),c.getString(1),c.getString(2),c.getInt(3)==1,c.getLong(4)))
             }
         }}
@@ -322,13 +320,16 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
     suspend fun sourceOfMessage(role:String,id:Long):Long?=repo.read{db->
         db.rawQuery("SELECT user_message_id FROM chat_turns WHERE friend_id=? AND (user_message_id=? OR assistant_message_id=?) UNION ALL SELECT o.source_id FROM companion_receipts r JOIN companion_opportunities o ON o.id=r.opportunity_id WHERE r.role=? AND r.message_id=? LIMIT 1",arrayOf(role,id.toString(),id.toString(),role,id.toString())).use{if(it.moveToFirst())it.getLong(0)else null}
     }
-    suspend fun recall(role:String,terms:List<String>,limit:Int)=repo.read{db->
-        db.rawQuery("SELECT source_id,revision,proposal FROM companion_sources WHERE role=? ORDER BY source_id DESC",arrayOf(role)).use{c->buildList{
-            while(c.moveToNext()){
-                val ref=SourceRef(role,c.getLong(0),c.getLong(1));val p=gson.fromJson(c.getString(2),ExperienceProposal::class.java)
-                if(refCurrent(db,ref)&&p.memory.isNotBlank()&&terms.any{it in p.memory.lowercase()})add(AgentRecallCandidate("experience-${ref.turnId}-${ref.version}","episode","有来源的经历",p.memory,sourceSessionId=role,startMessageId=ref.turnId.toString(),current=true))
+    suspend fun recall(role:String,terms:List<String>,limit:Int)=repo.read { db ->
+        experiences(db,role)
+            .map { entry -> entry to (terms.maxOfOrNull { MemoryRecall.relevance(it,entry.text) } ?: 0.0) }
+            .filter { it.second > 0 }
+            .sortedWith(compareByDescending<Pair<CompanionExperience,Double>> { it.second }.thenByDescending { it.first.source.turnId })
+            .take(limit).map { (entry,_) ->
+                val ref=entry.source
+                AgentRecallCandidate("experience-${ref.turnId}-${ref.version}","episode","有来源的经历",entry.text,
+                    sourceSessionId=role,startMessageId=ref.turnId.toString(),current=true)
             }
-        }.take(limit)}
     }
     /** Called in ChatLedger's reply transaction (C2). */
     fun finishReply(db:SQLiteDatabase,turn:ChatTurn,s:CompanionSnapshot){
@@ -362,13 +363,12 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
     /** Source validity is checked before model IO and again before sending; no contact quota. */
     private fun contactAllowed(db:SQLiteDatabase,o:CompanionOpportunity):ContactPermission {
         if(o.id.startsWith("relationship:"))return ContactPermission.Denied
-        val latest=db.rawQuery("SELECT MAX(user_message_id) FROM chat_turns WHERE friend_id=?",arrayOf(o.role)).use{it.moveToFirst();it.getLong(0)}
-        if(latest!=o.source)return ContactPermission.Denied
+        if(o.source!=0L && !aiAllowed(db,o.role,o.source))return ContactPermission.Denied
         return ContactPermission.Allowed
     }
     private fun permission(db:SQLiteDatabase,o:CompanionOpportunity):ContactPermission {
         val s=state(db,o.role)
-        if(s.third!="enabled"||s.second!=o.policyVersion||!refCurrent(db,SourceRef(o.role,o.source,o.revision)))return ContactPermission.Denied
+        if(s.third!="enabled"||s.second!=o.policyVersion||(!(o.id.startsWith("daily:") && o.source==0L) && !refCurrent(db,SourceRef(o.role,o.source,o.revision))))return ContactPermission.Denied
         return contactAllowed(db,o)
     }
     private fun permitted(db:SQLiteDatabase,o:CompanionOpportunity)=permission(db,o)==ContactPermission.Allowed
@@ -389,10 +389,17 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         // Fence the old attempt before another Worker can claim; saved timestamps stay intact.
         db.execSQL("UPDATE companion_opportunities SET state=?,attempt=attempt+1,owner='' WHERE id=? AND state='running'",arrayOf<Any>(next,o.id))
     }
+    private fun skipDaily(db:SQLiteDatabase,o:CompanionOpportunity):Boolean {
+        val at=now()
+        return o.id.startsWith("daily:") && (ContactPace.read(db,o.role,at).skip(at) || QuietHours.read(db).contains(at,java.time.ZoneId.systemDefault()) || o.expiresAt>0 && at>=o.expiresAt)
+    }
     suspend fun claim(id:String,owner:String):CompanionOpportunity?=repo.tx{db->
         val o=opportunities(db,"id=?",arrayOf(id)).firstOrNull()?:return@tx null
         if(o.state!="queued"||o.notBefore>now())return@tx null
         if(!settlePermission(db,o))return@tx null
+        if(skipDaily(db,o)){
+            db.execSQL("UPDATE companion_opportunities SET state='silent' WHERE id=?",arrayOf(o.id));return@tx null
+        }
         if(pending(db,o.role))return@tx null // Busy is temporary, not withdrawal of the reason.
         val epoch=state(db,o.role).first
         db.execSQL("UPDATE companion_opportunities SET state='running',epoch=?,attempt=attempt+1,owner=? WHERE id=? AND state='queued'",arrayOf<Any>(epoch,owner,id))
@@ -406,6 +413,9 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         if(!modelCurrent()){db.execSQL("UPDATE companion_opportunities SET state='failed' WHERE id=?",arrayOf<Any>(o.id));return@tx null}
         if(!executionCurrent()||pending(db,o.role)||state(db,o.role).first!=o.epoch||s.role!=o.role||s.epoch!=o.epoch||!current(db,s)){
             requeue(db,o);return@tx null
+        }
+        if(skipDaily(db,o)){
+            db.execSQL("UPDATE companion_opportunities SET state='silent',owner='' WHERE id=?",arrayOf(o.id));return@tx null
         }
         // Re-check learning IDs against the authoritative projection at commit time (current(db,s) already holds).
         val d=CompanionContracts.decisionForReply(gson.toJson(d),decisionAt,o.expiresAt,roleContext(db,o.role).learning)
@@ -423,7 +433,7 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         // Receipt and successor commit together, so stale/repeated workers cannot create either twice.
         d.nextAt?.let{next->
             db.insertOrThrow("companion_opportunities",null,ContentValues().apply{
-                put("id","contact:$message");put("role",o.role);put("source_id",o.source);put("revision",o.revision)
+                put("id",if(o.id.startsWith("daily:"))"daily:contact:$message" else "contact:$message");put("role",o.role);if(o.source==0L)putNull("source_id") else put("source_id",o.source);put("revision",o.revision)
                 put("epoch",o.epoch);put("policy_version",o.policyVersion);put("not_before",next);put("expires_at",0L)
                 put("reason",d.reason);put("state","queued")
             })
@@ -431,10 +441,13 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         relationship(db,o.role)
         message
     }
-    suspend fun release(o:CompanionOpportunity,owner:String,recover:Boolean,failure:ContactFailureKind?=null,detail:String="")=repo.tx{db->
+    suspend fun release(o:CompanionOpportunity,owner:String,recover:Boolean,failure:ContactFailureKind?=null,detail:String="",temporary:Boolean=false)=repo.tx{db->
         if(owned(db,o,owner)){
             if(recover)requeue(db,o)
             else if(settlePermission(db,o)){
+                val retries=db.rawQuery("SELECT retry_count FROM companion_opportunities WHERE id=?",arrayOf(o.id)).use{it.moveToFirst();it.getInt(0)}
+                val delay=if(temporary)ContactFailures.retryDelay(retries) else null
+                if(delay!=null){db.execSQL("UPDATE companion_opportunities SET state='queued',owner='',retry_count=retry_count+1,not_before=? WHERE id=?",arrayOf<Any>(now()+delay,o.id));return@tx}
                 db.execSQL("UPDATE companion_opportunities SET state='failed',fail_kind=?,fail_at=? WHERE id=?",arrayOf<Any>((failure?:ContactFailureKind.OTHER).name,now(),o.id))
                 db.delete("preferences","key=?",arrayOf(ContactFailures.errorKey(o.id)))
                 if(detail.isNotBlank())db.insertWithOnConflict("preferences",null,ContentValues().apply{put("key",ContactFailures.errorKey(o.id));put("value",detail)},SQLiteDatabase.CONFLICT_REPLACE)
@@ -442,15 +455,21 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         }
     }
     suspend fun latestContactFailure(role:String):ContactFailure?=repo.read{db->
-        db.rawQuery("SELECT o.fail_kind,o.fail_at,(SELECT value FROM preferences WHERE key='${ContactFailures.ERROR_PREFIX}'||o.id) FROM companion_opportunities o JOIN companion_state s ON s.role=o.role WHERE o.role=? AND o.policy_version=s.policy_version AND o.fail_kind IS NOT NULL AND NOT EXISTS(SELECT 1 FROM companion_receipts r JOIN messages m ON m.id=r.message_id WHERE r.role=o.role AND r.opportunity_id IS NOT NULL AND m.created>=o.fail_at) ORDER BY o.fail_at DESC LIMIT 1",arrayOf(role)).use{c->
+        val plan=db.rawQuery("SELECT plan_error,plan_failed_at FROM companion_state WHERE role=? AND policy='enabled' AND plan_error<>''",arrayOf(role)).use{if(it.moveToFirst())ContactFailure(ContactFailureKind.valueOf(it.getString(0)),it.getLong(1),"每日日程规划失败") else null}
+        val contact=db.rawQuery("SELECT o.fail_kind,o.fail_at,(SELECT value FROM preferences WHERE key='${ContactFailures.ERROR_PREFIX}'||o.id) FROM companion_opportunities o JOIN companion_state s ON s.role=o.role WHERE o.role=? AND o.policy_version=s.policy_version AND o.fail_kind IS NOT NULL AND NOT EXISTS(SELECT 1 FROM companion_receipts r JOIN messages m ON m.id=r.message_id WHERE r.role=o.role AND r.opportunity_id IS NOT NULL AND m.created>=o.fail_at) ORDER BY o.fail_at DESC LIMIT 1",arrayOf(role)).use{c->
             if(c.moveToFirst())ContactFailure(ContactFailureKind.valueOf(c.getString(0)),c.getLong(1),if(c.isNull(2))"" else c.getString(2))else null
         }
+        listOfNotNull(plan,contact).maxByOrNull{it.at}
     }
-    suspend fun retryable(role:String)=repo.tx{db->opportunities(db,"role=? AND state='failed'",arrayOf(role)).count{eligible(db,it)}}
+    suspend fun retryable(role:String)=repo.tx{db->
+        val plan=db.rawQuery("SELECT 1 FROM companion_state WHERE role=? AND policy='enabled' AND plan_error<>''",arrayOf(role)).use{if(it.moveToFirst())1 else 0}
+        plan+opportunities(db,"role=? AND state='failed'",arrayOf(role)).count{eligible(db,it)}
+    }
     suspend fun retryFailed(role:String)=repo.tx{db->
+        db.execSQL("UPDATE companion_state SET plan_due=0,plan_retry=0,plan_error='',plan_failed_at=0 WHERE role=? AND policy='enabled' AND plan_error<>''",arrayOf(role))
         opportunities(db,"role=? AND state='failed'",arrayOf(role)).forEach{o->
             val next=now()+ContactRetry.FAILED_RETRY_DELAY_MS
-            if(eligible(db,o))db.execSQL("UPDATE companion_opportunities SET state='queued',not_before=? WHERE id=? AND state='failed'",arrayOf<Any>(next,o.id))
+            if(eligible(db,o))db.execSQL("UPDATE companion_opportunities SET state='queued',retry_count=0,not_before=? WHERE id=? AND state='failed'",arrayOf<Any>(next,o.id))
         }
     }
     /** Reuse the existing visibility receipt and message clock; do not invent a separate read/reply state. */
@@ -458,6 +477,7 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         while(c.moveToNext())if(aiAllowed(db,role,c.getLong(0)))add(ExperiencePresentation.receipt(c.getLong(0),if(c.isNull(1))null else c.getLong(1),at,createdAt=c.getLong(2)))
     }.joinToString("\n")}
     suspend fun contactFacts(role:String,at:Long=clock())=repo.read{contactFacts(it,role,at)}
+    suspend fun contactPace(role:String,at:Long)=repo.read{ContactPace.read(it,role,at)}
     suspend fun receipts(role:String?=null)=repo.read{db->db.rawQuery("SELECT message_id,read_at,requested_at,observed_at,clicked_at,delivery FROM companion_receipts"+(if(role!=null)" WHERE role=?"else""),role?.let{arrayOf(it)}).use{c->buildList{while(c.moveToNext())add(CompanionReceipt(c.getLong(0),if(c.isNull(1))null else c.getLong(1),if(c.isNull(2))null else c.getLong(2),if(c.isNull(3))null else c.getLong(3),if(c.isNull(4))null else c.getLong(4),c.getString(5)))}}}
     suspend fun notificationCurrent(id:Long)=repo.tx{db->notificationCurrent(db,id)}
     suspend fun publishIfCurrent(id:Long,publish:()->Boolean):Boolean=repo.tx{db->notificationCurrent(db,id)&&publish()}

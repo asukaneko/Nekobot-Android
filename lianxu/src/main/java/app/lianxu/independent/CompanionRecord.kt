@@ -34,7 +34,6 @@ internal object CompanionRecord {
             learning 可为 {id:已有候选ID或新建时空串,kind:viewpoint/interest/habit,scope,content,phase:propose/revise/pause,evidence}；变化无须一律获批，新候选 propose、有新经历 revise、反证 pause，revise 保留 id/kind/scope。用户报告照着已保存回复/主动消息行动后的结果时，revise.evidence 须同时引用该 action 与当前 fact；无真实行动不得编造。兴趣不授权外部行动。
             usedLearningIds 须为 consideredLearningIds 的子集；仅用当前状态，paused 禁用。future={kind:interest_share/shared_continuation/follow_up/actual_result,reason,notBefore:Unix毫秒,evidence}，下次时间由你决定，可从现在起安排，无固定等待下限或独立有效期；到时结合最新聊天再决定联系、延后或放下，系统可能迟到；无适合理由省略。
             ${RelationInputContract.instruction(source)}
-            ${RelationParameterContract.instruction}
         """.trimIndent()
         return mapOf("type" to "function","function" to mapOf(
             "name" to NAME,
@@ -52,8 +51,7 @@ internal object CompanionRecord {
                 "usedLearningIds" to mapOf("type" to "array","items" to mapOf("type" to "string")),
                 "consideredLearningIds" to mapOf("type" to "array","items" to mapOf("type" to "string")),
                 "future" to mapOf("type" to "object","description" to "有依据的未来回访；没有就省略"),
-                "关系输入" to mapOf("type" to "object","description" to "本轮关系记账；字段规则见本工具的说明"),
-                "改主动参数" to mapOf("type" to "object","description" to "按用户明确要求调整主动联系参数；没有就省略")),
+                "关系输入" to mapOf("type" to "object","description" to "本轮关系记账；字段规则见本工具的说明")),
                 "required" to listOf<Any>())))
     }
 }

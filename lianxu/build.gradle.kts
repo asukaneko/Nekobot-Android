@@ -36,7 +36,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
     testImplementation(libs.junit)
-    testImplementation("com.vaadin.external.google:android-json:0.0.20131108.vaadin1")
+    testImplementation(libs.android.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.ui.test.manifest)

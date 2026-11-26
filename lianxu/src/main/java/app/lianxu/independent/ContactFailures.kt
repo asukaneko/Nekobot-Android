@@ -55,4 +55,9 @@ internal object ContactFailures {
         val raw=model?.let{if(it.detail.isNotBlank())it.detail else "${it.failure.name}: ${it.failure.display}"}?:"${error.javaClass.simpleName}: ${error.message.orEmpty()}"
         return Diagnostics.redact(raw,secrets).take(HttpsTextChatClient.DETAIL_LIMIT)
     }
+    fun transient(error:Throwable):Boolean {
+        val failure=generateSequence(error){it.cause}.filterIsInstance<CompanionModelFailure>().firstOrNull()?.failure
+        return if(failure==null) unreachable(error) || error is java.net.SocketTimeoutException else failure in setOf(ChatFailure.NETWORK,ChatFailure.RATE_LIMIT,ChatFailure.SERVER,ChatFailure.FORMAT,ChatFailure.STRUCTURED_FORMAT,ChatFailure.STREAM_PROTOCOL,ChatFailure.TRUNCATED,ChatFailure.REPLY_TEXT_INVALID)
+    }
+    fun retryDelay(count:Int)=listOf(5L,15L,30L).getOrNull(count)?.times(60000L)
 }

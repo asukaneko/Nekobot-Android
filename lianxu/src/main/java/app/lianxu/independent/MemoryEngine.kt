@@ -48,7 +48,6 @@ class MemoryEngine(private val scope:CoroutineScope,private val repo:ProcessingR
     companion object {private val session=UUID.randomUUID().toString()}
     private val batches=MemoryBatchRepository(repo)
     private val vectors=MemoryVectorIndex(repo,access)
-    private val companionVectors=CompanionVectorIndex(CompanionRepository(repo.store),access)
     internal var semanticEmbeddingClient:MemoryEmbeddingClient?=null
     private val background=RoleBackgroundJobs(scope)
     private val guard=repo.store.memorySummary
@@ -61,12 +60,12 @@ class MemoryEngine(private val scope:CoroutineScope,private val repo:ProcessingR
     private fun modelCalled(code:String)=code.startsWith("MODEL_")||MemoryRepairFeedback.repairable(code)||code=="LATE_DISCARDED"
     private val active=ConcurrentHashMap<String,Active>()
     fun cancel(friendId:String){background.cancel(friendId);guard.stop(friendId)}
-    fun afterChat(friendId:String){background.launch(friendId,Diagnostics.context("memory")){try{companionVectors.index(friendId);repo.maintainCore(friendId);val rules=repo.memoryRules().first;if(!rules.adaptiveContext&&repo.recentSources(friendId).size>rules.recentRounds)ensureRoom(friendId);vectors.index(friendId)}catch(e:CancellationException){throw e}catch(e:Exception){Diagnostics.failure("memory.after_chat.failed",e)}}}
+    fun afterChat(friendId:String){background.launch(friendId,Diagnostics.context("memory")){try{repo.maintainCore(friendId);val rules=repo.memoryRules().first;if(!rules.adaptiveContext&&repo.recentSources(friendId).size>rules.recentRounds)ensureRoom(friendId);vectors.index(friendId)}catch(e:CancellationException){throw e}catch(e:Exception){Diagnostics.failure("memory.after_chat.failed",e)}}}
     suspend fun recover(){
         batches.recoverAbandoned(session)
         val friends=repo.store.friends()
         friends.forEach{f->val work=batches.pending(f.id);val info=work?.let{status(it.id)}
-            background.launch(f.id){if(info!=null&&(info.first in setOf("WAITING","PENDING")||info.third=="INTERRUPTED"))ensureRoom(f.id,forceOne=true);companionVectors.index(f.id)}}
+            if(info!=null&&(info.first in setOf("WAITING","PENDING")||info.third=="INTERRUPTED"))background.launch(f.id){ensureRoom(f.id,forceOne=true)}}
     }
     private suspend fun status(id:String):Triple<String,Int,String> = repo.read{db->db.rawQuery("SELECT state,attempt,error FROM memory_batches WHERE id=?",arrayOf(id)).use{if(it.moveToFirst())Triple(it.getString(0),it.getInt(1),if(it.isNull(2))"" else it.getString(2)) else Triple("",0,"")}}
     suspend fun ensureRoom(friendId:String,input:String="",forceOne:Boolean=false,manualRetry:Boolean=false,historyBudget:Int?=null):ProcessingRun = withContext(Diagnostics.context("memory")){

@@ -21,10 +21,13 @@ class MoodHeroUiTest {
         ui.setContent {
             LianxuTheme(dark) {
                 Box(Modifier.fillMaxSize().background(Chrome)){
-                    MoodHero(RelationshipView(RelationTemplate.STEADY,RelationStart.NEW,emptyList(),current,""),{}){}
+                    MoodHero(RelationshipView(RelationTemplate.STEADY,RelationStart.NEW,emptyList(),current,"")){}
                 }
             }
         }
+        ui.onNodeWithText("换").assertDoesNotExist()
+        ui.onNodeWithText(RelationTemplate.STEADY.label, substring = true).assertDoesNotExist()
+        ui.onNodeWithText(RelationshipSummary.trust(base.trust) + " · " + RelationshipSummary.closeness(base.closeness)).assertExists()
         for(night in listOf(false,true)){
             ui.runOnIdle{dark=night}
             val samples=mutableSetOf<Int>()
@@ -34,6 +37,10 @@ class MoodHeroUiTest {
                 val rendered=ui.onNodeWithTag("mood-hero").assertIsDisplayed().captureToImage().toPixelMap()
                 val wash=rendered[rendered.width/2,rendered.height/4]
                 val paper=rendered[rendered.width-1,rendered.height-1]
+                val top=rendered[rendered.width/2,0]
+                assertEquals(paper.red,top.red,2f/255)
+                assertEquals(paper.green,top.green,2f/255)
+                assertEquals(paper.blue,top.blue,2f/255)
                 samples+=(wash.value shr 32).toInt()
                 assertTrue(if(night)paper.luminance()<.15f && wash.luminance()<.4f else paper.luminance()>.75f && wash.luminance()>.55f)
             }
