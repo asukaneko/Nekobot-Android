@@ -155,8 +155,7 @@ class LianxuActivity : FragmentActivity() {
             "chat"->chatState.SaveableStateProvider("chat-${vm.activeId}"){Chat(vm)}
             "detail"->Detail(vm)
             "role-prompts"->RolePromptsScreen(vm)
-            "role-learning"->LearningRecordsScreen(vm)
-            "role-relationship"->RelationshipScreen(vm)
+            "role-learning","role-relationship","processing-role"->key(vm.activeId,vm.page){InnerWorldScreen(vm)}
             "role-companion"->CompanionSettingsScreen(vm)
             "toolbox"->ToolboxScreen(vm)
             "role-voice"->BreezeRoleSettings(vm)
@@ -179,7 +178,6 @@ class LianxuActivity : FragmentActivity() {
                 onInitialHandled={vm.clearModelsTarget()},
             )
             "processing"->ProcessingDirectory(vm)
-            "processing-role"->ProcessingRole(vm)
             "settings-memory"->MemoryRulesScreen(vm)
             "settings-info"->DataAndVersion({vm.back()})
             "settings-updates"->UpdatesScreen({vm.back()})
@@ -329,8 +327,8 @@ internal fun ReturnHomeButton(
                 DirectoryRow("edit","编辑角色设定","名字、说话方式与开场白","role-prompts-open",iconColor=ProfileIconColors.edit){vm.open("role-prompts",friend.id)}
                 DirectoryRow("chat","聊天设置","允许发语音与绑定音色","role-voice-open",showChevron=false){vm.open("role-voice",friend.id)}
                 DirectoryRow("memory","记忆","记住的内容与原话来源","role-processing-open",iconColor=ProfileIconColors.memory){vm.open("processing-role",friend.id)}
-                DirectoryRow("list","学习记录","看法、兴趣与相处习惯","role-learning-open",iconColor=ProfileIconColors.learning){vm.open("role-learning",friend.id)}
-                DirectoryRow("heart","我们的相处","她现在的心情、信任和放在心上的事","role-relationship-open",iconColor=ProfileIconColors.relationship){vm.open("role-relationship",friend.id)}
+                DirectoryRow("list","学习","看法、兴趣与相处习惯","role-learning-open",iconColor=ProfileIconColors.learning){vm.open("role-learning",friend.id)}
+                DirectoryRow("heart","心情","她现在的心情、信任和放在心上的事","role-relationship-open",iconColor=ProfileIconColors.relationship){vm.open("role-relationship",friend.id)}
             }
             PrimaryAction("发消息",modifier=Modifier.fillMaxWidth()){vm.open("chat",friend.id)}
         }

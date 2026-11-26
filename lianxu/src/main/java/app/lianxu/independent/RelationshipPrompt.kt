@@ -7,12 +7,22 @@ internal object RelationshipPrompt {
     const val LABEL="最近完成的情绪与关系状态"
     private val names=linkedMapOf("happy" to "开心","hurt" to "委屈","unhappy" to "生气","missing" to "想念","low" to "低落",
         "trust" to "信任","closeness" to "亲近","tension" to "心结","disappointment" to "失望")
-    private fun number(value:Double?)=value?.takeIf{it.isFinite()&&it in 0.0..1.0}?.toString()?:"未知"
-    fun render(state:RelationState?,now:Long,quote:(SourceRef)->String?):String=buildString{
-        append("以下是最近完成记录所形成的状态，可能还没计入最新几轮聊天，不保证实时。各项独立取0–1，越高表示该项越强，不是概率，总和无需为1；未知不等于0。\n")
-        append("情绪：开心=${number(state?.happy)}；委屈=${number(state?.hurt)}；生气=${number(state?.unhappy)}；想念=${number(state?.missing)}；低落=${number(state?.low)}。\n")
-        append("关系：信任=${number(state?.trust)}；亲近=${number(state?.closeness)}；心结=${number(state?.tension)}；失望=${number(state?.disappointment)}。失望是既有关系印象，与当下情绪分别参考。\n")
-        append("把这些当成你心里隐约留着的印象，结合当前聊天、相关经历和下面的依据自主理解，自然融进你原本的性格里；数值不是规定口气或行为的指令，不必逐项表达，更别拿分数当剧本演或向对方报分。过去的感受不等于此刻感受，未列出原因时不要编造原因。\n")
+    fun render(state:RelationState?,now:Long,attributionIncomplete:Boolean=false,innerNote:()->String?={null},quote:(SourceRef)->String?):String {
+        if(attributionIncomplete)return UNVERIFIED
+        return verified(state,now,innerNote(),quote)
+    }
+    private fun verified(state:RelationState?,now:Long,innerNote:String?,quote:(SourceRef)->String?):String=buildString{
+        append("这些印象可能还没计入最新几轮聊天，不保证实时。结合原话自主理解，不必逐项表达；过去的感受不等于此刻感受。\n")
+        val values=state?.run{listOf(happy,hurt,unhappy,missing,low,trust,closeness,tension,disappointment)}
+        if(state==null || values.orEmpty().any{!it.isFinite()||it !in 0.0..1.0}){
+            append("此刻的心情和关系底色还说不准。\n")
+        }else{
+            append("这会儿${RelationshipSummary.mood(state).sentence}。心里${RelationshipSummary.trust(state.trust)}对方，相处起来${RelationshipSummary.closeness(state.closeness)}。")
+            if(state.tension>=.1)append(if(state.tension>.3)"有些事心里还有疙瘩。" else "有件事还稍微在意。")
+            if(state.disappointment>=.1)append(if(state.disappointment>.45)"先前的落空，心里还没完全放下。" else "对先前的落空还有点在意。")
+            append('\n')
+        }
+        innerNote?.let{append("最近心里闪过一句：「$it」。这是会慢慢淡下去的心事，不必照念。\n")}
         val refs=mutableListOf<String>()
         state?.causes.orEmpty().filterKeys{it in names}.entries.groupBy{it.value.source}.entries.forEachIndexed{i,(source,entries)->
             val original=quote(source)?:return@forEachIndexed

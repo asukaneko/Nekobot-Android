@@ -54,4 +54,14 @@ class HostModelPolicyTest {
         assertEquals("local",followedModel(ModelPurpose.EMBEDDING,rows,"local",true))
         assertEquals("",followedModel(ModelPurpose.MEMORY,rows,"",true))
     }
+    @Test fun reviewUsesChatMirrorsAndOmitsHostSelectionsFromBackup() {
+        val chat = model("chat", true).config()
+        val embedding = model("vector", false, "embedding").config()
+        val local = chat.copy(id = "local")
+        val kinds = mapOf(chat.id to "chat", embedding.id to "embedding")
+        val options = purposeOptions(listOf(chat, embedding, local), ModelPurpose.REVIEW, embedding.id, false, kinds)
+        assertEquals(setOf(chat.id, local.id), options.visible.map { it.id }.toSet())
+        assertEquals("", backupPurposeIds { chat.id }[ModelPurpose.REVIEW])
+        assertEquals(local.id, backupPurposeIds { local.id }[ModelPurpose.REVIEW])
+    }
 }

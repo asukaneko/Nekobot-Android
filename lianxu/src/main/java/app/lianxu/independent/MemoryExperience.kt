@@ -21,17 +21,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Lianxu content-first memory browser. Operational metadata lives in details and maintenance. */
-@Composable internal fun MemoryExperience(vm:AppState,friend:Friend){
+@Composable internal fun MemoryExperience(vm:AppState,friend:Friend,worldTabs:@Composable ()->Unit={},onDetail:(Boolean)->Unit={}){
     val repo=vm.processing;val scope=rememberCoroutineScope()
     val summaryRoles by repo.store.memorySummary.roles.collectAsState();val summarizing=friend.id in summaryRoles
     var memories by remember(friend.id){mutableStateOf(emptyList<StoredMemory>())};var candidates by remember(friend.id){mutableStateOf(emptyList<ProcessingRepository.Candidate>())}
     var reviews by remember(friend.id){mutableStateOf(emptyList<MemoryBatchRepository.Review>())};var budget by remember(friend.id){mutableStateOf<CoreBudgetState?>(null)}
     var task by remember(friend.id){mutableStateOf(ProcessingRepository.TaskStatus())};var policy by remember(friend.id){mutableStateOf(ProcessingPolicy())}
-    val tabs=key(friend.id){rememberPageTabs(2)}
-    val mine=tabs.selected==1
+    var mine by rememberSaveable(friend.id){mutableStateOf(false)}
     var listMenu by remember{mutableStateOf(false)}
     var clarity by remember{mutableStateOf(emptyMap<String,Double>())}
-    LaunchedEffect(memories){clarity=repo.memoryUiClarity(memories)}
+    var edges by remember(friend.id,memories){mutableStateOf(emptyList<MemoryRecall.Edge>())}
+    LaunchedEffect(memories,vm.processingRevision){
+        clarity=repo.memoryUiClarity(memories)
+        edges=repo.read{db->visibleSkyEdges(memories,MemoryAssociations(repo).verified(db,friend.id,repo.usableMemories(db,friend.id)))}
+    }
     val memoryLists=key(friend.id){listOf(rememberLazyListState(),rememberLazyListState())}
 
     var detailId by rememberSaveable(friend.id){mutableStateOf<String?>(null)};var mode by rememberSaveable(friend.id){mutableStateOf("browse")}
@@ -43,6 +46,7 @@ import kotlinx.coroutines.launch
     LaunchedEffect(friend.id,vm.processingRevision){memories=repo.memories(friend.id);candidates=repo.candidates(friend.id);reviews=MemoryBatchRepository(repo).reviews(friend.id);budget=repo.coreBudget(friend.id);task=repo.memoryStatus(friend.id);failure=MemoryBatchRepository(repo).failure(friend.id);policy=repo.policy(friend.id).first;if(coreGoal.isEmpty())coreGoal=policy.coreGoal.toString()}
     fun action(block:suspend()->Unit){if(busy)return;busy=true;error="";scope.launch{try{block();vm.refreshProcessing()}catch(e:CancellationException){throw e}catch(e:Exception){error=processingMessage((e as? ProcessingRejected)?.code?:"FORMAT")}finally{busy=false}}}
     fun back(){if(detailId!=null)detailId=null else if(mode!="browse")mode="browse" else vm.back()}
+    LaunchedEffect(detailId,mode){onDetail(detailId!=null||mode!="browse")}
     BackHandler(detailId!=null||mode!="browse"){back()}
     val detail=memories.firstOrNull{it.id==detailId}
     var deleting by remember{mutableStateOf<StoredMemory?>(null)}
@@ -50,7 +54,7 @@ import kotlinx.coroutines.launch
     var dialogue by remember(detailId){mutableStateOf<SourceDialogue?>(null)}
     LaunchedEffect(detail,vm.processingRevision){dialogue=detail?.evidence?.firstOrNull()?.let{e->repo.sources(friend.id).let{memorySourceDialogue(it,e)}}}
     Column(Modifier.fillMaxSize().background(Chrome)){
-        AppTopBar(if(detail!=null)"记忆详情" else if(mode=="maintenance")"总结记忆与维护" else if(mode=="candidates")"待确认" else "${friend.name} · 记忆",{back()},extra={if(detail!=null)Box{
+        AppTopBar(if(detail!=null)"记忆详情" else if(mode=="maintenance")"总结记忆与维护" else if(mode=="candidates")"待确认" else friend.name,{back()},extra={if(detail!=null)Box{
             TextButton({detailMenu=true},modifier=Modifier.testTag("memory-detail-menu")){Text("⋮")}
             DropdownMenu(detailMenu,{detailMenu=false}){
                 DropdownMenuItem({Text(if(detail.core)"改为普通记忆" else "设为核心")},{detailMenu=false;if(detail.core)demote=detail else action{repo.chooseCore(friend.id,detail.id,detail.version,true)}},enabled=!summarizing)
@@ -59,6 +63,7 @@ import kotlinx.coroutines.launch
                 DropdownMenuItem({Text("查看来源快照")},{detailMenu=false;evidence=detail})
             }
         } else if(mode=="browse"&&detail==null)Box{TextButton({listMenu=true}){Text(if(reviews.any{!it.acknowledged}||budget?.overGoal==true)"更多 •" else "更多")};DropdownMenu(listMenu,{listMenu=false}){DropdownMenuItem({Text("总结记忆与维护")},{listMenu=false;mode="maintenance"},modifier=Modifier.testTag("memory-maintenance"));if(candidates.isNotEmpty())DropdownMenuItem({Text("待核对 ${candidates.size} 条")},{listMenu=false;mode="candidates"},modifier=Modifier.testTag("memory-candidates"))}}})
+        if(detailId==null && mode=="browse")worldTabs()
         if(summarizing)Text("正在总结记忆，暂不能修改。",Modifier.padding(horizontal=UiSpace.page,vertical=8.dp).testTag("memory-summary-guard"),style=MaterialTheme.typography.bodySmall,color=Muted)
         if(error.isNotEmpty())Text(error,Modifier.padding(horizontal=UiSpace.page,vertical=8.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.error)
         if(mode=="maintenance"&&!summarizing)failure?.let{f->Text(memoryFailureText(f),Modifier.padding(horizontal=UiSpace.page,vertical=8.dp).testTag("memory-batch-failure"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
@@ -134,36 +139,17 @@ import kotlinx.coroutines.launch
                 }}
             }
         }else{
-            val now=System.currentTimeMillis()
             Column(Modifier.fillMaxSize().padding(horizontal=UiSpace.page).testTag("memory-browser")){
+                Text("流年竖脉",Modifier.padding(top=10.dp),fontFamily=androidx.compose.ui.text.font.FontFamily.Serif,style=MaterialTheme.typography.headlineSmall,color=Ink)
                 Row(Modifier.fillMaxWidth().selectableGroup().padding(vertical=10.dp).background(Line.copy(alpha=.35f),androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(4.dp)){
                     listOf(false to "她记下的",true to "我写的").forEach{(value,label)->
-                        Box(Modifier.weight(1f).background(if(mine==value)Paper else androidx.compose.ui.graphics.Color.Transparent,androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).selectable(mine==value,role=androidx.compose.ui.semantics.Role.Tab){tabs.select(if(value)1 else 0)}.testTag(if(value)"memory-tab-mine"else"memory-tab-hers").padding(vertical=12.dp),contentAlignment=Alignment.Center){Text(label,color=if(mine==value)MaterialTheme.colorScheme.onSurface else Muted)}
+                        Box(Modifier.weight(1f).background(if(mine==value)Paper else androidx.compose.ui.graphics.Color.Transparent,androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).selectable(mine==value,role=androidx.compose.ui.semantics.Role.Tab){mine=value}.testTag(if(value)"memory-tab-mine"else"memory-tab-hers").padding(vertical=12.dp),contentAlignment=Alignment.Center){Text(label,color=if(mine==value)MaterialTheme.colorScheme.onSurface else Muted)}
                     }
                 }
                 if(failure!=null&&!summarizing)TextButton({mode="maintenance"},modifier=Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer.copy(alpha=.45f),androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).testTag("memory-batch-failure")){Text("有一段聊天没总结成功　重试 ›",maxLines=1)}
-                PageTabContent(tabs,Modifier.weight(1f).fillMaxWidth()){page->
-                    val manual=page==1
-                    val shown=memories.filter{it.manual==manual}.sortedByDescending{it.createdAt}
-                    LazyColumn(Modifier.fillMaxSize().background(Paper,androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).testTag("memory-list"),state=memoryLists[page],contentPadding=PaddingValues(18.dp)){
-                    if(manual)item{TextButton({editing=true},enabled=!summarizing,modifier=Modifier.testTag("memory-add")){Text("＋ 写一条想让她记住的事")}}
-                    item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically){MemoryClarityDot(0,7);Text(" 记得牢　",color=Muted,style=MaterialTheme.typography.bodySmall);MemoryClarityDot(3,7);Text(" 快忘了",color=Muted,style=MaterialTheme.typography.bodySmall)}}
-                    if(shown.isEmpty())item{Text(if(manual)"写下希望她记住的小事。" else "还没有记下什么，多聊聊吧",Modifier.padding(vertical=32.dp),color=Muted)}
-                    shown.groupBy{memoryUiGroup(it.createdAt,now)}.forEach{(group,rows)->
-                        item{Text(group,Modifier.padding(top=24.dp,bottom=8.dp),color=Muted,style=MaterialTheme.typography.bodySmall)}
-                        items(rows,key={it.id}){m->
-                            val level=memoryUiLevel(clarity[m.id]?:100.0)
-                            Column(Modifier.clickable{detailId=m.id}.testTag("memory-${m.id}")){
-                                Row(Modifier.padding(vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-                                    MemoryClarityDot(level,9)
-                                    Text(m.text,Modifier.weight(1f),maxLines=2,overflow=TextOverflow.Ellipsis,color=if(level==3)Muted else MaterialTheme.colorScheme.onSurface)
-                                    Text(memoryUiTime(m.createdAt,now),color=Muted,style=MaterialTheme.typography.bodySmall)
-                                }
-                                HorizontalDivider(Modifier.padding(start=24.dp),color=Line,thickness=.5.dp)
-                            }
-                        }
-                    }
-                }}
+                val shown=remember(memories,mine){memories.filter{it.manual==mine}.sortedByDescending{it.createdAt}}
+                MemoryTimeline(shown,memories,edges,clarity,memoryLists[if(mine)1 else 0],mine,!summarizing,
+                    {editing=true},{detailId=it})
             }
         }
     }

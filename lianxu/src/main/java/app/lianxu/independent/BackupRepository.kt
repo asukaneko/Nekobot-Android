@@ -41,7 +41,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
     private fun row(c:Cursor)=JsonObject().apply{c.columnNames.forEachIndexed{i,k->when(c.getType(i)){Cursor.FIELD_TYPE_NULL->add(k,JsonNull.INSTANCE);Cursor.FIELD_TYPE_INTEGER->addProperty(k,c.getLong(i));Cursor.FIELD_TYPE_STRING->addProperty(k,c.getString(i));Cursor.FIELD_TYPE_FLOAT->addProperty(k,c.getDouble(i));else->error("资料含不支持的列类型")}}}
     private fun prefs(db:SQLiteDatabase)=db.rawQuery("SELECT key,value FROM preferences ORDER BY key",null).use{c->buildMap{while(c.moveToNext())put(c.getString(0),c.getString(1))}}
     private fun roleKey(key:String,id:String,turns:Set<String>,batches:Set<String>):Boolean =
-        key in setOf(RolePromptStore.key(id),RelationStorage.key(id),ReplyAccountingQueue.batchKey(id),"role-examples:$id",MemoryAssociations.key(id))||key.startsWith("memory-reference-v1:$id:")||turns.any{key=="memory-recall-usage:$it"||key==ChatToolJournal.key(it)||key==OrderedChatReply.PREFIX+it||key==ReplyAccountingQueue.key(it)||key==ReplyAccountingQueue.readsKey(it)}||batches.any{key=="memory-dropped:$it"}
+        key in setOf(RolePromptStore.key(id),RelationStorage.key(id),ReplyAccountingQueue.batchKey(id),"role-examples:$id",MemoryAssociations.key(id),LearningControls.key(id))||key.startsWith("memory-reference-v1:$id:")||turns.any{key=="memory-recall-usage:$it"||key==ChatToolJournal.key(it)||key==OrderedChatReply.PREFIX+it||key==ReplyAccountingQueue.key(it)||key==ReplyAccountingQueue.readsKey(it)}||batches.any{key=="memory-dropped:$it"}
     /**
      * Rebuildable rows that a backup leaves out: relationship caches and the derived core-memory selection
      * are recomputed from the restored data. Per-turn tool receipts (the pills shown on old rounds) cannot be
@@ -113,7 +113,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
         require(root["preferences"].asJsonObject.keySet().all{it in globalKeys})
         root["preferences"].asJsonObject.entrySet().forEach{(k,v)->require(v.isJsonPrimitive&&v.asJsonPrimitive.isString);when(k){ToolboxPreferences.ORDER_KEY->ToolboxPreferences.order(v.asString);ToolboxPreferences.VIDEO_KEY->ToolboxPreferences.VideoMode.valueOf(v.asString);"compact"->require(v.asString in setOf("true","false"));ChatImages.SWITCH->require(v.asString in setOf("0","1"));ChatImages.SWITCH_REVISION,ToolboxPreferences.VIDEO_REVISION->require(v.asString.length<=80);"diagnostic-detailed",EXPORT_DETAIL_PREF->require(v.asString in setOf("0","1"));"nickname"->require(v.asString.length in 1..80);MemoryRules.KEY->require(MemoryRules.from(JSONObject(v.asString)).valid());UserPersona.KEY->UserPersona.decode(v.asString);LocalUpdateReceipt.KEY->LocalUpdateReceipt.decode(v.asString);MemoryForgetting.RECALL_DEFAULT_MIGRATED->require(v.asString=="true");UserAvatarData.KEY->require(v.asString.length<=UserAvatarData.MAX_ENCODED){"本人头像资料过大"}}}
         val configs=models(root);require(configs.map{it.config.id}.distinct().size==configs.size)
-        root["selections"].asJsonObject.entrySet().forEach{(k,v)->require(ModelPurpose.entries.any{it.key==k}&&(v.asString.isEmpty()||configs.any{it.config.id==v.asString}))}
+        backupPurposeSelections(root["selections"].asJsonObject).values.forEach{id->require(id.isEmpty() || configs.any{it.config.id==id})}
         val ids=hashSetOf<String>();val used=hashSetOf<String>();var total=0
         root["roles"].asJsonArray.forEach{v->val role=v.asJsonObject;require(role.keySet()==setOf("character","tables","preferences","assets"));val id=role["character"].asJsonObject["id"].asString;require(ids.add(id))
             val tables=role["tables"].asJsonObject
@@ -134,6 +134,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
             val candidateIds=tables["memory_candidates"].asJsonArray.map{it.asJsonObject["id"].asString}.toSet()
             val proposedIds=tables["memory_candidates"].asJsonArray.map{JsonParser.parseString(it.asJsonObject["json"].asString).asJsonObject["proposed"].asJsonObject["id"].asString}.toSet()
             role["preferences"].asJsonObject.entrySet().forEach{(k,value)->require(roleKey(k,id,turns,batches)&&value.isJsonPrimitive&&value.asJsonPrimitive.isString);RoleArchive.parse(("{\"value\":"+value.asString+"}").toByteArray())
+                if(k==LearningControls.key(id))LearningControls.decode(value.asString)
                 if(k.startsWith(ChatToolJournal.PREFIX))ChatToolJournal.validateBackup(value.asString,memoryIds,tables["messages"].asJsonArray.map{it.asJsonObject["id"].asLong}.toSet())}
             for(table in extra+companionTables){if(!tables.has(table))continue;val schema=db.rawQuery("PRAGMA table_info($table)",null).use{c->buildMap{while(c.moveToNext())put(c.getString(1),c.getString(2))}}
                 val rows=tables[table].asJsonArray;total+=rows.size();require(total<=200000)
@@ -144,7 +145,11 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
                         if(table=="companion_state")require(j["policy"].asString in setOf("disabled","paused_by_user","awaiting_user_resume")&&j["owner"].asString.isEmpty())
                         if(table=="companion_opportunities")require(j["state"].asString !in setOf("queued","running")&&j["owner"].asString.isEmpty())
                         if(table=="companion_action_learning"){val use=ProactiveLearningUse.decode(j["considered"].asString,j["used"].asString);require(JsonParser.parseString(j["considered"].asString).asJsonArray.size()==use.first.size&&JsonParser.parseString(j["used"].asString).asJsonArray.size()==use.second.size){"主动交流学习引用无效"}}
-                        if(table=="companion_sources"){val proposal=Gson().fromJson(j["proposal"].asString,ExperienceProposal::class.java);require(proposal.targets.all{it in messageIds});proposal.relationInput?.let{input->
+                        if(table=="companion_sources"){val proposal=Gson().fromJson(j["proposal"].asString,ExperienceProposal::class.java);require(proposal.targets.all{it in messageIds})
+                            proposal.innerNote?.let{val flag=JsonParser.parseString(j["proposal"].asString).asJsonObject["innerNote"].asJsonObject["disputed"]
+                                require(flag==null || flag.isJsonPrimitive && flag.asJsonPrimitive.isBoolean)
+                                require(it.at>0 && ReviewInnerNote.validText(it.text)){"小心事内容或时间无效"}}
+                            proposal.relationInput?.let{input->
                             require(RelationInputContract.validStored(input)&&input.source==SourceRef(id,j["source_id"].asLong,j["revision"].asLong)&&listOfNotNull(input.previous,input.fulfills,input.explains,input.repairs,input.repairBasis).all{it.turnId in messageIds}){"关系输入来源或选项无效"}
                         }}
                     }
@@ -271,7 +276,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
             val localLinks = if (fullReplace) db.rawQuery("SELECT value FROM preferences WHERE key GLOB ?", arrayOf(ROLE_MAP + "*")).use { rows ->
                 buildList { while (rows.moveToNext()) add(rows.getString(0)) }
             } else emptyList()
-            if(fullReplace){staged=LocalStep.STAGE_MODELS.observe { vault.prepareRestore(models(keysRoot),pack.root["selections"].asJsonObject.entrySet().associate{(k,v)->ModelPurpose.entries.first{it.key==k} to v.asString},pack.includesKeys) };clearAll(db);checkpoint()}
+            if(fullReplace){staged=LocalStep.STAGE_MODELS.observe { vault.prepareRestore(models(keysRoot),backupPurposeSelections(pack.root["selections"].asJsonObject),pack.includesKeys) };clearAll(db);checkpoint()}
             val imported=LocalStep.RESTORE_ROWS.observe { pack.roles.map{v->val old=v.asJsonObject;val target=if(plan.mode=="REPLACE"&&!pack.all)plan.target!! else UUID.randomUUID().toString();if(plan.mode=="REPLACE"&&!pack.all)clearRole(db,target);restore(db,old,target,pack.files,valid,plan.assetDigests);target} }
             if(fullReplace){
                 val restored = pack.roles.map { it.asJsonObject["character"].asJsonObject["id"].asString }.zip(imported).toMap()
@@ -349,6 +354,11 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
     private suspend fun <T> read(block:(SQLiteDatabase)->T):T=withContext(Dispatchers.IO){AppMutationGate.read{val db=store.readableDatabase;db.beginTransaction();try{block(db)}finally{db.endTransaction()}}}
 }
 
+internal fun backupPurposeSelections(json:JsonObject):Map<ModelPurpose,String> = json.entrySet().associate{(key,value)->
+    val purpose=ModelPurpose.entries.firstOrNull{it.key==key}?:throw IllegalArgumentException("未知模型用途：$key")
+    purpose to value.asString
+}
+
 internal class BackupRemapper(private val old:String,private val id:String,private val strings:Map<String,String>,private val messages:Map<Long,Long>){
     private val numeric=setOf("message_id","question_message_id","source_user_id","user_message_id","assistant_message_id","after_message_id","user_id","assistant_id","turn","turnId","cursor","boundary","source_id","turn_source","targets","messageId","actionMessage","replyId","afterMessage")
     private val ids=setOf("id","request","task","task_id","batch_id","batch","candidate_id","target_id","memory_id","result_id","source","target","sourceId","targetId","observation_id","memoryIds","retainedIds","opportunity_id")
@@ -364,7 +374,7 @@ internal class BackupRemapper(private val old:String,private val id:String,priva
         if(key.startsWith(ReplyAccountingQueue.READ_PREFIX))return ReplyAccountingQueue.readsKey(strings[key.removePrefix(ReplyAccountingQueue.READ_PREFIX)]?:error("轮次引用缺失"))
         if(key==ReplyAccountingQueue.batchKey(old))return ReplyAccountingQueue.batchKey(id)
         if(key.startsWith(ReplyAccountingQueue.PREFIX))return ReplyAccountingQueue.key(strings[key.removePrefix(ReplyAccountingQueue.PREFIX)]?:error("轮次引用缺失"))
-        listOf("role-prompts:","role-examples:","memory-associations-v1:","relationship-history:").forEach{if(key==it+old)return it+id}
+        listOf("role-prompts:","role-examples:","memory-associations-v1:","learning-controls-v1:","relationship-history:").forEach{if(key==it+old)return it+id}
         if(key.startsWith("memory-reference-v1:$old:")){val n=key.substringAfterLast(':').toLong();return "memory-reference-v1:$id:${messages[n]?:error("原话引用缺失")}"}
         if(key.startsWith("memory-recall-usage:"))return "memory-recall-usage:"+(strings[key.removePrefix("memory-recall-usage:")]?:error("轮次引用缺失"))
         if(key.startsWith("memory-dropped:"))return "memory-dropped:"+(strings[key.removePrefix("memory-dropped:")]?:error("批次引用缺失"))

@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable internal fun PurposeSelection(state:ModelConfigState,only:ModelPurpose?=null){
     var help by remember {mutableStateOf<ModelPurpose?>(null)}
-    val purposes=ModelPurpose.entries.filter{if(only==null)it!=ModelPurpose.AUX_VISION else it==only}
+    val purposes=if(only!=null) listOf(only) else listOf(ModelPurpose.CHAT,ModelPurpose.REVIEW,ModelPurpose.MEMORY,ModelPurpose.EMBEDDING)
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Paper)){
             if(only==ModelPurpose.AUX_VISION)Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically){
@@ -30,13 +30,14 @@ import androidx.compose.ui.unit.dp
                 var menu by remember(purpose){mutableStateOf(false)}
                 var includeUnknown by remember(purpose){mutableStateOf(false)}
                 val chosen=state.configs.firstOrNull{it.id==state.purposes[purpose]}
-                val options=purposeOptions(state.configs,purpose,chosen?.id.orEmpty(),includeUnknown)
+                val options=purposeOptions(state.configs,purpose,chosen?.id.orEmpty(),includeUnknown,state.hostPurposes)
                 Box{
                     Row(Modifier.fillMaxWidth().heightIn(min=72.dp).clickable(enabled=!state.busy,role=Role.Button){menu=true}.testTag("purpose-select-${purpose.key}").padding(16.dp),verticalAlignment=Alignment.CenterVertically){
-                        ControlIcon(when(purpose){ModelPurpose.EMBEDDING->"nodes";ModelPurpose.CHAT->"chat";ModelPurpose.MEMORY->"memory";ModelPurpose.AUX_VISION->"eye"},GreenText);Spacer(Modifier.width(14.dp))
+                        ControlIcon(when(purpose){ModelPurpose.EMBEDDING->"nodes";ModelPurpose.CHAT->"chat";ModelPurpose.MEMORY,ModelPurpose.REVIEW->"memory";ModelPurpose.AUX_VISION->"eye"},GreenText);Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
                             Text(purpose.title,style=MaterialTheme.typography.titleSmall,color=Ink)
-                            Text(chosen?.let{"${it.name} · ${it.modelId}"}?:"尚未选择",style=MaterialTheme.typography.bodySmall,color=Muted)
+                            val fallback=if(purpose==ModelPurpose.REVIEW || purpose==ModelPurpose.MEMORY)"沿用聊天模型" else "尚未选择"
+                            Text(chosen?.let{"${it.name} · ${it.modelId}"}?:fallback,style=MaterialTheme.typography.bodySmall,color=Muted)
 
                         }
                         IconButton(onClick={help=purpose},modifier=Modifier.size(UiSpace.action).testTag("purpose-help-${purpose.key}").semantics{contentDescription="${purpose.title}说明"}){ControlIcon("info")}
@@ -54,7 +55,8 @@ import androidx.compose.ui.unit.dp
     help?.let{purpose->AlertDialog(onDismissRequest={help=null},title={Text("${purpose.title}说明")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text(when(purpose){
             ModelPurpose.EMBEDDING->"用于记忆语义检索，可不选择。先添加并保存向量模型配置，再指定为记忆向量；不用于聊天或总结记忆。"
-            ModelPurpose.CHAT->"发送文字和已开启的后台评估使用所选聊天模型。"
+            ModelPurpose.CHAT->"聊天时使用这个模型；未单独选择回顾模型时，心情与学习回顾也用它。"
+            ModelPurpose.REVIEW->"每几轮聊天后，后台用它回顾心情和学到的相处习惯。未选择时沿用聊天模型。"
             ModelPurpose.MEMORY->"主动总结记忆使用所选总结记忆模型；未选择时沿用聊天模型。"
             ModelPurpose.AUX_VISION->"辅助看图开启时，所选辅助模型接收图片并提供观察，聊天模型接收观察与文字；关闭时图片直接发给所选聊天模型。不检测模型能力，不自动换模型或回退。图片只在发送时上传。"
         })

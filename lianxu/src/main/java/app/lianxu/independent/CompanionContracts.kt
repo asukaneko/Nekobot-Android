@@ -21,7 +21,7 @@ internal data class ExperienceProposal(
     // Local fingerprint of the actual profile used for appraisal; never accepted from model output.
     val appraisalProfileStamp:String?=null,
     val relationInput:RelationInput?=null,val relationAttempted:Boolean=false,
-    val relationIssues:List<RelationIssue> = emptyList(),val recordIssues:List<RelationIssue> = emptyList(),val parameterProposal:RelationParameterProposal?=null
+    val relationIssues:List<RelationIssue> = emptyList(),val recordIssues:List<RelationIssue> = emptyList(),val parameterProposal:RelationParameterProposal?=null,val innerNote:ReviewInnerNote?=null
 )
 /** These acknowledgements are published only by the successful C2 transaction. */
 internal fun ExperienceProposal.controlReply():String? = when(control){

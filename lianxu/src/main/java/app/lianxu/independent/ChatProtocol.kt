@@ -173,5 +173,5 @@ interface TextChatClient {
     }
 }
 enum class ModelPurpose(val key:String,val title:String) {
-    EMBEDDING("embedding","记忆向量（可选）"),CHAT("chat","聊天"),MEMORY("memory","总结记忆"),AUX_VISION("aux-vision","辅助看图")
+    EMBEDDING("embedding","记忆向量（可选）"),CHAT("chat","聊天"),MEMORY("memory","总结记忆"),AUX_VISION("aux-vision","辅助看图"),REVIEW("review","心情与学习回顾（可选）")
 }

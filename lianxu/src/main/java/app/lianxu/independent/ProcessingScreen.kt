@@ -62,8 +62,3 @@ internal fun taskDescription(s:ProcessingRepository.TaskStatus)=when(s.state){
         }
     }
 }
-
-@Composable internal fun ProcessingRole(vm:AppState){
-    val friend=vm.friends.firstOrNull{it.id==vm.activeId}?:return
-    MemoryExperience(vm,friend)
-}

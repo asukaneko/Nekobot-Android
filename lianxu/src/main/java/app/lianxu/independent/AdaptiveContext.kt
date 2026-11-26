@@ -46,7 +46,8 @@ internal object AdaptiveContext {
     }
 
     /** Derived view only. Full context continues to validate sources, learning and actual outcomes. */
-    fun roleView(full:RoleContext,query:String,budget:Int,semantic:Map<SourceRef,Double> = emptyMap()):RoleContext {
+    fun roleView(context:RoleContext,query:String,budget:Int,semantic:Map<SourceRef,Double> = emptyMap()):RoleContext {
+        val full=context.visibleLearning()
         var view=full.copy(knownSources=mapOf(full.current.turnId to full.current),entries=emptyList(),actions=emptyList(),learning=emptyList(),facts=emptyList())
         data class Unit(val score:Double,val key:String,val add:(RoleContext)->RoleContext)
         val units=mutableListOf<Unit>()

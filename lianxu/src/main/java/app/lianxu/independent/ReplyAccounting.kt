@@ -62,8 +62,8 @@ internal class ReplyAccounting(private val store:Store,private val access:ModelA
         val job=currentCoroutineContext().job
         fun unchanged()=job.isActive&&epoch==AppMutationGate.epoch()&&companion.accountingCurrent(store.readableDatabase,snapshot)&&valid.all{ReplyAccountingQueue.valid(store.readableDatabase,it)}
         if(valid.isEmpty())return companion.finishReviewBatch(batch,items,emptyMap(),snapshot,AppServices.companionClock(),::unchanged)
-        val credential=access.credential(ModelPurpose.CHAT)?:return false
-        fun active()=unchanged()&&access.current(ModelPurpose.CHAT,credential.stamp)
+        val credential=access.reviewCredential()?:return false
+        fun active()=unchanged()&&access.reviewCurrent(credential.stamp)
         val first=valid.first().source
         val before=companion.roleContext(role,first).beforeCurrent()
         val extra=repo.read{db->val seen=valid.flatMap{it.readSources}.toSet()
@@ -74,7 +74,7 @@ internal class ReplyAccounting(private val store:Store,private val access:ModelA
         }
         val view=before.copy(knownSources=before.knownSources.filterKeys{it<=first.turnId},facts=before.facts.filter{it.source.turnId<first.turnId},relationRecent=(before.relationRecent+extra).distinctBy{it["消息"]})
         val now=AppServices.companionClock()
-        val records=try{ReviewBatchModel(client).review(credential.config,credential.key,valid,view,snapshot.roleProfile,now,::active)}
+        val records=try{ReviewBatchModel(client).review(credential.config,credential.key,valid,view,snapshot.roleProfile,now,allowInnerNote=batch.remaining.isEmpty(),active=::active)}
         catch(e:CompanionModelFailure){
             if(e.failure==ChatFailure.CONTEXT_CAPACITY){
                 val split=valid.size>1&&repo.tx{db->active()&&ReplyAccountingQueue.splitForCapacity(db,role,batch)}

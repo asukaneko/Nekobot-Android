@@ -247,17 +247,29 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         val current=ReplyAccountingQueue.frozen(db,s.role,batch)
         if(current!=items)return@tx false
         check(records.keys==items.filter{ReplyAccountingQueue.valid(db,it)}.map{it.source.turnId}.toSet())
+        val noteCount=records.values.count{it?.get("innerNote")?.isJsonPrimitive==true}
+        require(noteCount<=1 && (noteCount==0 || batch.remaining.isEmpty()))
         for(item in items){
             if(ReplyAccountingQueue.valid(db,item)){
                 val cached=db.rawQuery("SELECT proposal FROM companion_sources WHERE role=? AND source_id=? AND revision=?",arrayOf(s.role,item.source.turnId.toString(),item.source.version.toString())).use{if(it.moveToFirst())gson.fromJson(it.getString(0),ExperienceProposal::class.java)else null}
                 val record=records[item.source.turnId]
                 val seen=item.readSources.filter{refCurrent(db,it)&&aiAllowed(db,s.role,it.turnId)}.map{it.turnId}.toSet()
-                val parsed=record?.let{RoleRecordParser.parse(it.toString(),item.input,ExperienceProposal(interpretationUnknown=true),roleContext(db,s.role,item.source).beforeCurrent(),reviewAt,item.at,false,false,seen,cached?.takeIf{p->p.controlChecked}).reply}
+                require(record==null || record.size()>0)
+                val light=record!=null && !record.has("experience")
+                val parsed=record?.let {
+                    val facts=ExperienceProposal(interpretationUnknown=!light,claimKind=cached?.claimKind?:"interaction")
+                    RoleRecordParser.parse(it.toString(),item.input,facts,roleContext(db,s.role,item.source).beforeCurrent(),
+                        reviewAt,item.at,false,false,seen,cached?.takeIf{p->p.controlChecked},lightReview=light).reply
+                }
                 val immediateFuture=cached?.understanding?.future
                 val flow=parsed?.understanding?.takeIf{it.hasRecords()}?.copy(revision=item.turn.attempt)?.let{f->if(immediateFuture==null)f else f.copy(future=immediateFuture,dependencies=(f.dependencies+immediateFuture.evidence).distinct())}?:cached?.understanding?.takeIf{immediateFuture!=null}
-                val p=(parsed?.experience?:cached?:ExperienceProposal(claimKind="none")).copy(understanding=flow,
+                val base=if(light) cached?:parsed?.experience else parsed?.experience?:cached
+                val note=record?.get("innerNote")?.takeUnless{it.isJsonNull}?.asString
+                val p=(base?:ExperienceProposal(claimKind="none")).copy(understanding=flow,
+                    innerNote=note?.let{require(ReviewInnerNote.validText(it));ReviewInnerNote(it,reviewAt)},
                     reconsider=cached?.reconsider,timingReferenceAt=cached?.timingReferenceAt?:reviewAt,appraisalProfileStamp=RoleConsistency.appraisalStamp(s.roleProfile),
-                    relationInput=parsed?.relationInput,relationAttempted=true,relationIssues=parsed?.relationIssues.orEmpty(),recordIssues=parsed?.recordIssues.orEmpty(),parameterProposal=cached?.parameterProposal)
+                    relationInput=ReviewBatchModel.relationForCommit(record,parsed?.relationInput,cached?.relationInput),
+                    relationAttempted=true,relationIssues=parsed?.relationIssues.orEmpty(),recordIssues=parsed?.recordIssues.orEmpty(),parameterProposal=cached?.parameterProposal)
                 check(p.control=="none"||cached?.let{it.controlChecked&&it.control==p.control&&it.targets==p.targets}==true)
                 check(saveProposal(db,item.turn,item.source.version,p,s,true))
                 // Immediate actions have already been applied. This transaction only publishes review state.

@@ -21,6 +21,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -110,6 +112,7 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
         keyDraft.invalidate()
         state.clearResult()
         if(screen=="providers"){screen=providerReturn;return}
+        if(screen=="purposes"){screen="overview";return}
         key="";reveal=false
         if(screen=="edit"){
             val directReturn=returnToChatOnDone&&openedDirectlyToEdit
@@ -153,9 +156,10 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
     val preset=ProviderPresets.get(provider)
     Surface(Modifier.fillMaxSize(),color=ConfigBackground){Column {
         AppTopBar(
-            title=when(screen){"providers"->if(embeddingEditor)"选择向量服务商" else "选择聊天服务商";"edit"->if(embeddingEditor)"向量模型配置" else if(original==null)"添加 ${providerName(preset)}" else "编辑配置";else->"大模型配置"},
+            title=when(screen){"purposes"->"模型用途";"providers"->if(embeddingEditor)"选择向量服务商" else "选择聊天服务商";"edit"->if(embeddingEditor)"向量模型配置" else if(original==null)"添加 ${providerName(preset)}" else "编辑配置";else->"大模型配置"},
             onBack={back()},backTag="config-back",enabled=!state.saving,
             extra={when(screen){
+                "overview"->if(saveForPurpose==null) ModelPurposesButton {screen="purposes"} else Spacer(Modifier.width(48.dp))
                 "edit"->SaveAction(!state.busy&&!sharedWithOtherPurposes(draftId)&&ThinkingFields.customError(thinkingCustom)==null){ProcessDiagnostics.action(ProcessAction.SAVE_MODEL);reveal=false;if(saveForPurpose==ModelPurpose.CHAT)state.saveChatFromCreation(draft(),enteredKey(),original,originalRevision){key="";screen="overview"}else state.save(draft(),enteredKey(),if(embeddingEditor)ModelPurpose.EMBEDDING else null,original,originalRevision){key="";if(returnToChatOnDone&&openedDirectlyToEdit){openedDirectlyToEdit=false;onBack()}else screen="overview"}}
                 else->Spacer(Modifier.width(48.dp))
             }}
@@ -221,6 +225,11 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
                 }
                 }
             }}
+            }
+        }else if(screen=="purposes"){
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(UiSpace.page),verticalArrangement=Arrangement.spacedBy(16.dp)){
+                if(state.status.isNotBlank())Notice(state.status,state.statusError)
+                PurposeSelection(state)
             }
         }else if(screen=="providers"){
             OutlinedTextField(query,{query=it.take(80)},placeholder={Text("搜索服务商")},singleLine=true,leadingIcon={ControlIcon("search")},modifier=Modifier.fillMaxWidth().padding(horizontal=UiSpace.page,vertical=12.dp).testTag("provider-search"),shape=RoundedCornerShape(16.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedContainerColor=Paper,focusedContainerColor=Paper,unfocusedBorderColor=Color.Transparent))
@@ -353,6 +362,25 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
         text={Text("现在还不能添加画图服务商。等画图接上以后，这里会列出可以选的服务。")},
         confirmButton={TextButton({imageNotice=false}){Text("知道了")}})
     deleting?.let{config->AlertDialog(onDismissRequest={deleting=null},title={Text("删除这份配置？")},text={Text("同时清除保存的密钥。聊天记录不受影响。")},confirmButton={TextButton(onClick={state.delete(config);deleting=null;key="";reveal=false;screen="overview"}){Text("确认删除")}},dismissButton={TextButton(onClick={deleting=null}){Text("取消")}})}
+}
+
+@Composable
+private fun ModelPurposesButton(onClick:()->Unit) {
+    val ink=ConfigGreen
+    val fill=Chrome
+    IconButton(onClick,Modifier.size(48.dp).testTag("config-open-purposes").semantics{contentDescription="模型用途"}){
+        Canvas(Modifier.size(24.dp)){
+            val stroke=1.6.dp.toPx()
+            fun slider(y:Float,x:Float){
+                val center=Offset(x.dp.toPx(),y.dp.toPx())
+                drawLine(ink,Offset(3.dp.toPx(),center.y),Offset(21.dp.toPx(),center.y),stroke,StrokeCap.Round)
+                drawCircle(fill,2.6.dp.toPx(),center)
+                drawCircle(ink,2.6.dp.toPx(),center,style=Stroke(stroke))
+            }
+            slider(7.5f,9f)
+            slider(16.5f,15f)
+        }
+    }
 }
 
 // Keep the editor and advanced fields in separate DEX methods from the navigation branches.

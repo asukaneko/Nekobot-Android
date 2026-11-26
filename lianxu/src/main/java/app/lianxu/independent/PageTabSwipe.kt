@@ -29,8 +29,8 @@ internal class PageTabs(val pager:PagerState,private val scope:CoroutineScope){
     fun select(index:Int){scope.launch{pager.animateScrollToPage(index)}}
 }
 
-@Composable internal fun rememberPageTabs(count:Int):PageTabs {
-    val pager=rememberPagerState{count}
+@Composable internal fun rememberPageTabs(count:Int,initial:Int=0):PageTabs {
+    val pager=rememberPagerState(initialPage=initial){count}
     val scope=rememberCoroutineScope()
     return remember(pager,scope){PageTabs(pager,scope)}
 }

@@ -254,7 +254,7 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
         ProcessDiagnostics.action(if(page=="models") ProcessAction.OPEN_MODELS else ProcessAction.OPEN)
         if (page == "detail") detailReturn = this.page
         if (page == "settings-memory") memorySettingsReturn = this.page
-        if (page == "processing-role") processingReturn = if (this.page == "detail") "detail" else "processing"
+        if (page in setOf("role-learning","role-relationship","processing-role")) processingReturn = if (this.page == "detail") "detail" else "processing"
         modelsReturnChatId = null
         modelsTargetConfigId = null
         modelsTargetPurpose = null

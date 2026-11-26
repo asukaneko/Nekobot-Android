@@ -9,6 +9,40 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class ProcessingRun(val success:Boolean,val code:String="",val changed:Boolean=false)
 
+/** Both transports use the same bounded buffer. A document is validated as a whole by the caller. */
+internal suspend fun readMemorySummary(
+    client:TextChatClient, credentials:ModelCredential, request:TextChatRequest, document:Boolean,
+    checkLive:()->Unit, record:suspend (String)->Unit
+):String {
+    val buffer=StringBuilder()
+    suspend fun feed(chunk:String){
+        checkLive()
+        currentCoroutineContext().ensureActive()
+        buffer.append(chunk)
+        rejectUnless(buffer.length<=256*1024)
+        if(!document) while(true){
+            val end=buffer.indexOf("\n")
+            if(end<0) break
+            val line=buffer.substring(0,end).removeSuffix("\r")
+            buffer.delete(0,end+1)
+            record(line)
+        }
+    }
+    currentCoroutineContext().ensureActive()
+    val streaming=credentials.config.streamReplies
+    val response=if(streaming) client.stream(credentials.config,credentials.key,request,::feed)
+        else client.complete(credentials.config,credentials.key,request)
+    checkLive()
+    currentCoroutineContext().ensureActive()
+    when(response){
+        is TextChatResult.Failure -> throw ProcessingRejected("MODEL_${response.reason.name}")
+        is TextChatResult.Success -> if(!streaming) feed(response.text)
+    }
+    if(document) return buffer.toString()
+    if(buffer.isNotBlank()) record(buffer.toString())
+    return ""
+}
+
 /** Complete-turn batches, whole-batch validation with bounded repair, and one atomic publication per batch. */
 class MemoryEngine(private val scope:CoroutineScope,private val repo:ProcessingRepository,private val access:ModelAccess,private val client:TextChatClient,private val changed:suspend()->Unit,private val summaryTimeoutMillis:Long=300_000,private val replyWaitMillis:Long=120_000) {
     companion object {private val session=UUID.randomUUID().toString()}
@@ -188,7 +222,7 @@ class MemoryEngine(private val scope:CoroutineScope,private val repo:ProcessingR
         val staged=mutableListOf<JSONObject>();val raws=mutableListOf<JSONObject>()
         fun current()=taskCurrent()&&access.memoryCurrent(credentials.stamp)&&(embedding==null||access.current(ModelPurpose.EMBEDDING,embedding.stamp))
         fun late():Nothing{discardLate(attempt);throw ProcessingRejected("LATE_DISCARDED")}
-        val issues=mutableListOf<MemoryRepairFeedback.Issue>();val buffer=StringBuilder();val received=linkedMapOf<String,String>();val allKeys=accepted.map{it.getString("id")}.toMutableSet();var receipt:JSONObject?=null;var operationPosition=0;var headerProblem=false
+        val issues=mutableListOf<MemoryRepairFeedback.Issue>();val received=linkedMapOf<String,String>();val allKeys=accepted.map{it.getString("id")}.toMutableSet();var receipt:JSONObject?=null;var operationPosition=0;var headerProblem=false
         fun issue(name:String,code:String,detail:String){issues+=MemoryRepairFeedback.Issue(name,code,detail.ifBlank{MemoryRepairFeedback.hint(code,"","")})}
         suspend fun operation(raw:JSONObject){
             val op=MemoryNumberedReferences(work.targets,work.existingVersions.keys).normalize(raw)
@@ -238,19 +272,10 @@ class MemoryEngine(private val scope:CoroutineScope,private val repo:ProcessingR
             rejectUnless(current(),"CANCELLED")
             try{recordUnsafe(line)}catch(e:Exception){rejected(e,"line")}
         }
-        currentCoroutineContext().ensureActive()
-        val response=client.stream(credentials.config,credentials.key,request){chunk->
-            // A voided attempt (timeout/stop/newer attempt) never stages anything, even if the client ignores cancellation.
-            if(!attempts.live(attempt))late()
-            buffer.append(chunk);rejectUnless(buffer.length<=256*1024)
-            if(!document)while(true){val end=buffer.indexOf("\n");if(end<0)break;val line=buffer.substring(0,end).removeSuffix("\r");buffer.delete(0,end+1);record(line)}
-        }
-        if(!attempts.live(attempt))late()
-        currentCoroutineContext().ensureActive()
-        if(response is TextChatResult.Failure)throw ProcessingRejected("MODEL_${response.reason.name}")
+        val response=readMemorySummary(client,credentials,request,document,{if(!attempts.live(attempt))late()},::record)
         if(document){
             rejectUnless(current(),"CANCELLED")
-            val tokens=JSONTokener(buffer.toString())
+            val tokens=JSONTokener(response)
             val root=tokens.nextValue() as? JSONObject?:throw ProcessingRejected("FORMAT","输出必须是一个完整 JSON 对象")
             if(tokens.nextClean()!='\u0000')throw ProcessingRejected("FORMAT","JSON 对象之后还有多余内容")
             // Validate the receipt before staging any operations, including pretty-printed responses.
@@ -261,7 +286,7 @@ class MemoryEngine(private val scope:CoroutineScope,private val repo:ProcessingR
             // Collect readable operation errors as well as receipt errors; neither can publish.
             if(root.optJSONArray("operations")!=null)record(root.toString())
             if(receiptProblems.isNotEmpty())issue("receipt",if(incomplete)"INCOMPLETE"else"FORMAT",receiptProblems.joinToString("；"))
-        }else if(buffer.isNotBlank())record(buffer.toString())
+        }
         if(headerProblem)issue("header","FORMAT","batch_id 和 character_id 必须等于指定值 ${work.id} / ${work.friendId}")
         if(issues.isNotEmpty())throw ProcessingRejected(issues.first().code,MemoryRepairFeedback.encode(issues))
         val end=receipt?:throw ProcessingRejected("INCOMPLETE",MemoryRepairFeedback.encode(listOf(MemoryRepairFeedback.Issue("receipt","INCOMPLETE","缺少完整结束回执（complete=true，end_marker 等于 batch_id）"))))
