@@ -278,6 +278,7 @@ internal object LocalReleaseNotes {
             "导入明确选择新增或覆盖；本机滚动诊断可导出简版或详细版，不自动上传。"
         ),listOf("包含 API 密钥的备份没有密码保护，别人取得文件也能使用并消耗额度，请勿分享。"))
     )
+    fun forRelease(version: String) = entries.singleOrNull { it.version == version }
     fun forVersion(code:Long)=entries.singleOrNull{it.code==code}
     fun history(installedCode:Long)=entries.filter{it.code<=installedCode}
     fun pending(installedCode:Long,receipt:LocalUpdateReceipt)=forVersion(installedCode)?.takeIf{installedCode>receipt.lastAcknowledged}

@@ -59,8 +59,14 @@ class HostModelPolicyTest {
         val embedding = model("vector", false, "embedding").config()
         val local = chat.copy(id = "local")
         val kinds = mapOf(chat.id to "chat", embedding.id to "embedding")
+        assertEquals("${chat.name} · 来自 NekoBot · ${chat.modelId}", chat.purposeLabel())
+        assertEquals("${local.name} · ${local.modelId}", local.purposeLabel())
         val options = purposeOptions(listOf(chat, embedding, local), ModelPurpose.REVIEW, embedding.id, false, kinds)
         assertEquals(setOf(chat.id, local.id), options.visible.map { it.id }.toSet())
+        for (purpose in ModelPurpose.entries) {
+            val visible = purposeOptions(listOf(chat, embedding),purpose,"",true,kinds).visible
+            assertEquals(listOf(if(purpose==ModelPurpose.EMBEDDING) embedding else chat),visible)
+        }
         assertEquals("", backupPurposeIds { chat.id }[ModelPurpose.REVIEW])
         assertEquals(local.id, backupPurposeIds { local.id }[ModelPurpose.REVIEW])
     }

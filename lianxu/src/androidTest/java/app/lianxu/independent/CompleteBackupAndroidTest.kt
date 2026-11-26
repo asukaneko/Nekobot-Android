@@ -42,6 +42,24 @@ class CompleteBackupAndroidTest {
     private fun pw()="合成备份密码-synthetic-0123456789".toCharArray()
     private fun pack(export:BackupRepository.Export):BackupArchive.Package=BackupArchive.read(ByteArrayOutputStream().also{BackupArchive.write(export.root,export.files,it)}.toByteArray().inputStream())
     private suspend fun roundTrip(target:Fixture,all:Boolean=false,keys:Boolean=false):List<String>{val p=pack(f.backup.export(if(all)null else "a",keys,if(keys)pw()else null));return target.backup.commit(target.backup.preview(p,if(all)"REPLACE"else"ADD"),all,password=if(keys)pw()else null)}
+    @Test fun quoteSurvivesRoleImportAndRejectsMissingTarget()=runBlocking {
+        val ledger=ChatLedger(f.store)
+        val original=turn(body="需要引用的旧消息").user
+        val quote=ChatReplyQuote(original.id,true,original.text)
+        val t=ledger.begin("a","引用后的回答","service",quote=quote)
+        assertEquals(quote,ledger.begin("a","引用后的回答","service",id=t.id,quote=quote).replyQuote)
+        assertTrue(ledger.finish(t.id,1,"已收到"))
+        val other=fixture()
+        val role=roundTrip(other).single()
+        val restored=other.store.messages().single { it.friendId==role && it.text==original.text }
+        val restoredTurn=ChatLedger(other.store).all().single { it.replyQuote!=null }
+        assertNotEquals(t.id,restoredTurn.id)
+        assertEquals(quote.copy(messageId=restored.id),restoredTurn.replyQuote)
+        val export=f.backup.export("a")
+        export.root["roles"].asJsonArray.single().asJsonObject["preferences"].asJsonObject
+            .addProperty(ChatReplyQuote.PREFIX+t.id,quote.copy(messageId=Long.MAX_VALUE).encode())
+        assertTrue(runCatching { other.backup.preview(pack(export),"ADD") }.isFailure)
+    }
     @Test fun dailyAgendaSurvivesBackupAsInactiveHistory()=runBlocking {
         val zone = java.time.ZoneId.systemDefault()
         val started = java.time.LocalDate.now(zone).plusDays(1).atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
@@ -89,6 +107,16 @@ class CompleteBackupAndroidTest {
         assertEquals(0, core.contactPace("a", now).streak)
         deleteMessage(replyId)
         assertEquals(1, core.contactPace("a", now).streak)
+        val ledger=ChatLedger(f.store)
+        val source=requireNotNull(core.sourceOfMessage("a",sent))
+        assertEquals(sent,source)
+        core.stopReminder("a",source)
+        assertTrue(core.contactHistory("a").any { it.id==sent })
+        assertTrue(ledger.completedMessages("a").any { it.id==sent })
+        core.forget("a",source)
+        assertFalse(core.contactHistory("a").any { it.id==sent })
+        assertFalse(ledger.completedMessages("a").any { it.id==sent })
+        assertTrue(f.store.messages().any { it.id==sent && it.text==text })
         deleteMessage(sent)
         assertEquals(0, core.contactPace("a", now).today)
         assertEquals(0, core.contactPace("a", now).streak)

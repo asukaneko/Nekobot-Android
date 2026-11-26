@@ -44,22 +44,32 @@ internal object ChatVideos {
     fun thumbnail(source:ImageSource,edge:Int=512):Bitmap=withRetriever(requireNotNull(source.file)){retriever->
         val info=inspect(requireNotNull(source.file))
         val scale=minOf(1.0,edge.toDouble()/maxOf(info.displayWidth,info.displayHeight))
-        frame(retriever,info,0,maxOf(1,(info.displayWidth*scale).toInt()),maxOf(1,(info.displayHeight*scale).toInt()))
+        requireNotNull(frame(retriever,info,0,maxOf(1,(info.displayWidth*scale).toInt()),maxOf(1,(info.displayHeight*scale).toInt()))) { "无法读取视频预览" }
     }
-    fun frame(retriever:MediaMetadataRetriever,info:Info,at:Long,width:Int,height:Int):Bitmap {
-        if(android.os.Build.VERSION.SDK_INT<27)return legacyFrame(retriever,info,at,width,height)
-        val bitmap=retriever.getScaledFrameAtTime(at*1000,MediaMetadataRetriever.OPTION_CLOSEST,width,height)
-        return fitFrame(bitmap,at,width,height)
+    fun frame(retriever:MediaMetadataRetriever,info:Info,at:Long,width:Int,height:Int):Bitmap? {
+        if (android.os.Build.VERSION.SDK_INT < 27) return legacyFrame(retriever,info,at,width,height)
+        return readAround(at, info.durationMillis) { time, option ->
+            retriever.getScaledFrameAtTime(time * 1000, option, width, height)
+        }?.let { fitFrame(it,width,height) }
     }
-    internal fun legacyFrame(retriever:MediaMetadataRetriever,info:Info,at:Long,width:Int,height:Int):Bitmap {
+
+    internal fun legacyFrame(retriever:MediaMetadataRetriever,info:Info,at:Long,width:Int,height:Int):Bitmap? {
         val runtime=Runtime.getRuntime()
         val pixels=info.width.toLong()*info.height
         require(pixels<=(runtime.maxMemory()-runtime.totalMemory()+runtime.freeMemory())/12){"本机内存不足以解码原视频画面"}
-        val bitmap=retriever.getFrameAtTime(at*1000,MediaMetadataRetriever.OPTION_CLOSEST)
-        return fitFrame(bitmap,at,width,height)
+        return readAround(at, info.durationMillis) { time, option ->
+            retriever.getFrameAtTime(time * 1000, option)
+        }?.let { fitFrame(it,width,height) }
     }
-    private fun fitFrame(bitmap:Bitmap?,at:Long,width:Int,height:Int):Bitmap {
-        requireNotNull(bitmap){"无法读取视频第 ${at/1000} 秒画面，已停止准备"}
+
+    internal fun <T> readAround(at: Long, duration: Long, read: (Long, Int) -> T?): T? {
+        val times = listOf(at, at - 250, at + 250, at - 500, at + 500)
+            .map { it.coerceIn(0, duration - 1) }.distinct()
+        for (time in times) read(time, MediaMetadataRetriever.OPTION_CLOSEST)?.let { return it }
+        return read(at, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    }
+
+    private fun fitFrame(bitmap:Bitmap,width:Int,height:Int):Bitmap {
         if(bitmap.width==width&&bitmap.height==height)return bitmap
         return try{Bitmap.createScaledBitmap(bitmap,width,height,true)}finally{bitmap.recycle()}
     }

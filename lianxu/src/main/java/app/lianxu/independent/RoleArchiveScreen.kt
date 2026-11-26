@@ -99,7 +99,7 @@ private class PendingBackup(val archive:BackupRepository.Export?=null,val bytes:
     }}
     Column(Modifier.fillMaxSize()){
         AppTopBar("备份与诊断",{if(!busy)vm.back()},enabled=!busy,extra={IconButton({help=true},enabled=!busy,modifier=Modifier.size(UiSpace.action).testTag("backup-page-help").semantics{contentDescription=if(section==0)"备份与恢复说明"else"诊断日志说明"}){ControlIcon("info")}})
-        BackupTabs(section,!busy,tabs::select)
+        BackupTabs(tabs, !busy)
         if(busy||error.isNotBlank()||status.isNotBlank())Column(Modifier.fillMaxWidth().padding(horizontal=UiSpace.page),verticalArrangement=Arrangement.spacedBy(8.dp)){
             if(busy){LinearProgressIndicator(Modifier.fillMaxWidth().testTag("backup-progress"));TextButton({lease?.cancel();job?.cancel()},modifier=Modifier.heightIn(min=UiSpace.action).testTag("backup-cancel")){Text("取消本次处理")}}
             if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error,modifier=Modifier.testTag("archive-error"))

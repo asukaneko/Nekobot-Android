@@ -41,14 +41,14 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
     private fun row(c:Cursor)=JsonObject().apply{c.columnNames.forEachIndexed{i,k->when(c.getType(i)){Cursor.FIELD_TYPE_NULL->add(k,JsonNull.INSTANCE);Cursor.FIELD_TYPE_INTEGER->addProperty(k,c.getLong(i));Cursor.FIELD_TYPE_STRING->addProperty(k,c.getString(i));Cursor.FIELD_TYPE_FLOAT->addProperty(k,c.getDouble(i));else->error("资料含不支持的列类型")}}}
     private fun prefs(db:SQLiteDatabase)=db.rawQuery("SELECT key,value FROM preferences ORDER BY key",null).use{c->buildMap{while(c.moveToNext())put(c.getString(0),c.getString(1))}}
     private fun roleKey(key:String,id:String,turns:Set<String>,batches:Set<String>):Boolean =
-        key in setOf(RolePromptStore.key(id),RelationStorage.key(id),ReplyAccountingQueue.batchKey(id),"role-examples:$id",MemoryAssociations.key(id),LearningControls.key(id))||key.startsWith("memory-reference-v1:$id:")||turns.any{key=="memory-recall-usage:$it"||key==ChatToolJournal.key(it)||key==OrderedChatReply.PREFIX+it||key==ReplyAccountingQueue.key(it)||key==ReplyAccountingQueue.readsKey(it)}||batches.any{key=="memory-dropped:$it"}
+        key in setOf(RolePromptStore.key(id),RelationStorage.key(id),ReplyAccountingQueue.batchKey(id),"role-examples:$id",MemoryAssociations.key(id),LearningControls.key(id))||key.startsWith("memory-reference-v1:$id:")||turns.any{key=="memory-recall-usage:$it"||key==ChatToolJournal.key(it)||key==ChatReplyQuote.PREFIX+it||key==OrderedChatReply.PREFIX+it||key==ReplyAccountingQueue.key(it)||key==ReplyAccountingQueue.readsKey(it)}||batches.any{key=="memory-dropped:$it"}
     /**
      * Rebuildable rows that a backup leaves out: relationship caches and the derived core-memory selection
      * are recomputed from the restored data. Per-turn tool receipts (the pills shown on old rounds) cannot be
      * recomputed, so they travel with their role; only receipts whose turn belongs to no role are skipped.
      */
     private val derivedPrefixes=listOf("relationship-cache:","memory-core-set:")
-    private fun ignored(key:String)=key.startsWith(ROLE_MAP)||key.startsWith(FOLLOW_PREFIX)||derivedPrefixes.any{key.startsWith(it)}||key.startsWith(ChatToolJournal.PREFIX)||key.startsWith(OrderedChatReply.PREFIX)||key.startsWith("memory-tools:")||key.startsWith(ChatLedger.ERROR_PREFIX)||key.startsWith(ContactFailures.ERROR_PREFIX)||key.startsWith(ModelStatusStore.PREFIX)||key.startsWith("memory-batch-failure:")||key.startsWith("memory-vectors-v1:")||key.startsWith("model-vault-generation:")
+    private fun ignored(key:String)=key.startsWith(ROLE_MAP)||key.startsWith(FOLLOW_PREFIX)||derivedPrefixes.any{key.startsWith(it)}||key.startsWith(ChatToolJournal.PREFIX)||key.startsWith(ChatReplyQuote.PREFIX)||key.startsWith(OrderedChatReply.PREFIX)||key.startsWith("memory-tools:")||key.startsWith(ChatLedger.ERROR_PREFIX)||key.startsWith(ContactFailures.ERROR_PREFIX)||key.startsWith(ModelStatusStore.PREFIX)||key.startsWith("memory-batch-failure:")||key.startsWith("memory-vectors-v1:")||key.startsWith("model-vault-generation:")
     private fun snapshot(db:SQLiteDatabase,id:String,files:MutableMap<String,BackupAssetSource>,budget:Budget=Budget(),valid:()->Unit={}):JsonObject {
         val friend=db.rawQuery("SELECT * FROM friends WHERE id=?",arrayOf(id)).use{check(it.moveToFirst()){ "角色已不存在" };row(it).also(budget::json)}
         val tables=JsonObject();order.forEach{table->tables.add(table,rows(db,table,id,budget))}
@@ -134,6 +134,7 @@ internal class BackupRepository(private val store:Store,private val vault:ModelV
             val candidateIds=tables["memory_candidates"].asJsonArray.map{it.asJsonObject["id"].asString}.toSet()
             val proposedIds=tables["memory_candidates"].asJsonArray.map{JsonParser.parseString(it.asJsonObject["json"].asString).asJsonObject["proposed"].asJsonObject["id"].asString}.toSet()
             role["preferences"].asJsonObject.entrySet().forEach{(k,value)->require(roleKey(k,id,turns,batches)&&value.isJsonPrimitive&&value.asJsonPrimitive.isString);RoleArchive.parse(("{\"value\":"+value.asString+"}").toByteArray())
+                if(k.startsWith(ChatReplyQuote.PREFIX))require(ChatReplyQuote.decode(value.asString)?.messageId in messageIds){"引用消息不属于包内角色"}
                 if(k==LearningControls.key(id))LearningControls.decode(value.asString)
                 if(k.startsWith(ChatToolJournal.PREFIX))ChatToolJournal.validateBackup(value.asString,memoryIds,tables["messages"].asJsonArray.map{it.asJsonObject["id"].asLong}.toSet())}
             for(table in extra+companionTables){if(!tables.has(table))continue;val schema=db.rawQuery("PRAGMA table_info($table)",null).use{c->buildMap{while(c.moveToNext())put(c.getString(1),c.getString(2))}}
@@ -378,6 +379,7 @@ internal class BackupRemapper(private val old:String,private val id:String,priva
         if(key.startsWith("memory-reference-v1:$old:")){val n=key.substringAfterLast(':').toLong();return "memory-reference-v1:$id:${messages[n]?:error("原话引用缺失")}"}
         if(key.startsWith("memory-recall-usage:"))return "memory-recall-usage:"+(strings[key.removePrefix("memory-recall-usage:")]?:error("轮次引用缺失"))
         if(key.startsWith("memory-dropped:"))return "memory-dropped:"+(strings[key.removePrefix("memory-dropped:")]?:error("批次引用缺失"))
+        if(key.startsWith(ChatReplyQuote.PREFIX))return ChatReplyQuote.PREFIX+(strings[key.removePrefix(ChatReplyQuote.PREFIX)]?:error("引用轮次缺失"))
         if(key.startsWith(OrderedChatReply.PREFIX))return OrderedChatReply.PREFIX+(strings[key.removePrefix(OrderedChatReply.PREFIX)]?:error("轮次引用缺失"))
         if(key.startsWith(ChatToolJournal.PREFIX))return ChatToolJournal.key(strings[key.removePrefix(ChatToolJournal.PREFIX)]?:error("轮次引用缺失"))
         error("不支持的角色设置")

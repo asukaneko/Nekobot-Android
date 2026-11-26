@@ -153,12 +153,10 @@ class LearningRecordsUiTest {
         assertEquals(records,runBlocking{vm.companion.learningRecords("seed-lin")})
         assertEquals(before,runBlocking{vm.processing.store.messages()})
     }
-    @Test fun settingsRoleStartsInMemoryAndBackFromMoodReturnsToDirectory(){
+    @Test fun roleMemoryEntryOpensMemoryAndBackFromMoodReturnsToRole(){
         start()
-        ui.onNodeWithTag("tab-2").performClick()
-        ui.onNodeWithTag("settings-processing").performScrollTo().performClick()
-        ui.onNodeWithTag("settings-memory-rules").assertExists()
-        ui.onNodeWithTag("processing-friend-seed-lin").performScrollTo().performClick()
+        ui.runOnIdle{vm.open("detail","seed-lin")}
+        ui.onNodeWithTag("role-processing-open").performScrollTo().performClick()
         ui.onNodeWithTag("inner-tab-2").assertIsSelected()
         ui.onNodeWithTag("inner-tab-0").performClick();awaitTag("mood-hero")
         ui.waitUntil(8000){ui.onAllNodesWithTag("memory-browser").fetchSemanticsNodes().isEmpty()}
@@ -166,7 +164,7 @@ class LearningRecordsUiTest {
         ui.onNodeWithTag("mood-hero").assertIsDisplayed()
         shot("04-mood-hero")
         ui.onNodeWithTag("back").performClick()
-        ui.onNodeWithTag("processing-friend-seed-lin").assertExists()
+        ui.onNodeWithTag("role-processing-open").assertExists()
         assertEquals(0,calls.get())
     }
     @Test fun roleSwitchAndWithdrawnSourceDoNotLeaveStaleLearning(){

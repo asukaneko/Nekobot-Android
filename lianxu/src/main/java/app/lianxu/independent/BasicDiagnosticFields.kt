@@ -34,7 +34,8 @@ internal object BasicDiagnosticFields {
     fun project(event: String, data: JsonObject): JsonObject? {
         if (event in LocalStep.events) return LocalStep.project(event, data)
         if (event == ChatVoiceDiagnostics.EVENT) return ChatVoiceDiagnostics.basic(data)
-        if (event !in network && event !in transactions && event !in structured && event !in service) return null
+        val feature = listOf("memory.", "review.", "light_review.", "learning.", "daily_contact.", "proactive.", "contact.", "video.").any(event::startsWith) || event == "daily.plan.failure"
+        if (!feature && event !in network && event !in transactions && event !in structured && event !in service) return null
         val out = JsonObject()
         fun string(key: String) = data[key]?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
         fun number(key: String, range: LongRange) {
@@ -53,6 +54,19 @@ internal object BasicDiagnosticFields {
         for (key in listOf("attempt","request_number","step")) number(key, 0L..Int.MAX_VALUE.toLong())
         string("error_type")?.substringAfterLast('.')?.let { out.addProperty("error_type",if(it in errors) it else "OTHER") }
         choice("reason", failures)
+        if (feature) {
+            choice("kind", ContactFailureKind.entries.map { it.name }.toSet())
+            choice("reason", failures + setOf("optional_timeout","too_long","non_final_segment","superseded"))
+            choice("stage", stages)
+            choice("status", setOf("success","failure","cancelled","skipped"))
+            choice("outcome", setOf("success","failure","cancelled","skipped","error"))
+            choice("commit_state", setOf("committed","discarded"))
+            number("http_status",100L..599)
+            for (key in listOf("count","added","frames","duration_ms","operation_count","operations","judge_calls","auxiliary_rounds"))
+                number(key,0L..Int.MAX_VALUE.toLong())
+            flag("saved")
+            return out.takeIf { it.size() > 0 }
+        }
         if (event in network || event in structured) {
             choice("stage", stages)
             number("model_attempt", 1L..StructuredModelCall.MAX_ATTEMPTS.toLong())

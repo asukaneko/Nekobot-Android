@@ -305,8 +305,11 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
     }
     suspend fun forget(role:String,id:Long)=repo.tx{withdraw(it,role,id)}
     /** Raw chat stays visible to its owner; proactive model input follows the same AI-use revocations. */
-    suspend fun contactHistory(role:String):List<Message> = repo.read{db->
-        db.rawQuery("SELECT m.id,m.friend_id,m.body,m.mine,m.created,COALESCE(t.user_message_id,m.id),r.opportunity_id,o.source_id,o.revision FROM messages m LEFT JOIN chat_turns t ON t.friend_id=m.friend_id AND (t.user_message_id=m.id OR t.assistant_message_id=m.id) LEFT JOIN companion_receipts r ON r.message_id=m.id AND r.role=m.friend_id LEFT JOIN companion_opportunities o ON o.id=r.opportunity_id AND o.role=r.role LEFT JOIN message_state ms ON ms.message_id=m.id WHERE m.friend_id=? AND COALESCE(ms.deleted,0)=0 AND NOT EXISTS(SELECT 1 FROM message_state s WHERE s.deleted=1 AND s.message_id IN(t.user_message_id,t.assistant_message_id)) ORDER BY m.id",arrayOf(role)).use{c->buildList{
+    suspend fun contactHistory(role:String):List<Message> = repo.read { db -> contactHistory(db,role) }
+    internal fun contactHistory(db:SQLiteDatabase,role:String,messageId:Long?=null):List<Message> {
+        val target=if(messageId==null) "" else " AND m.id=?"
+        val args=if(messageId==null) arrayOf(role) else arrayOf(role,messageId.toString())
+        return db.rawQuery("SELECT m.id,m.friend_id,m.body,m.mine,m.created,COALESCE(t.user_message_id,m.id),r.opportunity_id,o.source_id,o.revision FROM messages m LEFT JOIN chat_turns t ON t.friend_id=m.friend_id AND (t.user_message_id=m.id OR t.assistant_message_id=m.id) LEFT JOIN companion_receipts r ON r.message_id=m.id AND r.role=m.friend_id LEFT JOIN companion_opportunities o ON o.id=r.opportunity_id AND o.role=r.role LEFT JOIN message_state ms ON ms.message_id=m.id WHERE m.friend_id=?$target AND COALESCE(ms.deleted,0)=0 AND NOT EXISTS(SELECT 1 FROM message_state s WHERE s.deleted=1 AND s.message_id IN(t.user_message_id,t.assistant_message_id)) ORDER BY m.id",args).use{c->buildList{
             while(c.moveToNext()){
                 val sourceAllowed=aiAllowed(db,role,c.getLong(5))&&aiAllowed(db,role,c.getLong(0))
                 val contactAllowed=c.isNull(6)||c.getString(6).startsWith("daily:")&&c.isNull(7)||!c.isNull(7)&&repo.sourceValid(db,SourceRef(role,c.getLong(7),c.getLong(8)))
@@ -318,7 +321,7 @@ internal class CompanionRepository(internal val store:Store,private val now:()->
         db.execSQL("UPDATE companion_opportunities SET state='cancelled' WHERE role=? AND source_id=? AND state IN('queued','running','send')",arrayOf<Any>(role,id))
     }
     suspend fun sourceOfMessage(role:String,id:Long):Long?=repo.read{db->
-        db.rawQuery("SELECT user_message_id FROM chat_turns WHERE friend_id=? AND (user_message_id=? OR assistant_message_id=?) UNION ALL SELECT o.source_id FROM companion_receipts r JOIN companion_opportunities o ON o.id=r.opportunity_id WHERE r.role=? AND r.message_id=? LIMIT 1",arrayOf(role,id.toString(),id.toString(),role,id.toString())).use{if(it.moveToFirst())it.getLong(0)else null}
+        db.rawQuery("SELECT user_message_id FROM chat_turns WHERE friend_id=? AND (user_message_id=? OR assistant_message_id=?) UNION ALL SELECT COALESCE(o.source_id,r.message_id) FROM companion_receipts r JOIN companion_opportunities o ON o.id=r.opportunity_id WHERE r.role=? AND r.message_id=? LIMIT 1",arrayOf(role,id.toString(),id.toString(),role,id.toString())).use{if(it.moveToFirst()&&!it.isNull(0))it.getLong(0)else null}
     }
     suspend fun recall(role:String,terms:List<String>,limit:Int)=repo.read { db ->
         experiences(db,role)

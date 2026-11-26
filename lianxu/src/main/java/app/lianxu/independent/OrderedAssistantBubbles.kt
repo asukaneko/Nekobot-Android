@@ -40,7 +40,7 @@ internal fun OrderedAssistantBubbles(parts:List<ReplyPart>,turn:ChatTurn,body:St
                         if(part.voice && ChatVoiceDiagnostics.known(turn,index))
                             ObserveVoiceRow(turn,VoiceStatus.TEXT_RENDERED,null,index){ visible(bounds) }
                         Text(part.text,Modifier.testTag("reply-part-$index").clip(shape).background(ChatRoleBubble)
-                            .background(highlight).combinedClickable(onClick={},onLongClick=manage).padding(UiSpace.bubble),
+                            .background(highlight).bubbleActions(part.text,fallback=manage).padding(UiSpace.bubble),
                             style=MaterialTheme.typography.bodyLarge,color=ChatRoleText)
                     }
                 }

@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 private enum class VoicePage(val title:String) {
-    LIBRARY("AI 语音"), DESIGN("文字设计音色"), CLONE("导入已有录音克隆"), REMIX("重塑并另存")
+    LIBRARY("音色库"), DESIGN("文字设计音色"), CLONE("导入已有录音克隆"), REMIX("重塑并另存")
 }
 
 private class StudioPlayer(private val cache:File) {
@@ -72,6 +72,7 @@ private class StudioPlayer(private val cache:File) {
     val player=remember { StudioPlayer(context.cacheDir) }
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     var playing by remember { mutableStateOf(false) }
+    var playingVoiceId by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<ImportedVoiceRecording?>(null) }
@@ -110,14 +111,14 @@ private class StudioPlayer(private val cache:File) {
     }
     if (page == VoicePage.LIBRARY) {
         var refreshing by remember { mutableStateOf(false) }
-        VoiceLibrary(voices, connected, busy, refreshing, playing, status, back,
+        VoiceLibrary(voices, connected, busy, refreshing, playingVoiceId.takeIf { playing }, status, back,
             onRefresh = {
                 if (owner.isNotEmpty()) runAction {
                     refreshing = true
                     try { account.refresh() } finally { refreshing = false }
                 }
             },
-            onPlay = { voice -> runAction { play(studio.audition(owner, voice, account.auditionLine())) } },
+            onPlay = { voice -> runAction { playingVoiceId = voice.id; play(studio.audition(owner, voice, account.auditionLine())) } },
             onStop = { player.stop(); playing = false },
             onEdit = { open(it, VoicePage.REMIX) },
             onCreate = { clone -> open(null, if (clone) VoicePage.CLONE else VoicePage.DESIGN) },

@@ -100,7 +100,7 @@ class LianxuActivity : FragmentActivity() {
         if(changed)vm.creationPolisher.cancel()
         creationDraft=if(changed)value.copy(polished=null,usePolished=false)else value
     }
-    if (vm.ready && vm.page!="models") SideEffect {
+    if (vm.ready && vm.page !in setOf("models","models-purposes")) SideEffect {
         ProcessDiagnostics.view(if(vm.page!="home") vm.page else when(vm.tab) {
             1 -> "contacts"; 2 -> "settings"; 3 -> "profile"; else -> "home"
         })
@@ -187,7 +187,7 @@ class LianxuActivity : FragmentActivity() {
                 returnToChatOnDone=!creationConfigOpen && !vm.modelsReturnChatId.isNullOrBlank(),
                 onInitialHandled={vm.clearModelsTarget()},
             )
-            "processing"->ProcessingDirectory(vm)
+            "models-purposes"->ModelConfigScreen(onBack={vm.back()},startAtPurposes=true)
             "settings-memory"->MemoryRulesScreen(vm)
             "settings-info"->DataAndVersion({vm.back()})
             "settings-updates"->UpdatesScreen({vm.back()})
@@ -334,12 +334,16 @@ internal fun ReturnHomeButton(
                 Text("角色提示词",style=MaterialTheme.typography.titleSmall)
                 Text(friend.prompt.ifBlank{"温柔、自然地回应，尊重用户。不要求披露内部思考。"},style=MaterialTheme.typography.bodyMedium,color=Muted)
             }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(UiSpace.radius)).background(Paper)){
-                DirectoryRow("edit","编辑角色设定","名字、说话方式与开场白","role-prompts-open",iconColor=ProfileIconColors.edit){vm.open("role-prompts",friend.id)}
-                DirectoryRow("chat","聊天设置","允许发语音与绑定音色","role-voice-open",showChevron=false){vm.open("role-voice",friend.id)}
-                DirectoryRow("memory","记忆","记住的内容与原话来源","role-processing-open",iconColor=ProfileIconColors.memory){vm.open("processing-role",friend.id)}
-                DirectoryRow("list","学习","看法、兴趣与相处习惯","role-learning-open",iconColor=ProfileIconColors.learning){vm.open("role-learning",friend.id)}
-                DirectoryRow("heart","心情","她现在的心情、信任和放在心上的事","role-relationship-open",iconColor=ProfileIconColors.relationship){vm.open("role-relationship",friend.id)}
+            DirectoryGroup {
+                DirectoryRow("edit","编辑角色设定","名字、说话方式与开场白","role-prompts-open"){vm.open("role-prompts",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("chat","聊天设置","允许发语音与绑定音色","role-voice-open"){vm.open("role-voice",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("memory","记忆","记住的内容与原话来源","role-processing-open"){vm.open("processing-role",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("list","学习","看法、兴趣与相处习惯","role-learning-open"){vm.open("role-learning",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("heart","心情","她现在的心情、信任和放在心上的事","role-relationship-open"){vm.open("role-relationship",friend.id)}
             }
             PrimaryAction("发消息",modifier=Modifier.fillMaxWidth()){vm.open("chat",friend.id)}
         }

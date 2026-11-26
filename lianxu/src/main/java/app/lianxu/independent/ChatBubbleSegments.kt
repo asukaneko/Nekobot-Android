@@ -1,7 +1,6 @@
 package app.lianxu.independent
 
-/** Display only: the original message remains the source for every operation (memory, relation,
- *  retry, delete, copy all act on the one stored reply). Her reply is split at blank lines outside code fences. */
+/** Split presentation at blank lines outside code fences. Each visible segment still belongs to one stored reply. */
 internal object ChatBubbleSegments {
     fun forMessage(text: String, mine: Boolean): List<String> = if (mine) listOf(text) else split(text)
     /** While the reply is still streaming the last bubble can keep growing: only bubbles already closed by a blank line count. */

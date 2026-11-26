@@ -1,5 +1,6 @@
 package app.lianxu.independent
 
+import androidx.compose.foundation.*
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,8 +62,8 @@ internal object VoiceConnectProbe {
     onDismiss:()->Unit
 ) {
     val sheet=rememberModalBottomSheetState(skipPartiallyExpanded=true)
+    val uri = LocalUriHandler.current
     val focus=LocalFocusManager.current
-    val uri=LocalUriHandler.current
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var key by remember { mutableStateOf("") }
@@ -113,7 +114,7 @@ internal object VoiceConnectProbe {
         modifier=Modifier.testTag("voice-connect-sheet")
     ) {
         Column(
-            Modifier.fillMaxWidth().imePadding()
+            Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())
                 .padding(horizontal=UiSpace.page).padding(bottom=28.dp),
             verticalArrangement=Arrangement.spacedBy(12.dp)
         ) {
@@ -121,12 +122,29 @@ internal object VoiceConnectProbe {
                 if(connected) "BreezeBlue 语音" else "连接 BreezeBlue",
                 style=MaterialTheme.typography.titleLarge,color=Ink
             )
-            Text("用 BreezeBlue 的语音，让角色能发语音",style=MaterialTheme.typography.bodySmall,color=Muted)
+            Text("用 BreezeBlue 语音，让角色给你发自然语音",style=MaterialTheme.typography.bodySmall,color=Muted)
 
             if(connected) {
                 Text("当前已连接，换一个密钥后原来的会停用。",style=MaterialTheme.typography.bodySmall,color=Muted)
             }
 
+            if (!connected) {
+                val shape = RoundedCornerShape(14.dp)
+                Column(Modifier.fillMaxWidth().background(Chrome, shape).border(.5.dp, Line, shape)
+                    .testTag("voice-connect-guide").padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("怎么获取密钥（3 步）", style = MaterialTheme.typography.titleSmall)
+                    listOf("点下方前往 BreezeBlue 官网注册或登录账号", "在开发者后台新建一条 API Key 并复制",
+                        "粘贴回下方输入框，点「验证并连接」即可").forEachIndexed { index, step ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text((index + 1).toString(), Modifier.background(Accent, RoundedCornerShape(5.dp)).padding(horizontal = 5.dp),
+                                style = MaterialTheme.typography.labelSmall)
+                            Text(step, color = Muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    HorizontalDivider(color = Line)
+                    VoiceHelpLinks(true, !busy, uri::openUri)
+                }
+            }
             Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 Text("API Key",style=MaterialTheme.typography.labelLarge,color=Ink)
                 OutlinedTextField(
@@ -134,7 +152,7 @@ internal object VoiceConnectProbe {
                     onValueChange={ key=it.take(8192);error=null;notice="" },
                     singleLine=true,
                     enabled=!busy,
-                    placeholder={ if(connected) Text("留空则保持原来的密钥") else null },
+                    placeholder={ Text(if(connected) "留空则保持原来的密钥" else "粘贴从 BreezeBlue 复制的密钥") },
                     visualTransformation=if(reveal) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,imeAction=ImeAction.Done),
                     keyboardActions=KeyboardActions(onDone={ focus.clearFocus() }),
@@ -163,12 +181,7 @@ internal object VoiceConnectProbe {
 
             Text("密钥只存在本机，不会发给别人",style=MaterialTheme.typography.bodySmall,color=Muted)
 
-            TextButton(
-                onClick={ uri.openUri("https://api.breeze.blue") },
-                enabled=!busy,
-                contentPadding=PaddingValues(horizontal=0.dp,vertical=4.dp),
-                modifier=Modifier.testTag("voice-key-help")
-            ) { Text("获取 API Key ↗",style=MaterialTheme.typography.bodySmall,color=GreenText) }
+            if (connected) VoiceHelpLinks(false, !busy, uri::openUri)
 
             if(notice.isNotEmpty() && error==null) {
                 Text(
@@ -214,6 +227,22 @@ internal object VoiceConnectProbe {
                     ) { Text("断开连接",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall) }
                 }
             }
+        }
+    }
+}
+
+@Composable private fun VoiceHelpLinks(guide: Boolean, enabled: Boolean, openUri: (String) -> Unit) {
+    val padding = if (guide) ButtonDefaults.TextButtonContentPadding else PaddingValues(horizontal = 0.dp, vertical = 4.dp)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (guide) 0.dp else 16.dp)) {
+        TextButton({ openUri("https://breezeblue.ai/app/developer/api-keys") },
+            enabled = enabled, modifier = Modifier.testTag("voice-key-help"), contentPadding = padding,
+            colors = ButtonDefaults.textButtonColors(containerColor = if (guide) Accent else androidx.compose.ui.graphics.Color.Transparent)) {
+            Text("去获取 API Key ↗", color = if (guide) MaterialTheme.colorScheme.onSecondaryContainer else Ink,
+                style = MaterialTheme.typography.bodySmall)
+        }
+        TextButton({ openUri("https://breezeblue.ai/zh") }, enabled = enabled, modifier = Modifier.testTag("voice-site-help"),
+            contentPadding = padding) {
+            Text("访问中文官网 ↗", color = GreenText, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
