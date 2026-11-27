@@ -28,6 +28,12 @@
     <string name="home_mode_card_agent_idle">最初の指示を待っています</string>
     <string name="home_mode_card_agent_running">%1$d 件のセッションが待機中</string>
     <string name="home_mode_card_agent_ready">ツールの準備完了</string>
+    <string name="home_mode_card_agent_run_count">%1$d 件が実行中</string>
+    <string name="home_mode_card_agent_run_thinking">思考中</string>
+    <string name="home_mode_card_agent_run_tool">ツール: %1$s</string>
+    <string name="home_mode_card_agent_run_waiting">対応待ち</string>
+    <string name="home_mode_card_agent_run_running">実行中</string>
+    <string name="home_mode_card_agent_run_more">他 %1$d 件が実行中</string>
     <string name="home_mode_card_companion">日常コンパニオン</string>
     <string name="home_mode_card_enter">入る →</string>
     <string name="home_mode_card_companion_hint">台本はなし。彼女との毎日を大切に。</string>

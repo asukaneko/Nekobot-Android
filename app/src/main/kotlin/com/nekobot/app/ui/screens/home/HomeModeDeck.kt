@@ -1,8 +1,16 @@
 package com.nekobot.app.ui.screens.home
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,8 +49,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -62,6 +76,8 @@ import androidx.compose.ui.zIndex
 import coil.request.ImageRequest
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.SessionActivityPhase
+import com.nekobot.app.data.local.ai.toolDisplayFallbackName
 import com.nekobot.app.ui.components.FramedPortraitImage
 import com.nekobot.app.ui.components.PortraitFramingDialog
 import com.nekobot.app.ui.components.nekoCaptionStyle
@@ -69,6 +85,7 @@ import com.nekobot.app.ui.components.nekoRowSubtitleStyle
 import com.nekobot.app.ui.components.nekoRowTitleStyle
 import com.nekobot.app.ui.components.nekoTextSize
 import com.nekobot.app.ui.components.rememberPortraitFraming
+import com.nekobot.app.ui.components.toolNameResId
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -217,6 +234,9 @@ fun HomeModeDeck(
                         height = cardHeight,
                         // 只有正面卡提供立绘取景编辑：侧卡叠在后面且半透明，弹窗会显得错位
                         showCoverEditor = isCenter,
+                        // 运行状态动画只在正面卡播放：另两张卡还在叠放里可见，
+                        // 但没必要让三个无限动画一起占 GPU
+                        animateRunning = isCenter,
                         modifier = Modifier
                             // 用吸附后的下标排序，滑动过程中不必每帧重组
                             .zIndex(10f - abs(index - settledIndex))
@@ -293,6 +313,8 @@ private fun ModeCard(
     onOpenList: () -> Unit,
     /** 角色卡封面是否显示立绘取景编辑按钮（仅当前正面卡）。 */
     showCoverEditor: Boolean,
+    /** 是否播放运行状态动画（仅当前正面卡）。 */
+    animateRunning: Boolean,
     modifier: Modifier = Modifier
 ) {
     if (card.mode == HomeMode.COMPANION) {
@@ -371,6 +393,8 @@ private fun ModeCard(
             ink = ink,
             accent = accent,
             showCoverEditor = showCoverEditor,
+            animateRunning = animateRunning,
+            compact = compact,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -452,6 +476,8 @@ private fun ModeCardHero(
     ink: Color,
     accent: Color,
     showCoverEditor: Boolean,
+    animateRunning: Boolean,
+    compact: Boolean,
     modifier: Modifier = Modifier
 ) {
     val heroShape = RoundedCornerShape(18.dp)
@@ -463,7 +489,13 @@ private fun ModeCardHero(
         contentAlignment = Alignment.Center
     ) {
         if (card.mode == HomeMode.AGENT) {
-            AgentHero(lines = card.agentLines, ink = ink)
+            AgentHero(
+                runs = card.agentRuns,
+                lines = card.agentLines,
+                ink = ink,
+                animate = animateRunning,
+                compact = compact
+            )
         } else {
             CharacterCover(
                 card = card,
@@ -592,53 +624,302 @@ private fun CharacterCover(
     }
 }
 
-/** Agent 卡封面：两行终端记录 + 一条进度。 */
+/**
+ * Agent 卡封面。
+ *
+ * - 有会话在跑：逐行列出「会话 + 当前阶段」（思考中 / 调用某个工具 / 等待处理），
+ *   行内指示器是动画（思考=呼吸圆点，调用工具=旋转圆环），底部进度条改为来回扫描；
+ * - 没有会话在跑：保持原来的两行终端记录 + 静态进度条。
+ *
+ * 多个会话同时运行时按最近活跃排序，卡片高度不够时只显示前几行，其余折成一行提示。
+ */
 @Composable
-private fun AgentHero(lines: List<String>, ink: Color) {
+private fun AgentHero(
+    runs: List<AgentRunUi>,
+    lines: List<String>,
+    ink: Color,
+    animate: Boolean,
+    compact: Boolean
+) {
     val mint = Color(0xFF8FD3B6)
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = if (compact) 8.dp else 12.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            lines.take(2).forEachIndexed { index, line ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier
-                            .size(5.dp)
-                            .background(if (index == 0) mint else ink.copy(alpha = 0.35f), CircleShape)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = line,
-                        style = nekoRowSubtitleStyle().copy(
-                            fontSize = nekoTextSize(11.5f),
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = if (index == 0) ink.copy(alpha = 0.88f) else ink.copy(alpha = 0.58f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+        if (runs.isEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                lines.take(2).forEachIndexed { index, line ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(5.dp)
+                                .background(if (index == 0) mint else ink.copy(alpha = 0.35f), CircleShape)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = line,
+                            style = nekoRowSubtitleStyle().copy(
+                                fontSize = nekoTextSize(11.5f),
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = if (index == 0) ink.copy(alpha = 0.88f) else ink.copy(alpha = 0.58f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
+            Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
+            AgentBar(mint = mint, ink = ink, sweep = null)
+        } else {
+            val pulse = rememberAgentPulse(animate)
+            val visible = runs.take(if (compact) 2 else 3)
+            Column(verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 7.dp)) {
+                visible.forEach { run ->
+                    AgentRunRow(run = run, ink = ink, mint = mint, animate = animate, pulse = pulse)
+                }
+            }
+            val hidden = runs.size - visible.size
+            if (hidden > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.home_mode_card_agent_run_more, hidden),
+                    style = nekoCaptionStyle(),
+                    color = ink.copy(alpha = 0.55f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+            AgentBar(
+                mint = mint,
+                ink = ink,
+                sweep = if (animate) rememberAgentSweep() else null
+            )
         }
-        Spacer(Modifier.height(14.dp))
+    }
+}
+
+/** 运行中的一行：阶段指示器 + 会话标题 + 阶段文案。 */
+@Composable
+private fun AgentRunRow(
+    run: AgentRunUi,
+    ink: Color,
+    mint: Color,
+    animate: Boolean,
+    pulse: Float
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        AgentPhaseIndicator(
+            phase = run.phase,
+            mint = mint,
+            animate = animate,
+            pulse = pulse
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text = run.title,
+            style = nekoRowSubtitleStyle().copy(fontSize = nekoTextSize(11.5f)),
+            color = ink.copy(alpha = 0.90f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(0.58f)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = agentPhaseLabel(run),
+            style = nekoCaptionStyle().copy(
+                fontSize = nekoTextSize(10.5f),
+                fontFamily = FontFamily.Monospace
+            ),
+            color = if (run.phase == SessionActivityPhase.TOOL) mint else ink.copy(alpha = 0.62f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(0.42f)
+        )
+    }
+}
+
+/** 阶段文案：思考中 / 调用工具名 / 等待处理 / 运行中。 */
+@Composable
+private fun agentPhaseLabel(run: AgentRunUi): String = when (run.phase) {
+    SessionActivityPhase.THINKING -> stringResource(R.string.home_mode_card_agent_run_thinking)
+    SessionActivityPhase.WAITING -> stringResource(R.string.home_mode_card_agent_run_waiting)
+    SessionActivityPhase.TOOL -> {
+        val tool = run.toolName?.takeIf { it.isNotBlank() }
+        if (tool == null) {
+            stringResource(R.string.home_mode_card_agent_run_running)
+        } else {
+            stringResource(R.string.home_mode_card_agent_run_tool, agentToolLabel(tool))
+        }
+    }
+    // 还没有阶段上报（如服务器模式）：只说明在运行
+    null -> stringResource(R.string.home_mode_card_agent_run_running)
+}
+
+/** 工具 id → 本地化名称，缺失时回退为去掉 MCP 前缀的工具名。 */
+@Composable
+private fun agentToolLabel(toolName: String): String {
+    val resId = remember(toolName) { toolNameResId(toolName) }
+    return if (resId != 0) stringResource(resId) else toolDisplayFallbackName(toolName)
+}
+
+/**
+ * 阶段指示器。
+ *
+ * 思考用呼吸圆点（节奏感=在等模型），调用工具用旋转圆环（明确=有外部动作在跑），
+ * 两者形状不同，扫一眼就能区分；等待用户处理用暖色圆点提示需要人介入。
+ */
+@Composable
+private fun AgentPhaseIndicator(
+    phase: SessionActivityPhase?,
+    mint: Color,
+    animate: Boolean,
+    pulse: Float
+) {
+    when (phase) {
+        SessionActivityPhase.TOOL -> SpinningRing(color = mint, animate = animate)
+        SessionActivityPhase.WAITING -> PulsingDot(
+            color = Color(0xFFE9B36A),
+            animate = animate,
+            pulse = pulse
+        )
+        else -> PulsingDot(color = mint, animate = animate, pulse = pulse)
+    }
+}
+
+/** 呼吸圆点：外圈随 pulse 扩散淡出，内点保持可见。 */
+@Composable
+private fun PulsingDot(color: Color, animate: Boolean, pulse: Float) {
+    Box(Modifier.size(12.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            if (animate) {
+                drawCircle(
+                    color = color.copy(alpha = 0.30f * (1f - pulse)),
+                    radius = size.minDimension / 2f * (0.40f + 0.60f * pulse)
+                )
+            }
+        }
         Box(
             Modifier
-                .fillMaxWidth(0.72f)
-                .height(4.dp)
-                .background(ink.copy(alpha = 0.12f), CircleShape)
-        ) {
+                .size(6.dp)
+                .background(
+                    color = color.copy(alpha = if (animate) 0.55f + 0.45f * (1f - pulse) else 0.85f),
+                    shape = CircleShape
+                )
+        )
+    }
+}
+
+/** 旋转圆环：工具执行中的指示器。 */
+@Composable
+private fun SpinningRing(color: Color, animate: Boolean) {
+    val angle = rememberRingAngle(animate)
+    Canvas(
+        Modifier
+            .size(12.dp)
+            .rotate(angle)
+    ) {
+        val stroke = 1.6.dp.toPx()
+        drawArc(
+            color = color,
+            startAngle = 0f,
+            sweepAngle = 250f,
+            useCenter = false,
+            topLeft = Offset(stroke / 2f, stroke / 2f),
+            size = Size(size.width - stroke, size.height - stroke),
+            style = Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+    }
+}
+
+/** 运行中的进度条；[sweep] 非空时是一段来回扫描的高亮，为空则是静态 62% 进度。 */
+@Composable
+private fun AgentBar(mint: Color, ink: Color, sweep: Float?) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxWidth(0.72f)
+            .height(4.dp)
+            .background(ink.copy(alpha = 0.12f), CircleShape)
+    ) {
+        if (sweep == null) {
             Box(
                 Modifier
                     .fillMaxWidth(0.62f)
                     .height(4.dp)
                     .background(mint, CircleShape)
             )
+        } else {
+            val segment = maxWidth * 0.34f
+            Box(
+                Modifier
+                    .offset(x = (maxWidth - segment) * sweep)
+                    .width(segment)
+                    .height(4.dp)
+                    .background(mint, CircleShape)
+            )
         }
     }
+}
+
+/** 呼吸动画 0→1→0；不打动画时返回 1（圆点保持最亮）。 */
+@Composable
+private fun rememberAgentPulse(enabled: Boolean): Float {
+    if (!enabled) return 1f
+    val transition = rememberInfiniteTransition(label = "agentRunPulse")
+    val value by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    return value
+}
+
+/**
+ * 进度条高亮位置 0↔1 往复。
+ *
+ * 用 [RepeatMode.Reverse] 而不是 Restart：Restart 会在亮条抵达末尾后瞬间回到开头，
+ * 视觉上像「闪一下」；Reverse 让它原路折返，再配合缓入缓出，两端自然减速换向。
+ */
+@Composable
+private fun rememberAgentSweep(): Float {
+    val transition = rememberInfiniteTransition(label = "agentRunSweep")
+    val value by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 1800,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sweep"
+    )
+    return value
+}
+
+/** 圆环旋转角度；不打动画时停在 40°，看起来仍是「转了一圈的一半」。 */
+@Composable
+private fun rememberRingAngle(enabled: Boolean): Float {
+    if (!enabled) return 40f
+    val transition = rememberInfiniteTransition(label = "agentRunRing")
+    val value by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ring"
+    )
+    return value
 }
 
 @Composable

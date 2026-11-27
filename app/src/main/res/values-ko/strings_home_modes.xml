@@ -28,6 +28,12 @@
     <string name="home_mode_card_agent_idle">첫 지시를 기다리는 중</string>
     <string name="home_mode_card_agent_running">세션 %1$d개 대기 중</string>
     <string name="home_mode_card_agent_ready">도구 준비 완료</string>
+    <string name="home_mode_card_agent_run_count">%1$d개 실행 중</string>
+    <string name="home_mode_card_agent_run_thinking">생각 중</string>
+    <string name="home_mode_card_agent_run_tool">도구: %1$s</string>
+    <string name="home_mode_card_agent_run_waiting">확인 필요</string>
+    <string name="home_mode_card_agent_run_running">실행 중</string>
+    <string name="home_mode_card_agent_run_more">%1$d개 더 실행 중</string>
     <string name="home_mode_card_companion">일상 동반</string>
     <string name="home_mode_card_enter">입장 →</string>
     <string name="home_mode_card_companion_hint">대본 없이, 그녀와 하루하루를 소중하게 보내요</string>

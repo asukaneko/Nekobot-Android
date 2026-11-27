@@ -3,6 +3,7 @@ package com.nekobot.app.ui.screens.home
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.nekobot.app.R
+import com.nekobot.app.data.SessionActivity
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.screens.sessions.SessionListRow
@@ -12,14 +13,21 @@ import com.nekobot.app.ui.screens.sessions.SessionModeLabel
  * 用首页的会话快照算出三张模式卡：标题取该模式最近一段会话，没有会话时退回模式说明。
  *
  * 角色聊天卡的封面直接用最近那段角色会话的立绘；还没有会话时退回内容库里的第一个角色。
+ *
+ * @param runningSessionIds 全局「生成中」的会话集合，Agent 卡据此展示运行状态动画
+ * @param activities sessionId → 当前阶段（思考 / 调用工具 / 等待处理）
  */
 @Composable
 fun homeModeCards(
     rows: List<SessionListRow>,
-    characters: List<CharacterPreset>
+    characters: List<CharacterPreset>,
+    runningSessionIds: Set<String> = emptySet(),
+    activities: Map<String, SessionActivity> = emptyMap()
 ): List<ModeCardUi> {
     val characterRow = rows.firstOrNull { it.modeLabel == SessionModeLabel.CHARACTER }
     val agentRows = rows.filter { it.modeLabel == SessionModeLabel.AGENT }
+    // 运行中的 Agent 会话：可能同时有多个，按最近活跃排序
+    val agentRuns = buildAgentRunUis(rows, runningSessionIds, activities)
     val listAction = stringResource(R.string.home_mode_card_action_all)
     val latestCharacter = characterRow?.characterId
         ?.let { id -> characters.firstOrNull { it.id == id } }
@@ -59,21 +67,31 @@ fun homeModeCards(
             order = 2,
             badge = stringResource(R.string.home_mode_card_agent),
             title = stringResource(R.string.home_mode_card_agent_title),
-            subtitle = stringResource(R.string.home_mode_card_agent_hint),
+            // 有会话在跑时副标题直接说清有几个在运行，剩下的细节交给卡内的实时状态行
+            subtitle = if (agentRuns.isEmpty()) {
+                stringResource(R.string.home_mode_card_agent_hint)
+            } else {
+                stringResource(R.string.home_mode_card_agent_run_count, agentRuns.size)
+            },
             meta = if (agentRows.isEmpty()) {
                 ""
             } else {
                 stringResource(R.string.home_mode_card_count, agentRows.size)
             },
             action = listAction,
-            agentLines = listOf(
-                if (agentRows.isEmpty()) {
-                    stringResource(R.string.home_mode_card_agent_idle)
-                } else {
-                    stringResource(R.string.home_mode_card_agent_running, agentRows.size)
-                },
-                stringResource(R.string.home_mode_card_agent_ready)
-            )
+            agentLines = if (agentRuns.isEmpty()) {
+                listOf(
+                    if (agentRows.isEmpty()) {
+                        stringResource(R.string.home_mode_card_agent_idle)
+                    } else {
+                        stringResource(R.string.home_mode_card_agent_running, agentRows.size)
+                    },
+                    stringResource(R.string.home_mode_card_agent_ready)
+                )
+            } else {
+                emptyList()
+            },
+            agentRuns = agentRuns
         ),
         ModeCardUi(
             mode = HomeMode.COMPANION,

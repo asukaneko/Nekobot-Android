@@ -204,11 +204,14 @@ object ServiceContainer {
         _generatingSessions.update { current ->
             if (generating) current + id else current - id
         }
+        // 运行阶段与"生成中"标记同一生命周期：结束即清除，首页卡片不会残留"思考中"
+        if (!generating) com.nekobot.app.data.SessionActivityBus.clear(id)
     }
 
     /** 清空"生成中"集合：模式/数据库档案切换时调用，避免上一通道的标记残留。 */
     private fun clearGeneratingSessions() {
         _generatingSessions.value = emptySet()
+        com.nekobot.app.data.SessionActivityBus.clearAll()
     }
 
     /** 通知点击待跳转的会话 ID（NavGraph 观察并消费） */

@@ -76,7 +76,12 @@ class AIPipeline {
         ctx.metadata["max_context_tokens"] = maxContextChars
         com.nekobot.app.data.local.LocalLogger.i(TAG, R.string.log_pipe_start, ctx.chatRequest.conversationId, ctx.chatRequest.content.length)
 
-        val progress = progressReporter ?: callbacks.getProgressReporter(ctx)
+        // 顺带把「思考 / 调用工具」阶段登记到全局总线：首页模式卡据此展示运行状态。
+        // 这里统一包装，避免在下方十几处 progress.onXxx 调用点分别埋点。
+        val progress = ActivityTrackingReporter(
+            delegate = progressReporter ?: callbacks.getProgressReporter(ctx),
+            sessionId = ctx.chatRequest.conversationId
+        )
 
         // Phase 1: 附件解析
         phaseAttachments(ctx, callbacks, progress)

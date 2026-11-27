@@ -4,6 +4,9 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.SessionActivityBus
+import com.nekobot.app.data.sessionActivityFromProgressCard
+import com.nekobot.app.data.sessionActivityToolFromProgressCard
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.model.Message
 import io.socket.client.IO
@@ -388,6 +391,42 @@ class SocketManager(private val prefs: PrefsManager) {
     private val _events = MutableSharedFlow<RealtimeEvent>(extraBufferCapacity = 64)
     val events: SharedFlow<RealtimeEvent> = _events.asSharedFlow()
 
+    /**
+     * 发布一条实时事件，顺带登记该会话的运行阶段。
+     *
+     * 服务器模式的生成由服务端驱动，客户端只接收事件；首页模式卡在没打开聊天页时
+     * 也要显示「思考中 / 调用工具」，因此在这里统一埋点（对齐本地模式的
+     * [com.nekobot.app.data.local.ai.ActivityTrackingReporter]）。
+     */
+    private fun emitEvent(event: RealtimeEvent) {
+        trackSessionActivity(event)
+        _events.tryEmit(event)
+    }
+
+    private fun trackSessionActivity(event: RealtimeEvent) {
+        when (event) {
+            is RealtimeEvent.ThinkingCardUpdate -> {
+                val card = event.card
+                // 完成态的卡片是收尾快照，不再代表任何进行中的阶段
+                if (!card.isAgent || card.isComplete) return
+                SessionActivityBus.publish(
+                    sessionId = event.sessionId,
+                    phase = sessionActivityFromProgressCard(card),
+                    toolName = sessionActivityToolFromProgressCard(card)
+                )
+            }
+            is RealtimeEvent.StreamStart -> SessionActivityBus.onThinking(event.sessionId)
+            is RealtimeEvent.StreamChunk -> SessionActivityBus.onThinking(event.sessionId)
+            is RealtimeEvent.ReasoningChunk -> SessionActivityBus.onThinking(event.sessionId)
+            is RealtimeEvent.ExecConfirmationRequired ->
+                SessionActivityBus.onWaiting(event.request.sessionId)
+            // 授权结果回来后，会话继续跑下一轮：回到思考阶段
+            is RealtimeEvent.ExecConfirmationResolved ->
+                SessionActivityBus.onThinking(event.sessionId)
+            else -> Unit
+        }
+    }
+
     /** 当前已 join 的会话 id */
     @Volatile
     private var joinedSessionId: String? = null
@@ -473,7 +512,7 @@ class SocketManager(private val prefs: PrefsManager) {
             val raw = args.firstOrNull()
             val msg = extractMessageText(raw) ?: "Socket 错误"
             val sessionId = extractSessionId(raw) ?: joinedSessionId
-            _events.tryEmit(RealtimeEvent.Error(msg, sessionId))
+            emitEvent(RealtimeEvent.Error(msg, sessionId))
         }
     }
 
@@ -569,10 +608,10 @@ class SocketManager(private val prefs: PrefsManager) {
                 timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
                 parentMessageId = msg.parentMessageId
             )
-            _events.tryEmit(RealtimeEvent.ThinkingCardUpdate(card, payload.sessionId))
+            emitEvent(RealtimeEvent.ThinkingCardUpdate(card, payload.sessionId))
             return
         }
-        _events.tryEmit(RealtimeEvent.NewMessage(msg, payload.sessionId))
+        emitEvent(RealtimeEvent.NewMessage(msg, payload.sessionId))
     }
 
     private fun handleAiResponse(args: Array<Any>) {
@@ -581,15 +620,15 @@ class SocketManager(private val prefs: PrefsManager) {
             args.firstOrNull(),
             fallbackSessionId = joinedSessionId
         )
-        _events.tryEmit(RealtimeEvent.AiResponse(payload?.message, payload?.sessionId ?: joinedSessionId))
+        emitEvent(RealtimeEvent.AiResponse(payload?.message, payload?.sessionId ?: joinedSessionId))
     }
 
     private fun handleStreamStart(args: Array<Any>) {
         val raw = args.firstOrNull()
         val sid = extractSessionId(raw) ?: joinedSessionId
-        _events.tryEmit(RealtimeEvent.StreamStart(sid))
+        emitEvent(RealtimeEvent.StreamStart(sid))
         extractReasoningText(raw)?.takeIf(String::isNotBlank)?.let {
-            _events.tryEmit(RealtimeEvent.ReasoningChunk(it, sid))
+            emitEvent(RealtimeEvent.ReasoningChunk(it, sid))
         }
     }
 
@@ -597,42 +636,42 @@ class SocketManager(private val prefs: PrefsManager) {
         val raw = args.firstOrNull()
         val chunk = extractChunk(raw) ?: return
         val sid = extractSessionId(raw) ?: joinedSessionId
-        _events.tryEmit(RealtimeEvent.StreamChunk(chunk, sid))
+        emitEvent(RealtimeEvent.StreamChunk(chunk, sid))
     }
 
     private fun handleReasoningChunk(args: Array<Any>) {
         val raw = args.firstOrNull()
         val sid = extractSessionId(raw) ?: joinedSessionId
         val chunk = extractReasoningText(raw) ?: return
-        _events.tryEmit(RealtimeEvent.ReasoningChunk(chunk, sid))
+        emitEvent(RealtimeEvent.ReasoningChunk(chunk, sid))
     }
 
     private fun handleStreamEnd(args: Array<Any>) {
         val sid = extractSessionId(args.firstOrNull()) ?: joinedSessionId
-        _events.tryEmit(RealtimeEvent.StreamEnd(sid))
+        emitEvent(RealtimeEvent.StreamEnd(sid))
     }
 
     private fun handleSessionRenamed(args: Array<Any>) {
-        parseSessionRenamedPayload(args.firstOrNull())?.let(_events::tryEmit)
+        parseSessionRenamedPayload(args.firstOrNull())?.let(::emitEvent)
     }
 
     private fun handleFiltered(args: Array<Any>) {
         val raw = args.firstOrNull()
         val msg = extractMessageText(raw)
         val sid = extractSessionId(raw) ?: joinedSessionId
-        _events.tryEmit(RealtimeEvent.Filtered(msg, sid))
+        emitEvent(RealtimeEvent.Filtered(msg, sid))
     }
 
     private fun handlePlotChoices(args: Array<Any>) {
         val raw = args.firstOrNull() ?: return
         val el = try { JsonParser.parseString(raw.toString()) } catch (_: Exception) { return }
         val sid = extractSessionId(raw) ?: joinedSessionId
-        _events.tryEmit(RealtimeEvent.PlotChoices(el, sid))
+        emitEvent(RealtimeEvent.PlotChoices(el, sid))
     }
 
     private fun handleExecConfirmationRequest(args: Array<Any>) {
         val request = parseExecConfirmationPayload(args.firstOrNull()) ?: return
-        _events.tryEmit(RealtimeEvent.ExecConfirmationRequired(request))
+        emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
         // 用户不在该会话（含应用在后台）时由等待中心发系统通知
         com.nekobot.app.data.local.ai.AgentAttentionCenter.registerExecAuthorization(request)
     }
@@ -649,7 +688,7 @@ class SocketManager(private val prefs: PrefsManager) {
             val approved = obj.get("approved")
                 ?.takeUnless { it.isJsonNull }
                 ?.asBoolean == true
-            _events.tryEmit(RealtimeEvent.ExecConfirmationResolved(sessionId, approved))
+            emitEvent(RealtimeEvent.ExecConfirmationResolved(sessionId, approved))
             sessionId?.takeIf { it.isNotBlank() }?.let {
                 com.nekobot.app.data.local.ai.AgentAttentionCenter.resolveExecAuthorization(it)
             }
@@ -675,7 +714,7 @@ class SocketManager(private val prefs: PrefsManager) {
                     ?: obj.get("message")?.takeUnless { it.isJsonNull }?.asString
                     ?: obj.get("hook_name")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
             )
-            _events.tryEmit(RealtimeEvent.HookNotificationEvent(notif))
+            emitEvent(RealtimeEvent.HookNotificationEvent(notif))
         } catch (_: Exception) {
             // hook 通知解析失败不应影响聊天流程
         }

@@ -39,6 +39,8 @@ data class ModeCardUi(
     val coverCharacterName: String? = null,
     /** 没有立绘时封面里的首字。 */
     val coverInitial: String? = null,
-    /** Agent 卡的终端两行：一行状态、一行提示。 */
-    val agentLines: List<String> = emptyList()
+    /** Agent 卡的终端两行：一行状态、一行提示（没有运行中的会话时才展示）。 */
+    val agentLines: List<String> = emptyList(),
+    /** Agent 卡里正在运行的会话（可能多个），按最近活跃排序。 */
+    val agentRuns: List<AgentRunUi> = emptyList()
 )

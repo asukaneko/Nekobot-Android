@@ -28,6 +28,12 @@
     <string name="home_mode_card_agent_idle">Waiting for your first instruction</string>
     <string name="home_mode_card_agent_running">%1$d sessions waiting</string>
     <string name="home_mode_card_agent_ready">Tools ready</string>
+    <string name="home_mode_card_agent_run_count">%1$d running</string>
+    <string name="home_mode_card_agent_run_thinking">Thinking</string>
+    <string name="home_mode_card_agent_run_tool">Tool: %1$s</string>
+    <string name="home_mode_card_agent_run_waiting">Needs you</string>
+    <string name="home_mode_card_agent_run_running">Running</string>
+    <string name="home_mode_card_agent_run_more">%1$d more running</string>
     <string name="home_mode_card_companion">Daily Companion</string>
     <string name="home_mode_card_enter">Enter →</string>
     <string name="home_mode_card_companion_hint">No script. Just you and her sharing everyday life.</string>

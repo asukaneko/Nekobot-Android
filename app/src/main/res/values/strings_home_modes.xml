@@ -28,6 +28,12 @@
     <string name="home_mode_card_agent_idle">等你的第一条指令</string>
     <string name="home_mode_card_agent_running">%1$d 个会话在等你</string>
     <string name="home_mode_card_agent_ready">工具已就绪</string>
+    <string name="home_mode_card_agent_run_count">%1$d 个会话运行中</string>
+    <string name="home_mode_card_agent_run_thinking">思考中</string>
+    <string name="home_mode_card_agent_run_tool">调用 %1$s</string>
+    <string name="home_mode_card_agent_run_waiting">等待你处理</string>
+    <string name="home_mode_card_agent_run_running">运行中</string>
+    <string name="home_mode_card_agent_run_more">还有 %1$d 个会话在运行</string>
     <string name="home_mode_card_companion">日常陪伴</string>
     <string name="home_mode_card_enter">进入 →</string>
     <string name="home_mode_card_companion_hint">不演剧本，只和她认真过日子</string>
