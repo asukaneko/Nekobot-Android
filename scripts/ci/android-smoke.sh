@@ -4,20 +4,22 @@ set -euo pipefail
 test "${CI:-}" = "true"
 
 gradle() {
+  local heap_limit="$1"
+  shift
   ./gradlew --no-daemon --no-parallel --console=plain --max-workers=2 \
-    '-Dorg.gradle.jvmargs=-Xmx4g -Xss8m -Dfile.encoding=UTF-8' \
+    "-Dorg.gradle.jvmargs=-Xmx${heap_limit} -Xss8m -Dfile.encoding=UTF-8" \
     -Pkotlin.incremental=false -Pnekobot.testAbi=x86_64 "$@"
 }
 
 # 在启动模拟器前完成两个模块的编译、DEX、R8 和签名。
 if [[ "${1:-}" == "--prepare" ]]; then
-  gradle :app:assembleDebug :app:assembleDebugAndroidTest :lianxu:assembleDebugAndroidTest
+  gradle 6g :app:assembleDebug :app:assembleDebugAndroidTest :lianxu:assembleDebugAndroidTest
   mkdir .signing
   trap 'rm -f .signing/legacy-debug.keystore; rmdir .signing' EXIT
   keytool -genkeypair -noprompt -keystore .signing/legacy-debug.keystore \
     -storepass android -keypass android -alias androiddebugkey \
     -dname 'CN=Android CI' -keyalg RSA -keysize 2048 -validity 2
-  gradle :app:assembleRelease
+  gradle 6g :app:assembleRelease
   exit 0
 fi
 
@@ -26,8 +28,8 @@ test "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" = "1"
 mkdir -p app/build/reports/smoke
 adb logcat -c
 test_status=0
-gradle :lianxu:connectedDebugAndroidTest || test_status=1
-gradle :app:connectedDebugAndroidTest || test_status=1
+gradle 4g :lianxu:connectedDebugAndroidTest || test_status=1
+gradle 4g :app:connectedDebugAndroidTest || test_status=1
 adb logcat -d -s NekoPerformance:I > app/build/reports/smoke/session-query.txt
 
 # 设备测试结束时 Gradle 已卸载过包，这里只保证安装环境干净：不存在的包不算失败。
