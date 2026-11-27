@@ -16,3 +16,12 @@
 - 最终 CI 尺寸连续两轮全量通过，Gradle 分别用时 4 分 46 秒和 4 分 44 秒。最终设备 XML 有 65 个用例，0 失败、0 错误、0 跳过。
 - `.\gradlew.bat :lianxu:testDebugUnitTest --rerun :app:testDebugUnitTest --rerun :app:assembleDebug :app:compileDebugAndroidTestKotlin :lianxu:lintDebug` 构建成功，用时 1 分 32 秒。模块 JVM 163/163，宿主 JVM 3196/3196，均为 0 失败、0 错误、0 跳过。模块 Lint 为 0 错误、26 告警，与移植基线分类及数量一致。
 - `bash -n scripts/ci/android-smoke.sh` 通过。用替身命令分别模拟设备测试成功和失败，验证两模块顺序、五次启动调用、临时签名清理及非零退出码传播。已恢复 AVD 原始分辨率与密度并关闭模拟器。
+
+## 云端运行 45928420206 的复查
+
+- 此次云端已完成 Release 打包。模块套件交回 28 个完整结果后设备消失，随后 ADB 等待设备。第 29 项涉及心情头图和截图。相同中断位置也出现在此前的 Windows SwiftShader 基线。
+- 云端实际运行的 action 提交为 `a421e43855164a8197daf9d8d40fe71c6996bb0d`。`emulator-options` 会整体替换默认字符串。工作流保留默认的无窗口、SwiftShader、禁用快照、静音及无开机动画参数，显式关闭后置相机和模拟器 Vulkan 功能。[action 参数定义](https://github.com/ReactiveCircus/android-emulator-runner/blob/a421e43855164a8197daf9d8d40fe71c6996bb0d/action.yml) · [启动命令](https://github.com/ReactiveCircus/android-emulator-runner/blob/a421e43855164a8197daf9d8d40fe71c6996bb0d/src/emulator-manager.ts)
+- 本机对照两组均使用 API 35 x86_64、SwiftShader、320×640、160 dpi、三项动画关闭。默认启用 Vulkan 时全量 65/65 通过，原始 1080×2400 分辨率单跑第 29 项也通过。现有证据无法将崩溃唯一归因到 Vulkan、头图绘制或截图。关闭 Vulkan 后启动日志确认该功能已禁用，SurfaceFlinger 仍报告 Google SwiftShader。
+- 图片保存测试在重建聊天页后等待图片节点出现，每次长按前滚动到图片并验证可见。保留首轮拒绝、零次保存、再次授权后只保存一次及提示文案断言。
+- 在关闭 Vulkan 的 SwiftShader 配置下连续执行两次 `.\gradlew.bat :lianxu:compileDebugAndroidTestKotlin :lianxu:connectedDebugAndroidTest`。两份设备 XML 均为 65 通过、0 失败、0 错误、0 跳过，用例总耗时分别为 92.057 秒、92.415 秒。已恢复 AVD 为 1080×2400、420 dpi 并关闭。此次只改测试和 CI，未重跑 JVM、Lint 或宿主设备套件，云端效果待验证。
+- 模拟器阶段用有限时的 ADB 在线检查把关，所有 ADB 调用均有超时。脚本语法及工作流 YAML 检查通过。替身验证正常路径完整运行两模块及五次启动；起始离线、第一模块后离线、第二模块后离线均以状态码 1 在一秒内退出，后续日志导出和安装均未调用。模拟 ADB 状态查询一直不返回时，脚本在 15.16 秒后退出。

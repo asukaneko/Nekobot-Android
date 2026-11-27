@@ -83,6 +83,7 @@ jobs:
           api-level: 35
           arch: x86_64
           target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -feature -Vulkan
           disable-animations: true
           script: bash scripts/ci/android-smoke.sh
       - name: Save test and performance reports

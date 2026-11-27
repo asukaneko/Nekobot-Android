@@ -60,8 +60,10 @@ class ChatImagesUiTest {
             LocalChatMediaPermissionCheck provides { false }, LocalChatMediaSaver provides { _, ref, source ->
             assertTrue(ref.mime.startsWith("image/")); source.input().use { assertTrue(it.read()>=0) }; saves.incrementAndGet(); Unit
         }){LianxuTheme(false){Chat(vm)}}}}
+        val imageTag = "message-image-$id"
+        ui.waitUntil(15000) { ui.onAllNodesWithTag(imageTag, true).fetchSemanticsNodes().isNotEmpty() }
         fun save() {
-            ui.onNodeWithTag("message-image-$id", true).performTouchInput { longClick() }
+            ui.onNodeWithTag(imageTag, true).performScrollTo().assertIsDisplayed().performTouchInput { longClick() }
             ui.onNodeWithTag("chat-menu-save").performClick()
         }
         save()
