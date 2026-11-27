@@ -85,7 +85,7 @@ class BreezeVoiceEntryTest {
                     override fun getCipherSuite()="fixture"
                     override fun getLocalCertificates():Array<Certificate>?=null
                     override fun getServerCertificates():Array<Certificate> = emptyArray()
-                    override fun getResponseCode()=if(path=="models" && paths.count{it=="models"}==1)401 else 200
+                    override fun getResponseCode()=if (path == "models" && getRequestProperty("xi-api-key") != fixtureKey) 401 else 200
                     override fun getContentType()=if(path.startsWith("text-to-speech/")||path.endsWith("/stream")) "audio/mpeg" else "application/json"
                     val sent=ByteArrayOutputStream()
                     override fun getOutputStream()=sent
@@ -118,10 +118,12 @@ class BreezeVoiceEntryTest {
             ui.onNodeWithTag("voice-site-help").assertExists()
             val input=ui.onNodeWithTag("voice-key-input")
             input.performTextInput("simulate-failure")
-            ui.onNodeWithTag("voice-verify").performScrollTo().assertIsEnabled().performClick()
+            input.performImeAction()
+            ui.onNodeWithTag("voice-verify").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
             waitText("密钥无效，检查后再试")
             input.performTextReplacement(fixtureKey)
-            ui.onNodeWithTag("voice-verify").performScrollTo().assertIsEnabled().performClick()
+            input.performImeAction()
+            ui.onNodeWithTag("voice-verify").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
             waitText("已连接")
             ui.onNodeWithTag("voice-connect-guide").assertDoesNotExist()
             ui.onNodeWithTag("voice-key-help").assertExists()
@@ -196,13 +198,15 @@ class BreezeVoiceEntryTest {
             openLine()
             ui.onNodeWithTag("voice-audition-line").performTextReplacement("🌙".repeat(301))
             ui.onNodeWithTag("voice-audition-line").assertTextEquals("🌙".repeat(300))
-            // Back can close the keyboard first. Dismissing the sheet must discard the draft.
-            inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-            ui.waitForIdle()
-            if (ui.onAllNodesWithTag("voice-audition-line").fetchSemanticsNodes().isNotEmpty()) {
-                inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-                ui.waitForIdle()
+            // Back dismisses the IME, collapses an expanded sheet on short screens,
+            // and finally dismisses the sheet. Stop as soon as the editor is gone.
+            repeat(3) {
+                if (ui.onAllNodesWithTag("voice-audition-line").fetchSemanticsNodes().isNotEmpty()) {
+                    inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                    ui.waitForIdle()
+                }
             }
+            ui.waitUntil(5000) { ui.onAllNodesWithTag("voice-audition-line").fetchSemanticsNodes().isEmpty() }
             ui.onNodeWithTag("voice-audition-line").assertDoesNotExist()
             assertTrue(ttsLines.isEmpty())
             audition(custom)

@@ -20,7 +20,12 @@ class MemoryV2UiTest {
     private val context get()=InstrumentationRegistry.getInstrumentation().targetContext
     private fun app():AppState{lateinit var v:AppState;ui.activityRule.scenario.onActivity{v=ViewModelProvider(it)[AppState::class.java]};return v}
     private fun hideIme(){ui.activityRule.scenario.onActivity{a->(a.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(a.window.decorView.windowToken,0);a.window.decorView.clearFocus()};ui.waitForIdle()}
-    private fun shot(name:String){hideIme();android.os.SystemClock.sleep(400);val dir=File(context.getExternalFilesDir(null),"evidence-memory-013").apply{mkdirs()};val b=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot();File(dir,"$name.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}}
+    private fun shot(name:String){hideIme();android.os.SystemClock.sleep(400);val dir=File(context.getExternalFilesDir(null),"evidence-memory-013").apply{mkdirs()};
+      val bitmap=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+      try {
+          File(dir,"$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+      } finally { bitmap.recycle() }
+    }
     @Test fun bothMemoryTabsSwipeAndKeepIndependentScrollsAndEditorDraft(){
         ui.waitUntil(15000){app().ready};val v=app();val repo=v.processing
         runBlocking{repo.tx{db->repeat(12){index->for(manual in listOf(false,true))repo.saveMemory(db,StoredMemory("swipe-$manual-$index","seed-lin",MemoryCategory.STATE_FACT,"合成${if(manual)"人工"else"角色"}记忆$index",manual=manual,about=MemoryAbout.USER,createdAt=System.currentTimeMillis()+index))}};v.refreshProcessing()}

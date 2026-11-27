@@ -1,6 +1,9 @@
 package app.lianxu.independent
 
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.luminance
 import android.content.Context
@@ -98,7 +101,11 @@ class SettingsHierarchyTest {
     }
     @Test fun darkDirectoryBadgesContrastWithTheirGlaze(){
         ui.activityRule.scenario.onActivity { activity->
-            activity.setContent{LianxuTheme(dark=true){SettingsDirectory(app,models)}}
+            activity.setContent {
+                LianxuTheme(dark=true) {
+                    Box(Modifier.safeDrawingPadding()) { SettingsDirectory(app,models) }
+                }
+            }
         }
         for(icon in listOf("model","purposes","memory","tools","archive","updates","about")){
             val node=ui.onNodeWithTag("badge-$icon",useUnmergedTree=true)
@@ -106,7 +113,8 @@ class SettingsHierarchyTest {
             val pixels=node.captureToImage().toPixelMap()
             val ground=pixels[pixels.width/2,3].luminance()
             val brightest=(0 until pixels.width).maxOf{x->(0 until pixels.height).maxOf{y->pixels[x,y].luminance()}}
-            assertTrue(icon,ground<.15f && (brightest+.05f)/(ground+.05f)>3f)
+            assertTrue("$icon (${pixels.width}x${pixels.height}, ground=$ground, brightest=$brightest)",
+                ground<.15f && (brightest+.05f)/(ground+.05f)>3f)
         }
     }
     @Test fun directoryHomeAndSecondaryRowsWithRealRotation(){

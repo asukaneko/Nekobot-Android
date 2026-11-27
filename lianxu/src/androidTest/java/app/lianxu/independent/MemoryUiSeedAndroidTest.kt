@@ -47,7 +47,12 @@ class MemoryUiSeedAndroidTest {
   }
   ui.runOnIdle{vm.open("processing-role",role)}
   ui.waitUntil(15000){ui.onAllNodesWithTag("memory-$detailId").fetchSemanticsNodes().isNotEmpty()}
-  fun shot(name:String){ui.waitForIdle();Thread.sleep(500);val context=InstrumentationRegistry.getInstrumentation().targetContext;val dir=File(context.getExternalFilesDir(null),"memory-task-a").apply{mkdirs()};InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().let{b->File(dir,"$name.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}}}
+  fun shot(name:String){ui.waitForIdle();Thread.sleep(500);val context=InstrumentationRegistry.getInstrumentation().targetContext;val dir=File(context.getExternalFilesDir(null),"memory-task-a").apply{mkdirs()};
+      val bitmap=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+      try {
+          File(dir,"$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+      } finally { bitmap.recycle() }
+    }
   shot("after_list")
   ui.onNodeWithText("更多").performClick();shot("after_list_menu");ui.onNodeWithText("总结记忆与维护").performClick();ui.onNodeWithTag("back").performClick()
   ui.onNodeWithText("我写的").performClick();shot("after_mine")

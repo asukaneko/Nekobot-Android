@@ -115,8 +115,12 @@ class PortableImportPlainLanguageTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         android.os.SystemClock.sleep(150)
         InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().let { image ->
-            File(compose.activity.cacheDir, "import-review-$name.png").outputStream().use {
-                image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            try {
+                File(compose.activity.cacheDir, "import-review-$name.png").outputStream().use {
+                    image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }
+            } finally {
+                image.recycle()
             }
         }
     }

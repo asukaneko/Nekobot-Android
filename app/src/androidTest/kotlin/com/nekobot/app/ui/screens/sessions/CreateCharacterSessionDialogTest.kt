@@ -70,8 +70,12 @@ class CreateCharacterSessionDialogTest {
         instrumentation.waitForIdleSync()
         android.os.SystemClock.sleep(300)
         val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
-        File(compose.activity.getExternalFilesDir("validation"), "$name.png").outputStream().use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        try {
+            File(compose.activity.getExternalFilesDir("validation"), "$name.png").outputStream().use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+        } finally {
+            bitmap.recycle()
         }
     }
 

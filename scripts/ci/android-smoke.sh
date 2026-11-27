@@ -1,25 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 安装测试包和清理数据只允许作用于 CI 模拟器。
 test "${CI:-}" = "true"
-test "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" = "1"
 
+gradle() {
+  ./gradlew --no-daemon --no-parallel --console=plain --max-workers=2 \
+    '-Dorg.gradle.jvmargs=-Xmx4g -Xss8m -Dfile.encoding=UTF-8' \
+    -Pkotlin.incremental=false -Pnekobot.testAbi=x86_64 "$@"
+}
+
+# 在启动模拟器前完成两个模块的编译、DEX、R8 和签名。
+if [[ "${1:-}" == "--prepare" ]]; then
+  gradle :app:assembleDebug :app:assembleDebugAndroidTest :lianxu:assembleDebugAndroidTest
+  mkdir .signing
+  trap 'rm -f .signing/legacy-debug.keystore; rmdir .signing' EXIT
+  keytool -genkeypair -noprompt -keystore .signing/legacy-debug.keystore \
+    -storepass android -keypass android -alias androiddebugkey \
+    -dname 'CN=Android CI' -keyalg RSA -keysize 2048 -validity 2
+  gradle :app:assembleRelease
+  exit 0
+fi
+
+# 安装、清理和测试只在 CI 模拟器上执行。
+test "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" = "1"
 mkdir -p app/build/reports/smoke
 adb logcat -c
-./gradlew --no-daemon --console=plain --max-workers=2 \
-  '-Dorg.gradle.jvmargs=-Xmx6g -Xss8m -Dfile.encoding=UTF-8' \
-  -Pkotlin.incremental=false -Pnekobot.testAbi=x86_64 connectedDebugAndroidTest
+test_status=0
+gradle :lianxu:connectedDebugAndroidTest || test_status=1
+gradle :app:connectedDebugAndroidTest || test_status=1
 adb logcat -d -s NekoPerformance:I > app/build/reports/smoke/session-query.txt
 
-# CI 使用临时测试证书验证混淆后的安装与启动，不使用发布私钥。
-mkdir -p .signing
-keytool -genkeypair -noprompt -keystore .signing/legacy-debug.keystore \
-  -storepass android -keypass android -alias androiddebugkey \
-  -dname 'CN=Android CI' -keyalg RSA -keysize 2048 -validity 2
-./gradlew --no-daemon --console=plain --max-workers=2 \
-  '-Dorg.gradle.jvmargs=-Xmx6g -Xss8m -Dfile.encoding=UTF-8' \
-  -Pkotlin.incremental=false -Pnekobot.testAbi=x86_64 assembleRelease
 # 设备测试结束时 Gradle 已卸载过包，这里只保证安装环境干净：不存在的包不算失败。
 adb uninstall com.nekobot.app > /dev/null 2>&1 || true
 # -g：安装时直接授予运行时权限。否则首启会弹系统权限页并顶在最前面，
@@ -47,3 +57,4 @@ if grep -A4 'FATAL EXCEPTION' app/build/reports/smoke/runtime.txt | grep -q 'com
   cat app/build/reports/smoke/runtime.txt
   exit 1
 fi
+exit "$test_status"
