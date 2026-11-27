@@ -1,6 +1,8 @@
 package app.lianxu.independent
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,7 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -67,7 +71,7 @@ internal fun chatThinkingParts(text:String,breaks:List<ChatThinkingBreak>,tools:
         visible.forEachIndexed{index,part->
             when(part){
                 is ChatThinkingPart.Text->if(part.text.isNotBlank()){
-                    ChatThinkingCard("$owner-$textIndex",part.text,inProgress&&index==visible.lastIndex,defaultExpanded=true,first=index==0,last=index==visible.lastIndex)
+                    ChatThinkingCard("$owner-$textIndex",part.text,inProgress&&index==visible.lastIndex,defaultExpanded=inProgress,first=index==0,last=index==visible.lastIndex)
                     textIndex++
                 }
                 is ChatThinkingPart.Tool->ChatToolReceipt(part.item,loadMemory=loadMemory,loadRecall=loadRecall,first=index==0,last=index==visible.lastIndex)
@@ -79,23 +83,34 @@ internal fun chatThinkingParts(text:String,breaks:List<ChatThinkingBreak>,tools:
 /** One collapsible piece of native model text. Never creates a message, a memory or a source. */
 @Composable private fun ChatThinkingCard(owner:String,text:String,inProgress:Boolean,modifier:Modifier=Modifier,defaultExpanded:Boolean=false,first:Boolean=true,last:Boolean=true){
     if(text.isBlank())return
-    // Interleaved cards stay expanded across the live→done switch; a user's collapse is kept.
-    // The legacy single card keeps its old behavior (collapses again when the reply finishes).
-    var expanded by rememberSaveable(owner,if(defaultExpanded)0 else inProgress,defaultExpanded){mutableStateOf(inProgress||defaultExpanded)}
+    val initiallyExpanded = inProgress || defaultExpanded
+    var expanded by rememberSaveable(owner, initiallyExpanded) { mutableStateOf(initiallyExpanded) }
     val faint=Muted.copy(alpha=.82f)
-    ChatTimelineNode("thinking-$owner",modifier,first,last){
+    val kind = if (inProgress) TimelineMarkerKind.THINKING_LIVE else TimelineMarkerKind.THINKING_IDLE
+    ChatTimelineNode("thinking-$owner",kind,modifier,first,last){
     Column(Modifier.testTag("thinking-card-$owner"),verticalArrangement=Arrangement.spacedBy(4.dp)){
         Row(Modifier.fillMaxWidth().clickable(role=Role.Button){expanded=!expanded}.testTag("thinking-toggle-$owner")
             .semantics{contentDescription=if(expanded)"收起思考过程"else"展开思考过程";stateDescription=if(expanded)"已展开"else"已收起"}
-            .padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)){
+            .heightIn(min=28.dp).padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)){
             Text("思考内容",style=MaterialTheme.typography.labelSmall.copy(fontSize=13.sp,lineHeight=18.sp),color=faint)
-            Box(Modifier.rotate(if(expanded)0f else 180f)){ControlIcon("up",faint,14.dp)}
+            TimelineChevron(expanded, faint)
         }
         if(expanded){
-            Box(Modifier.fillMaxWidth().heightIn(max=220.dp).testTag("thinking-scroll-$owner")){
-                SelectionContainer{
-                    Text(text,Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("thinking-text-$owner"),style=MaterialTheme.typography.bodySmall,color=faint)
+            val scroll = rememberScrollState()
+            val shape = RoundedCornerShape(11.dp)
+            val paper = timelinePaper
+            val edge = paper.compositeOver(ChatPageBackground)
+            Box(Modifier.fillMaxWidth().heightIn(max=340.dp).clip(shape).background(paper)
+                .border(.5.dp, Line.copy(alpha=.55f), shape).testTag("thinking-scroll-$owner")
+                .padding(horizontal=12.dp, vertical=10.dp)) {
+                SelectionContainer {
+                    Text(text, Modifier.fillMaxWidth().verticalScroll(scroll).testTag("thinking-text-$owner"),
+                        style=MaterialTheme.typography.bodySmall, color=faint)
                 }
+                if (scroll.canScrollBackward) Spacer(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(18.dp)
+                    .background(Brush.verticalGradient(listOf(edge, edge.copy(alpha=0f)))))
+                if (scroll.canScrollForward) Spacer(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(18.dp)
+                    .background(Brush.verticalGradient(listOf(edge.copy(alpha=0f), edge))))
             }
         }
     }
@@ -141,10 +156,17 @@ internal fun chatThinkingParts(text:String,breaks:List<ChatThinkingBreak>,tools:
 /** One independently expandable tool event; stored states and content are unchanged. */
 @Composable internal fun ChatToolReceipt(item:ChatToolActivity,modifier:Modifier=Modifier,loadMemory:(suspend(String)->StoredMemory?)?=null,loadRecall:(suspend(List<ChatToolActivity>)->List<RecallContentPart>)?=null,first:Boolean=true,last:Boolean=true){
     if(item.state==ChatToolActivity.SUPERSEDED)return
-    ChatTimelineNode("tool-${item.id}",modifier,first,last){
     if(item.tool in ChatToolActivity.RECALL_TOOLS){
-        ChatRecallReceipt(RecallReceiptGroup(listOf(item)),loadContents=loadRecall)
-    }else{
+        ChatRecallReceipt(RecallReceiptGroup(listOf(item)),modifier,loadRecall,first,last)
+        return
+    }
+    val kind = when (item.state) {
+        "running", "staged" -> TimelineMarkerKind.TOOL_LIVE
+        "failed" -> TimelineMarkerKind.TOOL_FAILURE
+        "success" -> if (item.tool == "agent_memory_update" && !item.canOpenMemory) TimelineMarkerKind.TOOL_NEUTRAL else TimelineMarkerKind.TOOL_SUCCESS
+        else -> TimelineMarkerKind.TOOL_NEUTRAL
+    }
+    ChatTimelineNode("tool-${item.id}",kind,modifier,first,last){
     val canOpen=item.canOpenMemory&&loadMemory!=null
     val reveal=chatCapsuleReveal(toolCapsuleKey(item,LocalChatCapsuleOwner.current),item.state !in setOf("running","staged"))
     var expanded by remember(item.id,item.attempt){mutableStateOf(false)}
@@ -159,18 +181,12 @@ internal fun chatThinkingParts(text:String,breaks:List<ChatThinkingBreak>,tools:
     }
     Column(verticalArrangement=Arrangement.spacedBy(4.dp)){
         val memoryWrite=item.tool=="agent_memory_update"
-        val resultColor=when{
-            item.state=="failed"->MaterialTheme.colorScheme.error
-            item.state in setOf("running","staged","unknown")||(memoryWrite&&!item.canOpenMemory)->Muted
-            else->GreenText
-        }
+        val resultColor=if(kind==TimelineMarkerKind.TOOL_LIVE) Muted else kind.tone()
         Box(Modifier.testTag("tool-result-${item.id}")){
-        Row(Modifier.clickable(role=Role.Button){if(!expanded)peek=null;expanded=!expanded}
-            .testTag("tool-receipt-toggle-${item.id}")
-            .semantics{contentDescription=if(canOpen){if(expanded)"收起这条记忆"else"查看这条记忆"}else{if(expanded)"收起工具详情"else"查看工具详情"};stateDescription=if(expanded)"已展开"else"已收起"}
-            .padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)){
+        TimelineToolCapsule(item.tool, expanded, resultColor, Modifier.testTag("tool-receipt-toggle-${item.id}")
+            .semantics{contentDescription=if(canOpen){if(expanded)"收起这条记忆"else"查看这条记忆"}else{if(expanded)"收起工具详情"else"查看工具详情"};stateDescription=if(expanded)"已展开"else"已收起"},
+            toggle={if(!expanded)peek=null;expanded=!expanded}){
             ChatCapsuleLabel(item.label(),reveal,MaterialTheme.typography.labelSmall.copy(fontSize=13.sp,lineHeight=18.sp),resultColor,Modifier.weight(1f,fill=false),loading=if(memoryWrite)"正在记住"else"正在处理…")
-            Box(Modifier.rotate(if(expanded)0f else 180f)){ControlIcon("up",resultColor,14.dp)}
         }
         }
         if(item.state in setOf("running","staged")&&item.detail.isNotBlank())Text(item.detail,style=MaterialTheme.typography.bodySmall,color=Muted)
@@ -188,7 +204,6 @@ internal fun chatThinkingParts(text:String,breaks:List<ChatThinkingBreak>,tools:
                 }
             }else if(item.detail.isBlank())Text(if(item.state in setOf("running","staged"))"正在处理…"else"暂无可查看的详情",style=MaterialTheme.typography.bodySmall,color=Muted)
         }
-    }
     }
     }
 }
