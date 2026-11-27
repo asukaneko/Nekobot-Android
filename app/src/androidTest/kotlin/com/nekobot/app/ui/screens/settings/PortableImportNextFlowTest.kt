@@ -93,7 +93,11 @@ class PortableImportNextFlowTest {
     private fun screenshot(name: String) {
         compose.waitForIdle()
         val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        File(compose.activity.cacheDir, "import-next-$name.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        try {
+            File(compose.activity.cacheDir, "import-next-$name.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            image.recycle()
+        }
     }
     private fun updateFlow(large: Boolean) {
         start(large)

@@ -18,19 +18,29 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 
 @Composable internal fun UpdatesContent(build:InstalledBuild?){
-    val current=build?.let{LocalReleaseNotes.forVersion(it.versionCode)}
-    val history=build?.let{LocalReleaseNotes.history(it.versionCode).filterNot{note->note.code==it.versionCode}}.orEmpty()
+    val current=build?.let(UpdatesPresentation::current)
+    val history=build?.let{UpdatesPresentation.history(it,current)}.orEmpty()
     var expanded by rememberSaveable(build?.versionCode){mutableStateOf(true)}
     Column(Modifier.fillMaxWidth().testTag("updates-page"),verticalArrangement=Arrangement.spacedBy(UiSpace.group)){
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(UiSpace.radius)).background(Paper)){
             Row(Modifier.fillMaxWidth().heightIn(min=72.dp).clickable(role=Role.Button,onClickLabel=if(expanded)"收起当前版本" else "展开当前版本"){expanded=!expanded}
                 .testTag("updates-current-toggle").semantics{stateDescription=if(expanded)"已展开" else "已收起"}.padding(18.dp),verticalAlignment=Alignment.CenterVertically){
-                Text(build?.let{"当前安装版本 ${it.versionName}"}?:"版本信息暂时无法读取",Modifier.weight(1f).testTag("updates-installed-version"),style=MaterialTheme.typography.titleLarge,color=Ink)
+                Column(Modifier.weight(1f), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text(build?.let { "v${it.releaseName}" } ?: "版本信息暂时无法读取", Modifier.testTag("updates-installed-version"),
+                            style=MaterialTheme.typography.titleLarge, color=Ink, maxLines=1)
+                        if (build != null) Text("当前版本" + (build.testNumber?.let { " · 测试 $it" } ?: ""),
+                            Modifier.background(ConfigSuccess.copy(alpha=.14f), RoundedCornerShape(50)).padding(horizontal=8.dp,vertical=3.dp),
+                            style=MaterialTheme.typography.labelSmall, color=ConfigSuccess)
+                    }
+                    Text(if (build?.testNumber != null) "独立测试版 · 随安装包保存在本机" else "随安装包保存在本机",
+                        style=MaterialTheme.typography.bodySmall, color=Muted)
+                }
                 Spacer(Modifier.width(8.dp));Box(Modifier.rotate(if(expanded)0f else 180f)){ControlIcon("up")}
             }
             if(expanded)Column(Modifier.fillMaxWidth().padding(horizontal=18.dp).padding(bottom=16.dp).testTag("updates-current-content"),verticalArrangement=Arrangement.spacedBy(12.dp)){
                 HorizontalDivider(color=Line)
-                val experience=build?.let{UpdatesPresentation.experienceFor(it.versionCode)}
+                val experience=current?.let{UpdatesPresentation.experienceFor(it.code)}
                 if(experience!=null){
                     NumberedUpdates(experience,"experience")
                     current?.let{CurrentReleaseRecord(it)}
@@ -69,8 +79,8 @@ import androidx.compose.ui.unit.dp
     Row(Modifier.fillMaxWidth().heightIn(min=72.dp).clickable(role=Role.Button,onClickLabel=if(open)"收起 ${note.version}" else "查看 ${note.version}"){open=!open}
         .testTag("updates-history-${note.code}").semantics{stateDescription=if(open)"已展开" else "已收起"}.padding(18.dp),verticalAlignment=Alignment.CenterVertically){
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
-            Text(note.version,style=MaterialTheme.typography.titleSmall,color=Ink)
-            if(note.title!="恋叙 ${note.version}")Text(note.title,style=MaterialTheme.typography.bodySmall,color=Muted)
+            Text("v${note.version}",style=MaterialTheme.typography.titleSmall,color=Ink)
+            Text(UpdatesPresentation.summary(note).first(),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,color=Muted)
         }
         Spacer(Modifier.width(8.dp));Box(Modifier.rotate(if(open)0f else 180f)){ControlIcon("up")}
     }
@@ -84,7 +94,7 @@ import androidx.compose.ui.unit.dp
 @Composable private fun OriginalRecord(note:LocalReleaseNote,prefix:String){
     var open by rememberSaveable(note.code){mutableStateOf(false)}
     TextButton(onClick={open=!open},modifier=Modifier.heightIn(min=UiSpace.action).testTag("updates-details-$prefix").semantics{stateDescription=if(open)"已展开" else "已收起"}){
-        Text(if(open)"收起完整记录" else "完整记录与当时验证")
+        Text(if(open)"收起完整记录" else "查看全部更新与注意事项 ›")
     }
     if(open)Column(Modifier.testTag("updates-original-$prefix"),verticalArrangement=Arrangement.spacedBy(12.dp)){
         if(UpdatesPresentation.summary(note)!=note.changes)NumberedUpdates(note.changes,"original-$prefix")

@@ -85,7 +85,11 @@ class AgentModesScreenTest {
         instrumentation.waitForIdleSync()
         android.os.SystemClock.sleep(250)
         requireNotNull(instrumentation.uiAutomation.takeScreenshot()).let { bitmap ->
-            File(compose.activity.getExternalFilesDir("validation"), "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            try {
+                File(compose.activity.getExternalFilesDir("validation"), "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            } finally {
+                bitmap.recycle()
+            }
         }
     }
     @Test fun legacyDetailsStayReadOnlyWithoutConversion() {

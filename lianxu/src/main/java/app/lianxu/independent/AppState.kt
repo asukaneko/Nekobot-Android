@@ -12,6 +12,7 @@ import java.util.UUID
 
 /** One live draft and its submission receipt survive an Activity rebuild together. */
 internal class ChatDraftState(text:String="",version:Long=0){
+    val quote=mutableStateOf<ChatReplyQuote?>(null)
     val image=mutableStateOf<PendingChatImage?>(null)
     val importing=mutableStateOf(false)
     val text=mutableStateOf(text)
@@ -41,6 +42,17 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     internal var companionReceipts by mutableStateOf(emptyList<CompanionReceipt>());private set
     internal var companionPolicy by mutableStateOf("disabled")
     var notificationTarget by mutableStateOf<Long?>(null);private set
+    internal suspend fun quietHours()=QuietHours.decode(store.preference(QuietHours.KEY,QuietHours().encode()))
+    internal suspend fun saveQuietHours(value:QuietHours){
+        processing.tx{db->
+            val now=AppServices.companionClock()
+            val old=QuietHours.read(db)
+            db.execSQL("INSERT OR REPLACE INTO preferences(key,value) VALUES(?,?)",arrayOf(QuietHours.KEY,value.encode()))
+            val zone=java.time.ZoneId.systemDefault()
+            db.execSQL("UPDATE companion_state SET plan_due=? WHERE policy='enabled' AND plan_retry=0 AND plan_due=?",arrayOf<Any>(value.nextMorning(now,zone),old.nextMorning(now,zone)))
+        }
+        settleCompanion()
+    }
     internal suspend fun settleCompanion(){companionNotifications.reconcile();CompanionScheduler.enqueue(getApplication(),companion)}
     internal suspend fun changeCompanionPermission(role:String,enabled:Boolean){
         LocalStep.COMPANION_PERMISSION.observe { companion.setPolicy(role,enabled,CompanionRuntime.owner) }
@@ -155,11 +167,12 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     /** One row per committed memory batch; placed in the chat where that batch finished. */
     internal var memoryPills by mutableStateOf(emptyList<MemoryPill>()); private set
     var tab by mutableIntStateOf(0)
+    var goingBack by mutableStateOf(false);private set
     var page by mutableStateOf("home"); private set
     var activeId by mutableStateOf(""); private set
     private var detailReturn = "home"
-    private var processingReturn = "processing"
-    private var memorySettingsReturn = "processing"
+    private var processingReturn = "home"
+    private var memorySettingsReturn = "home"
     var searching by mutableStateOf(false); private set
     var candidates by mutableStateOf(emptyList<Friend>()); private set
     var generatedRoles by mutableStateOf(emptyList<GeneratedRole>()); private set
@@ -251,10 +264,11 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
     }
     // A chat attempt belongs to its role, not to the currently visible page.
     fun open(page: String, id: String = "") {
+        goingBack=false
         ProcessDiagnostics.action(if(page=="models") ProcessAction.OPEN_MODELS else ProcessAction.OPEN)
         if (page == "detail") detailReturn = this.page
-        if (page == "settings-memory") memorySettingsReturn = this.page
-        if (page == "processing-role") processingReturn = if (this.page == "detail") "detail" else "processing"
+        if (page == "settings-memory") memorySettingsReturn = if(this.page in setOf("processing-role","role-learning","role-relationship")) this.page else "home"
+        if (page in setOf("role-learning","role-relationship","processing-role")) processingReturn = if (this.page == "detail") "detail" else "home"
         modelsReturnChatId = null
         modelsTargetConfigId = null
         modelsTargetPurpose = null
@@ -264,9 +278,10 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
         error = ""
     }
     fun back() {
+        goingBack=true
         if(page=="models" && !modelsReturnChatId.isNullOrBlank()){
             val returnChat=modelsReturnChatId!!
-            open("chat",returnChat)
+            open("chat",returnChat);goingBack=true
             return
         }
         if(page=="chat" && memoryChatReturn){memoryChatReturn=false;memoryChatRequest.consume();page="processing-role";return}
@@ -301,10 +316,10 @@ class AppState @JvmOverloads constructor(application: Application, client:TextCh
         val f=Friend(UUID.randomUUID().toString(),name.trim(),bio.trim(),prompt.trim())
         save { store.add(listOf(f),demoGreeting=false); LianxuModule.roles.sync();reload(); open("chat",f.id) }
     }
-    fun send(text:String,onPersisted:()->Unit={}):Boolean=sendImage(text,null,onPersisted)
-    fun sendImage(text:String,image:PendingChatImage?,onPersisted:()->Unit={}):Boolean {
+    fun send(text:String,onPersisted:()->Unit={}):Boolean=sendImage(text,null,onPersisted=onPersisted)
+    fun sendImage(text:String,image:PendingChatImage?,quote:ChatReplyQuote?=null,onPersisted:()->Unit={}):Boolean {
         if(saving||friends.none{it.id==activeId})return false
-        return runner.sendImage(activeId,text,image,onPersisted)
+        return runner.sendImage(activeId,text,image,quote,onPersisted)
     }
     fun cancelChat(friendId:String){runner.cancel(friendId)}
     fun cancelProcessing(id:String){memory.cancel(id)}

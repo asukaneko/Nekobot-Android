@@ -119,7 +119,11 @@ class PortableImportDifferencesTest {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(100, 2000)
         val bitmap = requireNotNull(automation.takeScreenshot())
-        File(compose.activity.cacheDir, "portable-difference-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        try {
+            File(compose.activity.cacheDir, "portable-difference-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bitmap.recycle()
+        }
     }
     @Test fun openingClosingCancellingAndRevertingDraftChoicesKeepTheOriginalValidPreview() {
         launch()

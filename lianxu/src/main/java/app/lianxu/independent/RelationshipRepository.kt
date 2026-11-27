@@ -5,7 +5,7 @@ import androidx.core.database.sqlite.transaction
 import com.google.gson.Gson
 
 internal data class RelationshipView(val template:RelationTemplate,val start:RelationStart,val inputs:List<RelationInput>,val state:RelationState,val summary:String,
-    val parameters:RelationParameters=template.parameters,val label:String=template.label,val modelMaterial:String="",val attributionIncomplete:Boolean=false)
+    val parameters:RelationParameters=template.parameters,val label:String=template.label,val modelMaterial:String="",val attributionIncomplete:Boolean=false,val innerNote:CurrentInnerNote?=null)
 
 /** The same valid, finished history used by memory: stopping does not erase a real user message. */
 internal fun CompanionRepository.relationshipContacts(db:SQLiteDatabase,role:String,at:Long=clock()):List<Pair<SourceRef,Long>> {
@@ -68,18 +68,14 @@ internal fun CompanionRepository.relationship(db:SQLiteDatabase,role:String,at:L
     fun quote(ref:SourceRef):String?=if(!refCurrent(db,ref)&&program.none{it.source==ref})null else db.rawQuery("SELECT body FROM messages WHERE friend_id=? AND id=?",arrayOf(role,ref.turnId.toString())).use{if(it.moveToFirst())it.getString(0)else null}
     val attributionIncomplete=RelationFeeling.read(db,role)?.attributionIncomplete==true
     val summary=(if(attributionIncomplete)RelationshipPrompt.UNVERIFIED+"\n" else "")+RelationshipSummary.render(state,at,store.persona(db).addressee(),::quote)
-    val modelMaterial=if(attributionIncomplete)RelationshipPrompt.UNVERIFIED else RelationshipPrompt.render(state,at,::quote)
+    val note=if(attributionIncomplete)null else currentInnerNote(db,role,at)
+    val modelMaterial=RelationshipPrompt.render(state,at,attributionIncomplete,{note?.text},::quote)
     val label=changes.lastOrNull()?.label?:template.label
     val activeTemplate=RelationTemplate.named(label)?:RelationTemplate.entries.firstOrNull{label=="自定义（基于${it.label}）"}?:template
-    return RelationshipView(activeTemplate,start,rows,state,summary,parameters,label,modelMaterial,attributionIncomplete)
+    return RelationshipView(activeTemplate,start,rows,state,summary,parameters,label,modelMaterial,attributionIncomplete,note)
 }
 internal suspend fun CompanionRepository.relationship(role:String,at:Long=clock())=ProcessingRepository(store).read{relationship(it,role,at)}
 
-internal fun CompanionRepository.relationshipForecast(db:SQLiteDatabase,role:String):Pair<RelationshipView,(Long)->RelationState> {
-    val view=relationship(db,role)
-    val cursor=RelationCaches.get(db,role).feeling?.copy()
-    return view to {time->if(cursor!=null&&time>=(cursor.at?:Long.MIN_VALUE))cursor.copy().also{it.advance(time);it.compact()}.state()else relationship(db,role,time).state}
-}
 internal suspend fun CompanionRepository.relationshipHistory(role:String)=ProcessingRepository(store).read{relationshipInputs(it,role,true)}
 
 /** User correction affects relationship interpretation only; source text and all history remain. */
@@ -96,3 +92,41 @@ internal suspend fun CompanionRepository.correctRelationshipRecord(source:Source
 internal suspend fun CompanionRepository.restoreRelationshipRecord(source:SourceRef)=correctRelationshipRecord(source,false)
 internal suspend fun CompanionRepository.undoRelationshipCorrection(source:SourceRef)=correctRelationshipRecord(source,false)
 internal suspend fun CompanionRepository.changeRelationshipTemplate(role:String,template:RelationTemplate)=changeRelationshipParameters(role,template.parameters,template.label)
+
+/** The committed proposal row already owns the role, user message and source revision, including on restore. */
+internal data class CurrentInnerNote(val text:String,val at:Long,val source:SourceRef)
+
+internal suspend fun CompanionRepository.correctInnerNote(source:SourceRef,voided:Boolean=true)=ProcessingRepository(store).tx{db->
+    val args=arrayOf(source.characterId,source.turnId.toString(),source.version.toString())
+    val where="role=? AND source_id=? AND revision=? AND committed=1"
+    val proposal=db.rawQuery("SELECT proposal FROM companion_sources WHERE $where",args).use{
+        if(it.moveToFirst())Gson().fromJson(it.getString(0),ExperienceProposal::class.java) else null
+    }?:return@tx false
+    val note=proposal.innerNote?:return@tx false
+    if(note.disputed==voided || !refCurrent(db,source))return@tx false
+    db.update("companion_sources",android.content.ContentValues().apply{put("proposal",Gson().toJson(proposal.copy(innerNote=note.copy(disputed=voided))))},where,args)
+    CompanionRepository.bump(db,source.characterId)
+    true
+}.also{if(it)CompanionRuntime.changed()}
+internal data class ReviewInnerNote(val text:String,val at:Long,val disputed:Boolean=false) {
+    companion object {
+        fun validText(text:String?)=!text.isNullOrBlank() && text.codePointCount(0,text.length)<=30 && text.none{it.isISOControl()}
+    }
+    fun visible(now:Long,source:SourceRef,allowed:(SourceRef)->Boolean):Boolean =
+        !disputed && at>0 && at<=now && now-at<RelationshipProjector.DAY && validText(text) && allowed(source)
+}
+
+private fun CompanionRepository.currentInnerNote(db:SQLiteDatabase,role:String,at:Long):CurrentInnerNote? =
+    db.rawQuery("""SELECT source_id,revision,proposal FROM companion_sources
+        WHERE role=? AND committed=1 AND instr(proposal,'"innerNote":')>0 ORDER BY source_id DESC,revision DESC""",arrayOf(role)).use{cursor->
+        val gson=Gson()
+        while(cursor.moveToNext()){
+            val source=SourceRef(role,cursor.getLong(0),cursor.getLong(1))
+            val proposal=runCatching{gson.fromJson(cursor.getString(2),ExperienceProposal::class.java)}.getOrNull()?:continue
+            val note=proposal.innerNote?:continue
+            if(proposal.relationInput?.status!="disputed" && note.visible(at,source){ref->
+                refCurrent(db,ref) && CompanionRepository.aiAllowed(db,role,ref.turnId)
+            })return@use CurrentInnerNote(note.text,note.at,source)
+        }
+        null
+    }

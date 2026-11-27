@@ -36,10 +36,13 @@ class HostModelBackupAndroidTest {
             val streamStamp = vault.recordStamp(id)
             HostModelSync.refresh(store,vault,bridge)
             assertEquals(streamStamp, vault.recordStamp(id))
+            HostModelSync.select(store,vault,ModelPurpose.REVIEW,id)
+            assertEquals(id,ModelAccess(vault).reviewCredential()?.config?.id)
             for (withKeys in listOf(false,true)) {
                 val (models, selections) = vault.backup(withKeys)
                 assertEquals(listOf(local.id), models.map { it.config.id })
                 assertEquals("", selections[ModelPurpose.CHAT])
+                assertEquals("", selections[ModelPurpose.REVIEW])
                 assertTrue(models.none { it.secret == key })
             }
             HostModelSync.select(store,vault,ModelPurpose.MEMORY,id)

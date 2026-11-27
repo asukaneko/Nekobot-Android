@@ -112,7 +112,7 @@ $historyHint"""
         append("[表达方式]\n${expand(prompts.expression.ifBlank{DEFAULT_EXPRESSION},friend,persona)}\n")
         if(prompts.extra.isNotBlank())append("[用户附加提示]\n${expand(prompts.extra,friend,persona)}\n")
     }
-    fun build(friend:Friend,prompts:RolePrompts,recent:List<Message>,input:String,references:List<PromptReference> = emptyList(),pending:List<String> = emptyList(),now:Instant=Instant.now(),zone:ZoneId=ZoneId.systemDefault(),capacity:Int=16384,outputLimit:Int=2048,recentLimit:Int=40,relatedLimit:Int=15,persona:UserPersona=UserPersona(),openingEligible:Boolean=false,adaptive:Boolean=false,toolReserve:Int=0,inputImage:ChatImageRef?=null,currentMessageId:Long?=null):PromptBuild {
+    fun build(friend:Friend,prompts:RolePrompts,recent:List<Message>,input:String,references:List<PromptReference> = emptyList(),pending:List<String> = emptyList(),now:Instant=Instant.now(),zone:ZoneId=ZoneId.systemDefault(),capacity:Int=16384,outputLimit:Int=2048,recentLimit:Int=40,relatedLimit:Int=15,persona:UserPersona=UserPersona(),openingEligible:Boolean=false,adaptive:Boolean=false,toolReserve:Int=0,inputImage:ChatImageRef?=null,currentMessageId:Long?=null,quote:ChatReplyQuote?=null,recentQuotes:Map<Long,ChatReplyQuote> = emptyMap()):PromptBuild {
         require(recent.all{it.friendId==friend.id});require(input.isNotBlank()||inputImage!=null)
         // Each persisted user input is a summarizable source, including a stopped user-only turn.
         val rounds=recent.count{it.mine&&(it.text.isNotBlank()||it.image!=null)}
@@ -143,7 +143,7 @@ $historyHint"""
         // Empty stored rows are not speech; leave storage intact and never invent text for them.
         val history=recent.filter{it.text.isNotBlank()||it.image!=null}
         // History stays verbatim; program-owned sending times belong only to the system reference.
-        prefix+=history.map{m->WireMessage(if(m.mine)"user" else "assistant",m.text,sourceMessageId=m.id.toString(),imageRefs=listOfNotNull(m.image))}
+        prefix+=history.map{m->val quoted=if(m.mine) recentQuotes[m.id]?.prefix(persona).orEmpty() else "";WireMessage(if(m.mine)"user" else "assistant",quoted+m.text,sourcePrefix=quoted.length,sourceMessageId=m.id.toString(),imageRefs=listOfNotNull(m.image))}
         val historyTimes=buildString{
             if(history.isNotEmpty()){
                 append("\n历史消息发送时间（按上方历史消息顺序，不包括当前输入）：\n")
@@ -170,7 +170,8 @@ $historyHint"""
                 add(WireMessage("system",prefix+writeHint+"，不要每条追问或一次问很多]\n"+candidates.joinToString("\n"),
                     toolInstructions=listOf(ToolInstruction(prefix.length,writeHint,setOf("agent_memory_update")))))
             }
-            add(WireMessage("user",input,sourceMessageId=currentMessageId?.toString().orEmpty(),imageRefs=listOfNotNull(inputImage)))
+            val quoted=quote?.prefix(persona).orEmpty()
+            add(WireMessage("user",quoted+input,sourcePrefix=quoted.length,sourceMessageId=currentMessageId?.toString().orEmpty(),imageRefs=listOfNotNull(inputImage)))
             add(WireMessage("system",tail,turnContext=true))
             add(WireMessage("system",thinking,thinkingContext=true))
         }

@@ -48,10 +48,12 @@ internal class ProcessEvidence(private val dir: File, private val pid: Int, priv
         val record=row("process.uncaught",at,last)
         var cause:Throwable?=error
         val frames=linkedSetOf<String>()
-        // No exception message, thread name, source filename, or user-provided method string.
+        error.message?.let { Diagnostics.redact(it).take(240) }?.takeIf { it.isNotBlank() }?.let {
+            record.addProperty("error_summary", it)
+        }
         for (depth in 0..2) {
             val item=cause ?: break
-            val kind=item.javaClass.simpleName.takeIf { it in types } ?: "OTHER"
+            val kind=item.javaClass.simpleName.takeIf { typeName.matches(it) } ?: "OTHER"
             record.addProperty(if(depth==0)"exception_type" else "cause_type",kind)
             for(frame in item.stackTrace.take(48)) {
                 val name=frame.className
@@ -108,12 +110,9 @@ internal class ProcessEvidence(private val dir: File, private val pid: Int, priv
         private const val WINDOW=7L*24*60*60*1000
         private val classToken=Regex("[A-Za-z_$][A-Za-z0-9_$]{0,125}")
         private val frameToken=Regex("[A-Za-z_$][A-Za-z0-9_$]{0,125}:[0-9]{1,6}")
-        private val types=setOf("NullPointerException","IllegalArgumentException","IllegalStateException","IllegalMonitorStateException",
-            "IndexOutOfBoundsException","ClassCastException","SecurityException","NumberFormatException","RuntimeException",
-            "SQLiteException","SQLiteFullException","VerifyError","NoClassDefFoundError","NoSuchMethodError","ClassNotFoundException",
-            "OutOfMemoryError","StackOverflowError","ExceptionInInitializerError","NotFoundException","CrashedByAdbException","RemoteServiceException","InvocationTargetException")
+        private val typeName=Regex("[A-Za-z_$][A-Za-z0-9_$.]{0,120}")
         private val pages=setOf("startup","home","settings","contacts","profile","chat","models","model-editor","model-providers","voice-studio",
-            "create","detail","search","role-archive","search-detail","toolbox","processing","processing-role","settings-memory","settings-info",
+            "create","detail","search","role-archive","search-detail","toolbox","models-purposes","processing-role","settings-memory","settings-info",
             "settings-updates","role-prompts","role-learning","role-relationship","role-companion","role-voice","toolbox-image","toolbox-video",
             "toolbox-memory","toolbox-contact","other")
         internal fun prune(dir:File,now:Long) {
@@ -144,8 +143,9 @@ internal class ProcessEvidence(private val dir: File, private val pid: Int, priv
                             addProperty("action",ProcessAction.valueOf(src.get("action").asString).name)
                             if(event=="process.uncaught") {
                                 for(key in listOf("exception_type","cause_type")) src.get(key)?.asString?.let {
-                                    addProperty(key,if(it in types) it else "OTHER")
+                                    addProperty(key,if(typeName.matches(it)) it else "OTHER")
                                 }
+                                src["error_summary"]?.asString?.let { addProperty("error_summary", Diagnostics.redact(it).take(240)) }
                                 val frames=src.get("app_frames")?.asString.orEmpty().split('|').take(8).filter(frameToken::matches)
                                 addProperty("app_frames",frames.joinToString("|"))
                             }

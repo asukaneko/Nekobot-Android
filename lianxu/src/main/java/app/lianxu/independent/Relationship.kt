@@ -103,6 +103,20 @@ internal object RelationInputContract {
                     explains=explains?.takeIf{kind in setOf("真误会","有原因")},releaseKind=kind?.takeIf{it in setOf("真误会","有原因")})else it
             }
     }
+    fun reviewEvent(event:com.google.gson.JsonObject,source:SourceRef)=event.deepCopy().apply {
+        get("消息")?.takeUnless{it.isJsonNull}?.let{id->
+            require(id.isJsonPrimitive && id.asString==source.turnId.toString()){"REVIEW_SOURCE_MISMATCH"}
+        }
+        addProperty("消息",source.turnId.toString())
+        if(get("信息类别")?.takeIf{it.isJsonPrimitive}?.asString !in categories) addProperty("信息类别","关于关系")
+        for(field in listOf("P","C","V","B")) if(!has(field)) addProperty(field,"无")
+        get("没达到预期")?.takeIf{it.isJsonPrimitive && it.asString in gap}?.asString?.let{size->
+            val expectation=when(size){"小"->"低";"中"->"中";else->"高"}
+            add("没达到预期",com.google.gson.JsonObject().apply {
+                addProperty("期待",expectation);addProperty("重要性",if(size=="小")"低" else "中");addProperty("落差",size)
+            })
+        }
+    }
     fun example(source:Long)="""{"消息":"$source","信息类别":"普通信息","P":"无","C":"无","V":"无","B":"无"}"""
     fun instruction(source:Long)="""
         调用 companion_record 时，参数顶层必填“关系输入”对象：${example(source)}；键名就叫“关系输入”，不要改名、不要写成字符串，也不要把里面的字段摊到顶层。

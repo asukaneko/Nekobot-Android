@@ -72,6 +72,7 @@ internal fun contactPolicyText(policy:String)=when(policy){
                 if(index<vm.friends.lastIndex)HorizontalDivider(Modifier.padding(start=72.dp,end=18.dp),color=Line)
             }
         }
+        ContactHoursSettings(vm,edit=true)
         Text("应用通知",style=MaterialTheme.typography.titleMedium)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(UiSpace.radius)).background(Paper)){GlobalNotificationControl()}
         Text("消息通知是本应用的系统权限，所有角色共用；不会替你开启任何角色的主动联系。",style=MaterialTheme.typography.bodySmall,color=Muted)
@@ -153,13 +154,14 @@ internal object CompanionHints {
                     }
                 }
             }
+            ContactHoursSettings(vm,edit=false){backgroundHint=true}
             detail?.failure?.takeIf{loaded}?.let{ContactFailureCard(it)}
             if(loaded)Text(contactPolicyText(detail?.policy.orEmpty()),style=MaterialTheme.typography.bodySmall,color=Muted,modifier=Modifier.testTag("companion-policy-status"))
             if(loadError)Text("读不到本地状态，返回后再试。",style=MaterialTheme.typography.bodySmall,color=Muted)
             if(saveError.isNotEmpty())Text(saveError,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
         }
     }
-    if(backgroundHint)AlertDialog(onDismissRequest={backgroundHint=false},modifier=Modifier.testTag("companion-background-hint"),title={Text("后台运行提示")},text={Text(CompanionHints.BACKGROUND)},confirmButton={TextButton(onClick={backgroundHint=false},modifier=Modifier.testTag("companion-background-close")){Text("知道了")}})
+    if(backgroundHint)ContactBatteryGuide{backgroundHint=false}
 }
 
 /** 放法 B：只在真失败过时出现的浅灰提示卡，点开看完整原始报错。 */

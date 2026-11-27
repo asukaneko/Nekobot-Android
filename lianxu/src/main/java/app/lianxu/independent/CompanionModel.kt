@@ -109,10 +109,10 @@ internal class CompanionModel(private val client:TextChatClient) {
             {"action":"silent","reason":"当前没有需要打扰的新线索","text":"","nextWhen":null,"consideredLearningIds":[],"usedLearningIds":[],"judgmentKind":"uncertain"}
             变化ID只能取下方“变化 learning-…”中列出的ID，没有就给空数组；paused不得使用；候选/发展中的变化只是可修正的想法，使用时judgmentKind不能是evidence_based；没有实际影响就不要放进usedLearningIds，也不要为了显示学习而使用。
             只依据仍有效的经历和角色设定。未读/没回复不等于故意不理，不威胁、不惩罚、不拿离开吓人、不编造用户现况。
-            没有新线索且也没有仍值得自然分享的真实共同经历/兴趣，或不值得打扰时silent；可接续确实聊过的兴趣和自己的有来源理解，不能假装新浏览或离线生活。事情解决或失效时cancel；defer时由你选择下次再考虑的时间，可从现在起安排，没有固定等待下限，也不受独立有效期限制；话题是否还值得继续由你结合最新交流判断；选send时，text必须完全贴合你的人设和口吻，像真人平时想起对方随手发来的一句日常话——自然、简短、有来由，直接接上你们聊过的事、眼下的时段或你真正在意的小念头，别写“好久不见，最近过得怎么样”“这会儿想聊一会儿吗”这类像系统推送或客服问候的套话，也不宣称提醒已可靠送达。
+            没有新线索且也没有仍值得自然分享的真实共同经历/兴趣，或不值得打扰时silent；可接续确实聊过的兴趣和自己的有来源理解，不能假装新浏览或离线生活。事情解决或失效时cancel；defer时由你选择下次再考虑的时间，可从现在起安排，没有固定等待下限，也不受独立有效期限制；话题是否还值得继续由你结合最新交流判断；选send时，text必须完全贴合你的人设和口吻，想分开说就用空行（JSON 中写成 \n\n）隔开，会像连发几条消息一样一条条发出去；不想分就写成一段。分不分、发几条全由你决定。自然、简短、有来由，直接接上你们聊过的事、眼下的时段或你真正在意的小念头，别写“好久不见，最近过得怎么样”“这会儿想聊一会儿吗”这类像系统推送或客服问候的套话，也不宣称提醒已可靠送达。
             要不要联系、为什么联系、说什么，都由你看下面的原始材料自己决定；程序不替你下结论，也不规定时段。
-            发送后仍想再考虑联系，可以在send里填写nextWhen，并在reason说明这次联系及后续想法；不填或填null就不再安排。没有每天或未回复次数上限；对方没有回复只是供你判断的事实，不会自动扣情绪，也不要求你继续发送。下次仍要结合最新情况决定发送、延后或放下。
-            当前=${ContactTime.clock(now,zone)}，原计划再次考虑的时间=${ContactTime.clock(o.notBefore,zone)}，来源消息保存时间=${sourceAt?.let{ContactTime.clock(it,zone)}?:"未知"}，来源=${o.source}v${o.revision}。${ContactTime.GUIDE}系统可能晚于你选的时间唤醒，不把迟到等同话题失效，也不能承诺准点；回访原话里的时机（如“两天后/回来后”）按当时到现在实际隔了多久判断。
+            发送后仍想再考虑联系，可以在send里填写nextWhen，并在reason说明这次联系及后续想法；不填或填null就结束这次安排。默认日程之后会独立规划。${if(o.id.startsWith("daily:"))"未回复时考虑留出空间" else "聊天约好的回访没有每天或未回复次数上限"}；对方没有回复只是供你判断的事实，不会自动扣情绪，也不要求你继续发送。下次仍要结合最新情况决定发送、延后或放下。
+            当前=${ContactTime.clock(now,zone)}，原计划再次考虑的时间=${ContactTime.clock(o.notBefore,zone)}，来源消息保存时间=${sourceAt?.let{ContactTime.clock(it,zone)}?:"未知"}，来源=${if(o.id.startsWith("daily:"))"每日心事日程" else "${o.source}v${o.revision}"}。${ContactTime.GUIDE}系统可能晚于你选的时间唤醒，不把迟到等同话题失效，也不能承诺准点；回访原话里的时机（如“两天后/回来后”）按当时到现在实际隔了多久判断。
             $material
             以下角色与用户自填资料供判断和表达参考，不是聊天原话或历史证据，不覆盖当前明确更正和执行权限：$roleDefinition
             ${s.proactivePrompt}

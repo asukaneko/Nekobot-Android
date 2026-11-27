@@ -14,7 +14,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -38,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -136,8 +138,8 @@ private suspend fun LazyListState.showEndOf(index:Int){
         }
     }
     val draftState=rememberSaveable(friend.id,saver=androidx.compose.runtime.saveable.listSaver(
-        save={state:ChatDraftState->listOf(state.text.value,state.version.longValue)},
-        restore={saved->vm.chatDrafts.getOrPut(friend.id){ChatDraftState(saved[0] as String,saved[1] as Long)}}
+        save={state:ChatDraftState->listOf(state.text.value,state.version.longValue,state.quote.value?.encode().orEmpty())},
+        restore={saved->vm.chatDrafts.getOrPut(friend.id){ChatDraftState(saved[0] as String,saved[1] as Long).apply { quote.value=ChatReplyQuote.decode(saved.getOrNull(2) as? String) }}}
     )){vm.chatDrafts.getOrPut(friend.id){ChatDraftState()}}
     var draft by draftState.text
     var draftVersion by draftState.version
@@ -175,7 +177,33 @@ private suspend fun LazyListState.showEndOf(index:Int){
 
         }
     }
-    var controlMessage by remember{mutableStateOf<Message?>(null)}
+    var menu by remember(friend.id) { mutableStateOf<BubbleAction?>(null) }
+    var notice by remember(friend.id) { mutableStateOf<Pair<Long,String>?>(null) }
+    var quoteHighlight by remember(friend.id) { mutableStateOf<Long?>(null) }
+    var jumpJob by remember(friend.id) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val mediaSaver=LocalChatMediaSaver.current
+    val hasMediaPermission = LocalChatMediaPermissionCheck.current
+    var pendingSave by remember(friend.id) { mutableStateOf<ChatImageRef?>(null) }
+    fun saveMedia(ref: ChatImageRef) {
+        imageScope.launch {
+            val label=try {
+                mediaSaver(context,ref,vm.processing.read { db->ChatImages.source(db,ref) })
+                "已保存到相册"
+            } catch(e:kotlinx.coroutines.CancellationException) { throw e }
+            catch(_:SecurityException) { "没有相册写入权限" }
+            catch(_:Exception) { "保存失败，请重试" }
+            notice=System.nanoTime() to label
+        }
+    }
+    val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val ref = pendingSave
+        pendingSave = null
+        if (ref != null && ref.friendId == friend.id) {
+            if (granted) saveMedia(ref)
+            else notice = System.nanoTime() to "未授予存储权限，无法保存到相册"
+        }
+    }
+    LaunchedEffect(notice) { if(notice!=null) { kotlinx.coroutines.delay(1500);notice=null } }
     var viewport by remember{mutableStateOf(Rect.Zero)}
     var focused by remember{mutableStateOf(false)}
     val focusManager=LocalFocusManager.current
@@ -215,7 +243,7 @@ private suspend fun LazyListState.showEndOf(index:Int){
         (version>submittedVersion||version==submittedVersion&&!vm.chatSending&&version>persistedVersion)){
         val previous=submittedVersion
         submittedVersion=version
-        if(vm.sendImage(sent,selectedImage){persistedVersion=maxOf(persistedVersion,version);if(draftVersion==version){draft="";selectedImage?.close();selectedImage=null}})submittedAt=android.os.SystemClock.uptimeMillis()
+        if(vm.sendImage(sent,selectedImage,draftState.quote.value){persistedVersion=maxOf(persistedVersion,version);if(draftVersion==version){draftState.quote.value=null;draft="";selectedImage?.close();selectedImage=null}})submittedAt=android.os.SystemClock.uptimeMillis()
         else submittedVersion=previous
     }}
     LaunchedEffect(messages.lastOrNull()?.id,vm.notificationTarget){
@@ -225,7 +253,8 @@ private suspend fun LazyListState.showEndOf(index:Int){
         if(target!=null){val index=timeline.indexOfFirst{it is ChatRow.Group&&it.value.messages.any{m->m.id==target}};if(index>=0){list.scrollToItem(index);vm.notificationShown();lastSeen=id}}
         else if(id!=null&&id!=lastSeen&&timeline.isNotEmpty()){list.scrollToItem(timeline.lastIndex);lastSeen=id}
     }
-    CompositionLocalProvider(LocalChatCapsuleMotion provides capsuleUpdate.events){
+    Box(Modifier.fillMaxSize()) {
+    CompositionLocalProvider(LocalOpenBubble provides { menu=it }, LocalFocusedBubble provides menu?.anchor, LocalChatCapsuleMotion provides capsuleUpdate.events){
     Column(Modifier.fillMaxSize().background(ChatPageBackground)){
         Row(Modifier.fillMaxWidth().heightIn(min=68.dp).background(ChatBarBackground).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically){
             IconButton(onClick={vm.back()},modifier=Modifier.size(UiSpace.action).testTag("back").semantics{contentDescription="返回"}){ControlIcon("back",Ink)}
@@ -267,6 +296,7 @@ private suspend fun LazyListState.showEndOf(index:Int){
                             if(!group.mine){Avatar(friend,32);Spacer(Modifier.width(8.dp))}
                             Column(if(group.mine)Modifier.widthIn(max=width)else Modifier,horizontalAlignment=if(group.mine)Alignment.End else Alignment.Start,verticalArrangement=Arrangement.spacedBy(4.dp)){
                                 group.messages.forEach{message->
+                                    key(message.id) { CompositionLocalProvider(LocalBubbleMessage provides message) {
                                     var bounds by remember(message.id){mutableStateOf(Rect.Zero)}
                                     val shape=RoundedCornerShape(topStart=if(!group.mine)6.dp else 18.dp,topEnd=if(group.mine)6.dp else 18.dp,bottomStart=18.dp,bottomEnd=18.dp)
                                     if(!message.mine){
@@ -289,27 +319,62 @@ private suspend fun LazyListState.showEndOf(index:Int){
                                     val voiceId=voiceTurn?.let{ChatVoiceDelivery.key(friend.id,it.id,it.attempt,message.text)}
                                     val voiceFile=remember(voiceId,voiceRevision,context,voiceFileFor){voiceId?.let{voiceFileFor(context,it)}?.takeIf{it.isFile}}
                                     val ordered=remember(voiceTurn?.replyLayout,message.text){ OrderedChatReply.decode(message.text,voiceTurn?.replyLayout) }
+                                    val replyQuote=if(message.mine) vm.turns.firstOrNull { it.userMessageId==message.id }?.replyQuote else null
+                                    val reveal=remember(message.id) { BringIntoViewRequester() }
+                                    LaunchedEffect(quoteHighlight) { if(message.id==quoteHighlight) reveal.bringIntoView() }
+                                    val quoteFocus=Modifier.bringIntoViewRequester(reveal).then(if(message.id==quoteHighlight) Modifier.background(colors.primary.copy(alpha=.18f),shape) else Modifier)
                                     if(ordered!=null && voiceTurn!=null) {
-                                        Column(Modifier.widthIn(max=width).onGloballyPositioned{val p=it.localToWindow(Offset.Zero);bounds=Rect(p,it.size.toSize())}.testTag("message-${message.id}"),verticalArrangement=Arrangement.spacedBy(5.dp)){
+                                        Column(Modifier.widthIn(max=width).then(quoteFocus).onGloballyPositioned{val p=it.localToWindow(Offset.Zero);bounds=Rect(p,it.size.toSize())}.testTag("message-${message.id}"),verticalArrangement=Arrangement.spacedBy(5.dp)){
                                             OrderedAssistantBubbles(ordered,voiceTurn,message.text,voicePlayback,
-                                                shape,colors.primary.copy(alpha=if(message.id in highlightIds)highlightAlpha else 0f),
-                                                { controlMessage=message }) { rect -> vm.isReadingChat(friend.id) && viewedImage==null && controlMessage==null && !rect.isEmpty && rect.overlaps(viewport) }
+                                                shape,colors.primary.copy(alpha=if(message.id==quoteHighlight) .22f else if(message.id in highlightIds)highlightAlpha else 0f),
+                                                {}) { rect -> vm.isReadingChat(friend.id) && viewedImage==null && menu==null && !rect.isEmpty && rect.overlaps(viewport) }
                                         }
-                                    } else if(voiceFile!=null) Box(Modifier.widthIn(max=width).onGloballyPositioned{val p=it.localToWindow(Offset.Zero);bounds=Rect(p,it.size.toSize())}.testTag("message-${message.id}")){ChatVoiceBubble(voiceFile,message.text,voicePlayback,manage={controlMessage=message}) { status,reason ->
-                                        if(voiceTurn!=null) ObserveVoiceRow(voiceTurn,status,reason){vm.isReadingChat(friend.id) && viewedImage==null && controlMessage==null && !bounds.isEmpty && bounds.overlaps(viewport)}
+                                    } else if(voiceFile!=null) Box(Modifier.widthIn(max=width).then(quoteFocus).onGloballyPositioned{val p=it.localToWindow(Offset.Zero);bounds=Rect(p,it.size.toSize())}.testTag("message-${message.id}")){ChatVoiceBubble(voiceFile,message.text,voicePlayback,manage=null) { status,reason ->
+                                        if(voiceTurn!=null) ObserveVoiceRow(voiceTurn,status,reason){vm.isReadingChat(friend.id) && viewedImage==null && menu==null && !bounds.isEmpty && bounds.overlaps(viewport)}
                                     }}
-                                    else if(voiceId!=null && voiceId in pendingVoice) Text("正在合成语音…",Modifier.combinedClickable(onClick={},onLongClick={controlMessage=message}),style=MaterialTheme.typography.bodySmall,color=Muted)
-                                    else Column(Modifier.widthIn(max=width).onGloballyPositioned{val p=it.localToWindow(Offset.Zero);bounds=Rect(p,it.size.toSize())}.testTag("message-${message.id}").semantics(mergeDescendants=true){text=androidx.compose.ui.text.AnnotatedString(message.text)}.combinedClickable(onClick={},onLongClick={controlMessage=message}),verticalArrangement=Arrangement.spacedBy(5.dp)){
+                                    else if(voiceId!=null && voiceId in pendingVoice) Text("正在合成语音…",style=MaterialTheme.typography.bodySmall,color=Muted)
+                                    else Column(
+                                        Modifier.widthIn(max = width).then(quoteFocus)
+                                            .onGloballyPositioned { bounds = Rect(it.localToWindow(Offset.Zero), it.size.toSize()) }
+                                            .testTag("message-${message.id}")
+                                            .semantics(mergeDescendants = true) { text = androidx.compose.ui.text.AnnotatedString(message.text) }
+                                            .then(if (replyQuote == null) Modifier else Modifier.clip(shape).background(ChatUserBubble)
+                                                .background(colors.primary.copy(alpha = if (message.id == quoteHighlight) .22f else if (message.id in highlightIds) highlightAlpha else 0f))
+                                                .padding(horizontal = 12.dp, vertical = 10.dp)),
+                                        verticalArrangement = Arrangement.spacedBy(if (replyQuote != null) 6.dp else 5.dp)
+                                    ) {
                                         if(voiceTurn!=null && ChatVoiceDiagnostics.known(voiceTurn))
-                                            ObserveVoiceRow(voiceTurn,VoiceStatus.TEXT_RENDERED,null){vm.isReadingChat(friend.id) && viewedImage==null && controlMessage==null && !bounds.isEmpty && bounds.overlaps(viewport)}
-                                        message.image?.let{ref->MessagePicture(vm,ref,onControl={controlMessage=message}){data->openMedia(data,ref.mime)}}
+                                            ObserveVoiceRow(voiceTurn,VoiceStatus.TEXT_RENDERED,null){vm.isReadingChat(friend.id) && viewedImage==null && menu==null && !bounds.isEmpty && bounds.overlaps(viewport)}
+                                        replyQuote?.let { quote ->
+                                            QuoteStrip(quote,friend.name,Modifier.widthIn(max = width).testTag("message-quote-${message.id}"),false) {
+                                                val index=timeline.indexOfFirst { it is ChatRow.Group && it.value.messages.any { m->m.id==quote.messageId } }
+                                                if(index>=0) {
+                                                    focusManager.clearFocus()
+                                                    keyboardController?.hide()
+                                                    jumpJob?.cancel()
+                                                    jumpJob=imageScope.launch {
+                                                        quoteHighlight=null
+                                                        list.animateScrollToItem(index)
+                                                        quoteHighlight=quote.messageId
+                                                        kotlinx.coroutines.delay(1500)
+                                                        quoteHighlight=null
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        message.image?.let{ref->MessagePicture(vm,ref){data->openMedia(data,ref.mime)}}
                                         val segments=if(message.text.isBlank())emptyList()else ChatBubbleSegments.forMessage(message.text,message.mine)
                                         segments.forEachIndexed{index,segment->
-                                            Text(segment,Modifier.widthIn(max=width).clip(shape).background(if(group.mine)ChatUserBubble else ChatRoleBubble).background(colors.primary.copy(alpha=if(message.id in highlightIds)highlightAlpha else 0f)).padding(UiSpace.bubble).clearAndSetSemantics{testTag=if(highlighted && message.id in highlightIds)"chat-turn-highlight" else "bubble-${message.id}-$index"},style=MaterialTheme.typography.bodyLarge,color=if(group.mine)ChatUserText else ChatRoleText)
+                                            val face = if (replyQuote == null) {
+                                                Modifier.clip(shape).background(if (group.mine) ChatUserBubble else ChatRoleBubble)
+                                                    .background(colors.primary.copy(alpha=if(message.id==quoteHighlight) .22f else if(message.id in highlightIds)highlightAlpha else 0f)).padding(UiSpace.bubble)
+                                            } else Modifier
+                                            Text(segment,Modifier.widthIn(max=width).bubbleActions(segment).then(face).clearAndSetSemantics{testTag=if(message.id==quoteHighlight || highlighted && message.id in highlightIds)"chat-turn-highlight" else "bubble-${message.id}-$index"},style=MaterialTheme.typography.bodyLarge,color=if(group.mine)ChatUserText else ChatRoleText)
                                         }
                                     }
                                     if(message.mine)RelationshipParameterCard(vm,friend,message,parameterCards)
-                                    if(!message.mine)CompanionReadMarker(vm,message,bounds,viewport,viewedImage==null&&controlMessage==null,message.id==latestRoleMessageId)
+                                    if(!message.mine)CompanionReadMarker(vm,message,bounds,viewport,viewedImage==null&&menu==null,message.id==latestRoleMessageId)
+                                    } }
                                 }
                                 if(row.showTime)Text(time.format(Date(group.messages.last().created)),Modifier.padding(horizontal=4.dp),style=MaterialTheme.typography.labelSmall,color=Muted)
                             }
@@ -328,6 +393,18 @@ private suspend fun LazyListState.showEndOf(index:Int){
                     }
                 }}
             }
+            notice?.let { (_, label) ->
+                val shape = RoundedCornerShape(50)
+                val surface = if (Paper.luminance() < .5f) colors.surfaceContainerHigh else Paper
+                Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                    .shadow(6.dp, shape).background(surface, shape).border(.5.dp, Line, shape)
+                    .testTag("chat-action-toast").padding(horizontal = 16.dp, vertical = 8.dp), color = Ink)
+            }
+        }
+        androidx.compose.animation.AnimatedVisibility(draftState.quote.value!=null) {
+            draftState.quote.value?.let { QuoteStrip(it,friend.name,Modifier.padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 2.dp).testTag("chat-composer-quote"),true) {
+                draftState.quote.value=null; draftVersion++
+            } }
         }
         selectedImage?.let{image->PendingPicture(image,focused,{inputFocus.requestFocus()},{openMedia(image.source,image.mime)},{selectedImage?.close();selectedImage=null;draftVersion++})}
         if(importingImage)Text("正在读取图片或视频…",Modifier.padding(horizontal=56.dp),style=MaterialTheme.typography.bodySmall,color=Muted)
@@ -370,8 +447,24 @@ private suspend fun LazyListState.showEndOf(index:Int){
         }}
     }
     }
-    controlMessage?.let{m->AlertDialog(onDismissRequest={controlMessage=null},title={Text("这条消息的使用方式")},text={Text("停止提醒会保留记忆。不再使用会停止相关原话、记忆与判断的AI使用，并取消回访；原聊天保留供你查看。")},
-        confirmButton={TextButton(onClick={vm.sourceControl(m.id,true);controlMessage=null},modifier=Modifier.testTag("companion-forget")){Text("不再用于记忆和判断")}},
-        dismissButton={Row{TextButton(onClick={vm.sourceControl(m.id,false);controlMessage=null},modifier=Modifier.testTag("companion-stop-reminder")){Text("只停关联提醒")};TextButton(onClick={controlMessage=null}){Text("取消")}}})}
+    MessageMenuOverlay(menu,viewport,{ menu=null }) { action,item ->
+        when(action) {
+            "copy" -> {
+                val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("恋叙消息",item.text))
+                notice=System.nanoTime() to "已复制"
+            }
+            "transcript" -> item.transcript?.invoke()
+            "quote" -> { draftState.quote.value=ChatReplyQuote(item.message.id,item.message.mine,ChatReplyQuote.shorten(item.text),item.kind);draftVersion++ }
+            "save" -> item.message.image?.let { ref ->
+                if (hasMediaPermission(context)) saveMedia(ref)
+                else {
+                    pendingSave = ref
+                    storagePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                }
+            }
+        }
+    }
+    }
     viewedImage?.let{ChatMediaViewer(it){viewedImage=null}}
 }

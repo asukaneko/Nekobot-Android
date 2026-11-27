@@ -153,7 +153,7 @@ class ModelVault(context:Context,private val namespace:String="model-configs",pr
     fun hasKey(id:String)=AppMutationGate.read {keyStore.containsAlias(alias(id))}
     internal fun backup(includeKeys:Boolean):Pair<List<BackupModel>,Map<ModelPurpose,String>> = AppMutationGate.read {
         list().filterNot { it.id.isHostModel() }.map{BackupModel(it,if(includeKeys)secret(it.id) else null)} to
-            ModelPurpose.entries.associateWith{purposeId(it).takeUnless(String::isHostModel).orEmpty()}
+            backupPurposeIds(::purposeId)
     }
     internal class Prepared(val generation:String,val directory:File,val createdAliases:List<String>)
     internal fun prepareRestore(incoming:List<BackupModel>,selections:Map<ModelPurpose,String>,includeKeys:Boolean):Prepared = AppMutationGate.read {
@@ -200,3 +200,6 @@ class ModelVault(context:Context,private val namespace:String="model-configs",pr
 
 /** A portable backup may intentionally contain plaintext credentials; never log this object. */
 internal class BackupModel(val config:ModelConfig,val secret:String?) {override fun toString()="BackupModel(redacted)"}
+
+internal fun backupPurposeIds(selected: (ModelPurpose) -> String) =
+    ModelPurpose.entries.associateWith { selected(it).takeUnless(String::isHostModel).orEmpty() }

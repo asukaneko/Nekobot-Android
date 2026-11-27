@@ -42,8 +42,12 @@ class CompanionCreateScreenTest {
         // Surface pixels can lag behind an already updated semantics tree by one frame.
         android.os.SystemClock.sleep(250)
         val bitmap = requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
-        val file = File(compose.activity.getExternalFilesDir("validation"), "$name.png")
-        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        try {
+            val file = File(compose.activity.getExternalFilesDir("validation"), "$name.png")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     /** 软键盘是系统行为，CI 慢机可能十几秒才弹出；只用于决定是否补拍键盘截图。 */

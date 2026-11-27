@@ -100,7 +100,7 @@ class LianxuActivity : FragmentActivity() {
         if(changed)vm.creationPolisher.cancel()
         creationDraft=if(changed)value.copy(polished=null,usePolished=false)else value
     }
-    if (vm.ready && vm.page!="models") SideEffect {
+    if (vm.ready && vm.page !in setOf("models","models-purposes")) SideEffect {
         ProcessDiagnostics.view(if(vm.page!="home") vm.page else when(vm.tab) {
             1 -> "contacts"; 2 -> "settings"; 3 -> "profile"; else -> "home"
         })
@@ -138,6 +138,14 @@ class LianxuActivity : FragmentActivity() {
             if (vm.chatHostLifecycle === lifecycle) vm.chatHostLifecycle = null
         }
     }
+    if(vm.page=="chat") DisposableEffect(lifecycle,vm.activeId){
+        val role=vm.activeId
+        var visible=false
+        fun record(show:Boolean){if(show!=visible){visible=show;if(show)CompanionRuntime.foreground(role) else CompanionRuntime.leave(role)}}
+        val observer=LifecycleEventObserver{_,_->record(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))}
+        lifecycle.addObserver(observer);record(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+        onDispose{lifecycle.removeObserver(observer);record(false)}
+    }
     BackHandler(enabled = vm.page == "home", onBack = onReturnToHost)
     BackHandler(vm.page!="home"&&!guidedCreate){vm.back()}
     val notice: @Composable () -> Unit = {
@@ -150,13 +158,14 @@ class LianxuActivity : FragmentActivity() {
             val choice=encounter.choose(target);encounter=choice.state
             choice.navigateTo?.let{vm.open(it.page)}
         })
-        else when(vm.page){
+        else SoftPage(vm.page to vm.activeId,{from,to->if(vm.goingBack || to.first=="home")-1 else if(from.first==to.first)0 else 1}){route->
+            if(route.second!=vm.activeId && route.first!="home")return@SoftPage
+            when(route.first){
             "home"->Home(vm, onReturnToHost)
             "chat"->chatState.SaveableStateProvider("chat-${vm.activeId}"){Chat(vm)}
             "detail"->Detail(vm)
             "role-prompts"->RolePromptsScreen(vm)
-            "role-learning"->LearningRecordsScreen(vm)
-            "role-relationship"->RelationshipScreen(vm)
+            "role-learning","role-relationship","processing-role"->key(route.second,route.first){InnerWorldScreen(vm, route.first)}
             "role-companion"->CompanionSettingsScreen(vm)
             "toolbox"->ToolboxScreen(vm)
             "role-voice"->BreezeRoleSettings(vm)
@@ -178,11 +187,11 @@ class LianxuActivity : FragmentActivity() {
                 returnToChatOnDone=!creationConfigOpen && !vm.modelsReturnChatId.isNullOrBlank(),
                 onInitialHandled={vm.clearModelsTarget()},
             )
-            "processing"->ProcessingDirectory(vm)
-            "processing-role"->ProcessingRole(vm)
+            "models-purposes"->ModelConfigScreen(onBack={vm.back()},startAtPurposes=true)
             "settings-memory"->MemoryRulesScreen(vm)
             "settings-info"->DataAndVersion({vm.back()})
             "settings-updates"->UpdatesScreen({vm.back()})
+            }
         }
     }}}
 }
@@ -239,7 +248,7 @@ internal fun ReturnHomeButton(
                 }
             }
         }
-        Box(Modifier.weight(1f).background(Paper)){when(vm.tab){
+        Box(Modifier.weight(1f).background(Paper)){SoftPage(vm.tab){tab->when(tab){
             0->LazyColumn(Modifier.fillMaxSize().testTag("chat-list")){
                 item{SectionLabel("最近对话",Modifier.padding(horizontal=UiSpace.page,vertical=8.dp))}
                 if(vm.friends.isEmpty())item{EmptyRoles("roles-empty-chat"){vm.open("create")}}
@@ -252,7 +261,7 @@ internal fun ReturnHomeButton(
             }
             2->SettingsDirectory(vm)
             3->Profile(vm)
-        }}
+        }}}
         HorizontalDivider(color=Line,thickness=.5.dp)
         NavigationBar(containerColor=Chrome,tonalElevation=0.dp,windowInsets=WindowInsets(0,0,0,0)){labels.forEachIndexed{index,label->
             NavigationBarItem(selected=index==vm.tab,onClick={vm.tab=index},icon={NavigationIcon(index,index==vm.tab)},label={Text(label,style=MaterialTheme.typography.labelMedium,maxLines=1)},modifier=Modifier.testTag("tab-$index"),colors=NavigationBarItemDefaults.colors(selectedIconColor=GreenText,selectedTextColor=GreenText,indicatorColor=SelectedBackground,unselectedIconColor=Muted,unselectedTextColor=Muted))
@@ -325,12 +334,16 @@ internal fun ReturnHomeButton(
                 Text("角色提示词",style=MaterialTheme.typography.titleSmall)
                 Text(friend.prompt.ifBlank{"温柔、自然地回应，尊重用户。不要求披露内部思考。"},style=MaterialTheme.typography.bodyMedium,color=Muted)
             }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(UiSpace.radius)).background(Paper)){
-                DirectoryRow("edit","编辑角色设定","名字、说话方式与开场白","role-prompts-open",iconColor=ProfileIconColors.edit){vm.open("role-prompts",friend.id)}
-                DirectoryRow("chat","聊天设置","允许发语音与绑定音色","role-voice-open",showChevron=false){vm.open("role-voice",friend.id)}
-                DirectoryRow("memory","记忆","记住的内容与原话来源","role-processing-open",iconColor=ProfileIconColors.memory){vm.open("processing-role",friend.id)}
-                DirectoryRow("list","学习记录","看法、兴趣与相处习惯","role-learning-open",iconColor=ProfileIconColors.learning){vm.open("role-learning",friend.id)}
-                DirectoryRow("heart","我们的相处","她现在的心情、信任和放在心上的事","role-relationship-open",iconColor=ProfileIconColors.relationship){vm.open("role-relationship",friend.id)}
+            DirectoryGroup {
+                DirectoryRow("edit","编辑角色设定","名字、说话方式与开场白","role-prompts-open"){vm.open("role-prompts",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("chat","聊天设置","允许发语音与绑定音色","role-voice-open"){vm.open("role-voice",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("memory","记忆","记住的内容与原话来源","role-processing-open"){vm.open("processing-role",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("list","学习","看法、兴趣与相处习惯","role-learning-open"){vm.open("role-learning",friend.id)}
+                DirectoryDivider()
+                DirectoryRow("heart","心情","她现在的心情、信任和放在心上的事","role-relationship-open"){vm.open("role-relationship",friend.id)}
             }
             PrimaryAction("发消息",modifier=Modifier.fillMaxWidth()){vm.open("chat",friend.id)}
         }

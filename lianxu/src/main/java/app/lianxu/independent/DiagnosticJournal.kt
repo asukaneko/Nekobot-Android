@@ -36,15 +36,20 @@ internal class DiagnosticRedactor {
         if(secrets.size>2048){saturated=true;secrets.clear()}
         longestFirst=secrets.sortedByDescending { it.length }
     }}
-    private val sensitive=Regex("(?i)^(key|.*authorization.*|.*cookie.*|reasoning|reasoning_content|thinking|thinking_content|displayReasoning|.*(?:private.?key|api.?key|token|password|secret|credential).*)$")
+    private val credentialName = """(?:(?:[a-z0-9]+[_-])*(?:(?:x[_-]?)?api[_-]?key|(?:access|refresh|auth|bearer|session|id)[_-]?token|(?:client[_-]?)?secret(?:[_-]?key)?|password|credentials?|private[_-]?key)|token|key)"""
+    private val protectedName = "(?:$credentialName|reasoning(?:_content)?|thinking(?:_content)?|displayReasoning|(?:proxy-)?authorization|(?:set-)?cookies?)"
+    private val textField = "(?:$protectedName|b64_json|(?:image_|audio_|video_)?base64)"
+    private val sensitive = Regex(protectedName, RegexOption.IGNORE_CASE)
     private val pem=Regex("""(?is)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)""")
-    private val simpleName=Regex("[a-zA-Z_][a-zA-Z_0-9.:-]*")
-    private val encodedCredential=Regex("(?i)token|password|secret|credential|key|authorization|cookie")
+    private val simpleName=Regex("[a-zA-Z_][a-zA-Z_0-9.-]*")
+    private val encodedCredential=Regex("(?i)(?<![a-z0-9_])(?:$credentialName|(?:proxy-)?authorization|(?:set-)?cookies?)(?![a-z0-9_])")
     private val encodedStructure=Regex("(?i)%(?:7b|5b|22|25(?:7b|5b|22))")
     private val opaqueJson=Regex("""\beyJ[A-Za-z0-9_+/=-]{8,}""")
     private val binaryField=setOf("b64_json","base64","image_base64","video_base64","audio_base64")
+    private val mediaTypeField = Regex("""(?i)"(?:mime_type|mimeType|format)"\s*:""")
+    private val mediaPayloadField = Regex(""""data"\s*:""")
     private val mediaData=Regex("""(?i)data(?:\:|\\u003a)(?:video|audio|application)(?:\\*/|\\u002f)[^\s"'<>]*""")
-    private val tokenPattern=Regex("""(?i)\b(?:sk|sess|ghp|gho|github_pat)[-_][A-Za-z0-9_-]{8,}""")
+    private val tokenPattern=Regex("""(?i)\b(?:sk|sess|ghp|gho|github_pat)[-_][A-Za-z0-9_-]+""")
     @Synchronized fun text(raw:String):String {
         if(saturated)return "[凭据脱敏容量已满]"
         var value=raw
@@ -58,13 +63,14 @@ internal class DiagnosticRedactor {
         // Structured JSON is decoded in clean(). A fragment inside an exception or prose may
         // start halfway through an escaped object, where individual field boundaries are ambiguous.
         if (value.contains("\\\"") && encodedCredential.containsMatchIn(value)) return "[含凭据的编码片段已省略]"
+        if (mediaTypeField.containsMatchIn(value) && mediaPayloadField.containsMatchIn(value)) return "[媒体载荷已省略]"
         // Embedded or incomplete JSON can have a whole object/array as its credential value.
-        if (Regex("""(?i)(?:token|password|secret|credential|key|authorization|cookie)["']?\s*[:=]\s*(?:\{|\[(?!已脱敏\]))""").containsMatchIn(value))
+        if (Regex("""(?i)(?<![a-z0-9_])$textField["']?\s*[:=]\s*(?:\{|\[(?!已脱敏\]))""").containsMatchIn(value))
             return "[含凭据的结构片段已省略]"
         value=ChatImages.redact(value).replace(mediaData,"[媒体数据已省略]").replace(pem,"[私钥已脱敏]")
         value=value.replace(Regex("""(?is)<think(?:ing)?\b[^>]*>.*?(?:</think(?:ing)?\s*>|$)"""),"[模型思考内容已省略]")
         value=value.replace(Regex("""(?im)(authorization|proxy-authorization|cookie|set-cookie|x-api-key)\s*["']?\s*[:=]\s*[^\r\n]*"""),"$1: [已脱敏]")
-        value=value.replace(Regex("""(?i)(["']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|token|key|reasoning_content|thinking_content|displayReasoning|reasoning|thinking)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&}]+)"""),"$1[已脱敏]")
+        value=value.replace(Regex("""(?i)((?<![a-z0-9_])["']?$textField["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&}]+)"""),"$1[已脱敏]")
         value=value.replace(Regex("""(?i)\b(Bearer|Basic)\s+[A-Za-z0-9+/=._~-]+"""),"$1 [已脱敏]")
         value=value.replace(tokenPattern,"[已脱敏]")
         return value.replace(Regex("""(?i)https?://[^\s"<>]+""")){m->runCatching{val u=URI(m.value);require(u.host!=null);u.scheme+"://"+u.rawAuthority.substringAfterLast('@')+u.rawPath+if(u.rawQuery!=null||u.rawFragment!=null)"?[参数已脱敏]" else ""}.getOrDefault("[地址已脱敏]")}
@@ -202,7 +208,10 @@ internal class DiagnosticJournal(private val directory:File,private val version:
                     append(redactor.clean(row)).append('\n')
                 }
             }
-            ProcessEvidence.rows(File(directory,"process")).forEach { append(redactor.clean(it)).append('\n') }
+            ProcessEvidence.rows(File(directory,"process")).forEach {
+                if (!detailed) it.remove("error_summary")
+                append(redactor.clean(it)).append('\n')
+            }
         }.toByteArray(Charsets.UTF_8)}
     }
     override fun close(){flush();closed=true;worker.interrupt();worker.join(4000)}

@@ -1,25 +1,5 @@
 package app.lianxu.independent
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
-import java.time.Instant
-
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
-
 internal fun processingMessage(code:String)=when(code){
     "MEMORY_SUMMARIZING"->"正在总结记忆，暂不能手动修改；结束或停止后恢复。"
     "SUMMARY_TIMEOUT"->"总结记忆已达 5 分钟上限，已停止并恢复手动修改；原话和已保存条目保留，可手动重试。"
@@ -47,23 +27,4 @@ internal fun memoryFailureText(f:MemoryBatchRepository.Failure):String {
 internal fun taskDescription(s:ProcessingRepository.TaskStatus)=when(s.state){
     "ARCHIVED"->"导入的历史快照已归档，不恢复旧任务"
     "IDLE"->"尚未运行";"RUNNING"->"处理中";"WAITING"->"等待有界重试（第 ${s.attempt} 次）";"COMMITTED","COMPLETED"->"已完整保存";else->processingMessage(s.error)
-}
-@Composable internal fun ProcessingDirectory(vm:AppState){
-    Column(Modifier.fillMaxSize().background(Chrome)){
-        AppTopBar("记忆",{vm.back()})
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(UiSpace.page),verticalArrangement=Arrangement.spacedBy(16.dp)){
-            Text("选择角色，查看记住的内容、原话来源与待确认记忆。",style=MaterialTheme.typography.bodyMedium,color=Muted)
-            Card(onClick={vm.open("settings-memory")},modifier=Modifier.fillMaxWidth().testTag("settings-memory-rules")){Row(Modifier.fillMaxWidth().padding(18.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("记忆规则",style=MaterialTheme.typography.titleMedium);Text("保留、总结数量与回顾间隔",style=MaterialTheme.typography.bodySmall,color=Muted)}}}
-            if(vm.friends.isEmpty())Text("先创建一位角色，再留下你们的记忆。",color=Muted)
-            Column(Modifier.fillMaxWidth().background(Paper,androidx.compose.foundation.shape.RoundedCornerShape(UiSpace.radius))){vm.friends.forEachIndexed{index,friend->
-                Row(Modifier.fillMaxWidth().clickable{vm.open("processing-role",friend.id)}.padding(horizontal=18.dp,vertical=16.dp).testTag("processing-friend-${friend.id}"),verticalAlignment=Alignment.CenterVertically){Avatar(friend);Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(friend.name,style=MaterialTheme.typography.titleSmall);Text("查看记忆",style=MaterialTheme.typography.bodySmall,color=Muted)}}
-                if(index<vm.friends.lastIndex)HorizontalDivider(Modifier.padding(start=80.dp,end=18.dp),color=Line)
-            }}
-        }
-    }
-}
-
-@Composable internal fun ProcessingRole(vm:AppState){
-    val friend=vm.friends.firstOrNull{it.id==vm.activeId}?:return
-    MemoryExperience(vm,friend)
 }

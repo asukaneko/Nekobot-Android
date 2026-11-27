@@ -18,7 +18,7 @@ internal class ReplyDelivery {
     fun restore(text:String) {
         check(earlier.isEmpty()&&current.isEmpty())
         restored = ChatBubbleSegments.split(text)
-        earlier += ChatBubbleSegments.capped(restored)
+        earlier += restored
     }
 
     /** The ledger restored the already shown prefix before the durable tail becomes displayable. */
@@ -39,7 +39,7 @@ internal class ReplyDelivery {
         val raw = ChatBubbleSegments.split(text)
         var repeated=0
         while(repeated<minOf(raw.size,restored.size)&&raw[repeated]==restored[repeated])repeated++
-        val parts = ChatBubbleSegments.capped(raw.drop(repeated))
+        val parts = raw.drop(repeated)
         // A tool can start another response. What was already shown still belongs to the chat.
         if (current.take(shown) != parts.take(shown)) nextResponse()
         current = if (final) parts else parts.take((ChatBubbleSegments.closedWhileStreaming(text)-repeated).coerceAtLeast(0))
@@ -53,7 +53,7 @@ internal class ReplyDelivery {
         var repeated=0
         while(repeated<minOf(restored.size,parts.size) && restored[repeated]==parts[repeated].text) repeated++
         val planned = parts.drop(repeated)
-        val previousRoundSize = earlier.size - ChatBubbleSegments.capped(restored).size
+        val previousRoundSize = earlier.size - restored.size
         val overlap = (minOf(planned.size, previousRoundSize) downTo 1).firstOrNull { count ->
             earlier.takeLast(count) == planned.take(count).map { it.text }
         } ?: 0

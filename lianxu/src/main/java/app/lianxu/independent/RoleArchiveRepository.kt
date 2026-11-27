@@ -91,7 +91,7 @@ internal class RoleArchiveRepository(private val store:Store) {
         val view=CompanionRepository(store).relationship(db,id)
         val turns=db.rawQuery("SELECT id FROM chat_turns WHERE friend_id=?",arrayOf(id)).use{c->buildList{while(c.moveToNext())add(c.getString(0))}}
         val transientKeys=db.rawQuery("SELECT key FROM preferences",null).use{c->buildList{while(c.moveToNext()){val key=c.getString(0)
-            if(key==ReplyAccountingQueue.batchKey(id)||turns.any{key=="memory-recall-usage:$it"||key.startsWith("memory-tools:$it:")||key==OrderedChatReply.PREFIX+it||key==ChatToolJournal.key(it)||key==ChatLedger.errorKey(it)||key==ChatLedger.errorMetaKey(it)||key==ReplyAccountingQueue.key(it)||key==ReplyAccountingQueue.readsKey(it)})add(key)}}}
+            if(key==ReplyAccountingQueue.batchKey(id)||turns.any{key=="memory-recall-usage:$it"||key.startsWith("memory-tools:$it:")||key==ChatReplyQuote.PREFIX+it||key==OrderedChatReply.PREFIX+it||key==ChatToolJournal.key(it)||key==ChatLedger.errorKey(it)||key==ChatLedger.errorMetaKey(it)||key==ReplyAccountingQueue.key(it)||key==ReplyAccountingQueue.readsKey(it)})add(key)}}}
         transientKeys.forEach{db.delete("preferences","key=?",arrayOf(it))}
         listOf("companion_action_learning","companion_receipts","companion_opportunities","companion_uses","companion_blocks","companion_sources","companion_vectors","companion_state").forEach{db.delete(it,"role=?",arrayOf(id))}
         db.delete("relationship_snapshots","role=?",arrayOf(id))

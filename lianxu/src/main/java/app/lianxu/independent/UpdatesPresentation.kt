@@ -1,7 +1,17 @@
 package app.lianxu.independent
 
 /** Local experience changes have no release/version identity of their own. */
+internal val InstalledBuild.releaseName get() = versionName.substringBefore("-test.").substringBefore('+')
+internal val InstalledBuild.testNumber get() = versionName.substringAfter("-test.", "").substringBefore('+').takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
+internal val InstalledBuild.versionLabel get() = "v$releaseName" + (testNumber?.let { " · 测试版 $it" } ?: "")
+
 internal object UpdatesPresentation {
+    private val formal = Regex("""\d+\.\d+\.\d+""")
+    fun current(build: InstalledBuild) = if ("-test." in build.versionName)
+        LocalReleaseNotes.forRelease(build.releaseName) else LocalReleaseNotes.forVersion(build.versionCode)
+    fun history(build: InstalledBuild, current: LocalReleaseNote?) =
+        LocalReleaseNotes.history(current?.code ?: if (build.testNumber != null) Long.MAX_VALUE else build.versionCode)
+            .filter { it.code != current?.code && formal.matches(it.version) }
     val experienceChanges=listOf(
         "界面换成暖灰棕，小加号和按钮更轻巧。",
         "模型配置分为服务商和用途，说明可以点开看。",

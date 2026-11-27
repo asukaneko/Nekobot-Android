@@ -49,7 +49,7 @@ internal class RolePlanner(client:TextChatClient) {
         val instruction=instruction(context.current.turnId,now,readAllowed)
         val gson=Gson()
         fun data(view:RoleContext,refs:List<PromptReference>)=gson.toJson(mapOf("role_definition" to definition,"current_source" to context.current,"current_input" to input,"independent_facts" to facts.copy(relationInput=null,understanding=null),"valid_context" to view.copy(relationInputs=emptyList(),relationPromises=emptyList()),"memory_references" to refs,"partial_context" to adaptive))
-        var view=context
+        var view=context.visibleLearning()
         var selected=emptyList<PromptReference>()
         if(adaptive){
             val empty=context.copy(knownSources=mapOf(context.current.turnId to context.current),entries=emptyList(),actions=emptyList(),learning=emptyList(),facts=emptyList(),relationInputs=emptyList())
@@ -91,7 +91,7 @@ internal class RolePlanner(client:TextChatClient) {
             }
             appendLine("[companion.reply.v1] 回话时怎么说")
             appendLine("直接按你的人设、语气和分寸说话，只输出给${name}看的正文。像平时真人聊天那样接话，别像 AI 助手列提纲、套客服模板，或把你的评价、感受、关系分数念给${name}听；不要输出 JSON、字段名、判断表或工具参数，也别假装看过没给你的资料。")
-            appendLine("想分开说就用空行隔开，会像连发几条消息一样一条条发出去（最多 4 条）；不想分就写成一段。分不分由你决定。")
+            appendLine("想分开说就用空行隔开，会像连发几条消息一样一条条发出去；不想分就写成一段。分不分、发几条全由你决定。")
             appendLine("聊天记录每条前面的时间（比如「[昨天 22:10]」）和「（隔了 3 天）」是程序加的，只给你参考，回话别照这种格式念出来。")
             if(recordEnabled) instruction(accounting,setOf(CompanionRecord.NAME)) else appendLine(accounting)
             instruction("${name}直接要你忘掉某件事、更正以前说过的话或别再提醒时，先用 companion_memory_control 去办，再照实际结果回答；没办成就别说办成了，结果程序会另外显示。",setOf(JointControl.NAME))
@@ -144,10 +144,11 @@ internal class RolePlanner(client:TextChatClient) {
                 append("- [回复 ${a.replyId}；来源${ExperiencePresentation.reference(a.source)}] 你${actions[a.action]?.let{"选择$it，"}.orEmpty()}回了「${clip(a.reply,80)}」\n")
             }
         }
-        if(view.learning.isNotEmpty()){
+        val currentLearning=view.learning.filter{it.state!="paused" && it.state!="faded"}
+        if(currentLearning.isNotEmpty()){
             append("你心里正在形成的看法和习惯：\n")
-            view.learning.forEach{l->
-                append("- [变化 ${l.id}，版本 ${l.version}；来源${ExperiencePresentation.reference(l.source)}] ${learningKinds[l.kind]?:"想法"}：${clip(l.content,120)}${l.scope.takeIf{it.isNotBlank()}?.let{"（适用：${clip(it,40)}）"}.orEmpty()}，${learningStates[l.state]?:"进展还不明确"}\n")
+            currentLearning.forEach{l->
+                append("- [变化 ${l.id}，版本 ${l.version}；来源${ExperiencePresentation.reference(l.source)}] ${learningKinds[l.kind]?:"想法"}：${clip(l.content,120)}${l.scope.takeIf{it.isNotBlank()}?.let{"（适用：${clip(it,40)}）"}.orEmpty()}，${l.familiarity}，${learningStates[l.state]?:"进展还不明确"}\n")
             }
         }
         if(view.facts.isNotEmpty()){

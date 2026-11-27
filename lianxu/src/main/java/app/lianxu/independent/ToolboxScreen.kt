@@ -179,12 +179,12 @@ private val toolboxCards=mapOf(
     LaunchedEffect(vm){try{mode=ToolboxPreferences.videoMode(vm.processing.store);ready=true}catch(e:CancellationException){throw e}catch(_:Exception){error="暂时读不到视频设置，请返回重试。"}}
     ToolboxPage("视频理解",{vm.back()},"toolbox-video-page"){
         Column(Modifier.fillMaxWidth().background(Paper,RoundedCornerShape(UiSpace.radius)).selectableGroup()){
-            ToolboxPreferences.VideoMode.entries.forEach{value->Row(Modifier.fillMaxWidth().selectable(mode==value,enabled=ready&&!busy,role=Role.RadioButton){busy=true;vm.saveVideoMode(value){saved->if(saved){mode=value;error=""}else error="保存视频方式失败，请重试。";busy=false}}.testTag("video-mode-${value.name.lowercase()}").padding(16.dp),verticalAlignment=Alignment.CenterVertically){
-                RadioButton(mode==value,null,enabled=ready&&!busy);Spacer(Modifier.width(12.dp));Column{Text(if(value==ToolboxPreferences.VideoMode.ORIGINAL)"直传原视频"else"每秒抽取一帧",style=MaterialTheme.typography.titleSmall);Text(if(value==ToolboxPreferences.VideoMode.ORIGINAL)"完整原件，原有音轨也会一并发送"else"每秒一张画面，不发送音轨",style=MaterialTheme.typography.bodySmall,color=Muted)}
+            listOf(ToolboxPreferences.VideoMode.FRAMES, ToolboxPreferences.VideoMode.ORIGINAL).forEach{value->Row(Modifier.fillMaxWidth().selectable(mode==value,enabled=ready&&!busy,role=Role.RadioButton){busy=true;vm.saveVideoMode(value){saved->if(saved){mode=value;error=""}else error="保存视频方式失败，请重试。";busy=false}}.testTag("video-mode-${value.name.lowercase()}").padding(16.dp),verticalAlignment=Alignment.CenterVertically){
+                RadioButton(mode==value,null,enabled=ready&&!busy);Spacer(Modifier.width(12.dp));Column{Text(if(value==ToolboxPreferences.VideoMode.ORIGINAL)"直传原视频"else"智能均匀抽帧（推荐）",style=MaterialTheme.typography.titleSmall);Text(if(value==ToolboxPreferences.VideoMode.ORIGINAL)"发送完整原件及音轨，仅少数支持原生视频的接口可用"else"短视频约每秒 1 帧，长视频自动均匀截取最多 24 张画面（仅看画面和字幕，不含声音）",style=MaterialTheme.typography.bodySmall,color=Muted)}
             }}
         }
-        Text("直传原视频最多 70 MB。抽帧按秒生成高质量 JPEG，大画面按比例缩至 1080p 范围。应用不单独提取或处理声音；直传时服务商可能理解原件中的声音。服务商也可能有更小上限。",style=MaterialTheme.typography.bodySmall,color=Muted)
-        Text("沿用图片理解中的接收方：辅助看图开启时交所选辅助模型，关闭时交聊天模型。服务商或模型不支持时如实报错，不自动换模式、换模型、压缩、分批或减少画面。",style=MaterialTheme.typography.bodySmall,color=Muted)
+        Text("抽帧会将大画面缩至 720p 清晰图，发 2～3 分钟日常视频也能稳定看懂画面与字幕；如果视频没有字幕，抽帧模式听不到里面的说话声。",style=MaterialTheme.typography.bodySmall,color=Muted)
+        Text("直传原视频单文件上限 70 MB，但多数兼容接口不支持或限制在 15～20 MB 以内。接收方沿用图片理解设置（开启辅助看图时交给辅助模型，否则交给聊天模型）。",style=MaterialTheme.typography.bodySmall,color=Muted)
         if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
     }
 }

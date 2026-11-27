@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Own app-private database. Primary key on friend is also the unique conversation key. */
-class Store(context: Context, name: String = AppServices.databaseName) : SQLiteOpenHelper(context, name, null, 19) {
+class Store(context: Context, name: String = AppServices.databaseName) : SQLiteOpenHelper(context, name, null, 21) {
     init {ImageDisk.cacheDirectory=context.applicationContext.cacheDir}
     internal val applicationContext=context.applicationContext
     internal val memorySummary=MemorySummaryGuard()
@@ -40,6 +40,7 @@ class Store(context: Context, name: String = AppServices.databaseName) : SQLiteO
         ProcessingSchema.create(db)
         CompanionRepository.create(db)
         ContactFailures.migrate(db)
+        dailyColumns(db)
         createReasoningSchema(db)
         DatabaseRelationSnapshots.create(db)
         ChatMemoryPills.createSchema(db)
@@ -60,6 +61,21 @@ class Store(context: Context, name: String = AppServices.databaseName) : SQLiteO
         if(!hasColumn(db,"memory_operations","saved"))db.execSQL("ALTER TABLE memory_operations ADD COLUMN saved INTEGER NOT NULL DEFAULT 0")
     };if(oldVersion<16)ContactFailures.migrate(db);if(oldVersion<17)ChatImages.create(db);if(oldVersion<18)ChatImages.migrateOriginals(db)
         if(oldVersion<19)ReceivedChatReply.create(db)
+        if(oldVersion<20){
+            db.execSQL("ALTER TABLE companion_opportunities RENAME TO old_contact_schedule")
+            CompanionRepository.create(db)
+            ContactFailures.migrate(db)
+            val shared=columns(db,"old_contact_schedule").filter{it in columns(db,"companion_opportunities")}.joinToString(",")
+            db.execSQL("INSERT INTO companion_opportunities($shared) SELECT $shared FROM old_contact_schedule")
+            db.execSQL("DROP TABLE old_contact_schedule")
+        }
+        if(oldVersion<21)dailyColumns(db)
+    }
+    private fun dailyColumns(db:SQLiteDatabase){
+        for(column in listOf("plan_due","plan_user","plan_retry","plan_ran_at"))if(!hasColumn(db,"companion_state",column))db.execSQL("ALTER TABLE companion_state ADD COLUMN $column INTEGER NOT NULL DEFAULT 0")
+        if(!hasColumn(db,"companion_state","plan_error"))db.execSQL("ALTER TABLE companion_state ADD COLUMN plan_error TEXT NOT NULL DEFAULT ''")
+        if(!hasColumn(db,"companion_state","plan_failed_at"))db.execSQL("ALTER TABLE companion_state ADD COLUMN plan_failed_at INTEGER NOT NULL DEFAULT 0")
+        if(!hasColumn(db,"companion_opportunities","retry_count"))db.execSQL("ALTER TABLE companion_opportunities ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
     }
     private fun hasColumn(db:SQLiteDatabase,table:String,column:String)=column in columns(db,table)
     private fun columns(db:SQLiteDatabase,table:String)=db.rawQuery("PRAGMA table_info($table)",null).use{c->buildList{while(c.moveToNext())add(c.getString(1))}}

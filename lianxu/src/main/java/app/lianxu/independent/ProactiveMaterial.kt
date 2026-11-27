@@ -35,7 +35,8 @@ internal object ProactiveMaterial {
             recent.indices.forEach{i->val m=recent[i];append(ChatTimeLabels.prefix(recent,i,at,zone)).append(if(m.mine)"$addressee（消息 ${m.id}）"else"你（回复 ${m.id}）").append("：").append(clip(m.text)).append('\n')}
         }
         val own=ownReason(o)
-        if(!relationship(o)){
+        if(o.id.startsWith("daily:"))append("[今天排下的念头] ").append(own).append('\n')
+        else if(!relationship(o)){
             append("[你答应过的回访]\n")
             if(own.isNotBlank())append("你当时留下的原话：").append(own).append('\n')
             source?.let{append("当时${addressee}那条消息（").append(ChatTimeLabels.label(it.created,at,zone).removeSurrounding("[","]")).append("，距现在约 ").append(ago(now-it.created)).append("）：").append(clip(it.text)).append('\n')}

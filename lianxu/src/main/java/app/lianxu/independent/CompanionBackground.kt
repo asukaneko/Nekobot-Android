@@ -20,22 +20,38 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 
 internal object CompanionScheduler {
-    suspend fun enqueue(context:Context,repo:CompanionRepository){
+    private val scheduling=kotlinx.coroutines.sync.Mutex()
+    suspend fun enqueue(context:Context,repo:CompanionRepository,fromAlarm:Boolean=false)=scheduling.withLock {
+        val now=AppServices.companionClock()
+        var next:Long?=null
+        fun alarmAt(t:Long){ if(t>now)next=minOf(next?:t,t) }
+        val planWakes=DailyPlanner(repo).wakes()
+        if(planWakes.isNotEmpty()){
+            val quiet=ProcessingRepository(repo.store).read{QuietHours.read(it)}
+            alarmAt(quiet.nextMorning(now,java.time.ZoneId.systemDefault()))
+        }
+        planWakes.forEach{w->
+            val delay=(w.due-now).coerceAtLeast(0)
+            ContactWake.plan(context,w,delay,fromAlarm && delay==0L);alarmAt(w.due)
+        }
         repo.refreshRelationshipContacts()
         repo.queued().forEach{o->
-            val backoff=o.attempt>0||CompanionRuntime.busy(o.role)||repo.inputPending(o.role)
+            val backoff=(o.attempt>0 && o.notBefore<=now)||CompanionRuntime.busy(o.role)||repo.inputPending(o.role)
+            alarmAt(o.notBefore)
+            val immediate=fromAlarm && o.notBefore<=now
             val request=OneTimeWorkRequestBuilder<CompanionWorker>()
                 .setInputData(workDataOf("opportunity" to o.id))
-                .setInitialDelay(ContactRetry.delay(o.notBefore,AppServices.companionClock(),backoff),TimeUnit.MILLISECONDS)
+                .setInitialDelay(if(immediate)0L else ContactRetry.delay(o.notBefore,AppServices.companionClock(),backoff),TimeUnit.MILLISECONDS)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .addTag("lianxu_companion:${o.role}").build()
+                .addTag(ContactWake.roleTag(o.role)).build()
             // One generation per persisted not-before/attempt. A deferred generation has a new
             // work name, avoiding self-replacement and KEEP silently dropping its successor.
-            WorkManager.getInstance(context).enqueueUniqueWork("lianxu_companion:${o.id}:${o.attempt}:${o.notBefore}",ExistingWorkPolicy.KEEP,request)
+            WorkManager.getInstance(context).enqueueUniqueWork("lianxu_companion:${o.id}:${o.attempt}:${o.notBefore}"+(if(immediate)":alarm" else ""),ExistingWorkPolicy.KEEP,request)
         }
+        ContactWake.alarm(context,next)
     }
-    fun cancel(context:Context,role:String) = WorkManager.getInstance(context).cancelAllWorkByTag("lianxu_companion:$role")
+    fun cancel(context:Context,role:String) = WorkManager.getInstance(context).cancelAllWorkByTag(ContactWake.roleTag(role))
 }
 
 class CompanionWorker(context:Context,params:WorkerParameters):CoroutineWorker(context,params){
@@ -60,7 +76,7 @@ class CompanionWorker(context:Context,params:WorkerParameters):CoroutineWorker(c
                 val o=withContext(NonCancellable){repo.claim(id,CompanionRuntime.owner)}?:run{busy=repo.queued().any{it.id==id};return@withLock}
                 var recover=false
                 var failure:ContactFailureKind?=null
-                var failureDetail="";var secret:String?=null
+                var temporary=false;var failureDetail="";var secret:String?=null
                 try{
                     currentCoroutineContext().ensureActive()
                     val access=ModelAccess(vault)
@@ -68,12 +84,11 @@ class CompanionWorker(context:Context,params:WorkerParameters):CoroutineWorker(c
                     secret=credential.key
                     val history=repo.contactHistory(o.role);val recent=ProactiveMaterial.recent(history)
                     val query=ProactiveMaterial.ownReason(o).ifBlank{recent.takeLast(4).joinToString("\n"){it.text}}
-                    val semantic=CompanionVectorIndex(repo,access).scores(o.role,query)
-                    val snapshot=repo.snapshot(o.role,query,semantic,(credential.config.contextTokens-credential.config.outputTokens).coerceAtLeast(0))
+                    val snapshot=repo.snapshot(o.role,query,tokenBudget=(credential.config.contextTokens-credential.config.outputTokens).coerceAtLeast(0))
                     if(!access.current(ModelPurpose.CHAT,credential.stamp))return@withLock
                     if(!repo.current(o,CompanionRuntime.owner)){recover=true;return@withLock}
                     val factsNow=AppServices.companionClock()
-                    val facts=repo.contactFacts(o.role,factsNow)
+                    val facts=repo.contactPace(o.role,factsNow).facts(factsNow)+"\n"+repo.contactFacts(o.role,factsNow)
                     val sourceAt=store.readableDatabase.rawQuery("SELECT created FROM companion_sources WHERE role=? AND source_id=? ORDER BY revision DESC LIMIT 1",arrayOf(o.role,o.source.toString())).use{if(it.moveToFirst())it.getLong(0)else null}
                     val decisionAt=AppServices.companionClock()
                     val decision=CompanionModel(AppServices.createTextClient()).reconsider(credential.config,credential.key,o,snapshot,snapshot.roleProfile,decisionAt,facts,sourceAt,recent,history.firstOrNull{it.id==o.source}){access.current(ModelPurpose.CHAT,credential.stamp)&&repo.current(store.readableDatabase,snapshot)&&!isStopped&&!CompanionRuntime.busy(o.role)}
@@ -82,8 +97,8 @@ class CompanionWorker(context:Context,params:WorkerParameters):CoroutineWorker(c
                     val message=repo.conclude(o,CompanionRuntime.owner,decision,snapshot,executionCurrent={job.isActive&&!isStopped&&!CompanionRuntime.busy(o.role)},decisionAt=decisionAt){access.current(ModelPurpose.CHAT,credential.stamp)}
                     if(message!=null){CompanionRuntime.changed();CompanionNotifications(applicationContext,store,repo).post(message)}
                 }catch(e:CancellationException){recover=true;throw e}
-                catch(e:Exception){ failure=ContactFailures.classify(e);failureDetail=ContactFailures.detail(e,listOfNotNull(secret)) }
-                finally{withContext(NonCancellable){repo.release(o,CompanionRuntime.owner,recover,failure,failureDetail)}}
+                catch(e:Exception){ temporary=ContactFailures.transient(e);failure=ContactFailures.classify(e);failureDetail=ContactFailures.detail(e,listOfNotNull(secret)) }
+                finally{withContext(NonCancellable){repo.release(o,CompanionRuntime.owner,recover,failure,failureDetail,temporary)}}
             }}finally{CompanionRuntime.unregister(candidate.role,job)}
             return if(busy)Result.retry() else Result.success()
         }finally{
@@ -109,8 +124,9 @@ internal class CompanionNotifications(private val context:Context,private val st
             putExtra(ROLE,friend.id);putExtra(MESSAGE,id)
         }
         val pending=PendingIntent.getActivity(context,id.toInt(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val preview=message.text.replace(Regex("""(?:\r?\n[ \t]*){2,}"""),"\n")
         val notification=Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_email)
-            .setContentTitle(friend.name).setContentText(message.text).setStyle(Notification.BigTextStyle().bigText(message.text))
+            .setContentTitle(friend.name).setContentText(preview).setStyle(Notification.BigTextStyle().bigText(preview))
             .setContentIntent(pending).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE).build()
         try{
             if(!repo.publishIfCurrent(id){manager.notify(TAG,id.toInt(),notification);true}){repo.delivery(id,"cancelled");return}

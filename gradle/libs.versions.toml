@@ -1,4 +1,5 @@
 [versions]
+androidJson = "0.0.20131108.vaadin1"
 agp = "8.10.1"
 kotlin = "2.2.21"
 ksp = "2.2.21-2.0.5"
@@ -22,6 +23,7 @@ androidxTest = "1.6.2"
 androidxTestExt = "1.2.1"
 
 [libraries]
+android-json = { module = "com.vaadin.external.google:android-json", version.ref = "androidJson" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }

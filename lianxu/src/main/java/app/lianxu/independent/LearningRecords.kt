@@ -5,6 +5,7 @@ internal data class LearningRecord(
     val updatedAt:Long?,
     val evidence:List<LearningEvidence>,
     val changes:List<LearningChange>,
+    val origin:String=state.origin,
 )
 
 internal data class LearningEvidence(
@@ -78,20 +79,22 @@ internal suspend fun CompanionRepository.learningRecords(role:String):List<Learn
                 changes.getOrPut(change.id){mutableListOf()}.add(LearningChange(entry.source.turnId,sourceAt,change.phase,content,reason,evidence(change.evidence)))
             }
         }
-        for(feedback in entry.flow.feedback.filter{it.verdict=="unhelpful"}){
+        for(feedback in entry.flow.feedback.filter{it.verdict in setOf("unhelpful","helpful")}){
             val action=actions[feedback.actionMessage]?:continue
             for(id in action.usedLearningIds){
-                if(current[id]?.kind!="habit")continue
+                val value=current[id]?:continue
+                val helpful=feedback.verdict=="helpful"
+                if(!helpful && value.kind!="habit")continue
                 val content=contents[id]?:continue
                 val refs=listOf(RoleEvidence(entry.source),RoleEvidence(action.source,"action",action.replyId))
-                changes.getOrPut(id){mutableListOf()}.add(LearningChange(entry.source.turnId,sourceAt,"pause",content,
-                    "反馈：“${feedback.quote}”；这次反馈使相处方法暂停使用。",evidence(refs)))
+                changes.getOrPut(id){mutableListOf()}.add(LearningChange(entry.source.turnId,sourceAt,if(helpful)"confirm" else "pause",content,
+                    if(helpful)"反馈：“${feedback.quote}”" else "反馈：“${feedback.quote}”；这次反馈使相处方法暂停使用。",evidence(refs)))
             }
         }
     }
     context.learning.map { state ->
         val history=changes[state.id].orEmpty().toList()
-        LearningRecord(state,message(state.source.turnId)?.created,
+        LearningRecord(state,history.lastOrNull()?.created ?: message(state.source.turnId)?.created,
             history.flatMap{it.evidence}.distinctBy{it.messageId to it.kind},history)
     }.sortedWith(compareByDescending<LearningRecord>{it.updatedAt?:Long.MIN_VALUE}.thenBy{it.state.id})
 }

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -59,16 +58,19 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
     initialEditConfigId:String?=null,
     initialPurpose:ModelPurpose?=null,
     returnToChatOnDone:Boolean=false,
+    startAtPurposes:Boolean=false,
     onInitialHandled:()->Unit={},
 ) {
     LaunchedEffect(state.vaultVersion){state.refresh()}
-    var screen by remember {mutableStateOf("overview")}
+    // The purposes page has no draft. Editor/provider routes need their transient configuration.
+    var screen by rememberSaveable(stateSaver = androidx.compose.runtime.saveable.Saver<String, String>(
+        save = { if (it == "purposes") it else "overview" }, restore = { it }
+    )) { mutableStateOf(if(startAtPurposes)"purposes" else "overview") }
     var openedDirectlyToEdit by remember {mutableStateOf(false)}
     SideEffect { ProcessDiagnostics.view(when(screen) {
-        "edit" -> "model-editor"; "providers" -> "model-providers"; "voice-studio" -> "voice-studio"; else -> "models"
+        "purposes" -> "models-purposes"; "edit" -> "model-editor"; "providers" -> "model-providers"; "voice-studio" -> "voice-studio"; else -> "models"
     }) }
     val tabs=rememberPageTabs(4)
-    val overviewTab=tabs.selected
     val servicesScroll=rememberLazyListState()
     val purposesScroll=rememberLazyListState()
     val voiceScroll=rememberLazyListState()
@@ -110,6 +112,7 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
         keyDraft.invalidate()
         state.clearResult()
         if(screen=="providers"){screen=providerReturn;return}
+        if(screen=="purposes"){if(startAtPurposes)onBack() else screen="overview";return}
         key="";reveal=false
         if(screen=="edit"){
             val directReturn=returnToChatOnDone&&openedDirectlyToEdit
@@ -145,15 +148,16 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
         onDispose{keyDraft.invalidate();lifecycle.removeObserver(observer);state.clearResult();activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)}
     }
     SideEffect{if(reveal)activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)}
-    if (screen == "voice-studio") {
+    SoftPage(screen,{from,to->if(to=="overview" || from=="edit" && to=="providers")-1 else 1}){panel->
+    if (panel == "voice-studio") {
         BreezeStudioScreen { screen = "overview" }
-        return
+        return@SoftPage
     }
     BackHandler{back()}
     val preset=ProviderPresets.get(provider)
     Surface(Modifier.fillMaxSize(),color=ConfigBackground){Column {
         AppTopBar(
-            title=when(screen){"providers"->if(embeddingEditor)"选择向量服务商" else "选择聊天服务商";"edit"->if(embeddingEditor)"向量模型配置" else if(original==null)"添加 ${providerName(preset)}" else "编辑配置";else->"大模型配置"},
+            title=when(screen){"purposes"->"模型用途";"providers"->if(embeddingEditor)"选择向量服务商" else "选择聊天服务商";"edit"->if(embeddingEditor)"向量模型配置" else if(original==null)"添加 ${providerName(preset)}" else "编辑配置";else->"大模型配置"},
             onBack={back()},backTag="config-back",enabled=!state.saving,
             extra={when(screen){
                 "edit"->SaveAction(!state.busy&&!sharedWithOtherPurposes(draftId)&&ThinkingFields.customError(thinkingCustom)==null){ProcessDiagnostics.action(ProcessAction.SAVE_MODEL);reveal=false;if(saveForPurpose==ModelPurpose.CHAT)state.saveChatFromCreation(draft(),enteredKey(),original,originalRevision){key="";screen="overview"}else state.save(draft(),enteredKey(),if(embeddingEditor)ModelPurpose.EMBEDDING else null,original,originalRevision){key="";if(returnToChatOnDone&&openedDirectlyToEdit){openedDirectlyToEdit=false;onBack()}else screen="overview"}}
@@ -161,14 +165,10 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
             }}
         )
         if(saveForPurpose==ModelPurpose.CHAT&&!embeddingEditor)Text("这里只设置全局聊天。其他用途正在使用的配置可直接选用，但不能在这里修改或删除；可另加全局聊天配置。",Modifier.padding(horizontal=UiSpace.page,vertical=8.dp).testTag("config-chat-context"),style=MaterialTheme.typography.bodySmall,color=ConfigMuted)
-        if(screen=="overview"){
-            Row(Modifier.padding(horizontal=UiSpace.page,vertical=12.dp).fillMaxWidth().selectableGroup().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(4.dp)){
-                listOf("聊天模型","向量","语音","画图").forEachIndexed{index,label->
-                    Tab(selected=overviewTab==index,onClick={tabs.select(index)},
-                        modifier=Modifier.weight(1f).heightIn(min=UiSpace.action).clip(RoundedCornerShape(24.dp)).background(if(overviewTab==index)Paper else Color.Transparent).testTag(listOf("config-tab-chat","config-tab-embedding","config-tab-voice","config-tab-image")[index]),
-                        selectedContentColor=ConfigInk,unselectedContentColor=ConfigGreen,text={Text(label,style=MaterialTheme.typography.labelMedium,maxLines=1)})
-                }
-            }
+        if(panel=="overview"){
+            SlidingPageTabs(tabs, listOf("聊天模型","向量","语音","画图"),
+                listOf("config-tab-chat","config-tab-embedding","config-tab-voice","config-tab-image"),
+                "config-tab-indicator", inactive = ConfigGreen, labelStyle = MaterialTheme.typography.labelMedium)
             if(saveForPurpose!=null){
                 LazyColumn(Modifier.fillMaxSize().testTag("config-overview"),state=purposesScroll,contentPadding=PaddingValues(UiSpace.page),verticalArrangement=Arrangement.spacedBy(16.dp)){
                     if(state.status.isNotBlank())item("status"){Notice(state.status,state.statusError)}
@@ -222,7 +222,12 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
                 }
             }}
             }
-        }else if(screen=="providers"){
+        }else if(panel=="purposes"){
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(UiSpace.page),verticalArrangement=Arrangement.spacedBy(16.dp)){
+                if(state.status.isNotBlank())Notice(state.status,state.statusError)
+                PurposeSelection(state)
+            }
+        }else if(panel=="providers"){
             OutlinedTextField(query,{query=it.take(80)},placeholder={Text("搜索服务商")},singleLine=true,leadingIcon={ControlIcon("search")},modifier=Modifier.fillMaxWidth().padding(horizontal=UiSpace.page,vertical=12.dp).testTag("provider-search"),shape=RoundedCornerShape(16.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedContainerColor=Paper,focusedContainerColor=Paper,unfocusedBorderColor=Color.Transparent))
             val groups=ProviderCatalog.groups(embeddingEditor,query,allProviders)
             fun choose(p:ProviderPreset){
@@ -348,12 +353,13 @@ private val ThinkingSelected:Color @Composable get()=lerp(Paper,Ink,.08f)
                 Spacer(Modifier.height(12.dp))
             }
         }
-    }}
+    }}}
     if(imageNotice)AlertDialog(onDismissRequest={imageNotice=false},title={Text("画图功能还没接入")},
         text={Text("现在还不能添加画图服务商。等画图接上以后，这里会列出可以选的服务。")},
         confirmButton={TextButton({imageNotice=false}){Text("知道了")}})
     deleting?.let{config->AlertDialog(onDismissRequest={deleting=null},title={Text("删除这份配置？")},text={Text("同时清除保存的密钥。聊天记录不受影响。")},confirmButton={TextButton(onClick={state.delete(config);deleting=null;key="";reveal=false;screen="overview"}){Text("确认删除")}},dismissButton={TextButton(onClick={deleting=null}){Text("取消")}})}
 }
+
 
 // Keep the editor and advanced fields in separate DEX methods from the navigation branches.
 @Composable
@@ -388,44 +394,38 @@ private fun ModelAdvancedSettings(expanded: Boolean, onToggle: () -> Unit, conte
     config: ModelConfig, testOk: Boolean, selected: Boolean, canSelect: Boolean,
     onOpen: () -> Unit, onSelect: () -> Unit
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        val actionWidth = maxWidth * 0.45f
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f)) {
-                Column(Modifier.fillMaxWidth().clickable(enabled = !config.id.isHostModel(), role = Role.Button, onClick = onOpen)
-                    .testTag("config-edit-${config.id}").heightIn(min = 48.dp),
-                    verticalArrangement = Arrangement.Center) {
-                    Text(config.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
-                    Text(if (config.id.isHostModel()) "来自 NekoBot（在 NekoBot 中修改） · ${config.modelId}" else "${providerName(ProviderPresets.get(config.providerId))} · ${config.modelId}",
-                        style = MaterialTheme.typography.labelSmall, color = ConfigMuted)
-                }
-                if (!config.id.isHostModel()) FlowRow(Modifier.clickable(role = Role.Button, onClick = onOpen)
-                    .testTag("config-manage-${config.id}").sizeIn(minWidth = 48.dp, minHeight = 48.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        Text(if (testOk) "已连接" else "未连接", style = MaterialTheme.typography.labelSmall,
-                            color = if (testOk) ConfigSuccess else ConfigMuted)
-                        if (testOk) ConnectedLight(Modifier.offset(x = (-10).dp))
-                    }
-                    Text(if (testOk) "管理" else "连接", style = MaterialTheme.typography.labelSmall, color = ConfigInk)
-                }
+    val dark=Paper.luminance()<.3f
+    Row(Modifier.fillMaxWidth().background(if(selected)lerp(Paper,Color(0xFFC49352),.07f) else Paper)
+        .heightIn(min=68.dp).padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically,
+        horizontalArrangement=Arrangement.spacedBy(8.dp)){
+        ModelRowInfo(config,testOk,Modifier.weight(1f).clickable(enabled=!config.id.isHostModel(),role=Role.Button,onClick=onOpen).testTag("config-edit-${config.id}"))
+        if(selected){
+            Text("• 使用中",Modifier.testTag("config-current-chat-${config.id}")
+                .background(if(dark)Color(0xFF344638) else Color(0xFFE5EFE7),CircleShape).padding(horizontal=10.dp,vertical=5.dp),
+                color=if(dark)Color(0xFFBDD7C3) else Color(0xFF3E6048),style=MaterialTheme.typography.labelMedium)
+        }else{
+            Box(Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).clickable(enabled=canSelect,role=Role.Button,
+                onClickLabel="将${config.name}设为聊天模型",onClick=onSelect).testTag("config-use-chat-${config.id}"),
+                contentAlignment=Alignment.Center){
+                Text("使用",Modifier.border(.5.dp,ConfigLine,CircleShape).padding(horizontal=12.dp,vertical=5.dp),
+                    style=MaterialTheme.typography.labelMedium,color=ConfigGreen)
             }
-            val end = Modifier.widthIn(max = actionWidth)
-            if (selected) {
-                Row(end.testTag("config-current-chat-${config.id}").semantics(mergeDescendants = true) {},
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("✓", Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.labelLarge, color = ConfigInk)
-                    Text("当前聊天模型", style = MaterialTheme.typography.labelLarge, color = ConfigInk)
-                }
-            } else {
-                Box(end.clickable(enabled = canSelect, role = Role.Button,
-                    onClickLabel = "将${config.name}设为聊天模型", onClick = onSelect)
-                    .testTag("config-use-chat-${config.id}").sizeIn(minWidth = 48.dp, minHeight = 48.dp),
-                    contentAlignment = Alignment.CenterEnd) {
-                    Text("设为聊天模型", style = MaterialTheme.typography.labelLarge, color = ConfigInk)
-                }
-            }
+        }
+        if(!config.id.isHostModel()) Box(Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).clickable(role=Role.Button,onClickLabel="编辑${config.name}",onClick=onOpen),contentAlignment=Alignment.CenterEnd){
+            Text("›",color=Muted,fontSize=18.sp)
+        }
+    }
+}
+
+@Composable private fun ModelRowInfo(config:ModelConfig,testOk:Boolean,modifier:Modifier){
+    Column(modifier.heightIn(min=48.dp),verticalArrangement=Arrangement.Center){
+        Text(config.name,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis)
+        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){
+            if(testOk)ConnectedLight(Modifier) else Spacer(Modifier.size(6.dp).background(Muted.copy(alpha=.45f),CircleShape))
+            val status=if(testOk)"已连接" else "未测通"
+            val origin=if(config.id.isHostModel()) "来自 NekoBot" else providerName(ProviderPresets.get(config.providerId))
+            Text("$status · $origin · ${config.modelId}",
+                style=MaterialTheme.typography.labelSmall,color=ConfigMuted,maxLines=1,overflow=TextOverflow.Ellipsis)
         }
     }
 }
@@ -440,31 +440,18 @@ private fun ModelAdvancedSettings(expanded: Boolean, onToggle: () -> Unit, conte
         .background(ConfigSuccess, CircleShape).testTag("chat-connection-light"))
 }
 
-/** 一个用途下的一行：名字 + 状态 + 小胶囊，行高 44dp，和语音服务那一行一致。 */
 @Composable private fun ModelServiceRow(config:ModelConfig,testOk:Boolean,isDefault:Boolean,onOpen:()->Unit){
-    val p=ProviderPresets.get(config.providerId)
-    Row(Modifier.fillMaxWidth().heightIn(min=44.dp).clickable(role=Role.Button,onClick=onOpen)
-        .testTag("config-edit-${config.id}").padding(horizontal=16.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
-        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)){
-            Text(config.name,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis)
-            Text(if (config.id.isHostModel()) "来自 NekoBot（在 NekoBot 中修改） · ${config.modelId}" else "${providerName(p)} · ${config.modelId}",style=MaterialTheme.typography.labelSmall,color=ConfigMuted,maxLines=1,overflow=TextOverflow.Ellipsis)
-        }
-        if(testOk){
-            Box(Modifier.size(7.dp).clip(CircleShape).background(ConfigSuccess));Spacer(Modifier.width(5.dp))
-            Text("已连接",style=MaterialTheme.typography.labelSmall,color=ConfigSuccess)
-        }else Text("未连接",style=MaterialTheme.typography.labelSmall,color=ConfigMuted)
-        if(isDefault)Text("默认",Modifier.padding(start=6.dp),style=MaterialTheme.typography.labelSmall,color=ConfigGreen)
-        Spacer(Modifier.width(8.dp))
-        Box(Modifier.clip(CircleShape).background(Accent).clickable(onClick=onOpen)
-            .padding(horizontal=12.dp,vertical=5.dp).testTag("config-manage-${config.id}"),contentAlignment=Alignment.Center){
-            Text(if(testOk)"管理" else "连接",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSecondaryContainer)
-        }
+    Row(Modifier.fillMaxWidth().heightIn(min=68.dp).clickable(role=Role.Button,onClick=onOpen).testTag("config-edit-${config.id}").padding(horizontal=16.dp),
+        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+        ModelRowInfo(config,testOk,Modifier.weight(1f))
+        if(isDefault)Text("默认",style=MaterialTheme.typography.labelMedium,color=ConfigGreen)
+        if(!config.id.isHostModel()) Text("›",color=Muted,fontSize=18.sp)
     }
 }
 
 /** 卡片最下面那一行「+ 添加…」。 */
 @Composable private fun AddServiceRow(label:String,tag:String,onClick:()->Unit){
-    Row(Modifier.fillMaxWidth().heightIn(min=44.dp).clickable(role=Role.Button,onClick=onClick)
+    Row(Modifier.fillMaxWidth().heightIn(min=UiSpace.action).clickable(role=Role.Button,onClick=onClick)
         .testTag(tag).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically){
         Text(label,style=MaterialTheme.typography.bodyMedium,color=ConfigGreen)
     }

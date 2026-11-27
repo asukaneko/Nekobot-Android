@@ -256,10 +256,7 @@ private fun VoiceBubbleContent(file: File, original: String, playback: ChatVoice
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             Modifier.voiceWidth(milliseconds, labelWidth).heightIn(min = 40.dp).clip(shape).background(ChatRoleBubble).border(1.dp, Line, shape)
-                .combinedClickable(
-                    role = Role.Button, onClickLabel = if (playing) "暂停" else "播放",
-                    onLongClickLabel = "展开原文", onLongClick = { expanded = true },
-                    onClick = { playback.toggle(file, milliseconds) { broken = true } }
+                .bubbleActions(original,"voice",expanded,transcript={ expanded=!expanded }, fallback={ expanded=true }, click={ playback.toggle(file, milliseconds) { broken = true } }
                 ).semantics {
                     contentDescription = if (playing || state == VoicePlaybackState.Paused) {
                         "语音，剩余${seconds}秒"
@@ -321,14 +318,13 @@ private fun VoiceSpeaker(playing: Boolean) {
 @Composable
 private fun VoiceTranscript(text: String, manage: (() -> Unit)?, close: () -> Unit) {
     Text(text, Modifier.clip(RoundedCornerShape(16.dp)).background(ChatRoleBubble)
-        .combinedClickable(onClickLabel = "收起原文",
-            onClick = close, onLongClickLabel = "消息操作", onLongClick = manage)
+        .bubbleActions(text,"voice",true,transcript=close,fallback=manage,click=close)
         .padding(UiSpace.bubble), style = MaterialTheme.typography.bodyLarge, color = ChatRoleText)
 }
 
 @Composable
 private fun VoiceUnavailable(original: String, manage: (() -> Unit)?) {
-    val actions = if (manage == null) Modifier else Modifier
+    val actions = if (LocalBubbleMessage.current != null) Modifier.bubbleActions(original) else if (manage == null) Modifier else Modifier
         .pointerInput(manage) { detectTapGestures(onLongPress = { manage() }) }
         .semantics(mergeDescendants = true) { onLongClick("消息操作") { manage(); true } }
     Column(
